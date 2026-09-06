@@ -1,37 +1,24 @@
 ---
-description: Package layout, Update/Draw split, tunables, and Go simplicity
-globs: "**/*.go"
+description: Go package layout and loop rules for the sandbox
+globs:
+  - "**/*.go"
 alwaysApply: false
 ---
 
 # Go architecture
 
 ```
-cmd/permitdenied/main.go   # window title, RunGame only (~25 lines)
-internal/game/             # scene, Update, input, sim, combat, beat, const.go
+cmd/permitdenied/main.go   # window title, RunGame only
+cmd/genbuildings/          # regenerate buildings.png
+internal/game/             # play loop, input, sim, const.go
 internal/dozer lot run threats fx audio render
 assets/embed.go            # go:embed usable/*
 ```
 
-No `pkg/`. No interfaces-for-one-implementation. Unexported fields unless a test in another package needs them. No goroutines — the sim is single-threaded in `Update`. Geometry is Go literals in `lot/lot.go`, not JSON level files.
+No `pkg/`. No interfaces-for-one-implementation. No campaign packages in the compile graph. No goroutines — the sim is single-threaded in `Update`.
 
-## Loop
+Geometry is Go literals in `lot/lot.go` (three structures). No JSON level schemas.
 
-`Update` is logic. `Draw` is render. Never mutate sim state in `Draw`. `dt` is `1.0/60.0` every Update; do not use a Draw-frame delta.
+`Update` is logic. `Draw` is render. Never mutate sim state in `Draw`. Tunables live in `internal/game/const.go`.
 
-Read keyboard/touch **once** in `game.readInput()` into `Input{Throttle, Steer, BladeToggle}`. `dozer` and `threats` never call `IsKeyPressed`.
-
-Every new tunable goes in `internal/game/const.go` with a comment pointing at the spec line. Do not sprinkle magic numbers.
-
-## Ebitengine
-
-Use `ColorScale`, not deprecated `ColorM`. Use `ebiten.AppendTouchIDs`, not `TouchIDs()`. Gameplay sprites: `ebiten.FilterNearest`.
-
-## Verify
-
-```
-go test ./...
-go run ./cmd/permitdenied
-```
-
-Keep green: `TestForwardVector`, `TestMultTable`, `TestSpawnWOneSecond`, `TestSpawnAHalfSecond`, `TestBladeDownDropsSheriffHP`, plus beat/combat/atlas tests already in tree. Local Windows package: `build.bat` → `dist\permitdenied.exe` (do not commit the exe).
+Verify: `go test ./...` then `go run ./cmd/permitdenied`. Local package: `build.bat` → `dist\permitdenied.exe` (do not commit).

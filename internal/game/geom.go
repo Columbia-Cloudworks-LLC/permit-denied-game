@@ -24,20 +24,6 @@ func FacingIndex(heading float64) int {
 	return int(h / step)
 }
 
-// Mult is the named-target score multiplier. Spec §14.
-func Mult(targets int) float64 {
-	switch {
-	case targets <= 0:
-		return Mult0
-	case targets == 1:
-		return Mult1
-	case targets == 2:
-		return Mult2
-	default:
-		return Mult3
-	}
-}
-
 func wrapHeading(h float64) float64 {
 	h = math.Mod(h, 2*math.Pi)
 	if h < 0 {

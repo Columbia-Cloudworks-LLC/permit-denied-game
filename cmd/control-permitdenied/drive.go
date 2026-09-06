@@ -24,7 +24,7 @@ func drive(args []string) error {
 	g := game.New()
 	g.Silence()
 	s := g.Snapshot()
-	if s.Scene != "title" || s.Title != game.WindowTitle {
+	if s.Scene != "play" || s.Title != game.WindowTitle {
 		return fmt.Errorf("doctor failed: scene=%s title=%q", s.Scene, s.Title)
 	}
 	lines, err := readLines(scriptPath)
@@ -135,6 +135,10 @@ func keysFor(names []string, edge bool) (game.Input, game.Keys, error) {
 			if edge {
 				keys.F3 = true
 			}
+		case "r":
+			if edge {
+				keys.R = true
+			}
 		default:
 			return in, keys, fmt.Errorf("unknown key %s", n)
 		}
@@ -240,12 +244,6 @@ func snapField(s game.Snapshot, key string) (val string, numeric bool, err error
 		return s.Death, false, nil
 	case "banner":
 		return s.Banner, false, nil
-	case "sheriff":
-		return s.Sheriff, false, nil
-	case "yard":
-		return s.Yard, false, nil
-	case "plant":
-		return s.Plant, false, nil
 	case "x":
 		return fmt.Sprintf("%v", s.X), true, nil
 	case "y":
@@ -262,18 +260,19 @@ func snapField(s game.Snapshot, key string) (val string, numeric bool, err error
 		return fmt.Sprintf("%d", s.Tick), true, nil
 	case "time":
 		return fmt.Sprintf("%v", s.Time), true, nil
-	case "targets":
-		return fmt.Sprintf("%d", s.Targets), true, nil
 	case "struct_cash":
 		return fmt.Sprintf("%d", s.StructCash), true, nil
 	case "vehicle_cash":
 		return fmt.Sprintf("%d", s.VehicleCash), true, nil
-	case "sheriff_hp":
-		return fmt.Sprintf("%v", s.SheriffHP), true, nil
-	case "yard_hp":
-		return fmt.Sprintf("%v", s.YardHP), true, nil
-	case "plant_hp":
-		return fmt.Sprintf("%v", s.PlantHP), true, nil
+	case "rubble":
+		return fmt.Sprintf("%d", s.Rubble), true, nil
+	case "intact":
+		return fmt.Sprintf("%d", s.Intact), true, nil
+	case "hunting":
+		if s.Hunting {
+			return "true", false, nil
+		}
+		return "false", false, nil
 	default:
 		return "", false, fmt.Errorf("unknown assert field %s", key)
 	}

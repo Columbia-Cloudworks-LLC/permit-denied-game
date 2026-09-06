@@ -1,11 +1,11 @@
 # PERMIT DENIED
 
-**Status:** Shared understanding. One-level design exercise. Not a ship. No between-run meta.  
+**Status:** Milestone 1 is a **destruction sandbox** (compact lot, per-cell buildings). This doc retains the original county-strip fantasy; where it conflicts with cell-based destruction or the sandbox README, the sandbox wins for the current binary.  
 **Form:** SNES / Sega Genesis top-down. World-fixed north. 16 facings.  
-**Length:** One run is ~3:30 or death, whichever first.  
+**Length (sandbox):** ~60 s or death. **Length (legacy strip fantasy):** ~3:30.  
 **Hands:** Tank-steer + one blade toggle. That is the whole moveset.
 
-One-line: you are an armored dozer on a county industrial strip. The authorities try to stop you. The lot you wreck *is* the maze.
+One-line: you are an armored dozer. The lot you wreck *is* the maze. Buildings break locally, cell by cell.
 
 ---
 
@@ -14,7 +14,7 @@ One-line: you are an armored dozer on a county industrial strip. The authorities
 - Not a Heemeyer biopic. No manifesto, no real town, no real target list.
 - Not Vampire Survivors. No six weapon slots, no 20-minute build.
 - Not Hades. No region graph, shops, or unlock tree in this spec.
-- Not BeamNG / Teardown. Buildings have three tile states. Rubble is collision, not particles.
+- Not BeamNG soft-body. Debris particles are garnish; **rubble cells collide** and match their sprites.
 - Not *Smashy Road* in a hat. You are slow, heavy, and punished for filling the street you still need.
 
 Internal shorthand “Killdozer” stays off the title screen.
