@@ -9,7 +9,8 @@ import (
 
 func TestForwardVector(t *testing.T) {
 	cases := []struct {
-		h, x, y float64
+		h      float64
+		fx, fy float64
 	}{
 		{0, 0, -1},
 		{math.Pi / 2, 1, 0},
@@ -18,123 +19,110 @@ func TestForwardVector(t *testing.T) {
 	}
 	for _, c := range cases {
 		fx, fy := Forward(c.h)
-		if math.Abs(fx-c.x) > 1e-9 || math.Abs(fy-c.y) > 1e-9 {
-			t.Fatalf("heading %v: got %v,%v want %v,%v", c.h, fx, fy, c.x, c.y)
+		if math.Abs(fx-c.fx) > 1e-9 || math.Abs(fy-c.fy) > 1e-9 {
+			t.Fatalf("heading %v → (%v,%v) want (%v,%v)", c.h, fx, fy, c.fx, c.fy)
 		}
 	}
 }
 
-func TestMultTable(t *testing.T) {
-	m := []float64{1.0, 1.25, 1.6, 2.0}
-	for i, want := range m {
-		if Mult(i) != want {
-			t.Fatalf("targets %d: got %v want %v", i, Mult(i), want)
-		}
+func TestSpawnInPlay(t *testing.T) {
+	g := New()
+	g.Silence()
+	s := g.Snapshot()
+	if s.Scene != "play" {
+		t.Fatalf("scene %s", s.Scene)
+	}
+	if s.Title != WindowTitle {
+		t.Fatalf("title %q", s.Title)
+	}
+	if math.Abs(s.X-SpawnX) > 0.1 || math.Abs(s.Y-SpawnY) > 0.1 {
+		t.Fatalf("spawn %v,%v", s.X, s.Y)
 	}
 }
 
 func TestSpawnWOneSecond(t *testing.T) {
 	g := New()
-	g.audio = nil
-	g.startRun()
-	y0 := g.dozer.Y
+	g.Silence()
 	for i := 0; i < TPS; i++ {
-		g.stepPlay(Input{Throttle: 1})
+		if err := g.Drive(Input{Throttle: 1}, Keys{}); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if g.dozer.Y >= y0-40 {
-		t.Fatalf("W 1s: Y=%v want < %v (forward should be north / decreasing Y)", g.dozer.Y, y0-40)
+	if g.dozer.Y >= SpawnY-20 {
+		t.Fatalf("expected north progress, y=%v", g.dozer.Y)
 	}
 }
 
 func TestSpawnAHalfSecond(t *testing.T) {
 	g := New()
-	g.audio = nil
-	g.startRun()
+	g.Silence()
 	for i := 0; i < TPS/2; i++ {
-		g.stepPlay(Input{Steer: -1})
+		if err := g.Drive(Input{Steer: -1}, Keys{}); err != nil {
+			t.Fatal(err)
+		}
 	}
+	if g.dozer.Heading >= 0 && g.dozer.Heading < 0.1 {
+		t.Fatalf("expected west-of-north heading, got %v", g.dozer.Heading)
+	}
+	// A = vehicle left = heading decreases → negative / near 2π.
 	h := g.dozer.Heading
-	west := (h > math.Pi && h < 2*math.Pi) || (h < 0 && h > -math.Pi)
-	if !west {
-		t.Fatalf("A 0.5s: heading=%v want west-of-north in (-π,0) or (π,2π)", h)
+	if h > math.Pi {
+		// wrapped
+	} else if h >= 0 {
+		t.Fatalf("heading should decrease from 0, got %v", h)
 	}
 }
 
-func TestBladeDownDropsSheriffHP(t *testing.T) {
-	g := New()
-	g.audio = nil
-	g.startRun()
-	b := g.lot.BuildingByID(lot.TargetSheriff)
-	if b == nil {
-		t.Fatal("missing sheriff")
-	}
-	poseSouthOf(g, b, true)
-	hp0 := b.HP
-	for i := 0; i < 30; i++ {
-		g.stepPlay(Input{})
-	}
-	if b.HP >= hp0 {
-		t.Fatalf("blade-down vs sheriff: HP %v -> %v, expected drop", hp0, b.HP)
-	}
-}
-
-func TestCowardVsTwoTargetScore(t *testing.T) {
-	coward := 100 + 20 + 210
-	two := int(float64(coward) * Mult(2))
-	one0 := int(float64(coward) * Mult(0))
-	if two == one0 {
-		t.Fatalf("coward and two-target cashed out the same: %d", two)
-	}
-	if Mult(0) != 1.0 || Mult(2) != 1.6 {
-		t.Fatalf("mult table drifted")
-	}
-}
-
-func TestEndRunTallyDeathAndScore(t *testing.T) {
-	deaths := []string{"cooked", "track", "buzzer"}
-	for _, death := range deaths {
-		g := New()
-		g.Silence()
-		g.startRun()
-		g.endRun(death)
-		if g.scene != SceneTally {
-			t.Fatalf("death %s: scene=%v want SceneTally", death, g.scene)
-		}
-		if g.run.Death != death {
-			t.Fatalf("death %s: got %q", death, g.run.Death)
-		}
-	}
+func TestBladeDownBitesLocalCells(t *testing.T) {
 	g := New()
 	g.Silence()
-	g.startRun()
-	g.run.StructCash = 100
-	g.run.VehicleCash = 20
-	g.run.TimeAlive = 210
-	zero := g.run.Final(Mult(0))
-	two := g.run.Final(Mult(2))
-	if zero == two {
-		t.Fatalf("Final(Mult(0))=%d == Final(Mult(2))=%d", zero, two)
+	g.dozer.BladeDown = true
+	// Park against shed south door (tile 2,10 shed; door at local 1,2 → world ~48,192).
+	shed := g.lot.StructureByLabel("SHED")
+	wx, wy := shed.WorldXY(1, 2)
+	g.dozer.X = wx + 8
+	g.dozer.Y = wy + 24
+	g.dozer.Heading = 0 // north into door
+	intactBefore := g.lot.IntactSolidCount()
+	for i := 0; i < TPS*2; i++ {
+		_ = g.Drive(Input{Throttle: 1}, Keys{})
+		if g.fx.HitStop > 0 {
+			continue
+		}
+	}
+	if g.run.StructCash <= 0 {
+		t.Fatalf("expected cash from wreck, got %d", g.run.StructCash)
+	}
+	if g.lot.IntactSolidCount() >= intactBefore {
+		t.Fatalf("expected fewer intact solids")
+	}
+	// Neighbor cells should still exist as non-rubble somewhere on shed.
+	intactNeighbors := 0
+	for i := range shed.Cells {
+		c := &shed.Cells[i]
+		if c.Present() && c.State == lot.Intact {
+			intactNeighbors++
+		}
+	}
+	if intactNeighbors < 1 {
+		t.Fatal("local bite should leave some shed cells intact")
 	}
 }
 
-func TestRightAtNorthIsEast(t *testing.T) {
-	rx, ry := Right(0)
-	if math.Abs(rx-1) > 1e-9 || math.Abs(ry) > 1e-9 {
-		t.Fatalf("Right(0)=%v,%v want 1,0", rx, ry)
+func TestRestartResetsLot(t *testing.T) {
+	g := New()
+	g.Silence()
+	g.run.StructCash = 99
+	g.lot.StructureByLabel("SHED").ApplyDamage(0, 1, 999)
+	_ = g.Drive(Input{}, Keys{R: true})
+	s := g.Snapshot()
+	if s.StructCash != 0 {
+		t.Fatalf("cash %d", s.StructCash)
 	}
-}
-
-func TestFacingIndexCardinals(t *testing.T) {
-	if FacingIndex(0) != 0 {
-		t.Fatalf("north: %d", FacingIndex(0))
+	if s.Rubble != 0 {
+		t.Fatalf("rubble %d", s.Rubble)
 	}
-	if FacingIndex(math.Pi/2) != 4 {
-		t.Fatalf("east: %d", FacingIndex(math.Pi/2))
-	}
-	if FacingIndex(math.Pi) != 8 {
-		t.Fatalf("south: %d", FacingIndex(math.Pi))
-	}
-	if FacingIndex(3*math.Pi/2) != 12 {
-		t.Fatalf("west: %d", FacingIndex(3*math.Pi/2))
+	if s.Scene != "play" {
+		t.Fatalf("scene %s", s.Scene)
 	}
 }

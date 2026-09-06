@@ -1,32 +1,34 @@
 ---
-description: One-lot scope lock, doc authority, and ship constraints for PERMIT DENIED
+description: Sandbox scope lock, doc authority, and ship constraints for PERMIT DENIED
 alwaysApply: true
 ---
 
 # PERMIT DENIED — project contract
 
-One-lot top-down dozer gauntlet. Same strip every run. No meta, no campaign, no second player.
+One compact destruction sandbox. Same lot every run. No meta, no campaign, no second map.
 
-**Title** on the window and title screen: `PERMIT DENIED`. Internal shorthand “Killdozer” stays out of copy.
+**Title** on the window: `PERMIT DENIED`. Internal shorthand “Killdozer” starts out of copy.
 
 ## Doc authority
 
-- `PERMIT_DENIED.md` owns *what* (fantasy). `PERMIT_DENIED_GO_IMPLEMENTATION.md` owns *how* (numbers, signs, APIs).
-- Conflict: design wins on fantasy; the implementation guide wins on numbers and APIs.
-- `README.md` is how to run, keys, and show-off tests. `assets/usable/ASSETS.md` is the tile/atlas contract.
+- `README.md` is how to run, keys, and current sandbox scope.
+- `assets/usable/ASSETS.md` is the tile/atlas contract.
+- `PERMIT_DENIED.md` / `PERMIT_DENIED_GO_IMPLEMENTATION.md` are legacy design notes; prefer the sandbox README when they conflict with cell-based destruction.
 
 ## Stack lock
 
-Go 1.25 + Ebitengine **v2.9.x**. Module `permitdenied`. 60 TPS (`ebiten.DefaultTPS`). Logical screen **320×224**; window starts **1280×896**. `Layout` always returns `(320, 224)`.
+Go 1.25 + Ebitengine **v2.9.x**. Module `permitdenied`. 60 TPS. Logical screen **320×224**; window starts **1280×896**. `Layout` always returns `(320, 224)`.
 
-## Stay on the strip
+## Stay on the lot
 
 Tune `internal/game/const.go` before adding a system. A threat that does not change **steering** does not ship.
 
-Keep out of this build: between-run unlocks, a second lot, body boons, locational armor, soft-body / particle debris as collision, chopper rockets, a second dozer, `net/http` / accounts / leaderboards, ECS frameworks, Godot / Raylib / a React wrapper.
+Keep out of this build: title/campaign/meta, JSON schemas, plugin systems, between-run unlocks, a second lot, soft-body / particle debris **as collision**, ECS, Godot / Raylib / React wrappers.
 
-Copy verbatim: `THE COUNTY SAID NO.`, `BLADE UP` / `BLADE DOWN`, banners in impl guide §10, deaths `ENGINE COOKED` / `TRACK THROWN` / `COUNTY CLOCK`. Do not write Heemeyer, Granby, manifesto, or wanted stars.
+Buildings are **per-cell** destructible. Visual debris is garnish. Rubble collides and matches its sprite.
+
+Copy: `BLADE UP` / `BLADE DOWN`, deaths `ENGINE COOKED` / `TRACK THROWN` / `COUNTY CLOCK`. Do not write Heemeyer, Granby, manifesto, or wanted stars.
 
 ## Done
 
-The five show-off tests in `README.md` are the definition of done. After they hold, stop expanding.
+Sandbox playable with local bites, collapse dust, rubble aftermath, and captured frames that show it. After that holds, stop expanding.

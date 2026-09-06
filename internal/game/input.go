@@ -73,6 +73,7 @@ func (g *Game) readInput() Input {
 	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
 		in.Back = true
 	}
+	_ = ebiten.KeyR // restart handled in Update via keyJust
 	if keys || in.Confirm || in.Back {
 		return in
 	}

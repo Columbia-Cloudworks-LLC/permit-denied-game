@@ -1,5 +1,5 @@
 ---
-description: World axes, tank-steer, collision, rubble, heat, plates, and beat/boons
+description: World axes, tank-steer, cell collision, rubble, heat, plates
 globs:
   - internal/game/**/*.go
   - internal/dozer/**/*.go
@@ -12,7 +12,7 @@ alwaysApply: false
 
 # Sim and coordinates
 
-World: +X east, +Y **south** (Ebiten Y-down). Lot **640×1280**. Origin NW. Spawn `(320, 1180)`, heading `0` = north.
+World: +X east, +Y **south** (Ebiten Y-down). Lot **400×288**. Origin NW. Spawn `(200, 248)`, heading `0` = north.
 
 ```go
 // heading 0 → north (0, -1); heading increases clockwise
@@ -21,22 +21,18 @@ func Forward(heading float64) (fx, fy float64) {
 }
 ```
 
-`A` = vehicle **left** (heading decreases). At south-facing that is screen-right. That is correct tank-steer — do not “fix” it to screen-absolute left. Reverse is first-class. Camera is world-fixed north and **does not yaw**.
+`A` = vehicle **left** (heading decreases). Reverse is first-class. Camera is world-fixed north and **does not yaw**.
 
-Physics uses continuous `heading`. `FacingIndex` is draw-only.
+Physics uses continuous `heading`. Facing index is draw-only.
 
 ## Solidity
 
-Dozer body is a circle (`DozerBodyR`). Buildings, rubble, blockers are AABBs. Resolve with `CircleAABB` (max 3 iterations). No physics engine. No tile-grid collision.
+Dozer body is a circle (`DozerBodyR`). Structure cells and rubble are AABBs. Resolve with `CircleAABB` (max 3 iterations). No physics engine.
 
-Buildings have three states: Intact → Cracked → `InRubble`. Rubble is real collision. **Never delete rubble** — it is the maze.
+Cells: Intact → Cracked → Broken (dust) → Rubble. Blade damages **only overlapped cells**. Roofs collapse when support drops (delayed hops). Rubble is real collision (sprite inset). **Never delete rubble.** Fragments/dust do not collide.
 
 ## Heat, plates, threats
 
-Heat and plates are sprite state (palette / vents), not HUD numbers. Cooked engine or `Plates == 0` → same tally as the buzzer.
+Heat and plates are sprite state. One cruiser hunts after the first wreck. Frontal blade-down kills the cruiser; side/rear peel when blade is up.
 
-Cruisers peel **side/rear** only when blade is **up** and `CruiserPIT`. Frontal blade-down kills the cruiser. Excavator boom peels any stance. Chopper never peels and is not deletable.
-
-Boons live as flags on `run.Run` (sheriff → no PIT, yard → dumps gone / walls brittle, plant → concrete never sets). Beat chart fires **once** from `Run.Time()` (`Tick/60 + PressureBonus`).
-
-Simulation order is `stepPlay` in `sim.go` (impl guide §8). Follow it; do not invent a second clock.
+Simulation order is `stepPlay` in `sim.go`. `R` resets the sandbox.
