@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"io"
 	"math"
+	"os"
 	"sync"
 
 	"github.com/hajimehoshi/ebiten/v2/audio/wav"
@@ -38,6 +39,10 @@ func (a *Audio) ensure() {
 		_ = recover()
 		a.ready = true
 	}()
+	// Harness / headless environments often have no ALSA device.
+	if os.Getenv("PERMITDENIED_SILENT") != "" {
+		return
+	}
 	ctx := ebitenaudio.CurrentContext()
 	if ctx == nil {
 		ctx = ebitenaudio.NewContext(44100)

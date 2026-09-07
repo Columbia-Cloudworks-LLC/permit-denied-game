@@ -28,7 +28,7 @@ func TestLot() Lot {
 		ground[y][12] = 6 // centerline dash
 	}
 
-	return Lot{
+	l := Lot{
 		W: float64(tw * Tile),
 		H: float64(th * Tile),
 		Structures: []Structure{
@@ -38,6 +38,13 @@ func TestLot() Lot {
 		},
 		Ground: ground,
 	}
+	for i := range l.Structures {
+		l.Structures[i].BindAnchors()
+		if err := l.Structures[i].ValidateSupport(); err != nil {
+			panic(err)
+		}
+	}
+	return l
 }
 
 // Spawn for the sandbox: south-center, facing north.
@@ -52,15 +59,12 @@ func woodShed() Structure {
 	// Footprint at tile (2, 10): west of spawn approach.
 	wall := makeCell(KindWall, MatWood, "wood_wall", "wood_rubble")
 	roof := makeCell(KindRoof, MatWood, "wood_roof", "wood_rubble")
-	edge := makeCell(KindEdge, MatWood, "wood_edge", "wood_rubble")
 	door := makeCell(KindDoor, MatWood, "wood_door", "wood_rubble")
 	corner := makeCell(KindCorner, MatWood, "wood_corner", "wood_rubble")
-	interior := makeCell(KindInterior, MatWood, "wood_interior", "wood_rubble")
-	interior.State = Intact
 
 	setCell(cells, w, 0, 0, corner)
-	setCell(cells, w, 1, 0, edge)
-	setCell(cells, w, 2, 0, edge)
+	setCell(cells, w, 1, 0, wall)
+	setCell(cells, w, 2, 0, wall)
 	setCell(cells, w, 3, 0, corner)
 	setCell(cells, w, 0, 1, wall)
 	setCell(cells, w, 1, 1, roof)
@@ -70,12 +74,10 @@ func woodShed() Structure {
 	setCell(cells, w, 1, 2, door)
 	setCell(cells, w, 2, 2, wall)
 	setCell(cells, w, 3, 2, wall)
-	// Interior under roofs (revealed when roof goes).
-	_ = interior
-	setCell(cells, w, 1, 1, roof)
-	// Store interior tile name on roof cells for reveal draw via under-layer:
-	// when roof is rubble/broken we draw wood_interior underneath in renderer.
-	return Structure{Label: "SHED", TX: 2, TY: 10, W: w, H: h, Cells: cells}
+	return Structure{
+		Label: "SHED", TX: 2, TY: 10, W: w, H: h, Stories: 1,
+		Cells: cells, BreachLX: -1, BreachLY: -1,
+	}
 }
 
 func brickStorefront() Structure {
@@ -83,12 +85,11 @@ func brickStorefront() Structure {
 	cells := emptyGrid(w, h)
 	wall := makeCell(KindWall, MatBrick, "brick_wall", "brick_rubble")
 	roof := makeCell(KindRoof, MatBrick, "brick_roof", "brick_rubble")
-	edge := makeCell(KindEdge, MatBrick, "brick_edge", "brick_rubble")
 	corner := makeCell(KindCorner, MatBrick, "brick_corner", "brick_rubble")
 	door := makeCell(KindDoor, MatBrick, "brick_door", "brick_rubble")
 	win := makeCell(KindWindow, MatGlass, "brick_window", "glass_rubble")
 
-	// Outer ring + roof fill. TX=16 TY=8 east side.
+	// Outer ring + roof fill. TX=16 TY=8 east side. North is walled (elevated roof above).
 	for x := 0; x < w; x++ {
 		for y := 0; y < h; y++ {
 			border := x == 0 || x == w-1 || y == 0 || y == h-1
@@ -98,8 +99,6 @@ func brickStorefront() Structure {
 			}
 			if (x == 0 || x == w-1) && (y == 0 || y == h-1) {
 				setCell(cells, w, x, y, corner)
-			} else if y == 0 {
-				setCell(cells, w, x, y, edge)
 			} else if y == h-1 {
 				if x == 2 {
 					setCell(cells, w, x, y, door)
@@ -113,7 +112,10 @@ func brickStorefront() Structure {
 			}
 		}
 	}
-	return Structure{Label: "STORE", TX: 16, TY: 8, W: w, H: h, Cells: cells}
+	return Structure{
+		Label: "STORE", TX: 16, TY: 8, W: w, H: h, Stories: 2,
+		Cells: cells, BreachLX: -1, BreachLY: -1,
+	}
 }
 
 func concreteMunicipal() Structure {
@@ -121,23 +123,27 @@ func concreteMunicipal() Structure {
 	cells := emptyGrid(w, h)
 	wall := makeCell(KindWall, MatConcrete, "conc_wall", "conc_rubble")
 	roof := makeCell(KindRoof, MatConcrete, "conc_roof", "conc_rubble")
-	edge := makeCell(KindEdge, MatConcrete, "conc_edge", "conc_rubble")
 	corner := makeCell(KindCorner, MatConcrete, "conc_corner", "conc_rubble")
 	door := makeCell(KindDoor, MatSteel, "conc_door", "steel_rubble")
 	win := makeCell(KindWindow, MatGlass, "conc_window", "glass_rubble")
+	col := makeCell(KindCorner, MatSteel, "conc_wall", "steel_rubble") // interior column uses wall art
 
-	// TX=8 TY=1 north pad.
+	// TX=8 TY=1 north pad. Two-story hall with interior columns.
 	for x := 0; x < w; x++ {
 		for y := 0; y < h; y++ {
 			border := x == 0 || x == w-1 || y == 0 || y == h-1
 			if !border {
+				// Northern-bay columns keep the far roof up when the south wall is bitten,
+				// so failure stays localized to the undercut section.
+				if (x == 2 || x == 5) && y == 2 {
+					setCell(cells, w, x, y, col)
+					continue
+				}
 				setCell(cells, w, x, y, roof)
 				continue
 			}
 			if (x == 0 || x == w-1) && (y == 0 || y == h-1) {
 				setCell(cells, w, x, y, corner)
-			} else if y == 0 {
-				setCell(cells, w, x, y, edge)
 			} else if y == h-1 {
 				if x == 3 || x == 4 {
 					setCell(cells, w, x, y, door)
@@ -157,7 +163,10 @@ func concreteMunicipal() Structure {
 			}
 		}
 	}
-	return Structure{Label: "HALL", TX: 8, TY: 1, W: w, H: h, Cells: cells}
+	return Structure{
+		Label: "HALL", TX: 8, TY: 1, W: w, H: h, Stories: 2,
+		Cells: cells, BreachLX: -1, BreachLY: -1,
+	}
 }
 
 // AABB is a colliding solid collected from cells.

@@ -268,6 +268,12 @@ func snapField(s game.Snapshot, key string) (val string, numeric bool, err error
 		return fmt.Sprintf("%d", s.Rubble), true, nil
 	case "intact":
 		return fmt.Sprintf("%d", s.Intact), true, nil
+	case "falling":
+		return fmt.Sprintf("%d", s.Falling), true, nil
+	case "sagging":
+		return fmt.Sprintf("%d", s.Sagging), true, nil
+	case "deck_intact":
+		return fmt.Sprintf("%d", s.DeckIntact), true, nil
 	case "hunting":
 		if s.Hunting {
 			return "true", false, nil

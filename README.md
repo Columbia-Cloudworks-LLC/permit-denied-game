@@ -46,7 +46,7 @@ One compact pad (400×288). You start already in the dozer.
 - **Concrete municipal** (north) — corners, steel doors, roof that collapses in a chain
 - **One cruiser** (southeast) — parks until you wreck something, then hunts
 
-Buildings are grids of independently destructible 16×16 cells. The blade bites only the overlapped cells. Roofs lose support and fall over about a second. Rubble collides and matches its sprite inset. Fragments, dust, flashes, hit-stop, and shake are juice; they do not collide.
+Buildings are grids of independently destructible 16×16 cells. Ground-floor walls/doors/corners collide and carry load; roofs are elevated mass (1- or 2-story lift) that sag and fall when their nearest supports are undercut. Glass windows are cosmetic openings, not columns. Rubble collides and matches its sprite inset. Fragments, dust, flashes, hit-stop, and shake are juice; they do not collide.
 
 ## Tunables
 

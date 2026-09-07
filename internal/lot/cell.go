@@ -1,10 +1,25 @@
 package lot
 
 // Cell destruction: each 16×16 section has its own HP and solid AABB.
-// Visual debris is garnish; collision comes only from Intact/Cracked/Broken walls
-// and persistent Rubble cells whose sprite inset matches the collider.
+// Ground supports (walls/corners/doors) collide. Elevated deck (roof/edge)
+// is visual + structural mass only until it falls into rubble.
+// Visual debris is garnish; rubble collides and matches its sprite inset.
 
 const Tile = 16
+
+// StoryLiftPx is the per-story upward draw offset for elevated decks.
+// Large enough that a 2-story hall clearly out-tops the 1-story shed.
+const StoryLiftPx = 12
+
+// Support thresholds use alive-anchor counts (each deck cell binds 3 nearest supports).
+const (
+	SupportReach       = 2 // retained for debug overlays
+	CollapseScoreMin   = 1.5 // need ≥2 alive anchors
+	SagScoreMin        = 2.5 // 2 anchors → sag; 3 → intact
+	FallSpeedPerTick   = 0.7
+	CollapseHopDelay   = 6
+	CollapseHopPerDist = 4
+)
 
 type CellState int
 
@@ -45,28 +60,64 @@ type Cell struct {
 	HP    float64
 	MaxHP float64
 	State CellState
-	// CollapseIn > 0 means this roof/edge will break after that many ticks.
+	// CollapseIn > 0: ticks until this deck cell begins falling.
 	CollapseIn int
 	// DustLeft covers the tile swap for a few ticks after Broken.
 	DustLeft int
 	Tile     string // buildings.png frame while standing
 	Rubble   string // buildings.png frame once rubble
 	Value    int    // cash when this cell becomes rubble
+	Paid     bool   // destruction cash awarded exactly once
+
+	// Elevated deck motion (pixels). Sag while weak; FallY while collapsing.
+	Sag   float64
+	FallY float64
+	// Falling is true once support has failed and the mass is descending.
+	Falling bool
 }
 
 func (c *Cell) Present() bool {
 	return c.Kind != KindNone && c.State != Empty
 }
 
+// IsDeck reports elevated structural mass (roof / eave).
+func (c *Cell) IsDeck() bool {
+	if c == nil || !c.Present() {
+		return false
+	}
+	return c.Kind == KindRoof || c.Kind == KindEdge
+}
+
+// IsSupport reports ground-floor load-bearing structure.
+// Windows/glass are cosmetic openings — not columns.
+func (c *Cell) IsSupport() bool {
+	if c == nil || !c.Present() {
+		return false
+	}
+	if c.State == Rubble || c.State == Broken || c.State == Empty {
+		return false
+	}
+	switch c.Kind {
+	case KindWall, KindCorner, KindDoor:
+		return true
+	default:
+		return false
+	}
+}
+
 func (c *Cell) Solid() bool {
 	if !c.Present() {
 		return false
 	}
+	// Elevated deck does not block the ground plane while standing or falling.
+	if c.IsDeck() && c.State != Rubble {
+		return false
+	}
 	switch c.State {
 	case Intact, Cracked:
-		return c.Kind != KindInterior
+		return c.Kind != KindInterior && !c.IsDeck()
 	case Broken:
-		return c.Kind != KindInterior && c.Kind != KindRoof
+		return c.Kind != KindInterior && !c.IsDeck()
 	case Rubble:
 		return true
 	default:
@@ -74,20 +125,9 @@ func (c *Cell) Solid() bool {
 	}
 }
 
+// SupportsRoof is kept for debug overlays; prefer IsSupport.
 func (c *Cell) SupportsRoof() bool {
-	if !c.Present() {
-		return false
-	}
-	if c.State == Rubble || c.State == Broken || c.State == Empty {
-		return false
-	}
-	// Only vertical structure holds a roof up — not other roofs or eaves.
-	switch c.Kind {
-	case KindWall, KindCorner, KindDoor, KindWindow:
-		return true
-	default:
-		return false
-	}
+	return c.IsSupport()
 }
 
 func (c *Cell) Frame() string {
@@ -100,6 +140,23 @@ func (c *Cell) Frame() string {
 		}
 	}
 	return c.Tile
+}
+
+// LiftDrawY returns how many pixels above the footprint the cell should draw.
+// Positive values mean shift up (smaller screen Y).
+func (c *Cell) LiftDrawY(stories int) float64 {
+	if !c.IsDeck() || c.State == Rubble {
+		return 0
+	}
+	if stories < 1 {
+		stories = 1
+	}
+	base := float64(stories * StoryLiftPx)
+	y := base - c.Sag - c.FallY
+	if y < 0 {
+		return 0
+	}
+	return y
 }
 
 // SolidAABB returns world collision for this cell. Rubble is inset so the
@@ -129,7 +186,7 @@ func MaxHPFor(mat Material, kind CellKind) float64 {
 	case MatSteel:
 		base = 18.0
 	}
-	if kind == KindRoof {
+	if kind == KindRoof || kind == KindEdge {
 		base *= 0.75
 	}
 	if kind == KindWindow {
@@ -158,4 +215,19 @@ func CashFor(mat Material, kind CellKind) int {
 		return 4
 	}
 	return 10
+}
+
+func chebyshev(x0, y0, x1, y1 int) int {
+	dx := x0 - x1
+	if dx < 0 {
+		dx = -dx
+	}
+	dy := y0 - y1
+	if dy < 0 {
+		dy = -dy
+	}
+	if dx > dy {
+		return dx
+	}
+	return dy
 }

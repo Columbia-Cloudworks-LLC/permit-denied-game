@@ -1,27 +1,25 @@
-# Controlled shed bite with camera still on the structure.
+# Hall south-face bite on the normal sandbox lot (elevated 2-story).
 assert scene=play
 assert title=PERMIT DENIED
 shot intact.png
 dump start.json
 
-# Face the shed, blade down, chew in place.
-hold a 28
+hold w 90
 tap space
 assert blade=down
-# Approach shed from south-east of door
-hold w,a 50
-hold w 80
+hold w 40
+hold d 8
+hold w 100
 shot bitten.png
 dump bitten.json
 assert struct_cash>0
 assert rubble>0
 
-# Keep blade in contact for dust / more local breaks without fleeing
-hold w 60
+hold w 100
 shot collapsing.png
 dump collapsing.json
 
-hold w 90
+hold w 150
 shot destroyed.png
 dump destroyed.json
 assert rubble>0

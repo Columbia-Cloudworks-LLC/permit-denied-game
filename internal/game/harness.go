@@ -39,6 +39,9 @@ type Snapshot struct {
 	Banner      string  `json:"banner"`
 	OpenCells   int     `json:"open_cells"`
 	SpillCount  int     `json:"spill_count"`
+	Falling     int     `json:"falling_deck"`
+	Sagging     int     `json:"sagging_deck"`
+	DeckIntact  int     `json:"deck_intact"`
 }
 
 type harnessFrame struct {
@@ -58,7 +61,7 @@ func (g *Game) Drive(in Input, keys Keys) error {
 }
 
 func (g *Game) Snapshot() Snapshot {
-	open, spill := 0, 0
+	open, spill, falling, sagging, deckIntact := 0, 0, 0, 0, 0
 	for si := range g.lot.Structures {
 		s := &g.lot.Structures[si]
 		spill += len(s.Spill)
@@ -66,6 +69,17 @@ func (g *Game) Snapshot() Snapshot {
 			c := &s.Cells[i]
 			if c.Kind == lot.KindNone || c.State == lot.Empty {
 				open++
+			}
+			if c.IsDeck() {
+				if c.Falling {
+					falling++
+				}
+				if c.Sag > 0 && !c.Falling && c.State == lot.Intact {
+					sagging++
+				}
+				if c.State == lot.Intact || c.State == lot.Cracked {
+					deckIntact++
+				}
 			}
 		}
 	}
@@ -94,6 +108,9 @@ func (g *Game) Snapshot() Snapshot {
 		Banner:      g.fx.Banner,
 		OpenCells:   open,
 		SpillCount:  spill,
+		Falling:     falling,
+		Sagging:     sagging,
+		DeckIntact:  deckIntact,
 	}
 	return s
 }

@@ -185,11 +185,13 @@ func paintWoodWall(img *image.NRGBA, x, y int) {
 
 func paintWoodRoof(img *image.NRGBA, x, y int) {
 	fill(img, x, y, tile, tile, colWoodLt)
-	for i := 0; i < tile; i++ {
-		px(img, x+i, y+i/2, colWoodDk)
-		px(img, x+i, y+8+i/3, colWood)
+	for yy := 2; yy < tile-1; yy += 2 {
+		fill(img, x+1, y+yy, tile-2, 1, colWood)
 	}
 	fill(img, x, y, tile, 2, colWoodDk)
+	fill(img, x, y+tile-1, tile, 1, colWoodDk)
+	px(img, x+2, y+4, colWoodDk)
+	px(img, x+9, y+7, colWoodDk)
 }
 
 func paintWoodEdge(img *image.NRGBA, x, y int) {
@@ -252,10 +254,14 @@ func paintBrickWall(img *image.NRGBA, x, y int) {
 
 func paintBrickRoof(img *image.NRGBA, x, y int) {
 	fill(img, x, y, tile, tile, colBrickDk)
-	for i := 0; i < tile; i++ {
-		px(img, x+i, y+(i%5), colBrick)
-		px(img, x+i, y+8+(i%3), colBrickLt)
+	for yy := 2; yy < tile-2; yy += 3 {
+		for xx := 1; xx < tile-1; xx += 3 {
+			px(img, x+xx, y+yy, colBrick)
+			px(img, x+xx+1, y+yy+1, colBrickLt)
+		}
 	}
+	fill(img, x, y, tile, 2, colShadow)
+	fill(img, x, y+tile-1, tile, 1, colBrick)
 }
 
 func paintBrickEdge(img *image.NRGBA, x, y int) {
@@ -311,10 +317,17 @@ func paintConcWall(img *image.NRGBA, x, y int) {
 
 func paintConcRoof(img *image.NRGBA, x, y int) {
 	fill(img, x, y, tile, tile, colConcLt)
-	for i := 2; i < 14; i += 4 {
-		fill(img, x+i, y+2, 2, 12, colConc)
+	for yy := 3; yy < 13; yy += 3 {
+		for xx := 2; xx < 14; xx += 3 {
+			px(img, x+xx, y+yy, colConc)
+		}
 	}
 	fill(img, x, y, tile, 2, colConcDk)
+	fill(img, x, y+tile-2, tile, 2, colConc)
+	// Hatch reads as a flat top plane, not vertical siding.
+	for i := 1; i < tile-1; i += 2 {
+		px(img, x+i, y+1, colConc)
+	}
 }
 
 func paintConcEdge(img *image.NRGBA, x, y int) {
@@ -351,11 +364,12 @@ func paintConcInterior(img *image.NRGBA, x, y int) {
 }
 
 func paintConcRubble(img *image.NRGBA, x, y int) {
-	fill(img, x+1, y+4, 14, 11, colShadow)
-	fill(img, x+2, y+5, 6, 5, colConc)
-	fill(img, x+8, y+8, 5, 5, colConcDk)
-	fill(img, x+4, y+12, 8, 2, colConcLt)
-	px(img, x+6, y+7, colCrack)
+	fill(img, x+1, y+6, 14, 9, colShadow)
+	fill(img, x+2, y+8, 5, 4, colConc)
+	fill(img, x+8, y+7, 5, 5, colConcDk)
+	fill(img, x+5, y+11, 7, 3, colConcLt)
+	px(img, x+4, y+9, colCrack)
+	px(img, x+11, y+10, colCrack)
 }
 
 func paintGlassRubble(img *image.NRGBA, x, y int) {

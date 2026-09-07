@@ -89,10 +89,14 @@ func (s *Structure) SpillRubble(br Break) {
 		dirX, dirY = s.ImpactDirX, s.ImpactDirY
 	}
 	mat := c.Mat
+	s.MarkBreach(br.Col, br.Row)
 	c.Kind = KindNone
 	c.State = Empty
 	c.DustLeft = 0
 	c.CollapseIn = 0
+	c.Falling = false
+	c.Sag = 0
+	c.FallY = 0
 	c.HP = 0
 
 	const spill, rw, rh = 10.0, 12.0, 10.0

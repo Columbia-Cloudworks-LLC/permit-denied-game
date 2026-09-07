@@ -20,11 +20,23 @@ func TestTestLotFootprints(t *testing.T) {
 		if len(s.Cells) != s.W*s.H {
 			t.Fatalf("%s cells %d want %d", s.Label, len(s.Cells), s.W*s.H)
 		}
+		if s.Stories < 1 {
+			t.Fatalf("%s stories %d", s.Label, s.Stories)
+		}
+		if err := s.ValidateSupport(); err != nil {
+			t.Fatal(err)
+		}
 	}
 	for _, want := range []string{"SHED", "STORE", "HALL"} {
 		if !labels[want] {
 			t.Fatalf("missing %s", want)
 		}
+	}
+	if l.StructureByLabel("SHED").Stories != 1 {
+		t.Fatal("shed should be 1 story")
+	}
+	if l.StructureByLabel("HALL").Stories != 2 {
+		t.Fatal("hall should be 2 stories")
 	}
 }
 
@@ -34,7 +46,6 @@ func TestLocalBiteLeavesNeighborIntact(t *testing.T) {
 	if s == nil {
 		t.Fatal("shed")
 	}
-	// Damage one wall cell only.
 	cash, broke := s.ApplyDamage(0, 1, 999)
 	if !broke || cash <= 0 {
 		t.Fatalf("broke=%v cash=%d", broke, cash)
@@ -60,25 +71,58 @@ func TestRubbleAABBInset(t *testing.T) {
 	}
 }
 
+func TestUntouchedBuildingsStable(t *testing.T) {
+	l := lot.TestLot()
+	for tick := 0; tick < 60*60; tick++ {
+		broke := l.CollapseTick()
+		if len(broke) > 0 {
+			t.Fatalf("untouched broke at tick %d: %+v", tick, broke[0])
+		}
+	}
+	if l.RubbleCount() != 0 {
+		t.Fatalf("rubble %d", l.RubbleCount())
+	}
+}
+
+func TestRoofNotSolidWhileStanding(t *testing.T) {
+	l := lot.TestLot()
+	s := l.StructureByLabel("HALL")
+	for i := range s.Cells {
+		c := &s.Cells[i]
+		if c.IsDeck() && c.Solid() {
+			lx, ly := s.Index(i)
+			t.Fatalf("deck %d,%d should not be solid", lx, ly)
+		}
+	}
+}
+
 func TestCollapseTakesTime(t *testing.T) {
 	l := lot.TestLot()
 	s := l.StructureByLabel("HALL")
-	// Kill a stretch of southern wall to undercut roof support.
-	for x := 1; x < s.W-1; x++ {
+	for x := 0; x < s.W; x++ {
 		s.ApplyDamage(x, s.H-1, 999)
 		s.FinishBroken(x, s.H-1)
 	}
 	brokeTotal := 0
-	for tick := 0; tick < 90; tick++ {
+	fallingSeen := false
+	for tick := 0; tick < 300; tick++ {
+		for i := range s.Cells {
+			if s.Cells[i].Falling {
+				fallingSeen = true
+			}
+		}
 		brokeTotal += len(l.CollapseTick())
 	}
 	if brokeTotal < 3 {
 		t.Fatalf("expected chain collapse, broke %d cells", brokeTotal)
 	}
-	// Should not finish entire roof in the first few ticks.
+	if !fallingSeen {
+		t.Fatal("expected visible falling stage")
+	}
+
 	l2 := lot.TestLot()
 	s2 := l2.StructureByLabel("HALL")
-	for x := 1; x < s2.W-1; x++ {
+	for x := 0; x < s2.W; x++ {
 		s2.ApplyDamage(x, s2.H-1, 999)
 		s2.FinishBroken(x, s2.H-1)
 	}
@@ -86,7 +130,50 @@ func TestCollapseTakesTime(t *testing.T) {
 	for tick := 0; tick < 5; tick++ {
 		early += len(l2.CollapseTick())
 	}
-	if early > brokeTotal {
-		t.Fatalf("collapse too instant: early=%d total=%d", early, brokeTotal)
+	if early > 0 {
+		t.Fatalf("collapse too instant: early=%d", early)
+	}
+}
+
+func TestCollapseCashOnce(t *testing.T) {
+	l := lot.TestLot()
+	s := l.StructureByLabel("HALL")
+	for x := 0; x < s.W; x++ {
+		s.ApplyDamage(x, s.H-1, 999)
+		s.FinishBroken(x, s.H-1)
+	}
+	cash := 0
+	seen := map[[2]int]bool{}
+	for tick := 0; tick < 400; tick++ {
+		for _, br := range l.CollapseTick() {
+			key := [2]int{br.LX, br.LY}
+			if seen[key] {
+				t.Fatalf("double break at %v", key)
+			}
+			seen[key] = true
+			cash += br.Cash
+		}
+	}
+	if cash <= 0 || len(seen) == 0 {
+		t.Fatalf("cash=%d cells=%d", cash, len(seen))
+	}
+}
+
+func TestGlassNotLoadBearing(t *testing.T) {
+	l := lot.TestLot()
+	s := l.StructureByLabel("HALL")
+	// Smash only windows on the south facade.
+	for x := 1; x <= 2; x++ {
+		c := s.At(x, s.H-1)
+		if c.Kind != lot.KindWindow {
+			t.Fatalf("expected window at %d", x)
+		}
+		s.ApplyDamage(x, s.H-1, 999)
+		s.FinishBroken(x, s.H-1)
+	}
+	for tick := 0; tick < 120; tick++ {
+		if br := l.CollapseTick(); len(br) > 0 {
+			t.Fatalf("glass-only bite collapsed deck: %+v", br[0])
+		}
 	}
 }

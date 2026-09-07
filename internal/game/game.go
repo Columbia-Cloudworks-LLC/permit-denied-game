@@ -47,6 +47,7 @@ type Game struct {
 	labPaused    bool
 	labSlow      bool
 	labSlowPhase bool
+	audioStarted bool
 }
 
 func New() *Game {
@@ -67,9 +68,8 @@ func (g *Game) reset() {
 	g.labImpacts = nil
 	g.labPaused = false
 	g.labSlow = false
-	if g.audio != nil {
-		g.audio.StartChase()
-	}
+	g.audioStarted = false
+	// Audio starts lazily on first play Update so harness Silence() can win.
 }
 
 func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
@@ -110,6 +110,10 @@ func (g *Game) Update() error {
 		if g.keyJust(ebiten.KeyR) {
 			g.reset()
 			return nil
+		}
+		if g.audio != nil && !g.audioStarted {
+			g.audio.StartChase()
+			g.audioStarted = true
 		}
 		if g.fx.HitStop > 0 {
 			g.fx.HitStop--
