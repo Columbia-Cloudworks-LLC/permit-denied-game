@@ -13,7 +13,7 @@ Visibly elevated buildings with ground-level supports, staged location-dependent
 | C | Location-dependent failure origin/propagation | PASS — `TestSouthVsEastCollapseSetsDiffer`, `C_east_aftermath` vs south sequence |
 | D | Full collapse with visible falling → rubble; cash once | PASS — `D_falling`/`D_settled`, `TestCollapseCashOnce`, gameplay collapse script |
 | E | Drive/blade/collision/occlusion/rubble/restart + normal lot | PASS — sandbox + collapse harness scripts; shed door unit bite |
-| F | Review-ready PR with screenshots/recording | IN PROGRESS |
+| F | Review-ready PR with screenshots/recording | PASS — PR #43, `docs/elevated_evidence/` |
 
 ## Decisions
 
