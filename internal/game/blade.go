@@ -194,7 +194,7 @@ func QueryBlade(p BladePose, s *lot.Structure, speed float64) []lot.Impact {
 		bladeT := 0.5
 		segLen := math.Hypot(x1-x0, y1-y0)
 		if segLen > 1e-6 {
-			bladeT = clamp(((cx-x0)*(x1-x0)+(cy-y0)*(y1-y0))/ (segLen*segLen), 0, 1)
+			bladeT = clamp(((cx-x0)*(x1-x0)+(cy-y0)*(y1-y0))/(segLen*segLen), 0, 1)
 		}
 		force := WreckRateDown * Dt * (0.5 + 0.5*depth) * speedTerm
 		out = append(out, lot.Impact{

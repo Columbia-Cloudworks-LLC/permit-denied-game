@@ -30,14 +30,17 @@ const (
 	WreckRateDown = 40.0 // HP/s per overlapped cell, blade-down
 	WreckRateUp   = 2.0  // glance
 
-	CruiserSpeed  = 95.0
-	CruiserRadius = 8.0
+	CruiserSpeed    = 95.0
+	CruiserRadius   = 8.0
 	CruiserKillCash = 25
-	FrontAlong    = 4.0
+	FrontAlong      = 4.0
 
-	HitStopTicks = 3
-	ShakeDecay   = 8.0
-	ShakeOnBreak = 3.5
+	HitStopTicks    = 3
+	HitStopCollapse = 7
+	ShakeDecay      = 8.0
+	ShakeOnBreak    = 3.5
+	ShakeOnCollapse = 6.8
+	ShakeOnWarn     = 1.4
 
 	DollarLife = 0.9
 	DollarRise = 18.0

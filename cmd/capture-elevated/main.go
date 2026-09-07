@@ -59,7 +59,7 @@ func (h *capturer) Update() error {
 	}
 	if h.wait > 0 {
 		h.wait--
-		if h.phase >= 3 && h.phase <= 6 {
+		if h.phase >= 4 && h.phase <= 7 {
 			_ = h.l.CollapseTick()
 		}
 		return nil
@@ -90,7 +90,7 @@ func (h *capturer) Update() error {
 		h.phase = 3
 		h.wait = 1
 	case 3:
-		// Full south — advance until falling visible
+		// Full south — capture warning sag before tiles drop.
 		h.l = lot.TestLot()
 		s := h.l.StructureByLabel("HALL")
 		for x := 0; x < s.W; x++ {
@@ -99,14 +99,17 @@ func (h *capturer) Update() error {
 		}
 		s.ImpactDirX, s.ImpactDirY = 0, -1
 		h.phase = 4
-		h.wait = 30 // falling begins ~tick 20; capture mid-descent
+		h.wait = 16 // sag / warning
 	case 4:
 		h.phase = 5
-		h.wait = 40
+		h.wait = 22 // falling begins ~tick 20+
 	case 5:
 		h.phase = 6
-		h.wait = 220
+		h.wait = 40
 	case 6:
+		h.phase = 7
+		h.wait = 220
+	case 7:
 		// East attack contrast lot
 		h.l = lot.TestLot()
 		s := h.l.StructureByLabel("HALL")
@@ -119,9 +122,9 @@ func (h *capturer) Update() error {
 		for i := 0; i < 120; i++ {
 			h.l.CollapseTick()
 		}
-		h.phase = 7
-		h.wait = 1
-	case 7:
+		h.phase = 8
+		h.wait = 2
+	case 8:
 		h.done = true
 		return ebiten.Termination
 	}
@@ -148,17 +151,21 @@ func (h *capturer) Draw(screen *ebiten.Image) {
 		}
 	case 4:
 		if h.wait == 0 {
-			name = "D_falling"
+			name = "D_sag"
 		}
 	case 5:
 		if h.wait == 0 {
-			name = "D_collapsing"
+			name = "D_falling"
 		}
 	case 6:
 		if h.wait == 0 {
-			name = "D_settled"
+			name = "D_collapsing"
 		}
 	case 7:
+		if h.wait == 0 {
+			name = "D_settled"
+		}
+	case 8:
 		if h.wait == 0 {
 			name = "C_east_aftermath"
 		}
@@ -198,8 +205,8 @@ func (h *capturer) drawLot(screen *ebiten.Image) {
 		CamX: camX, CamY: camY,
 		Lot: h.l, Dozer: dz,
 		Cruiser: threats.SpawnCruiser(340, 220),
-		MapW: h.l.W, MapH: h.l.H,
-		BladeDown: true,
+		MapW:    h.l.W, MapH: h.l.H,
+		BladeDown:  true,
 		StructCash: 0,
 	}
 	// Approximate cash from rubble for HUD flavor on later phases.

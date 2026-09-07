@@ -3,6 +3,7 @@ package lot
 // SpillPile is authoritative debris outside a bitten cell (drive-through openings).
 type SpillPile struct {
 	X, Y, W, H float64
+	Mat        Material
 }
 
 // Impact is one oriented blade contact against a structure cell.
@@ -61,7 +62,7 @@ func (s *Structure) ApplyImpacts(in []Impact) []Break {
 			Col: im.Col, Row: im.Row,
 			From: from, To: Broken,
 			Cause: CauseBite,
-			X: im.X, Y: im.Y,
+			X:     im.X, Y: im.Y,
 			DirX: im.DirX, DirY: im.DirY,
 			Kind: c.Kind, Mat: c.Mat, Cash: cash,
 		}
@@ -71,7 +72,7 @@ func (s *Structure) ApplyImpacts(in []Impact) []Break {
 	return out
 }
 
-// SpillRubble opens a bitten wall cell and drops an offset pile along the impact dir.
+// SpillRubble opens a bitten wall cell and drops offset piles along the impact dir.
 func (s *Structure) SpillRubble(br Break) {
 	c := s.At(br.Col, br.Row)
 	if c == nil {
@@ -89,7 +90,13 @@ func (s *Structure) SpillRubble(br Break) {
 		dirX, dirY = s.ImpactDirX, s.ImpactDirY
 	}
 	mat := c.Mat
+	kind := c.Kind
 	s.MarkBreach(br.Col, br.Row)
+	s.Openings = append(s.Openings, Opening{
+		LX: br.Col, LY: br.Row, Mat: mat, Kind: kind, DirX: dirX, DirY: dirY,
+	})
+	c.WasKind = kind
+	c.WasMat = mat
 	c.Kind = KindNone
 	c.State = Empty
 	c.DustLeft = 0
@@ -99,14 +106,46 @@ func (s *Structure) SpillRubble(br Break) {
 	c.FallY = 0
 	c.HP = 0
 
-	const spill, rw, rh = 10.0, 12.0, 10.0
-	px := cx + dirX*spill - rw/2
-	py := cy + dirY*spill - rh/2
-	s.Spill = append(s.Spill, SpillPile{X: px, Y: py, W: rw, H: rh})
-	if mat == MatBrick {
-		sideX, sideY := -dirY, dirX
-		s.Spill = append(s.Spill, SpillPile{
-			X: px + sideX*6, Y: py + sideY*6, W: 8, H: 8,
-		})
+	s.Spill = append(s.Spill, spillShape(mat, cx, cy, dirX, dirY, br.Col, br.Row)...)
+}
+
+func spillShape(mat Material, cx, cy, dirX, dirY float64, col, row int) []SpillPile {
+	h := CellHash(col, row, 11)
+	jitter := func(salt int) float64 {
+		return float64(int(CellHash(col, row, salt)%7) - 3)
+	}
+	px := cx + dirX*10 - 5 + jitter(1)
+	py := cy + dirY*10 - 4 + jitter(2)
+	sideX, sideY := -dirY, dirX
+	switch mat {
+	case MatGlass:
+		return []SpillPile{
+			{X: px + jitter(3), Y: py, W: 5, H: 4, Mat: mat},
+			{X: px + sideX*5 + 1, Y: py + sideY*4, W: 4, H: 3, Mat: mat},
+			{X: px - sideX*4, Y: py + 3, W: 3, H: 3, Mat: mat},
+		}
+	case MatWood:
+		return []SpillPile{
+			{X: px, Y: py, W: 14, H: 6, Mat: mat},
+			{X: px + sideX*5, Y: py + sideY*3, W: 8, H: 5, Mat: mat},
+		}
+	case MatBrick:
+		return []SpillPile{
+			{X: px, Y: py, W: 11, H: 9, Mat: mat},
+			{X: px + sideX*6, Y: py + sideY*5, W: 7, H: 6, Mat: mat},
+			{X: px - 3, Y: py + 4, W: 6, H: 5, Mat: mat},
+		}
+	case MatSteel:
+		return []SpillPile{
+			{X: px + 1, Y: py + 1, W: 8, H: 7, Mat: mat},
+			{X: px + sideX*4, Y: py + 2, W: 5, H: 4, Mat: mat},
+		}
+	default: // concrete
+		w := 10.0 + float64(h%4)
+		ht := 8.0 + float64((h>>3)%3)
+		return []SpillPile{
+			{X: px, Y: py, W: w, H: ht, Mat: mat},
+			{X: px + sideX*5 + jitter(4), Y: py + sideY*4, W: 7, H: 6, Mat: mat},
+		}
 	}
 }

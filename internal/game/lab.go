@@ -115,6 +115,7 @@ func (g *Game) stepLab(in Input) {
 	for _, br := range g.lot.CollapseTick() {
 		g.onCellBreak(br)
 	}
+	g.stepCollapseWarn()
 	g.dozer.Heat = 0
 	g.fx.Step(Dt, ShakeDecay)
 }

@@ -61,6 +61,7 @@ func (g *Game) stepPlay(in Input) {
 	for _, br := range g.lot.CollapseTick() {
 		g.onCellBreak(br)
 	}
+	g.stepCollapseWarn()
 
 	g.stepHeat(stalled, overlapping, bladeHitSolid, deepRubble)
 	g.stepCruiser(bx, by, bw, bh)
@@ -312,25 +313,110 @@ func (g *Game) glanceCells() {
 func (g *Game) onCellBreak(br lot.CellBreak) {
 	g.run.StructCash += br.Cash
 	g.run.Hunting = true
-	g.fx.HitStop = HitStopTicks
-	g.fx.Shake = ShakeOnBreak
-	g.fx.SpawnDollar(br.WX, br.WY, br.Cash, DollarLife)
-	g.fx.SpawnDust(br.WX, br.WY, 1.2)
-	g.fx.SpawnFlash(br.WX, br.WY)
-	g.fx.SpawnBoom(br.WX, br.WY)
-	n := fragCount(br.Mat)
+	collapse := br.Collapse || (!br.FromBlade && (br.Kind == lot.KindRoof || br.Kind == lot.KindEdge))
+	tr, tg, tb := dustTint(br.Mat)
 	spread := float64(br.LX) * 0.3
 	if br.DirX != 0 || br.DirY != 0 {
 		spread = math.Atan2(br.DirY, br.DirX)
 	}
-	g.fx.SpawnFragments(br.WX, br.WY, int(br.Mat), n, spread)
+	if collapse {
+		g.fx.HitStop = HitStopCollapse
+		g.fx.Shake = ShakeOnCollapse
+		g.fx.SpawnDollar(br.WX, br.WY, br.Cash, DollarLife)
+		g.fx.SpawnDustTinted(br.WX, br.WY, 2.6, tr, tg, tb, 36)
+		g.fx.SpawnDustTinted(br.WX+6, br.WY-4, 1.8, tr, tg, tb, 28)
+		g.fx.SpawnFlash(br.WX, br.WY)
+		g.fx.SpawnBoom(br.WX, br.WY)
+		n := fragCount(br.Mat) + 4
+		g.fx.SpawnFragmentsScale(br.WX, br.WY, int(br.Mat), n, spread, 1.7)
+		g.fx.SpawnScar(br.WX, br.WY, 1)
+		if g.audio != nil {
+			g.audio.Collapse()
+		}
+		return
+	}
+	g.fx.HitStop = HitStopTicks
+	g.fx.Shake = ShakeOnBreak
+	g.fx.SpawnDollar(br.WX, br.WY, br.Cash, DollarLife)
+	scale := 1.0
+	frags := fragCount(br.Mat)
+	switch br.Mat {
+	case lot.MatGlass:
+		scale = 0.85
+		frags += 3
+		g.fx.SpawnDustTinted(br.WX, br.WY, 1.0, tr, tg, tb, 16)
+	case lot.MatWood:
+		g.fx.SpawnDustTinted(br.WX, br.WY, 1.15, tr, tg, tb, 20)
+	case lot.MatSteel:
+		g.fx.SpawnSpark(br.WX, br.WY)
+		g.fx.SpawnDustTinted(br.WX, br.WY, 0.9, tr, tg, tb, 14)
+	default:
+		g.fx.SpawnDustTinted(br.WX, br.WY, 1.2, tr, tg, tb, 22)
+	}
+	g.fx.SpawnFlash(br.WX, br.WY)
+	if br.Mat != lot.MatGlass {
+		g.fx.SpawnBoom(br.WX, br.WY)
+	} else {
+		g.fx.SpawnSpark(br.WX, br.WY)
+	}
+	g.fx.SpawnFragmentsScale(br.WX, br.WY, int(br.Mat), frags, spread, scale)
 	scarKind := 1
 	if br.Mat == lot.MatGlass {
 		scarKind = 2
 	}
 	g.fx.SpawnScar(br.WX, br.WY, scarKind)
 	if g.audio != nil {
-		g.audio.Wreck()
+		g.audio.WreckMat(int(br.Mat))
+	}
+}
+
+func dustTint(m lot.Material) (float32, float32, float32) {
+	switch m {
+	case lot.MatWood:
+		return 0.75, 0.55, 0.35
+	case lot.MatBrick:
+		return 0.85, 0.45, 0.38
+	case lot.MatGlass:
+		return 0.70, 0.85, 0.90
+	case lot.MatSteel:
+		return 0.65, 0.70, 0.75
+	default:
+		return 0.72, 0.72, 0.68
+	}
+}
+
+func (g *Game) stepCollapseWarn() {
+	for si := range g.lot.Structures {
+		s := &g.lot.Structures[si]
+		for _, p := range s.FallStarts {
+			c := s.At(p[0], p[1])
+			if c == nil {
+				continue
+			}
+			wx, wy := s.WorldXY(p[0], p[1])
+			tr, tg, tb := dustTint(c.Mat)
+			g.fx.Shake = math.Max(g.fx.Shake, ShakeOnWarn*2)
+			g.fx.SpawnDustTinted(wx+8, wy+8, 1.6, tr, tg, tb, 22)
+			if g.audio != nil {
+				g.audio.Groan()
+			}
+		}
+		if g.run.Tick%10 != 0 {
+			continue
+		}
+		for i := range s.Cells {
+			c := &s.Cells[i]
+			if !c.IsDeck() || c.Sag <= 0 || c.Falling {
+				continue
+			}
+			lx, ly := s.Index(i)
+			wx, wy := s.WorldXY(lx, ly)
+			tr, tg, tb := dustTint(c.Mat)
+			g.fx.SpawnDustTinted(wx+8, wy+4, 0.7, tr, tg, tb, 14)
+			if g.fx.Shake < ShakeOnWarn {
+				g.fx.Shake = ShakeOnWarn
+			}
+		}
 	}
 }
 

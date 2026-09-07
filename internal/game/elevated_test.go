@@ -2,8 +2,6 @@ package game
 
 import (
 	"testing"
-
-	"permitdenied/internal/lot"
 )
 
 func TestUntouchedLotSixtySeconds(t *testing.T) {
@@ -32,26 +30,22 @@ func TestHallSouthCollapseLocation(t *testing.T) {
 	}
 	hall.ImpactDirX, hall.ImpactDirY = 0, -1
 	falling := false
-	broke := 0
+	sagged := false
 	for i := 0; i < 400; i++ {
 		_ = g.Drive(Input{}, Keys{})
 		snap := g.Snapshot()
 		if snap.Falling > 0 {
 			falling = true
 		}
-		broke = 0
-		for j := range hall.Cells {
-			if hall.Cells[j].State == lot.Rubble && hall.Cells[j].IsDeck() {
-				// deck rubble counted after finish — IsDeck still true for kind
-			}
-			if hall.Cells[j].Paid && (hall.Cells[j].Kind == lot.KindRoof || hall.Cells[j].Kind == lot.KindEdge) {
-				broke++
-			}
+		if snap.Sagging > 0 {
+			sagged = true
 		}
-		_ = broke
+	}
+	if !sagged {
+		t.Fatal("expected a warning/sag phase before the hall section fell")
 	}
 	if !falling && g.run.StructCash == 0 {
-		// CollapseTick runs in stepPlay; cash from deck breaks.
+		t.Fatal("expected falling mass")
 	}
 	if g.run.StructCash <= 0 {
 		t.Fatalf("expected collapse cash, got %d falling=%v", g.run.StructCash, falling)

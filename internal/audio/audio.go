@@ -25,6 +25,8 @@ type Audio struct {
 	wreckB    []byte
 	peelB     []byte
 	burstB    []byte
+	glassB    []byte
+	groanB    []byte
 	tallyDuck bool
 	wreckDuck bool
 	musicMute bool
@@ -52,6 +54,8 @@ func (a *Audio) ensure() {
 	a.wreckB = loadSample("wreck.wav")
 	a.peelB = loadSample("peel.wav")
 	a.burstB = loadSample("burst.wav")
+	a.glassB = genGlass(44100)
+	a.groanB = genGroan(44100)
 	if len(a.wreckB) == 0 {
 		a.wreckB = a.crunchB
 	}
@@ -181,11 +185,40 @@ func (a *Audio) Crunch() { a.play(func(x *Audio) []byte { return x.crunchB }) }
 
 func (a *Audio) Wreck() { a.play(func(x *Audio) []byte { return x.wreckB }) }
 
+func (a *Audio) WreckMat(mat int) {
+	switch mat {
+	case 3: // lot.MatGlass — avoid importing lot
+		a.play(func(x *Audio) []byte { return x.glassB })
+	case 0: // wood
+		a.play(func(x *Audio) []byte { return x.crunchB })
+	case 4: // steel
+		a.play(func(x *Audio) []byte {
+			if len(x.peelB) > 0 {
+				return x.peelB
+			}
+			return x.wreckB
+		})
+	default:
+		a.Wreck()
+	}
+}
+
+func (a *Audio) Collapse() {
+	a.play(func(x *Audio) []byte { return x.groanB })
+	a.play(func(x *Audio) []byte { return x.wreckB })
+}
+
+func (a *Audio) Groan() { a.playVol(func(x *Audio) []byte { return x.groanB }, 0.32) }
+
 func (a *Audio) Peel() { a.play(func(x *Audio) []byte { return x.peelB }) }
 
 func (a *Audio) Burst() { a.play(func(x *Audio) []byte { return x.burstB }) }
 
 func (a *Audio) play(pcm func(*Audio) []byte) {
+	a.playVol(pcm, 0.55)
+}
+
+func (a *Audio) playVol(pcm func(*Audio) []byte, vol float64) {
 	if a == nil {
 		return
 	}
@@ -210,7 +243,7 @@ func (a *Audio) play(pcm func(*Audio) []byte) {
 		}
 	}
 	p := a.ctx.NewPlayerFromBytes(b)
-	p.SetVolume(0.55)
+	p.SetVolume(vol)
 	a.shots[slot] = p
 	p.Play()
 }
@@ -296,6 +329,46 @@ func genCrunch(rate int) []byte {
 		noise := float64(int32(seed)>>16) / 32768.0
 		env := 1 - float64(i)/float64(n)
 		v := noise * 0.55 * env * env
+		s := int16(clamp32(v) * 32767)
+		buf[i*4] = byte(s)
+		buf[i*4+1] = byte(s >> 8)
+		buf[i*4+2] = byte(s)
+		buf[i*4+3] = byte(s >> 8)
+	}
+	return buf
+}
+
+func genGlass(rate int) []byte {
+	n := rate * 90 / 1000
+	buf := make([]byte, n*4)
+	seed := uint32(0xC2B2A3D4)
+	for i := 0; i < n; i++ {
+		seed = seed*1664525 + 1013904223
+		noise := float64(int32(seed)>>16) / 32768.0
+		t := float64(i) / float64(rate)
+		env := 1 - float64(i)/float64(n)
+		ring := 0.18 * math.Sin(2*math.Pi*2400*t) * env
+		v := noise*0.35*env + ring
+		s := int16(clamp32(v) * 32767)
+		buf[i*4] = byte(s)
+		buf[i*4+1] = byte(s >> 8)
+		buf[i*4+2] = byte(s)
+		buf[i*4+3] = byte(s >> 8)
+	}
+	return buf
+}
+
+func genGroan(rate int) []byte {
+	n := rate * 280 / 1000
+	buf := make([]byte, n*4)
+	seed := uint32(0x51EED11E)
+	for i := 0; i < n; i++ {
+		seed = seed*1664525 + 1013904223
+		noise := float64(int32(seed)>>16) / 32768.0
+		t := float64(i) / float64(rate)
+		env := math.Sin(math.Pi * float64(i) / float64(n))
+		rumble := 0.22 * math.Sin(2*math.Pi*(42+8*t)*t)
+		v := (noise*0.12 + rumble) * env
 		s := int16(clamp32(v) * 32767)
 		buf[i*4] = byte(s)
 		buf[i*4+1] = byte(s >> 8)
