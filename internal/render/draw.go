@@ -82,9 +82,10 @@ func DrawWorld(dst *ebiten.Image, v View) {
 	}
 	dst.Fill(ColBG)
 	drawGround(dst, v, a)
+	drawBuildingShadows(dst, v)
 	drawScars(dst, v, a)
 	drawDetritus(dst, v, a)
-	drawInteriors(dst, v, a)
+	drawCollapsedFloors(dst, v)
 	drawRubbleCells(dst, v, a)
 
 	items := collectSorted(v, a)
@@ -146,26 +147,6 @@ func blitRubble(dst *ebiten.Image, a *atlas, name string, sx, sy float64) {
 	blitBuilding(dst, a, name, sx, sy)
 }
 
-func drawInteriors(dst *ebiten.Image, v View, a *atlas) {
-	for si := range v.Lot.Structures {
-		s := &v.Lot.Structures[si]
-		for i := range s.Cells {
-			c := &s.Cells[i]
-			if c.Kind != lot.KindRoof && c.Kind != lot.KindEdge {
-				continue
-			}
-			if c.State != lot.Broken && c.State != lot.Rubble {
-				continue
-			}
-			lx, ly := s.Index(i)
-			wx, wy := s.WorldXY(lx, ly)
-			sx, sy := world(v, wx, wy)
-			prefix := materialPrefix(c.Mat)
-			blitBuilding(dst, a, prefix+"_interior", sx, sy)
-		}
-	}
-}
-
 func drawRubbleCells(dst *ebiten.Image, v View, a *atlas) {
 	for si := range v.Lot.Structures {
 		s := &v.Lot.Structures[si]
@@ -186,6 +167,11 @@ func collectSorted(v View, a *atlas) []drawItem {
 	var items []drawItem
 	for si := range v.Lot.Structures {
 		s := &v.Lot.Structures[si]
+		stories := s.Stories
+		if stories < 1 {
+			stories = 1
+		}
+		fh := facadeH(stories)
 		for i := range s.Cells {
 			c := &s.Cells[i]
 			if !c.Present() || c.State == lot.Rubble {
@@ -200,14 +186,48 @@ func collectSorted(v View, a *atlas) []drawItem {
 			if c.State == lot.Broken {
 				name = c.Tile + "_crack"
 			}
-			cellY := wy + tileSize
 			cx, cy := wx, wy
 			nm := name
+			st := stories
+			mat := c.Mat
+			isDeck := c.IsDeck()
+			lift := c.LiftDrawY(stories)
+			southFace := ly == s.H-1 && !isDeck && c.State != lot.Broken
+			// Depth key: footprint south edge. Elevated decks sort slightly later
+			// so they occlude ground walls of the same row.
+			cellY := wy + tileSize
+			if isDeck {
+				cellY += 0.5
+			}
 			items = append(items, drawItem{
 				y: cellY,
 				draw: func(dst *ebiten.Image) {
 					sx, sy := world(v, cx, cy)
-					blitBuilding(dst, a, nm, sx, sy)
+					if southFace {
+						fc := matFacadeColor(mat)
+						fillRect(dst, sx, sy-fh, tileSize, fh, fc)
+						fillRect(dst, sx, sy-fh, tileSize, 1, shadeRGBA(fc, 30))
+						fillRect(dst, sx, sy-1, tileSize, 1, shadeRGBA(fc, -40))
+						// Upper-story window band for 2+ stories.
+						if st >= 2 {
+							band := fh * 0.45
+							fillRect(dst, sx+3, sy-fh+2, tileSize-6, 3, color.RGBA{0x2A, 0x4A, 0x5A, 0xFF})
+							_ = band
+						}
+					}
+					shade := float32(1)
+					if isDeck && lift > 0 {
+						// Soft top shading so elevated roofs read as mass.
+						shade = 1.05
+					}
+					blitBuildingShaded(dst, a, nm, sx, sy, lift, shade)
+					// Roof lip over south façade when deck still stands behind it.
+					if southFace && fh > 0 {
+						vector.StrokeLine(dst,
+							float32(sx), float32(sy-fh),
+							float32(sx+tileSize), float32(sy-fh),
+							1, color.RGBA{0, 0, 0, 0x66}, false)
+					}
 				},
 			})
 		}

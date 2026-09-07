@@ -31,12 +31,15 @@ func LabBrickMunicipal() Structure {
 	}
 	// Centered on the sandbox asphalt pad (25×18 tiles).
 	return Structure{
-		Label: "MUNICIPAL",
-		TX:    9,
-		TY:    6,
-		W:     w,
-		H:     h,
-		Cells: cells,
+		Label:    "MUNICIPAL",
+		TX:       9,
+		TY:       6,
+		W:        w,
+		H:        h,
+		Stories:  2,
+		Cells:    cells,
+		BreachLX: -1,
+		BreachLY: -1,
 	}
 }
 
@@ -55,10 +58,15 @@ func NewLabLot() Lot {
 			ground[y][x] = 5
 		}
 	}
-	return Lot{
+	l := Lot{
 		W:          float64(tw * Tile),
 		H:          float64(th * Tile),
 		Structures: []Structure{LabBrickMunicipal()},
 		Ground:     ground,
 	}
+	l.Structures[0].BindAnchors()
+	if err := l.Structures[0].ValidateSupport(); err != nil {
+		panic(err)
+	}
+	return l
 }
