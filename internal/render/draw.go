@@ -51,6 +51,8 @@ type View struct {
 	DollarRise                 float64
 	HeatVent                   float64
 	HeatPulse                  float64
+	Impacts                    []lot.Impact
+	LabDebug                   bool
 }
 
 type Tally struct {
@@ -96,11 +98,15 @@ func DrawWorld(dst *ebiten.Image, v View) {
 	drawFlashes(dst, v)
 	drawBursts(dst, v, a)
 	drawDollars(dst, v)
+	drawStructureSpill(dst, v)
 	if v.Banner != "" && v.BannerT > 0 {
 		drawText(dst, v.Banner, 8, 40, ColHUD)
 	}
 	if v.Debug {
 		drawDebug(dst, v)
+		if v.LabDebug {
+			drawLabDebug(dst, v)
+		}
 	}
 }
 

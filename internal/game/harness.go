@@ -5,12 +5,13 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
+	"permitdenied/internal/lot"
 )
 
 const WindowTitle = "PERMIT DENIED"
 
 type Keys struct {
-	Enter, Escape, F1, F2, F3, R bool
+	Enter, Escape, F1, F2, F3, F4, R bool
 }
 
 type Snapshot struct {
@@ -36,6 +37,8 @@ type Snapshot struct {
 	Hunting     bool    `json:"hunting"`
 	Debug       bool    `json:"debug"`
 	Banner      string  `json:"banner"`
+	OpenCells   int     `json:"open_cells"`
+	SpillCount  int     `json:"spill_count"`
 }
 
 type harnessFrame struct {
@@ -55,6 +58,17 @@ func (g *Game) Drive(in Input, keys Keys) error {
 }
 
 func (g *Game) Snapshot() Snapshot {
+	open, spill := 0, 0
+	for si := range g.lot.Structures {
+		s := &g.lot.Structures[si]
+		spill += len(s.Spill)
+		for i := range s.Cells {
+			c := &s.Cells[i]
+			if c.Kind == lot.KindNone || c.State == lot.Empty {
+				open++
+			}
+		}
+	}
 	s := Snapshot{
 		Title:       WindowTitle,
 		Scene:       g.sceneName(),
@@ -78,6 +92,8 @@ func (g *Game) Snapshot() Snapshot {
 		Intact:      g.lot.IntactSolidCount(),
 		Hunting:     g.run.Hunting,
 		Banner:      g.fx.Banner,
+		OpenCells:   open,
+		SpillCount:  spill,
 	}
 	return s
 }
@@ -88,6 +104,8 @@ func (g *Game) sceneName() string {
 		return "play"
 	case SceneTally:
 		return "tally"
+	case SceneLab:
+		return "lab"
 	default:
 		return "unknown"
 	}
@@ -106,6 +124,8 @@ func (g *Game) keyJust(k ebiten.Key) bool {
 			return g.harness.keys.F2
 		case ebiten.KeyF3:
 			return g.harness.keys.F3
+		case ebiten.KeyF4:
+			return g.harness.keys.F4
 		case ebiten.KeyR:
 			return g.harness.keys.R
 		case ebiten.KeySpace:

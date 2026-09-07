@@ -9,7 +9,6 @@ func (l *Lot) CollapseTick() (broke []CellBreak) {
 
 	for si := range l.Structures {
 		s := &l.Structures[si]
-		// Schedule unsupported roofs.
 		for i := range s.Cells {
 			c := &s.Cells[i]
 			if c.Kind != KindRoof && c.Kind != KindEdge {
@@ -25,11 +24,17 @@ func (l *Lot) CollapseTick() (broke []CellBreak) {
 				continue
 			}
 			if c.CollapseIn <= 0 {
-				// Seed delay based on distance from nearest missing support.
-				c.CollapseIn = hopDelay
+				delay := hopDelay
+				if s.ImpactDirX != 0 || s.ImpactDirY != 0 {
+					cx := float64(lx) - float64(s.W-1)/2
+					cy := float64(ly) - float64(s.H-1)/2
+					if cx*s.ImpactDirX+cy*s.ImpactDirY < 0 {
+						delay = hopDelay * 2
+					}
+				}
+				c.CollapseIn = delay
 			}
 		}
-		// Countdown and break.
 		for i := range s.Cells {
 			c := &s.Cells[i]
 			lx, ly := s.Index(i)
@@ -49,6 +54,7 @@ func (l *Lot) CollapseTick() (broke []CellBreak) {
 							Mat: c.Mat, Kind: c.Kind, Cash: cash,
 							WX: float64((s.TX+lx)*Tile) + Tile/2,
 							WY: float64((s.TY+ly)*Tile) + Tile/2,
+							DirX: s.ImpactDirX, DirY: s.ImpactDirY,
 						})
 					}
 				}
@@ -60,11 +66,13 @@ func (l *Lot) CollapseTick() (broke []CellBreak) {
 
 // CellBreak describes a cell that just entered Broken.
 type CellBreak struct {
-	Struct     int
-	LX, LY     int
-	WX, WY     float64
-	Mat        Material
-	Kind       CellKind
-	Cash       int
-	FromBlade  bool
+	Struct    int
+	LX, LY    int
+	WX, WY    float64
+	Mat       Material
+	Kind      CellKind
+	Cash      int
+	FromBlade bool
+	DirX      float64
+	DirY      float64
 }

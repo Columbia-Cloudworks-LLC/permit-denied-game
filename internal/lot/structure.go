@@ -2,10 +2,13 @@ package lot
 
 // Structure is one authored building on the test lot: a W×H grid of cells.
 type Structure struct {
-	Label  string
-	TX, TY int // top-left tile
-	W, H   int
-	Cells  []Cell // len = W*H; KindNone = open
+	Label      string
+	TX, TY     int // top-left tile
+	W, H       int
+	Cells      []Cell // len = W*H; KindNone = open
+	ImpactDirX float64
+	ImpactDirY float64 // last bite; collapse bias
+	Spill      []SpillPile
 }
 
 func (s *Structure) At(lx, ly int) *Cell {

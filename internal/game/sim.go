@@ -47,7 +47,7 @@ func (g *Game) stepPlay(in Input) {
 
 	if g.dozer.BladeDown {
 		g.glanceLatch = false
-		eating := g.wreckWithBlade(bx, by, bw, bh)
+		eating := g.wreckWithBlade()
 		if g.audio != nil {
 			g.audio.DuckWreck(eating)
 		}
@@ -241,39 +241,44 @@ func (g *Game) peel() {
 	}
 }
 
-// wreckWithBlade damages every cell overlapped by the blade AABB.
-func (g *Game) wreckWithBlade(bx, by, bw, bh float64) bool {
+// wreckWithBlade damages cells overlapped by the oriented blade OBB.
+func (g *Game) wreckWithBlade() bool {
 	eating := false
-	dmg := WreckRateDown * Dt
+	pose := BladePose{
+		X: g.dozer.X, Y: g.dozer.Y, Heading: g.dozer.Heading,
+		Width: BladeW, Thick: BladeHDown, Reach: BladeReach,
+	}
+	var all []lot.Impact
 	for si := range g.lot.Structures {
 		s := &g.lot.Structures[si]
-		for i := range s.Cells {
-			c := &s.Cells[i]
-			if !c.Present() || c.State == lot.Rubble || c.State == lot.Broken {
-				continue
-			}
-			if c.Kind == lot.KindInterior {
-				continue
-			}
-			lx, ly := s.Index(i)
-			wx, wy := s.WorldXY(lx, ly)
-			if !aabbOverlap(bx, by, bw, bh, wx, wy, lot.Tile, lot.Tile) {
-				continue
-			}
-			eating = true
-			cash, broke := s.ApplyDamage(lx, ly, dmg)
-			if broke {
-				br := lot.CellBreak{
-					Struct: si, LX: lx, LY: ly,
-					WX: wx + lot.Tile/2, WY: wy + lot.Tile/2,
-					Mat: c.Mat, Kind: c.Kind, Cash: cash, FromBlade: true,
-				}
-				g.onCellBreak(br)
-			} else if c.State == lot.Cracked {
+		imps := QueryBlade(pose, s, g.dozer.Speed)
+		if len(imps) == 0 {
+			continue
+		}
+		eating = true
+		all = append(all, imps...)
+		for _, im := range imps {
+			c := s.At(im.Col, im.Row)
+			if c != nil && c.State == lot.Cracked {
+				wx, wy := s.WorldXY(im.Col, im.Row)
 				g.fx.SpawnSpark(wx+8, wy+8)
 			}
 		}
+		for _, br := range s.ApplyImpacts(imps) {
+			cb := lot.CellBreak{
+				Struct: si, LX: br.Col, LY: br.Row,
+				WX: br.X, WY: br.Y,
+				Mat: br.Mat, Kind: br.Kind, Cash: br.Cash,
+				FromBlade: true, DirX: br.DirX, DirY: br.DirY,
+			}
+			if cb.WX == 0 && cb.WY == 0 {
+				wx, wy := s.WorldXY(br.Col, br.Row)
+				cb.WX, cb.WY = wx+lot.Tile/2, wy+lot.Tile/2
+			}
+			g.onCellBreak(cb)
+		}
 	}
+	g.labImpacts = all
 	return eating
 }
 
@@ -314,7 +319,11 @@ func (g *Game) onCellBreak(br lot.CellBreak) {
 	g.fx.SpawnFlash(br.WX, br.WY)
 	g.fx.SpawnBoom(br.WX, br.WY)
 	n := fragCount(br.Mat)
-	g.fx.SpawnFragments(br.WX, br.WY, int(br.Mat), n, float64(br.LX)*0.3)
+	spread := float64(br.LX) * 0.3
+	if br.DirX != 0 || br.DirY != 0 {
+		spread = math.Atan2(br.DirY, br.DirX)
+	}
+	g.fx.SpawnFragments(br.WX, br.WY, int(br.Mat), n, spread)
 	scarKind := 1
 	if br.Mat == lot.MatGlass {
 		scarKind = 2
