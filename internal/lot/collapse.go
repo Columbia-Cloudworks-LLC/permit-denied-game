@@ -40,12 +40,9 @@ func (l *Lot) CollapseTick() (broke []CellBreak) {
 					t = 1
 				}
 				c.Sag = t * 4
-				// Tear: sagging mass next to already-failed deck joins the collapse.
+				// Tear quickly so failure forms contiguous chunks, not a checkerboard.
 				if deckNeighborFailed(s, lx, ly) && c.CollapseIn <= 0 {
-					c.CollapseIn = CollapseHopDelay / 2
-					if c.CollapseIn < 3 {
-						c.CollapseIn = 3
-					}
+					c.CollapseIn = 2
 				}
 				continue
 			}

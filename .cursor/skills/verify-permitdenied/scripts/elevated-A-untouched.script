@@ -1,0 +1,15 @@
+assert scene=play
+assert title=PERMIT DENIED
+# Drive north toward hall for framing
+hold w 90
+shot A_intact.png
+dump A_start.json
+assert struct_cash=0
+assert rubble=0
+# 60 seconds sim untouched
+wait 3600
+shot A_untouched_60s.png
+dump A_untouched_60s.json
+assert struct_cash=0
+assert rubble=0
+assert deck_intact>0

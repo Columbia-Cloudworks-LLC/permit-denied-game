@@ -126,7 +126,7 @@ func concreteMunicipal() Structure {
 	corner := makeCell(KindCorner, MatConcrete, "conc_corner", "conc_rubble")
 	door := makeCell(KindDoor, MatSteel, "conc_door", "steel_rubble")
 	win := makeCell(KindWindow, MatGlass, "conc_window", "glass_rubble")
-	col := makeCell(KindCorner, MatSteel, "conc_corner", "steel_rubble") // interior column
+	col := makeCell(KindCorner, MatSteel, "conc_wall", "steel_rubble") // interior column uses wall art
 
 	// TX=8 TY=1 north pad. Two-story hall with interior columns.
 	for x := 0; x < w; x++ {

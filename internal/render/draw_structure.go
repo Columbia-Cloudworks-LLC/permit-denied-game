@@ -9,8 +9,8 @@ import (
 )
 
 const (
-	facadePerStory = 8 // visible south-face strip per story (px) — matches StoryLiftPx
-	shadowAlpha    = 0x55
+	facadePerStory = 12 // matches lot.StoryLiftPx
+	shadowAlpha    = 0x77
 )
 
 func drawStructureSpill(dst *ebiten.Image, v View) {
@@ -56,8 +56,8 @@ func drawBuildingShadows(dst *ebiten.Image, v View) {
 		if stories < 1 {
 			stories = 1
 		}
-		ox := float64(2 + stories)
-		oy := float64(2 + stories)
+		ox := float64(3 + stories*2)
+		oy := float64(3 + stories*2)
 		wx0 := float64(s.TX * lot.Tile)
 		wy0 := float64(s.TY * lot.Tile)
 		ww := float64(s.W * lot.Tile)
@@ -65,6 +65,11 @@ func drawBuildingShadows(dst *ebiten.Image, v View) {
 		sx, sy := world(v, wx0+ox, wy0+oy)
 		c := color.RGBA{0, 0, 0, shadowAlpha}
 		vector.DrawFilledRect(dst, float32(sx), float32(sy), float32(ww), float32(wh), c, false)
+		// Second softer offset for taller buildings.
+		if stories >= 2 {
+			c2 := color.RGBA{0, 0, 0, 0x33}
+			vector.DrawFilledRect(dst, float32(sx+2), float32(sy+2), float32(ww), float32(wh), c2, false)
+		}
 	}
 }
 
@@ -81,7 +86,7 @@ func structureStandingMass(s *lot.Structure) bool {
 	return false
 }
 
-// drawCollapsedFloors paints a single dark floor under fallen deck cells
+// drawCollapsedFloors paints a unified dark slab under fallen deck cells
 // (no repetitive interior checkerboard).
 func drawCollapsedFloors(dst *ebiten.Image, v View) {
 	for si := range v.Lot.Structures {
@@ -97,9 +102,8 @@ func drawCollapsedFloors(dst *ebiten.Image, v View) {
 			lx, ly := s.Index(i)
 			wx, wy := s.WorldXY(lx, ly)
 			sx, sy := world(v, wx, wy)
-			fillRect(dst, sx+1, sy+1, lot.Tile-2, lot.Tile-2, color.RGBA{0x2A, 0x28, 0x24, 0xFF})
-			vector.StrokeRect(dst, float32(sx+1), float32(sy+1), lot.Tile-2, lot.Tile-2, 1,
-				color.RGBA{0x1A, 0x18, 0x14, 0xFF}, false)
+			fillRect(dst, sx, sy, lot.Tile, lot.Tile, color.RGBA{0x22, 0x20, 0x1C, 0xFF})
+			fillRect(dst, sx+1, sy+1, lot.Tile-2, lot.Tile-2, color.RGBA{0x2E, 0x2A, 0x24, 0xFF})
 		}
 	}
 }
@@ -126,29 +130,33 @@ func matFacadeColor(m lot.Material) color.RGBA {
 	}
 }
 
-func blitBuildingElevated(dst *ebiten.Image, a *atlas, name string, sx, sy, lift float64) {
-	img, _, ok := a.building(name)
-	if !ok {
-		vector.DrawFilledRect(dst, float32(sx), float32(sy-lift), tileSize, tileSize, ColBuilding, false)
-		return
-	}
-	op := &ebiten.DrawImageOptions{}
-	op.GeoM.Translate(sx, sy-lift)
-	op.Filter = ebiten.FilterNearest
-	dst.DrawImage(img, op)
-}
-
 func blitBuildingShaded(dst *ebiten.Image, a *atlas, name string, sx, sy, lift float64, shade float32) {
 	img, _, ok := a.building(name)
 	if !ok {
 		vector.DrawFilledRect(dst, float32(sx), float32(sy-lift), tileSize, tileSize, ColBuilding, false)
 		return
 	}
+	// Contact shadow under elevated mass.
+	if lift > 1 {
+		sh := color.RGBA{0, 0, 0, 0x55}
+		vector.DrawFilledRect(dst, float32(sx+2), float32(sy+2), tileSize-2, tileSize-2, sh, false)
+	}
 	op := &ebiten.DrawImageOptions{}
 	op.GeoM.Translate(sx, sy-lift)
 	op.Filter = ebiten.FilterNearest
-	if shade < 1 {
+	if shade != 1 {
 		op.ColorScale.Scale(shade, shade, shade, 1)
 	}
 	dst.DrawImage(img, op)
+	// Bright north edge + dark south edge sell the top plane.
+	if lift > 1 {
+		vector.StrokeLine(dst,
+			float32(sx), float32(sy-lift),
+			float32(sx+tileSize), float32(sy-lift),
+			1, color.RGBA{0xFF, 0xFF, 0xFF, 0x40}, false)
+		vector.StrokeLine(dst,
+			float32(sx), float32(sy-lift+tileSize-1),
+			float32(sx+tileSize), float32(sy-lift+tileSize-1),
+			1, color.RGBA{0, 0, 0, 0x66}, false)
+	}
 }

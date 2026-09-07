@@ -2,47 +2,38 @@
 
 ## Goal
 
-Visibly elevated buildings with ground-level supports, staged location-dependent collapse, rubble/rewards, and reviewable evidence. Normal sandbox startup must demonstrate the feature.
+Visibly elevated buildings with ground-level supports, staged location-dependent collapse, rubble/rewards, and reviewable evidence. Normal sandbox startup demonstrates the feature.
 
 ## Acceptance criteria
 
 | ID | Criterion | Status |
 |----|-----------|--------|
-| A | Untouched ≥60s: all valid buildings intact, $0 | PENDING |
-| B | Localized breach: opening with upper structure still up | PENDING |
-| C | Location-dependent failure origin/propagation | PENDING |
-| D | Full collapse with visible falling → rubble; cash once | PENDING |
-| E | Drive/blade/collision/occlusion/rubble/restart + normal lot | PENDING |
-| F | Review-ready PR with screenshots/recording | PENDING |
+| A | Untouched ≥60s: all valid buildings intact, $0 | PASS — `TestUntouchedLotSixtySeconds`, `TestUntouchedBuildingsStable`, capture `A_*` |
+| B | Localized breach: opening with upper structure still up | PASS — SW wall rubble with deck intact; `B_localized_breach` |
+| C | Location-dependent failure origin/propagation | PASS — `TestSouthVsEastCollapseSetsDiffer`, `C_east_aftermath` vs south sequence |
+| D | Full collapse with visible falling → rubble; cash once | PASS — `D_falling`/`D_settled`, `TestCollapseCashOnce`, gameplay collapse script |
+| E | Drive/blade/collision/occlusion/rubble/restart + normal lot | PASS — sandbox + collapse harness scripts; shed door unit bite |
+| F | Review-ready PR with screenshots/recording | IN PROGRESS |
 
 ## Decisions
 
-1. **Support model**: Upper deck (roof/edge) is supported via BFS through intact deck cells to a cell adjacent to a load-bearing ground support. Not immediate-neighbor-only; not global HP%.
-2. **Load-bearing**: Wall, Corner, Door. Windows (glass) are cosmetic — not supports.
-3. **Collision**: Standing roof/edge cells are **not** solid. Only ground supports (+ rubble/spill) collide. Breaches open drive-through under still-elevated roof.
-4. **Height**: `Structure.Stories` (1 shed, 2 store/hall). Visual lift = `Stories * StoryLiftPx`. Façade strip on south walls. Ground shadow at footprint.
-5. **Stages**: intact → cracked (local) → sagging (weak path) → falling (`FallY`) → broken dust → rubble.
-6. **Interiors**: Do not stamp repetitive interior checkerboard under every fallen roof tile; floor only under collapsed deck footprint, then rubble.
-7. **Vertical slice first**: two-story rectangular hall behavior, then adapt shed/store.
+1. **Support model**: Each deck cell binds to its 3 nearest load-bearing cells (wall/corner/door). Alive-anchor count drives sag (<3) and collapse (<2). Windows are not anchors.
+2. **Tear propagation**: Sagging deck adjacent to falling/broken deck joins collapse quickly → contiguous chunks.
+3. **Collision**: Standing roof/edge cells are not solid. Only ground supports + rubble/spill collide.
+4. **Height**: `Stories` × 12px lift + matching south façade; SE ground shadows; roof contact shadows.
+5. **Stages**: intact → cracked → sagging → falling (`FallY`) → broken dust → rubble.
+6. **Interiors**: Dark floor slab under fallen deck (no furniture checkerboard).
+7. **Authored lot**: SHED 1-story; STORE/HALL 2-story with northern-bay columns on HALL.
 
-## Bug verified (main)
+## Verification evidence
 
-`CountSupport` + `minSupport=1` + roofs excluding roofs as supports → central/edge deck tiles with no wall neighbor get `CollapseIn` immediately. Untouched STORE breaks by tick 5.
+- Unit: `go test ./...`
+- Capture: `PERMITDENIED_SILENT=1 go run ./cmd/capture-elevated --out DIR` (under Xvfb)
+- Harness: `control-permitdenied drive` scripts `elevated-D-collapse`, `sandbox-destruction`
+- Artifacts: `/opt/cursor/artifacts/elevated_capture/`, `elevated_gameplay/`
 
-## Plan (staged)
+## Remaining limitations
 
-1. Core cell/structure/collapse rewrite + validation tests
-2. Renderer: elevation, façade, shadow, falling, depth sort
-3. Assets via `genbuildings` (façade, shadow, sag)
-4. Adapt lot footprints (stories); preserve materials
-5. Harness scripts + visual evidence A–E
-6. PR
-
-## Completed
-
-- Branch `cursor/elevated-buildings-collapse-f9b8`
-- Confirmed untouched instability
-
-## Next
-
-Implement support BFS, non-solid roofs, staged fall, elevation draw.
+- Collapse is section-local (southern deck can fall while northern deck remains) — intentional.
+- Height is 2D oblique (lift + façade), not a 3D engine.
+- Sandbox drive script targets the hall south face (reliable approach); shed bite covered by unit test.

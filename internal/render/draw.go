@@ -193,11 +193,10 @@ func collectSorted(v View, a *atlas) []drawItem {
 			isDeck := c.IsDeck()
 			lift := c.LiftDrawY(stories)
 			southFace := ly == s.H-1 && !isDeck && c.State != lot.Broken
-			// Depth key: footprint south edge. Elevated decks sort slightly later
-			// so they occlude ground walls of the same row.
+			// Depth: footprint south edge. Elevated decks sort above same-row walls.
 			cellY := wy + tileSize
 			if isDeck {
-				cellY += 0.5
+				cellY += float64(st)*2 + 1
 			}
 			items = append(items, drawItem{
 				y: cellY,
@@ -205,15 +204,21 @@ func collectSorted(v View, a *atlas) []drawItem {
 					sx, sy := world(v, cx, cy)
 					if southFace {
 						fc := matFacadeColor(mat)
+						// Full-height south elevation.
 						fillRect(dst, sx, sy-fh, tileSize, fh, fc)
-						fillRect(dst, sx, sy-fh, tileSize, 1, shadeRGBA(fc, 30))
-						fillRect(dst, sx, sy-1, tileSize, 1, shadeRGBA(fc, -40))
-						// Upper-story window band for 2+ stories.
+						fillRect(dst, sx, sy-fh, tileSize, 2, shadeRGBA(fc, 40))
+						fillRect(dst, sx, sy-2, tileSize, 2, shadeRGBA(fc, -45))
+						// Story divider + upper window band.
 						if st >= 2 {
-							band := fh * 0.45
-							fillRect(dst, sx+3, sy-fh+2, tileSize-6, 3, color.RGBA{0x2A, 0x4A, 0x5A, 0xFF})
-							_ = band
+							mid := sy - fh/2
+							fillRect(dst, sx, mid-1, tileSize, 2, shadeRGBA(fc, -25))
+							fillRect(dst, sx+3, sy-fh+3, tileSize-6, 4, color.RGBA{0x2A, 0x4A, 0x5A, 0xFF})
+							fillRect(dst, sx+4, sy-fh+4, tileSize-8, 2, color.RGBA{0x6A, 0xC0, 0xD8, 0xAA})
 						}
+						// Roof overhang lip sitting on the façade top.
+						lip := shadeRGBA(fc, 55)
+						fillRect(dst, sx-1, sy-fh-3, tileSize+2, 3, lip)
+						fillRect(dst, sx-1, sy-fh-3, tileSize+2, 1, color.RGBA{0, 0, 0, 0x55})
 					}
 					shade := float32(1)
 					if isDeck && lift > 0 {

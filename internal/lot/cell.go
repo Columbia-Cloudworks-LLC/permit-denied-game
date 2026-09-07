@@ -8,17 +8,17 @@ package lot
 const Tile = 16
 
 // StoryLiftPx is the per-story upward draw offset for elevated decks.
-// Matched to façade height so roofs sit on the wall tops.
-const StoryLiftPx = 8
+// Large enough that a 2-story hall clearly out-tops the 1-story shed.
+const StoryLiftPx = 12
 
 // Support thresholds use alive-anchor counts (each deck cell binds 3 nearest supports).
 const (
 	SupportReach       = 2 // retained for debug overlays
 	CollapseScoreMin   = 1.5 // need ≥2 alive anchors
 	SagScoreMin        = 2.5 // 2 anchors → sag; 3 → intact
-	FallSpeedPerTick   = 0.85
-	CollapseHopDelay   = 8
-	CollapseHopPerDist = 5
+	FallSpeedPerTick   = 0.7
+	CollapseHopDelay   = 6
+	CollapseHopPerDist = 4
 )
 
 type CellState int
