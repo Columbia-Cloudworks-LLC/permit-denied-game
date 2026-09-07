@@ -186,6 +186,12 @@ func (l *Lot) CollectSolids() []AABB {
 				Rubble: c.State == Rubble,
 			})
 		}
+		for _, p := range s.Spill {
+			out = append(out, AABB{
+				X: p.X, Y: p.Y, W: p.W, H: p.H,
+				Struct: si, Rubble: true,
+			})
+		}
 	}
 	return out
 }
@@ -214,7 +220,7 @@ func (l *Lot) IntactSolidCount() int {
 	return n
 }
 
-// RubbleCount counts rubble cells.
+// RubbleCount counts rubble cells plus spill piles.
 func (l *Lot) RubbleCount() int {
 	n := 0
 	for si := range l.Structures {
@@ -223,6 +229,7 @@ func (l *Lot) RubbleCount() int {
 				n++
 			}
 		}
+		n += len(l.Structures[si].Spill)
 	}
 	return n
 }

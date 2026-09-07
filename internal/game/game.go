@@ -16,6 +16,7 @@ type Scene int
 const (
 	ScenePlay Scene = iota
 	SceneTally
+	SceneLab
 )
 
 type Game struct {
@@ -41,6 +42,11 @@ type Game struct {
 	harness *harnessFrame
 
 	glanceLatch bool
+
+	labImpacts   []lot.Impact
+	labPaused    bool
+	labSlow      bool
+	labSlowPhase bool
 }
 
 func New() *Game {
@@ -58,6 +64,9 @@ func (g *Game) reset() {
 	g.cruiser = threats.SpawnCruiser(340, 220)
 	g.stallTicks = 0
 	g.glanceLatch = false
+	g.labImpacts = nil
+	g.labPaused = false
+	g.labSlow = false
 	if g.audio != nil {
 		g.audio.StartChase()
 	}
@@ -74,18 +83,34 @@ func (g *Game) Update() error {
 	if g.keyJust(ebiten.KeyF2) {
 		g.debug = !g.debug
 	}
+	if g.keyJust(ebiten.KeyF4) {
+		g.startLab()
+		return nil
+	}
 	if g.keyJust(ebiten.KeyM) {
 		if g.audio != nil {
 			g.audio.ToggleMute()
 		}
 	}
-	if g.keyJust(ebiten.KeyR) {
-		g.reset()
-		return nil
-	}
 
 	switch g.scene {
+	case SceneLab:
+		g.handleLabKeys()
+		if g.scene != SceneLab {
+			return nil
+		}
+		if g.fx.HitStop > 0 {
+			g.fx.HitStop--
+			g.run.Tick++
+			g.fx.Step(Dt, ShakeDecay)
+			return nil
+		}
+		g.stepLab(in)
 	case ScenePlay:
+		if g.keyJust(ebiten.KeyR) {
+			g.reset()
+			return nil
+		}
 		if g.fx.HitStop > 0 {
 			g.fx.HitStop--
 			g.run.Tick++
@@ -141,6 +166,8 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		DollarRise:  DollarRise,
 		HeatVent:    HeatVent,
 		HeatPulse:   HeatPulse,
+		Impacts:     g.labImpacts,
+		LabDebug:    g.scene == SceneLab,
 	}
 	render.DrawWorld(screen, v)
 	render.DrawHUD(screen, v)
