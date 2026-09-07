@@ -32,7 +32,16 @@ Visibly elevated buildings with ground-level supports, staged location-dependent
 - Unit: `go test ./...`
 - Capture: `PERMITDENIED_SILENT=1 xvfb-run -a go run ./cmd/capture-elevated --out DIR`
 - Harness: `control-permitdenied drive` scripts `elevated-D-collapse`, `sandbox-destruction`
-- Frames: `docs/elevated_evidence/` (intact, localized breach, sag, falling, settled, east contrast)
+- Frames: `docs/elevated_evidence/` — intact, localized SW breach, **sag/warning**, falling, collapsing, settled, east contrast, plus sandbox gameplay stills.
+
+## Captured south-face collapse (structural path)
+
+1. Blade/script removes the hall’s entire south row (y=5): SW/SE corners, glass, and the two steel doors.
+2. Glass never carried load. Losing the doors and corners drops every southern deck cell’s 8-neighborhood support count to zero, so distant northern anchors are clamped and cannot levitate that bay.
+3. Collapse timers start near the breach (south-center first) with sag + vibration + dust as warning.
+4. Adjacent sagging cells join one `FallGroup` and drop as a contiguous southern section onto unified floor + irregular spill.
+5. Interior columns at local (2,2) and (5,2) still root the northern deck, so the far roof remains after the dust clears — a partial, location-dependent silhouette, not a canned full-building wipe.
+
 
 ## Remaining limitations
 

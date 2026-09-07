@@ -99,7 +99,7 @@ func (h *capturer) Update() error {
 		}
 		s.ImpactDirX, s.ImpactDirY = 0, -1
 		h.phase = 4
-		h.wait = 12 // sag / warning
+		h.wait = 16 // sag / warning
 	case 4:
 		h.phase = 5
 		h.wait = 22 // falling begins ~tick 20+
@@ -123,7 +123,7 @@ func (h *capturer) Update() error {
 			h.l.CollapseTick()
 		}
 		h.phase = 8
-		h.wait = 1
+		h.wait = 2
 	case 8:
 		h.done = true
 		return ebiten.Termination

@@ -85,18 +85,25 @@ func drawCavityRegion(dst *ebiten.Image, v View, s *lot.Structure, comp []int) {
 	if len(comp) == 0 {
 		return
 	}
-	// Unified slab: fill each cell, then nibble outer edges so adjacent holes merge
-	// into one irregular opening instead of a grid of pits.
+	in := map[[2]int]bool{}
+	for _, i := range comp {
+		lx, ly := s.Index(i)
+		in[[2]int{lx, ly}] = true
+		wx, wy := s.WorldXY(lx, ly)
+		sx, sy := world(v, wx, wy)
+		// One floor color across the whole opening — no per-cell inset pit.
+		fillRect(dst, sx, sy, tileSize, tileSize, colCavityFloor)
+	}
 	for _, i := range comp {
 		lx, ly := s.Index(i)
 		wx, wy := s.WorldXY(lx, ly)
 		sx, sy := world(v, wx, wy)
-		fillRect(dst, sx, sy, tileSize, tileSize, colCavity)
-		fillRect(dst, sx+1, sy+1, tileSize-2, tileSize-2, colCavityFloor)
-		// Soft dust mottling, not a second 16×16 pit.
-		h := lot.CellHash(lx, ly, 4)
-		fillRect(dst, sx+2+float64(h%5), sy+3+float64((h>>3)%4), 4, 3, colCavityDust)
 		drawCavityEdge(dst, s, lx, ly, sx, sy)
+		// Sparse dust specks, hashed so they do not repeat every 16px.
+		h := lot.CellHash(lx+s.TX, ly+s.TY, 4)
+		if h%2 == 0 {
+			fillRect(dst, sx+float64(2+(h%11)), sy+float64(3+((h>>3)%9)), 2, 1, colCavityDust)
+		}
 	}
 }
 

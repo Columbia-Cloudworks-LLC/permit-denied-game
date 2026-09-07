@@ -18,7 +18,7 @@ const (
 	SupportReach       = 2   // retained for debug overlays
 	CollapseScoreMin   = 1.5 // need ≥2 alive anchors
 	SagScoreMin        = 2.5 // 2 anchors → sag; 3 → intact
-	SagMaxPx           = 7.0
+	SagMaxPx           = 11.0
 	FallSpeedPerTick   = 1.05
 	CollapseHopDelay   = 8
 	CollapseHopPerDist = 3

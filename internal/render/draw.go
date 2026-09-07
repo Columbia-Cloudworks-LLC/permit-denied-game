@@ -210,7 +210,7 @@ func collectSorted(v View, a *atlas) []drawItem {
 					if isDeck && lift > 0 {
 						shade = 1.05
 						if cell.Sag > 0 {
-							shade = 0.92
+							shade = 0.82
 						}
 						if cell.Falling {
 							shade = 0.88

@@ -238,18 +238,12 @@ func drawSouthFacade(dst *ebiten.Image, v View, s *lot.Structure, lx int, sx, sy
 		return
 	}
 	mat := c.Mat
-	if mat == 0 && c.WasMat != 0 {
-		mat = c.WasMat
-	}
 	if c.Kind == lot.KindNone && c.WasMat != 0 {
 		mat = c.WasMat
 	}
 	fc := matFacadeColor(mat)
 	standing := c.Present() && c.State != lot.Broken && c.State != lot.Rubble && c.Kind != lot.KindNone
-	open := s.Cavity(lx, s.H-1) || c.Kind == lot.KindWindow && c.State != lot.Intact
-	if c.Kind == lot.KindWindow && c.State == lot.Intact {
-		open = false
-	}
+	open := southFacadeOpen(s, lx)
 	if !standing && !columnHasStandingDeck(s, lx) && !open {
 		return
 	}
@@ -260,21 +254,22 @@ func drawSouthFacade(dst *ebiten.Image, v View, s *lot.Structure, lx int, sx, sy
 	if stories >= 2 {
 		mid := sy - fh/2
 		fillRect(dst, sx, mid-1, tileSize, 2, shadeRGBA(fc, -25))
-		if standing && c.Kind != lot.KindDoor {
+		if standing && !open && c.Kind != lot.KindDoor {
 			fillRect(dst, sx+3, sy-fh+3, tileSize-6, 4, color.RGBA{0x2A, 0x4A, 0x5A, 0xFF})
 			fillRect(dst, sx+4, sy-fh+4, tileSize-8, 2, color.RGBA{0x6A, 0xC0, 0xD8, 0xAA})
 		}
 	}
 
-	if standing && c.Kind == lot.KindWindow {
+	if standing && c.Kind == lot.KindWindow && !open {
 		fillRect(dst, sx+3, sy-fh+fh*0.55, tileSize-6, 5, color.RGBA{0x2A, 0x4A, 0x5A, 0xFF})
 		fillRect(dst, sx+4, sy-fh+fh*0.55+1, tileSize-8, 3, color.RGBA{0x6A, 0xC0, 0xD8, 0xAA})
 	}
 
-	if open || !standing {
-		drawFacadeHole(dst, sx, sy, fh, lx, s.H-1, mat)
+	if open {
+		mergeL := southFacadeOpen(s, lx-1)
+		mergeR := southFacadeOpen(s, lx+1)
+		drawFacadeHole(dst, sx, sy, fh, lx, s.H-1, mat, mergeL, mergeR)
 	} else if c.Wound() > 0.2 {
-		// Superficial / cracked façade scarring, not a vanished cell.
 		drawFacadeScars(dst, sx, sy, fh, lx, c)
 	}
 
@@ -287,6 +282,23 @@ func drawSouthFacade(dst *ebiten.Image, v View, s *lot.Structure, lx int, sx, sy
 			float32(sx+tileSize), float32(sy-fh),
 			1, color.RGBA{0, 0, 0, 0x66}, false)
 	}
+}
+
+func southFacadeOpen(s *lot.Structure, lx int) bool {
+	c := s.At(lx, s.H-1)
+	if c == nil {
+		return false
+	}
+	if c.Kind == lot.KindWindow && c.State == lot.Intact {
+		return false
+	}
+	if s.Cavity(lx, s.H-1) {
+		return true
+	}
+	if c.Kind == lot.KindNone || c.State == lot.Empty || c.State == lot.Rubble || c.State == lot.Broken {
+		return true
+	}
+	return false
 }
 
 func columnHasStandingDeck(s *lot.Structure, lx int) bool {
@@ -305,32 +317,42 @@ func columnHasStandingDeck(s *lot.Structure, lx int) bool {
 	return false
 }
 
-func drawFacadeHole(dst *ebiten.Image, sx, sy, fh float64, lx, ly int, mat lot.Material) {
+func drawFacadeHole(dst *ebiten.Image, sx, sy, fh float64, lx, ly int, mat lot.Material, mergeL, mergeR bool) {
 	dark := color.RGBA{0x18, 0x16, 0x14, 0xFF}
 	floor := color.RGBA{0x32, 0x2C, 0x24, 0xFF}
-	x0 := sx + 2
-	w := float64(tileSize - 4)
-	// Irregular jambs: nibble 1–3px per scanline.
-	for i := 0; i < int(fh)-3; i++ {
+	for i := 0; i < int(fh)-2; i++ {
 		h := lot.CellHash(lx, ly, i+70)
-		insetL := 1 + int(h%3)
-		insetR := 1 + int((h>>3)%3)
-		if i < 2 || i > int(fh)-6 {
+		insetL := 0
+		insetR := 0
+		if !mergeL {
+			insetL = 1 + int(h%3)
+		}
+		if !mergeR {
+			insetR = 1 + int((h>>3)%3)
+		}
+		if !mergeL && (i < 2 || i > int(fh)-6) {
 			insetL++
+		}
+		if !mergeR && (i < 2 || i > int(fh)-6) {
 			insetR++
 		}
-		y := sy - fh + 3 + float64(i)
-		fillRect(dst, x0+float64(insetL-1), y, w-float64(insetL+insetR-2), 1, dark)
-		if i > int(fh)-10 {
-			fillRect(dst, x0+float64(insetL), y, w-float64(insetL+insetR), 1, floor)
+		y := sy - fh + 2 + float64(i)
+		w := float64(tileSize - insetL - insetR)
+		if w < 2 {
+			continue
+		}
+		fillRect(dst, sx+float64(insetL), y, w, 1, dark)
+		if i > int(fh)-11 {
+			fillRect(dst, sx+float64(insetL), y, w, 1, floor)
 		}
 	}
-	// Exposed lintel remnant.
-	lintel := matFacadeColor(mat)
-	fillRect(dst, sx+1, sy-fh+2, tileSize-2, 2, shadeRGBA(lintel, -20))
-	for i := 0; i < tileSize-2; i++ {
-		if lot.CellHash(lx, ly, i+90)%4 == 0 {
-			fillRect(dst, sx+1+float64(i), sy-fh+1, 1, 2, color.RGBA{0x2A, 0x28, 0x24, 0xFF})
+	if !mergeL || !mergeR {
+		lintel := matFacadeColor(mat)
+		fillRect(dst, sx+1, sy-fh+2, tileSize-2, 2, shadeRGBA(lintel, -20))
+		for i := 0; i < tileSize-2; i++ {
+			if lot.CellHash(lx, ly, i+90)%4 == 0 {
+				fillRect(dst, sx+1+float64(i), sy-fh+1, 1, 2, color.RGBA{0x2A, 0x28, 0x24, 0xFF})
+			}
 		}
 	}
 }
