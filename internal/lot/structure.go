@@ -7,16 +7,29 @@ type Structure struct {
 	Label      string
 	TX, TY     int // top-left tile
 	W, H       int
-	Stories    int // visual height; 1 = shed, 2 = store/hall
+	Stories    int    // visual height; 1 = shed, 2 = store/hall
 	Cells      []Cell // len = W*H; KindNone = open
 	ImpactDirX float64
 	ImpactDirY float64 // last bite; collapse bias
 	BreachLX   int     // last support breach (local); -1 if none
 	BreachLY   int
 	Spill      []SpillPile
+	// Openings records spilled ground cells so the renderer can merge holes.
+	Openings []Opening
 	// Anchors binds each deck cell to its 3 nearest load-bearing cells
 	// (flat indices into Cells). Alive-anchor count drives sag/collapse.
 	Anchors [][3]int
+	// FallStarts are deck cells that began falling this tick (local x,y).
+	FallStarts [][2]int
+	nextGroup  int
+}
+
+// Opening is a drive-through breach (cell deleted from the grid, pile elsewhere).
+type Opening struct {
+	LX, LY     int
+	Mat        Material
+	Kind       CellKind
+	DirX, DirY float64
 }
 
 func (s *Structure) At(lx, ly int) *Cell {
@@ -27,7 +40,7 @@ func (s *Structure) At(lx, ly int) *Cell {
 }
 
 func (s *Structure) WorldXY(lx, ly int) (float64, float64) {
-	return float64((s.TX+lx)*Tile), float64((s.TY+ly)*Tile)
+	return float64((s.TX + lx) * Tile), float64((s.TY + ly) * Tile)
 }
 
 func (s *Structure) Index(i int) (lx, ly int) {
@@ -49,14 +62,16 @@ func (s *Structure) LiftPx() float64 {
 func makeCell(kind CellKind, mat Material, tile, rubble string) Cell {
 	hp := MaxHPFor(mat, kind)
 	return Cell{
-		Kind:   kind,
-		Mat:    mat,
-		HP:     hp,
-		MaxHP:  hp,
-		State:  Intact,
-		Tile:   tile,
-		Rubble: rubble,
-		Value:  CashFor(mat, kind),
+		Kind:    kind,
+		Mat:     mat,
+		HP:      hp,
+		MaxHP:   hp,
+		State:   Intact,
+		Tile:    tile,
+		Rubble:  rubble,
+		Value:   CashFor(mat, kind),
+		WasKind: kind,
+		WasMat:  mat,
 	}
 }
 
@@ -130,7 +145,10 @@ func (s *Structure) ApplyDamage(lx, ly int, amount float64) (cash int, broke boo
 	}
 	c.HP = 0
 	c.State = Broken
-	c.DustLeft = 18
+	c.DustLeft = DustBite
+	if c.IsDeck() {
+		c.DustLeft = DustCollapse
+	}
 	c.CollapseIn = 0
 	c.Falling = false
 	c.Sag = 0
@@ -174,12 +192,23 @@ func (s *Structure) aliveAnchors(flat int) int {
 	return n
 }
 
-// SupportScore returns alive-anchor count for a deck cell (0..3).
+func (s *Structure) hasLocalSupport(lx, ly int) bool {
+	return s.rootedAt(lx, ly)
+}
+
+// SupportScore returns the collapse metric for a deck cell.
+// Bound alive anchors (0..3) drive the value, but a cell with no live
+// support in its 8-neighborhood cannot be held up by distant anchors —
+// that was leaving southern bays hovering on far north walls.
 func (s *Structure) SupportScore(lx, ly int) float64 {
 	if lx < 0 || ly < 0 || lx >= s.W || ly >= s.H {
 		return 0
 	}
-	return float64(s.aliveAnchors(ly*s.W + lx))
+	sc := float64(s.aliveAnchors(ly*s.W + lx))
+	if sc > 1 && !s.hasLocalSupport(lx, ly) {
+		sc = 1
+	}
+	return sc
 }
 
 // CountSupport returns alive anchors (debug / tests).
@@ -203,6 +232,9 @@ func (s *Structure) ValidateSupport() error {
 		if sc < CollapseScoreMin {
 			return fmt.Errorf("%s deck %d,%d anchors %.0f < min %.2f", s.Label, lx, ly, sc, CollapseScoreMin)
 		}
+		if !s.HasLoadPath(lx, ly) {
+			return fmt.Errorf("%s deck %d,%d has no load path to a live support", s.Label, lx, ly)
+		}
 	}
 	return nil
 }
@@ -210,4 +242,89 @@ func (s *Structure) ValidateSupport() error {
 // MarkBreach records where a support was removed (spill path / external).
 func (s *Structure) MarkBreach(lx, ly int) {
 	s.BreachLX, s.BreachLY = lx, ly
+}
+
+// HasLoadPath reports whether standing (non-falling) deck at lx,ly can reach a
+// live adjacent support through a connected sheet of standing deck.
+func (s *Structure) HasLoadPath(lx, ly int) bool {
+	c := s.At(lx, ly)
+	if c == nil || !c.IsDeck() {
+		return true
+	}
+	if c.Falling || c.State == Rubble || c.State == Broken || c.State == Empty {
+		return false
+	}
+	type pt struct{ x, y int }
+	start := pt{lx, ly}
+	seen := map[pt]bool{start: true}
+	q := []pt{start}
+	for len(q) > 0 {
+		p := q[0]
+		q = q[1:]
+		if s.rootedAt(p.x, p.y) {
+			return true
+		}
+		for _, d := range [][2]int{{0, 1}, {0, -1}, {1, 0}, {-1, 0}} {
+			nx, ny := p.x+d[0], p.y+d[1]
+			n := s.At(nx, ny)
+			if n == nil || !n.IsDeck() {
+				continue
+			}
+			if n.Falling || n.State == Rubble || n.State == Broken || n.State == Empty {
+				continue
+			}
+			np := pt{nx, ny}
+			if seen[np] {
+				continue
+			}
+			seen[np] = true
+			q = append(q, np)
+		}
+	}
+	return false
+}
+
+func (s *Structure) rootedAt(lx, ly int) bool {
+	for _, d := range [][2]int{
+		{0, 1}, {0, -1}, {1, 0}, {-1, 0},
+		{1, 1}, {1, -1}, {-1, 1}, {-1, -1},
+	} {
+		n := s.At(lx+d[0], ly+d[1])
+		if n != nil && n.IsSupport() {
+			return true
+		}
+	}
+	return false
+}
+
+// InteriorSupport is a load-bearing post inside the footprint (not the outer ring).
+func (s *Structure) InteriorSupport(lx, ly int) bool {
+	if lx <= 0 || ly <= 0 || lx >= s.W-1 || ly >= s.H-1 {
+		return false
+	}
+	c := s.At(lx, ly)
+	return c != nil && c.IsSupport()
+}
+
+// Cavity reports a visual hole: spilled wall or fallen deck.
+func (s *Structure) Cavity(lx, ly int) bool {
+	c := s.At(lx, ly)
+	if c == nil {
+		return false
+	}
+	if c.Kind == KindNone || c.State == Empty {
+		return true
+	}
+	if c.IsDeck() && (c.State == Rubble || c.State == Broken) && !c.Falling {
+		return true
+	}
+	return false
+}
+
+func (s *Structure) allocFallGroup() int {
+	s.nextGroup++
+	if s.nextGroup <= 0 {
+		s.nextGroup = 1
+	}
+	return s.nextGroup
 }

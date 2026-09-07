@@ -14,13 +14,15 @@ type Fragment struct {
 	Life, Max    float64
 	Mat          int // lot.Material as int to avoid import cycle
 	Bounce       int
+	Scale        float64
 }
 
 type Dust struct {
-	X, Y   float64
-	Age    int
-	MaxAge int
-	Scale  float64
+	X, Y       float64
+	Age        int
+	MaxAge     int
+	Scale      float64
+	TR, TG, TB float32
 }
 
 type Flash struct {
@@ -86,7 +88,17 @@ func (f *FX) SpawnFlash(x, y float64) {
 }
 
 func (f *FX) SpawnDust(x, y float64, scale float64) {
-	f.Dusts = append(f.Dusts, Dust{X: x, Y: y, MaxAge: 24, Scale: scale})
+	f.SpawnDustTinted(x, y, scale, 1, 1, 1, 24)
+}
+
+func (f *FX) SpawnDustTinted(x, y float64, scale float64, r, g, b float32, maxAge int) {
+	if r == 0 && g == 0 && b == 0 {
+		r, g, b = 1, 1, 1
+	}
+	if maxAge < 8 {
+		maxAge = 8
+	}
+	f.Dusts = append(f.Dusts, Dust{X: x, Y: y, MaxAge: maxAge, Scale: scale, TR: r, TG: g, TB: b})
 }
 
 func (f *FX) SpawnScar(x, y float64, kind int) {
@@ -99,15 +111,27 @@ func (f *FX) SpawnDetritus(x, y float64, mat int, rot float64) {
 
 // SpawnFragments emits material-colored tumbling chips (draw-only, no collision).
 func (f *FX) SpawnFragments(x, y float64, mat int, n int, spread float64) {
+	f.SpawnFragmentsScale(x, y, mat, n, spread, 1)
+}
+
+func (f *FX) SpawnFragmentsScale(x, y float64, mat int, n int, spread float64, scale float64) {
+	if scale <= 0 {
+		scale = 1
+	}
 	for i := 0; i < n; i++ {
 		ang := float64(i)/float64(n)*2*math.Pi + spread
 		spd := 40 + float64(i%5)*12
+		life := 0.7 + float64(i%4)*0.1
+		if scale > 1.2 {
+			life += 0.35
+			spd += 20
+		}
 		f.Frags = append(f.Frags, Fragment{
 			X: x, Y: y,
 			VX: math.Cos(ang) * spd, VY: math.Sin(ang)*spd - 30,
 			Rot: float64(i) * 0.7, VRot: 4 + float64(i%3),
-			Life: 0.7 + float64(i%4)*0.1, Max: 0.9,
-			Mat: mat,
+			Life: life, Max: life + 0.2,
+			Mat: mat, Scale: scale,
 		})
 	}
 }

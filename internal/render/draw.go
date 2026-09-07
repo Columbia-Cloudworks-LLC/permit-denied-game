@@ -66,8 +66,8 @@ type Tally struct {
 }
 
 type drawItem struct {
-	y     float64
-	draw  func(dst *ebiten.Image)
+	y    float64
+	draw func(dst *ebiten.Image)
 }
 
 func world(v View, x, y float64) (float64, float64) {
@@ -85,7 +85,7 @@ func DrawWorld(dst *ebiten.Image, v View) {
 	drawBuildingShadows(dst, v)
 	drawScars(dst, v, a)
 	drawDetritus(dst, v, a)
-	drawCollapsedFloors(dst, v)
+	drawMergedCavities(dst, v)
 	drawRubbleCells(dst, v, a)
 
 	items := collectSorted(v, a)
@@ -141,28 +141,6 @@ func blitBuilding(dst *ebiten.Image, a *atlas, name string, sx, sy float64) {
 	dst.DrawImage(img, op)
 }
 
-func blitRubble(dst *ebiten.Image, a *atlas, name string, sx, sy float64) {
-	// Dark pit under the pile so missing structure reads clearly.
-	vector.DrawFilledRect(dst, float32(sx+1), float32(sy+1), tileSize-2, tileSize-2, ColShadow, false)
-	blitBuilding(dst, a, name, sx, sy)
-}
-
-func drawRubbleCells(dst *ebiten.Image, v View, a *atlas) {
-	for si := range v.Lot.Structures {
-		s := &v.Lot.Structures[si]
-		for i := range s.Cells {
-			c := &s.Cells[i]
-			if c.State != lot.Rubble {
-				continue
-			}
-			lx, ly := s.Index(i)
-			wx, wy := s.WorldXY(lx, ly)
-			sx, sy := world(v, wx, wy)
-			blitRubble(dst, a, c.Rubble, sx, sy)
-		}
-	}
-}
-
 func collectSorted(v View, a *atlas) []drawItem {
 	var items []drawItem
 	for si := range v.Lot.Structures {
@@ -174,67 +152,92 @@ func collectSorted(v View, a *atlas) []drawItem {
 		fh := facadeH(stories)
 		for i := range s.Cells {
 			c := &s.Cells[i]
-			if !c.Present() || c.State == lot.Rubble {
+			lx, ly := s.Index(i)
+			wx, wy := s.WorldXY(lx, ly)
+			cellY := wy + tileSize
+			st := stories
+			cx, cy := wx, wy
+			localX, localY := lx, ly
+			str := s
+
+			if ly == s.H-1 && (c.Kind != lot.KindRoof && c.Kind != lot.KindEdge) {
+				items = append(items, drawItem{
+					y: cellY - 0.5,
+					draw: func(dst *ebiten.Image) {
+						sx, sy := world(v, cx, cy)
+						drawSouthFacade(dst, v, str, localX, sx, sy, fh, st)
+					},
+				})
+			}
+
+			if c.State == lot.Rubble {
 				continue
 			}
 			if c.Kind == lot.KindInterior {
 				continue
 			}
-			lx, ly := s.Index(i)
-			wx, wy := s.WorldXY(lx, ly)
+			if !c.Present() {
+				continue
+			}
+
 			name := c.Frame()
 			if c.State == lot.Broken {
 				name = c.Tile + "_crack"
 			}
-			cx, cy := wx, wy
 			nm := name
-			st := stories
-			mat := c.Mat
 			isDeck := c.IsDeck()
 			lift := c.LiftDrawY(stories)
-			southFace := ly == s.H-1 && !isDeck && c.State != lot.Broken
-			// Depth: footprint south edge. Elevated decks sort above same-row walls.
-			cellY := wy + tileSize
-			if isDeck {
+			if isDeck && c.Sag > 0 {
+				// Subtle vibration while the mass warns.
+				lift += 0.5 * (float64((v.Tick+localX*3+localY)%4) - 1.5)
+			}
+			tearX := 0.0
+			if isDeck && c.Falling {
+				cellY += float64(st)*2 + 1
+				if deckTouchesCavity(s, lx, ly) || standingDeckSouth(s, lx, ly) {
+					tearX = 1
+				}
+			} else if isDeck {
 				cellY += float64(st)*2 + 1
 			}
+			cell := c
+			tx := tearX
 			items = append(items, drawItem{
 				y: cellY,
 				draw: func(dst *ebiten.Image) {
-					sx, sy := world(v, cx, cy)
-					if southFace {
-						fc := matFacadeColor(mat)
-						// Full-height south elevation.
-						fillRect(dst, sx, sy-fh, tileSize, fh, fc)
-						fillRect(dst, sx, sy-fh, tileSize, 2, shadeRGBA(fc, 40))
-						fillRect(dst, sx, sy-2, tileSize, 2, shadeRGBA(fc, -45))
-						// Story divider + upper window band.
-						if st >= 2 {
-							mid := sy - fh/2
-							fillRect(dst, sx, mid-1, tileSize, 2, shadeRGBA(fc, -25))
-							fillRect(dst, sx+3, sy-fh+3, tileSize-6, 4, color.RGBA{0x2A, 0x4A, 0x5A, 0xFF})
-							fillRect(dst, sx+4, sy-fh+4, tileSize-8, 2, color.RGBA{0x6A, 0xC0, 0xD8, 0xAA})
-						}
-						// Roof overhang lip sitting on the façade top.
-						lip := shadeRGBA(fc, 55)
-						fillRect(dst, sx-1, sy-fh-3, tileSize+2, 3, lip)
-						fillRect(dst, sx-1, sy-fh-3, tileSize+2, 1, color.RGBA{0, 0, 0, 0x55})
-					}
+					sx, sy := world(v, cx+tx, cy)
 					shade := float32(1)
 					if isDeck && lift > 0 {
-						// Soft top shading so elevated roofs read as mass.
 						shade = 1.05
+						if cell.Sag > 0 {
+							shade = 0.92
+						}
+						if cell.Falling {
+							shade = 0.88
+						}
 					}
 					blitBuildingShaded(dst, a, nm, sx, sy, lift, shade)
-					// Roof lip over south façade when deck still stands behind it.
-					if southFace && fh > 0 {
-						vector.StrokeLine(dst,
-							float32(sx), float32(sy-fh),
-							float32(sx+tileSize), float32(sy-fh),
-							1, color.RGBA{0, 0, 0, 0x66}, false)
+					drawWound(dst, sx, sy-lift, cell, localX, localY)
+					drawNeighborChips(dst, v, str, localX, localY, sx, sy-lift)
+					if isDeck {
+						drawDeckEdgeFacade(dst, str, localX, localY, sx, sy, lift, cell)
+						drawSupportBeam(dst, v, str, localX, localY, sx, sy, lift)
 					}
 				},
 			})
+
+			// Roof cap over interior columns so posts read as supports, not roof holes.
+			if str.InteriorSupport(localX, localY) && cell.State != lot.Broken {
+				capName := roofFrameName(cell.Mat)
+				capLift := float64(st * lot.StoryLiftPx)
+				items = append(items, drawItem{
+					y: cellY + float64(st)*2 + 2,
+					draw: func(dst *ebiten.Image) {
+						sx, sy := world(v, cx, cy)
+						blitBuildingShaded(dst, a, capName, sx, sy, capLift, 1.05)
+					},
+				})
+			}
 		}
 	}
 	if v.Cruiser.Alive {
@@ -254,6 +257,11 @@ func collectSorted(v View, a *atlas) []drawItem {
 		},
 	})
 	return items
+}
+
+func standingDeckSouth(s *lot.Structure, lx, ly int) bool {
+	n := s.At(lx, ly+1)
+	return n != nil && n.IsDeck() && n.Present() && !n.Falling && n.State != lot.Rubble && n.State != lot.Broken
 }
 
 func materialPrefix(m lot.Material) string {
@@ -383,6 +391,9 @@ func drawFragments(dst *ebiten.Image, v View, a *atlas) {
 		op := &ebiten.DrawImageOptions{}
 		op.GeoM.Translate(-f.AnchorX, -f.AnchorY)
 		op.GeoM.Rotate(p.Rot)
+		if p.Scale > 0 && p.Scale != 1 {
+			op.GeoM.Scale(p.Scale, p.Scale)
+		}
 		op.GeoM.Translate(sx, sy)
 		op.Filter = ebiten.FilterNearest
 		alpha := float32(p.Life / p.Max)
@@ -414,7 +425,11 @@ func drawDust(dst *ebiten.Image, v View, a *atlas) {
 		op.GeoM.Translate(sx+8, sy+8)
 		op.Filter = ebiten.FilterNearest
 		alpha := 1 - float32(d.Age)/float32(d.MaxAge)
-		op.ColorScale.Scale(1, 1, 1, alpha*0.85)
+		tr, tg, tb := d.TR, d.TG, d.TB
+		if tr == 0 && tg == 0 && tb == 0 {
+			tr, tg, tb = 1, 1, 1
+		}
+		op.ColorScale.Scale(tr, tg, tb, alpha*0.85)
 		dst.DrawImage(img, op)
 	}
 }

@@ -12,13 +12,18 @@ const Tile = 16
 const StoryLiftPx = 12
 
 // Support thresholds use alive-anchor counts (each deck cell binds 3 nearest supports).
+// Distant anchors still count, but a standing deck island with no BFS path to a
+// live adjacent support is treated as unsupported (prevents hovering mass).
 const (
-	SupportReach       = 2 // retained for debug overlays
+	SupportReach       = 2   // retained for debug overlays
 	CollapseScoreMin   = 1.5 // need ≥2 alive anchors
 	SagScoreMin        = 2.5 // 2 anchors → sag; 3 → intact
-	FallSpeedPerTick   = 0.7
-	CollapseHopDelay   = 6
-	CollapseHopPerDist = 4
+	SagMaxPx           = 7.0
+	FallSpeedPerTick   = 1.05
+	CollapseHopDelay   = 8
+	CollapseHopPerDist = 3
+	DustBite           = 14
+	DustCollapse       = 28
 )
 
 type CellState int
@@ -74,6 +79,31 @@ type Cell struct {
 	FallY float64
 	// Falling is true once support has failed and the mass is descending.
 	Falling bool
+	// FallGroup is a contiguous collapsing section (0 = none).
+	FallGroup int
+	// WasKind/WasMat remember the authored cell after a drive-through spill.
+	WasKind CellKind
+	WasMat  Material
+}
+
+// DamageFrac is remaining HP in 0..1 (1 = pristine).
+func (c *Cell) DamageFrac() float64 {
+	if c == nil || c.MaxHP <= 0 {
+		return 0
+	}
+	f := c.HP / c.MaxHP
+	if f < 0 {
+		return 0
+	}
+	if f > 1 {
+		return 1
+	}
+	return f
+}
+
+// Wound reports how chewed the exterior is: 0 intact, 1 about to breach.
+func (c *Cell) Wound() float64 {
+	return 1 - c.DamageFrac()
 }
 
 func (c *Cell) Present() bool {
@@ -230,4 +260,13 @@ func chebyshev(x0, y0, x1, y1 int) int {
 		return dx
 	}
 	return dy
+}
+
+// CellHash is a tiny deterministic mix for irregular chips, piles, and remnants.
+func CellHash(lx, ly, salt int) uint32 {
+	x := uint32(lx*374761393 + ly*668265263 + salt*1274126177)
+	x ^= x >> 16
+	x *= 0x7feb352d
+	x ^= x >> 15
+	return x
 }

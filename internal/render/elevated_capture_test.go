@@ -23,7 +23,7 @@ func TestElevatedDrawSmoke(t *testing.T) {
 		CamY: float64(hall.TY * lot.Tile),
 		Lot:  l, Dozer: dozer.Spawn(lot.SpawnX, lot.SpawnY),
 		Cruiser: threats.SpawnCruiser(340, 220),
-		MapW: l.W, MapH: l.H,
+		MapW:    l.W, MapH: l.H,
 	}
 	render.DrawWorld(dst, v)
 	render.DrawHUD(dst, v)

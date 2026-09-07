@@ -1,6 +1,7 @@
 // Command genbuildings writes assets/usable/buildings.png and buildings.json
 // with authored SNES-style structure tiles. Run from repo root:
-//   go run ./cmd/genbuildings
+//
+//	go run ./cmd/genbuildings
 package main
 
 import (
@@ -43,7 +44,7 @@ var (
 )
 
 type slot struct {
-	Name string
+	Name  string
 	Paint func(*image.NRGBA, int, int)
 }
 
@@ -90,7 +91,7 @@ func run() error {
 
 func allSlots() []slot {
 	base := []struct {
-		prefix string
+		prefix                                                string
 		wall, roof, edge, corner, door, win, interior, rubble func(*image.NRGBA, int, int)
 	}{
 		{"wood", paintWoodWall, paintWoodRoof, paintWoodEdge, paintWoodCorner, paintWoodDoor, paintWoodWindow, paintWoodInterior, paintWoodRubble},
@@ -228,12 +229,13 @@ func paintWoodInterior(img *image.NRGBA, x, y int) {
 }
 
 func paintWoodRubble(img *image.NRGBA, x, y int) {
-	fill(img, x+1, y+5, 14, 10, colShadow)
-	fill(img, x+2, y+6, 5, 4, colWood)
-	fill(img, x+7, y+8, 6, 5, colWoodDk)
-	fill(img, x+4, y+11, 7, 3, colWoodLt)
-	px(img, x+3, y+7, colCrack)
-	px(img, x+10, y+9, colCrack)
+	px(img, x+2, y+7, colShadow)
+	fill(img, x+1, y+8, 6, 4, colWoodDk)
+	fill(img, x+6, y+9, 7, 5, colWood)
+	fill(img, x+3, y+12, 5, 2, colWoodLt)
+	px(img, x+10, y+8, colWoodLt)
+	px(img, x+12, y+11, colWoodDk)
+	px(img, x+4, y+10, colCrack)
 }
 
 func paintBrickWall(img *image.NRGBA, x, y int) {
@@ -298,11 +300,12 @@ func paintBrickInterior(img *image.NRGBA, x, y int) {
 }
 
 func paintBrickRubble(img *image.NRGBA, x, y int) {
-	fill(img, x+1, y+5, 14, 10, colShadow)
-	fill(img, x+2, y+6, 4, 3, colBrick)
-	fill(img, x+7, y+8, 5, 4, colBrickDk)
-	fill(img, x+4, y+11, 8, 3, colMort)
-	px(img, x+5, y+7, colCrack)
+	fill(img, x+2, y+8, 4, 3, colBrick)
+	fill(img, x+7, y+7, 5, 4, colBrickDk)
+	fill(img, x+5, y+11, 7, 3, colMort)
+	px(img, x+11, y+10, colBrickLt)
+	px(img, x+3, y+12, colBrickDk)
+	px(img, x+8, y+9, colCrack)
 }
 
 func paintConcWall(img *image.NRGBA, x, y int) {
@@ -364,12 +367,12 @@ func paintConcInterior(img *image.NRGBA, x, y int) {
 }
 
 func paintConcRubble(img *image.NRGBA, x, y int) {
-	fill(img, x+1, y+6, 14, 9, colShadow)
 	fill(img, x+2, y+8, 5, 4, colConc)
 	fill(img, x+8, y+7, 5, 5, colConcDk)
-	fill(img, x+5, y+11, 7, 3, colConcLt)
-	px(img, x+4, y+9, colCrack)
-	px(img, x+11, y+10, colCrack)
+	fill(img, x+4, y+12, 8, 3, colConcLt)
+	px(img, x+12, y+10, colSteel)
+	px(img, x+3, y+11, colCrack)
+	px(img, x+9, y+9, colCrack)
 }
 
 func paintGlassRubble(img *image.NRGBA, x, y int) {
