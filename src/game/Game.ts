@@ -1,10 +1,11 @@
 import { Application } from "pixi.js";
 import { AudioBus } from "../audio/synth";
+import { emptyPerfSnapshot, formatPerfOverlay, PerfCollector } from "../debug/perf";
 import { CameraShake } from "../fx/cameraShake";
 import { ParticlePool } from "../fx/particles";
 import { Hud } from "../render/hud";
 import { WorldRenderer } from "../render/WorldRenderer";
-import { obstructionAt } from "../sim/debris";
+import { lastDebrisStats, obstructionAt } from "../sim/debris";
 import { stepWorld, type Upgrades } from "../sim/worldSim";
 import type { Bird, WorldEvent } from "../structure/types";
 import { createDozer, dozerSpeed, stepDozer } from "../vehicle/dozer";
@@ -22,8 +23,19 @@ import {
 } from "./constants";
 import { Input } from "./input";
 import { lerp } from "./math";
+import {
+  DEFAULT_DISTRICT_SEEDS,
+  nextSeed,
+  parseSessionFromSearch,
+  sessionFailsOn,
+  sessionForcesUpgrade,
+  type DistrictId,
+  type PlayMode,
+  type SessionKind,
+  type SessionRules,
+} from "./session";
 
-export type GameMode = "play" | "pause" | "upgrade" | "results";
+export type GameMode = PlayMode;
 
 export class Game {
   private app!: Application;
@@ -32,13 +44,19 @@ export class Game {
   private readonly particles = new ParticlePool();
   private readonly shake = new CameraShake();
   private readonly renderer = new WorldRenderer();
+  private readonly perf = new PerfCollector();
   private hud!: Hud;
-  private town = createTown();
-  private dozer = createDozer(20.6, 27.2, -Math.PI / 2);
+  private perfEl: HTMLElement | null = null;
+  private rules: SessionRules = parseSessionFromSearch(
+    typeof window === "undefined" ? "" : window.location.search,
+  );
+  private town = createTown({ district: this.rules.district, seed: this.rules.seed });
+  private dozer = createDozer(this.town.spawnX, this.town.spawnY, this.town.spawnHeading);
   private birds: Bird[] = [];
   private cash = 0;
   private score = 0;
   private timeLeft = MATCH_SECONDS;
+  private elapsed = 0;
   private hint = 1;
   private mode: GameMode = "play";
   private death: string | null = null;
@@ -47,6 +65,7 @@ export class Game {
   private acc = 0;
   private grindAud = 0;
   private scrapeCd = 0;
+  private droppedSimSec = 0;
   private detachInput: (() => void) | null = null;
 
   async start(root: HTMLElement, hudRoot: HTMLElement): Promise<void> {
@@ -72,9 +91,14 @@ export class Game {
     this.hud.onResume = () => {
       if (this.mode === "pause") this.mode = "play";
     };
-    this.hud.onRestart = () => this.reset();
+    this.hud.onRestart = () => this.reset("same");
+    this.hud.onNewSeed = () => this.reset("new");
+    this.hud.onSession = (kind) => this.setSession(kind);
+    this.hud.onDistrict = (id) => this.setDistrict(id);
     this.detachInput = this.input.attach();
-    this.reset();
+    this.perf.enabled = new URLSearchParams(window.location.search).get("perf") === "1";
+    if (this.perf.enabled) this.ensurePerfOverlay();
+    this.reset("same");
     (window as unknown as { __pd: Game }).__pd = this;
     this.app.ticker.add((ticker) => {
       this.frame(Math.min(0.05, ticker.deltaMS / 1000));
@@ -85,7 +109,11 @@ export class Game {
     cash: number;
     score: number;
     timeLeft: number;
+    elapsed: number;
     mode: GameMode;
+    session: SessionKind;
+    district: DistrictId;
+    seed: number;
     dozer: { x: number; y: number; heading: number };
     rubble: number;
     marks: number;
@@ -96,7 +124,11 @@ export class Game {
       cash: this.cash,
       score: this.score,
       timeLeft: this.timeLeft,
+      elapsed: this.elapsed,
       mode: this.mode,
+      session: this.rules.kind,
+      district: this.rules.district,
+      seed: this.rules.seed,
       dozer: { x: this.dozer.x, y: this.dozer.y, heading: this.dozer.heading },
       rubble: this.town.rubble.length,
       marks: this.town.marks.length,
@@ -111,14 +143,29 @@ export class Game {
     };
   }
 
-  reset(): void {
-    this.town = createTown();
+  setSession(kind: SessionKind): void {
+    this.rules.kind = kind;
+    this.reset("same");
+  }
+
+  setDistrict(district: DistrictId): void {
+    this.rules.district = district;
+    this.rules.seed = DEFAULT_DISTRICT_SEEDS[district];
+    this.reset("same");
+  }
+
+  reset(kind: "same" | "new" = "same"): void {
+    if (kind === "new") this.rules.seed = nextSeed(this.rules.seed);
+    this.town = createTown({ district: this.rules.district, seed: this.rules.seed });
     this.dozer = createDozer(this.town.spawnX, this.town.spawnY, this.town.spawnHeading);
-    this.particles.clear();
+    this.particles.reseed(this.rules.seed ^ 0x51f00d);
+    this.shake.reset();
+    this.renderer.invalidate();
     this.birds = [];
     this.cash = 0;
     this.score = 0;
     this.timeLeft = MATCH_SECONDS;
+    this.elapsed = 0;
     this.hint = 1;
     this.mode = "play";
     this.death = null;
@@ -127,6 +174,8 @@ export class Game {
     this.acc = 0;
     this.grindAud = 0;
     this.scrapeCd = 0;
+    this.droppedSimSec = 0;
+    this.perf.reset();
     const spawn = worldToScreen(this.dozer.x, this.dozer.y, 0);
     this.renderer.camX = spawn.x;
     this.renderer.camY = spawn.y;
@@ -134,39 +183,82 @@ export class Game {
 
   private pickUpgrade(id: "blade" | "engine" | "push"): void {
     this.upgrades[id] += 1;
-    this.mode = "play";
+    if (this.mode === "upgrade") this.mode = "play";
   }
 
   private frame(realDt: number): void {
+    const now = performance.now();
+    const frameMs = this.perf.markFrameStart(now);
     if (this.input.consume("m") || this.input.consume("M")) {
       void this.audio.unlock();
       this.audio.toggleMute();
     }
-    if (this.input.consume("r") || this.input.consume("R")) this.reset();
+    if (this.input.consume("r") || this.input.consume("R")) this.reset("same");
+    if (this.input.consume("n") || this.input.consume("N")) this.reset("new");
     if (this.input.consume("v") || this.input.consume("V")) this.spawnRoadVehicle();
+    if (this.input.consume("`")) {
+      this.perf.enabled = !this.perf.enabled;
+      if (this.perf.enabled) this.ensurePerfOverlay();
+      else this.hidePerfOverlay();
+    }
+    if (this.input.consume("1")) this.pickUpgrade("blade");
+    if (this.input.consume("2")) this.pickUpgrade("engine");
+    if (this.input.consume("3")) this.pickUpgrade("push");
     if (this.input.consume("Escape")) {
       if (this.mode === "play") this.mode = "pause";
       else if (this.mode === "pause") this.mode = "play";
     }
     if (this.input.down.size > 0) void this.audio.unlock();
 
+    let simCpuMs = 0;
+    let dropped = 0;
     if (this.mode === "play") {
       this.acc += realDt;
       let steps = 0;
+      const simStart = performance.now();
       while (this.acc >= SIM_DT && steps < SIM_MAX_STEPS) {
         this.step(SIM_DT);
         this.acc -= SIM_DT;
         steps++;
       }
-      if (steps === SIM_MAX_STEPS) this.acc = 0;
+      simCpuMs = performance.now() - simStart;
+      if (steps === SIM_MAX_STEPS) {
+        dropped = this.acc;
+        this.droppedSimSec += this.acc;
+        this.acc = 0;
+      }
     } else {
       this.acc = 0;
       this.input.flush();
       this.audio.hush();
     }
 
+    const prepStart = performance.now();
     this.draw(realDt);
+    const renderPrepMs = performance.now() - prepStart;
+    const debris = lastDebrisStats();
+    this.perf.record({
+      ...emptyPerfSnapshot(),
+      frameMs,
+      simCpuMs,
+      renderPrepMs,
+      droppedSimSec: this.droppedSimSec + dropped,
+      budgetConversions: debris.conversions,
+      debrisActive: debris.active,
+      debrisSleeping: debris.sleeping,
+      contactPairs: debris.contactPairs,
+      buildingsStepped: this.lastMetrics.buildingsStepped,
+      buildingsSkipped: this.lastMetrics.buildingsSkipped,
+      collisionRebuilds: this.lastMetrics.collisionRebuilds,
+      renderVisible: this.renderer.stats.visible,
+      renderTotal: this.renderer.stats.total,
+      bodyMass: debris.bodyMass,
+      pileMass: debris.pileMass,
+    });
+    this.paintPerf();
   }
+
+  private lastMetrics = { buildingsStepped: 0, buildingsSkipped: 0, collisionRebuilds: 0 };
 
   private step(dt: number): void {
     const drive = this.input.axis();
@@ -185,6 +277,7 @@ export class Game {
 
     const beforeHeat = this.dozer.heat;
     const out = stepWorld(this.town, this.dozer, this.particles, this.upgrades, dt);
+    this.lastMetrics = out.metrics;
     this.cash += out.cash;
     this.score += out.score;
     this.react(out.events);
@@ -209,6 +302,7 @@ export class Game {
     }
     this.birds = this.birds.filter((b) => b.life > 0);
 
+    this.elapsed += dt;
     this.timeLeft -= dt;
     this.hint = Math.max(0, this.hint - dt * 0.12);
     this.scrapeCd = Math.max(0, this.scrapeCd - dt);
@@ -221,15 +315,20 @@ export class Game {
     this.audio.engineLevel(dozerSpeed(this.dozer), this.dozer.heat);
     this.audio.grindLevel(this.dozer.bladeDown ? 0.08 + this.grindAud : 0);
 
-    if (this.nextUpgrade < UPGRADE_MILESTONES.length && this.cash >= UPGRADE_MILESTONES[this.nextUpgrade]!) {
+    if (
+      sessionForcesUpgrade(this.rules) &&
+      this.nextUpgrade < UPGRADE_MILESTONES.length &&
+      this.cash >= UPGRADE_MILESTONES[this.nextUpgrade]!
+    ) {
       this.nextUpgrade += 1;
       this.mode = "upgrade";
       return;
     }
 
-    if (this.dozer.heat >= 100) this.finish(COPY.engineCooked, false);
-    else if (this.dozer.track >= 100) this.finish(COPY.trackThrown, false);
-    else if (this.timeLeft <= 0) this.finish(COPY.countyClock, this.cash >= CASH_TARGET);
+    const fail = sessionFailsOn(this.rules);
+    if (fail.heat && this.dozer.heat >= 100) this.finish(COPY.engineCooked, false);
+    else if (fail.track && this.dozer.track >= 100) this.finish(COPY.trackThrown, false);
+    else if (fail.clock && this.timeLeft <= 0) this.finish(COPY.countyClock, this.cash >= CASH_TARGET);
   }
 
   private finish(death: string, won: boolean): void {
@@ -264,11 +363,15 @@ export class Game {
   }
 
   spawnRoadVehicle(): void {
-    this.town.roadCar = createRoadVehicle();
+    this.town.roadCar = createRoadVehicle(this.town.roadSpawnX, this.town.roadSpawnY, this.town.roadSpawnHeading);
   }
 
   obstructionAt(x: number, y: number, radius = 0.7) {
     return obstructionAt(this.town, x, y, radius);
+  }
+
+  perfSnapshot() {
+    return this.perf.summary();
   }
 
   private draw(dt: number): void {
@@ -282,6 +385,9 @@ export class Game {
       cash: this.cash,
       score: this.score,
       timeLeft: this.timeLeft,
+      elapsed: this.elapsed,
+      session: this.rules.kind,
+      district: this.rules.district,
       bladeDown: this.dozer.bladeDown,
       muted: this.audio.muted,
       heat: this.dozer.heat,
@@ -291,6 +397,27 @@ export class Game {
       death: this.death,
       won: this.mode === "results" && this.cash >= CASH_TARGET && !this.death,
     });
+  }
+
+  private ensurePerfOverlay(): void {
+    if (this.perfEl) {
+      this.perfEl.hidden = false;
+      return;
+    }
+    const el = document.createElement("pre");
+    el.id = "perf-root";
+    document.body.appendChild(el);
+    this.perfEl = el;
+  }
+
+  private hidePerfOverlay(): void {
+    if (this.perfEl) this.perfEl.hidden = true;
+  }
+
+  private paintPerf(): void {
+    if (!this.perf.enabled || !this.perfEl) return;
+    const fps = this.perf.last.frameMs > 0 ? 1000 / this.perf.last.frameMs : 0;
+    this.perfEl.textContent = formatPerfOverlay(this.perf.last, fps);
   }
 
   destroy(): void {

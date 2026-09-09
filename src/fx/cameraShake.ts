@@ -4,6 +4,13 @@ export class CameraShake {
   private t = 0;
   private mag = 0;
 
+  reset(): void {
+    this.x = 0;
+    this.y = 0;
+    this.t = 0;
+    this.mag = 0;
+  }
+
   punch(mag: number): void {
     if (mag < 0.35) return;
     this.mag = Math.max(this.mag, Math.min(14, mag * 5.5));

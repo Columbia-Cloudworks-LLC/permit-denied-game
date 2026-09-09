@@ -5,6 +5,10 @@ export class Rng {
     this.s = seed >>> 0;
   }
 
+  reset(seed: number): void {
+    this.s = seed >>> 0;
+  }
+
   next(): number {
     this.s = (1664525 * this.s + 1013904223) >>> 0;
     return this.s / 0x100000000;
