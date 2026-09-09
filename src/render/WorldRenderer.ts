@@ -1,14 +1,14 @@
 import { Container, Graphics } from "pixi.js";
-import { DOZER, FLOOR_Z } from "../game/constants";
+import { FLOOR_Z } from "../game/constants";
 import { depthKey, worldToScreen } from "../world/iso";
 import type { ParticlePool } from "../fx/particles";
 import type { Building, Cell, Particle, Prop } from "../structure/types";
 import { cellPresent } from "../structure/types";
 import type { Dozer } from "../vehicle/dozer";
-import { dozerForward } from "../vehicle/dozer";
 import type { Town } from "../world/town";
 import type { Bird } from "../structure/types";
 import { cellColors, drawFaceWindow, drawGroundPoly, drawIsoBox, drawShadow, PAL } from "./drawIso";
+import { drawCar, drawDozer } from "./vehicles";
 
 interface Cmd {
   depth: number;
@@ -212,36 +212,11 @@ function drawProp(g: Graphics, p: Prop): void {
     drawIsoBox(g, p.x, p.y, p.w, p.d, 0, 0.7, PAL.dumpster, 0x244a22, 0x4a8844, 1);
     return;
   }
+  if (p.kind === "car") {
+    drawCar(g, p);
+    return;
+  }
   drawIsoBox(g, p.x, p.y, p.w, p.d, 0, 0.55, PAL.car, 0x243850, 0x4a74a4, 1);
-  drawIsoBox(g, p.x + p.w * 0.2, p.y + p.d * 0.15, p.w * 0.55, p.d * 0.7, 0.5, 0.28, PAL.glass, PAL.dozerCabin, PAL.dozerCabin, 1);
-}
-
-function drawDozer(g: Graphics, d: Dozer): void {
-  const f = dozerForward(d);
-  const rx = -f.y;
-  const ry = f.x;
-  const hw = DOZER.width * 0.5;
-  const hl = DOZER.length * 0.5;
-  const corners = [
-    { x: d.x + f.x * hl + rx * hw, y: d.y + f.y * hl + ry * hw },
-    { x: d.x + f.x * hl - rx * hw, y: d.y + f.y * hl - ry * hw },
-    { x: d.x - f.x * hl - rx * hw, y: d.y - f.y * hl - ry * hw },
-    { x: d.x - f.x * hl + rx * hw, y: d.y - f.y * hl + ry * hw },
-  ];
-  const minX = Math.min(...corners.map((c) => c.x));
-  const minY = Math.min(...corners.map((c) => c.y));
-  drawShadow(g, minX, minY, DOZER.length, DOZER.width, 0.3);
-
-  const bx = d.x - f.x * 0.55 - rx * 0.55;
-  const by = d.y - f.y * 0.55 - ry * 0.55;
-  drawIsoBox(g, bx, by, 1.15, 1.1, 0.02, 0.22, PAL.dozerTrack, 0x1a1a18, 0x333330, 1);
-  drawIsoBox(g, d.x - 0.55, d.y - 0.5, 1.1, 1.0, 0.2, 0.55, PAL.dozer, PAL.dozerDark, PAL.dozer, 1);
-  drawIsoBox(g, d.x - 0.28, d.y - 0.22, 0.55, 0.5, 0.72, 0.48, PAL.dozerCabin, 0x1a2830, 0x3a5568, 1);
-
-  const bladeX = d.x + f.x * (DOZER.bladeReach - 0.25) - rx * DOZER.bladeHalf;
-  const bladeY = d.y + f.y * (DOZER.bladeReach - 0.25) - ry * DOZER.bladeHalf;
-  const bladeZ = d.bladeDown ? 0.02 : 0.28;
-  drawIsoBox(g, bladeX, bladeY, DOZER.bladeHalf * 2, 0.28, bladeZ, 0.42, PAL.blade, 0x55565a, 0x9aa0a4, 1);
 }
 
 function drawParticle(g: Graphics, p: Particle): void {

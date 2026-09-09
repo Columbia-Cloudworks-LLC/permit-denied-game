@@ -1,7 +1,19 @@
 import { Graphics } from "pixi.js";
 import { FLOOR_Z } from "../game/constants";
-import { isoQuad, worldToScreen } from "../world/iso";
+import { depthKey, isoQuad, worldToScreen } from "../world/iso";
 import { PAL, matColors } from "./palette";
+
+export function headingOffset(
+  x: number,
+  y: number,
+  heading: number,
+  along: number,
+  across: number,
+): { x: number; y: number } {
+  const fx = Math.cos(heading);
+  const fy = Math.sin(heading);
+  return { x: x + fx * along - fy * across, y: y + fy * along + fx * across };
+}
 
 export function drawGroundPoly(
   g: Graphics,
@@ -15,6 +27,69 @@ export function drawGroundPoly(
   const q = isoQuad(x, y, w, d, 0);
   g.poly(q);
   g.fill({ color, alpha });
+}
+
+export function drawOrientedIsoBox(
+  g: Graphics,
+  cx: number,
+  cy: number,
+  heading: number,
+  length: number,
+  width: number,
+  z0: number,
+  h: number,
+  top: number,
+  left: number,
+  right: number,
+  alpha = 1,
+): void {
+  const fx = Math.cos(heading);
+  const fy = Math.sin(heading);
+  const rx = -fy;
+  const ry = fx;
+  const hl = length * 0.5;
+  const hw = width * 0.5;
+  const local = [
+    { a: hl, c: -hw },
+    { a: hl, c: hw },
+    { a: -hl, c: hw },
+    { a: -hl, c: -hw },
+  ];
+  const world = local.map((p) => ({
+    x: cx + fx * p.a + rx * p.c,
+    y: cy + fy * p.a + ry * p.c,
+  }));
+  const bot = world.map((p) => worldToScreen(p.x, p.y, z0));
+  const lid = world.map((p) => worldToScreen(p.x, p.y, z0 + h));
+
+  const faces: { depth: number; color: number; pts: number[] }[] = [];
+  const edges = [
+    [0, 1],
+    [1, 2],
+    [2, 3],
+    [3, 0],
+  ] as const;
+  for (const [i0, i1] of edges) {
+    const ex = world[i1]!.x - world[i0]!.x;
+    const ey = world[i1]!.y - world[i0]!.y;
+    const nx = ey;
+    const ny = -ex;
+    if (nx + ny <= 0.001) continue;
+    const nl = Math.hypot(nx, ny) || 1;
+    const t = (nx / nl - ny / nl) * 0.5 + 0.5;
+    faces.push({
+      depth: depthKey((world[i0]!.x + world[i1]!.x) * 0.5, (world[i0]!.y + world[i1]!.y) * 0.5, z0 + h * 0.5),
+      color: mixHex(left, right, t),
+      pts: [lid[i0]!.x, lid[i0]!.y, lid[i1]!.x, lid[i1]!.y, bot[i1]!.x, bot[i1]!.y, bot[i0]!.x, bot[i0]!.y],
+    });
+  }
+  faces.sort((a, b) => a.depth - b.depth);
+  for (const face of faces) {
+    g.poly(face.pts);
+    g.fill({ color: face.color, alpha });
+  }
+  g.poly([lid[0]!.x, lid[0]!.y, lid[1]!.x, lid[1]!.y, lid[2]!.x, lid[2]!.y, lid[3]!.x, lid[3]!.y]);
+  g.fill({ color: top, alpha });
 }
 
 export function drawIsoBox(
@@ -106,6 +181,21 @@ function shade(color: number, mul: number): number {
   const g = Math.round(((color >> 8) & 255) * mul);
   const b = Math.round((color & 255) * mul);
   return (r << 16) | (g << 8) | b;
+}
+
+function mixHex(a: number, b: number, t: number): number {
+  const u = Math.max(0, Math.min(1, t));
+  const ar = (a >> 16) & 255;
+  const ag = (a >> 8) & 255;
+  const ab = a & 255;
+  const br = (b >> 16) & 255;
+  const bg = (b >> 8) & 255;
+  const bb = b & 255;
+  return (
+    (Math.round(ar + (br - ar) * u) << 16) |
+    (Math.round(ag + (bg - ag) * u) << 8) |
+    Math.round(ab + (bb - ab) * u)
+  );
 }
 
 export { PAL, matColors };

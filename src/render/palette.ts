@@ -25,6 +25,7 @@ export const PAL = {
   dozerDark: 0xa68618,
   dozerCabin: 0x2c4050,
   dozerTrack: 0x2a2a28,
+  cabGlass: 0x6a90a4,
   blade: 0x8d9094,
   shadow: 0x1a140c,
   fence: 0xc4a056,

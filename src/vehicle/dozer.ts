@@ -13,6 +13,7 @@ export interface Dozer {
   heat: number;
   track: number;
   lastImpact: number;
+  odo: number;
 }
 
 export function createDozer(x: number, y: number, heading: number): Dozer {
@@ -28,6 +29,7 @@ export function createDozer(x: number, y: number, heading: number): Dozer {
     heat: 0,
     track: 0,
     lastImpact: 0,
+    odo: 0,
   };
 }
 
@@ -85,7 +87,7 @@ export function stepDozer(d: Dozer, input: DriveInput, dt: number): void {
   if (input.throttle > 0) target = DOZER.maxSpeed * input.engineMul;
   if (input.throttle < 0) target = -DOZER.maxReverse;
   const acc = input.throttle >= 0 ? DOZER.accel * input.engineMul : DOZER.reverseAccel;
-  let nextAlong = approach(along, target * Math.sign(input.throttle || along), acc * dt);
+  let nextAlong = approach(along, target, acc * dt);
   if (input.throttle === 0) nextAlong = approach(along, 0, DOZER.coast * dt);
   if (d.pushT > 0 && input.throttle >= 0) nextAlong += DOZER.pushForce * dt;
 
@@ -104,6 +106,7 @@ export function stepDozer(d: Dozer, input: DriveInput, dt: number): void {
 
   d.x += d.vx * dt;
   d.y += d.vy * dt;
+  d.odo += nextAlong * dt;
 
   d.heat = Math.max(0, d.heat - DOZER.heatCool * dt);
   d.track = Math.max(0, d.track - DOZER.trackCool * dt);
