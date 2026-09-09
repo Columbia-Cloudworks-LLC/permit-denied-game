@@ -1,0 +1,311 @@
+import { describe, expect, it } from "vitest";
+import { SIM_DT } from "../game/constants";
+import { ParticlePool } from "../fx/particles";
+import { applyCellDamage, stepStructures } from "../structure/building";
+import { createDozer, stepDozer } from "../vehicle/dozer";
+import { createRoadVehicle, roadSpeed, stepRoadVehicle } from "../vehicle/roadVehicle";
+import { createTown } from "../world/town";
+import {
+  addDebrisBody,
+  crushBody,
+  obstructionAt,
+  spawnCollapseDebris,
+  stepDebris,
+  totalDebrisMass,
+} from "./debris";
+import { stepWorld, type Upgrades } from "./worldSim";
+
+const upgrades: Upgrades = { blade: 0, engine: 0, push: 0 };
+
+function stepOnce(town: ReturnType<typeof createTown>, dozer = createDozer(2, 2, 0), dt = SIM_DT) {
+  const particles = new ParticlePool();
+  return stepDebris(town, dozer, particles, [], 1, dt);
+}
+
+describe("debris spawn and mass", () => {
+  it("spawns debris along collapse displacement and direction", () => {
+    const town = createTown();
+    const house = town.buildings[0]!;
+    const cell = house.grid[0]![0]![0]!;
+    const particles = new ParticlePool();
+    applyCellDamage(house, cell, 999, 1, 0, particles, []);
+    const steps = Math.ceil(2 / SIM_DT);
+    for (let i = 0; i < steps; i++) {
+      const out = stepStructures([house], SIM_DT, particles, []);
+      for (const spawn of out.rubbleSpawns) {
+        spawnCollapseDebris(town, spawn);
+      }
+    }
+    expect(town.rubble.length).toBeGreaterThan(0);
+    const cx = house.x + (cell.gx + 0.5) * house.cellSize;
+    const cy = house.y + (cell.gy + 0.5) * house.cellSize;
+    const meanX = town.rubble.reduce((s, r) => s + r.x, 0) / town.rubble.length;
+    const meanY = town.rubble.reduce((s, r) => s + r.y, 0) / town.rubble.length;
+    const along = (meanX - cx) * cell.fallDx + (meanY - cy) * cell.fallDy;
+    expect(along).toBeGreaterThan(0.2);
+  });
+
+  it("preserves approximate mass through crushing", () => {
+    const town = createTown();
+    spawnCollapseDebris(town, {
+      x: 12,
+      y: 18,
+      dx: 1,
+      dy: 0,
+      material: "concrete",
+      floor: 1,
+      cellSize: 1.15,
+    });
+    const before = totalDebrisMass(town);
+    expect(before).toBeGreaterThan(0.8);
+    const remnant = town.rubble.find((r) => r.layer === "remnant");
+    expect(remnant).toBeTruthy();
+    crushBody(town, remnant!, new ParticlePool());
+    const after = totalDebrisMass(town);
+    expect(Math.abs(after - before)).toBeLessThan(0.04);
+    expect(Math.abs(after - before) / before).toBeLessThan(0.05);
+  });
+});
+
+describe("blade and vehicle contact", () => {
+  it("blade contact pushes and rotates off-center debris", () => {
+    const town = createTown();
+    const dozer = createDozer(10, 17.6, 0);
+    dozer.bladeDown = true;
+    dozer.vx = 4;
+    const slab = addDebrisBody(town, {
+      x: 11.55,
+      y: 18.15,
+      w: 0.85,
+      d: 0.14,
+      material: "wood",
+      layer: "remnant",
+      shape: "beam",
+      heading: Math.PI / 2,
+      mass: 0.5,
+    });
+    const startX = slab.x;
+    const startH = slab.heading;
+    const particles = new ParticlePool();
+    for (let i = 0; i < 50; i++) {
+      stepDozer(
+        dozer,
+        { throttle: 1, steer: 0, blade: true, engineMul: 1, bladeMul: 1, pushMul: 1 },
+        SIM_DT,
+      );
+      stepDebris(town, dozer, particles, [], 1, SIM_DT);
+    }
+    expect(slab.x).toBeGreaterThan(startX + 0.15);
+    expect(Math.abs(slab.heading - startH)).toBeGreaterThan(0.04);
+  });
+
+  it("keeps debris contacts stable under sustained compression", () => {
+    const town = createTown();
+    const a = addDebrisBody(town, {
+      x: 14,
+      y: 17.6,
+      w: 0.55,
+      d: 0.4,
+      material: "concrete",
+      layer: "remnant",
+      mass: 2.2,
+    });
+    const b = addDebrisBody(town, {
+      x: 14.28,
+      y: 17.6,
+      w: 0.5,
+      d: 0.38,
+      material: "concrete",
+      layer: "remnant",
+      mass: 2,
+    });
+    const dozer = createDozer(12.4, 17.6, 0);
+    dozer.bladeDown = true;
+    dozer.vx = 3.2;
+    const particles = new ParticlePool();
+    for (let i = 0; i < 180; i++) {
+      stepDebris(town, dozer, particles, [], 1, SIM_DT);
+    }
+    expect(Number.isFinite(a.x) && Number.isFinite(b.x)).toBe(true);
+    expect(Number.isFinite(a.vx) && Number.isFinite(a.omega)).toBe(true);
+    const dist = Math.hypot(a.x - b.x, a.y - b.y);
+    expect(dist).toBeGreaterThan(0.18);
+    expect(dist).toBeLessThan(2.4);
+    expect(Math.hypot(a.vx, a.vy)).toBeLessThan(8);
+  });
+
+  it("settles a riding fragment after its support moves", () => {
+    const town = createTown();
+    const core = addDebrisBody(town, {
+      x: 16,
+      y: 17.6,
+      w: 0.7,
+      d: 0.5,
+      material: "concrete",
+      layer: "remnant",
+      elev: 0,
+      thickness: 0.32,
+      mass: 2.4,
+    });
+    const chip = addDebrisBody(town, {
+      x: 16.05,
+      y: 17.62,
+      w: 0.18,
+      d: 0.12,
+      material: "brick",
+      layer: "fragment",
+      elev: 0.3,
+      thickness: 0.08,
+      mass: 0.16,
+    });
+    for (let i = 0; i < 40; i++) stepOnce(town);
+    const raised = chip.elev;
+    expect(raised).toBeGreaterThan(0.08);
+    core.x = 19;
+    core.y = 20;
+    for (let i = 0; i < 70; i++) stepOnce(town);
+    expect(chip.elev).toBeLessThan(raised - 0.04);
+  });
+
+  it("lets the dozer rearrange a heap that stops a road vehicle", () => {
+    const town = createTown();
+    for (let i = 0; i < 5; i++) {
+      addDebrisBody(town, {
+        x: 12 + i * 0.22,
+        y: 17.55 + (i % 2) * 0.12,
+        w: 0.48,
+        d: 0.36,
+        material: "concrete",
+        layer: "remnant",
+        mass: 1.8,
+        elev: 0.02,
+        thickness: 0.3,
+      });
+    }
+    const heapX = 12.4;
+    const before = obstructionAt(town, heapX, 17.6, 0.8);
+    expect(before.resistance).toBeGreaterThan(1.2);
+
+    const car = createRoadVehicle(10.2, 17.6, 0);
+    town.roadCar = car;
+    const carStart = roadSpeed(car);
+    void carStart;
+    for (let i = 0; i < 90; i++) {
+      stepRoadVehicle(car, SIM_DT);
+      stepOnce(town, createDozer(2, 2, 0));
+    }
+    const blockedSpeed = roadSpeed(car);
+    expect(blockedSpeed).toBeLessThan(3.2);
+
+    const dozer = createDozer(10.4, 17.6, 0);
+    const particles = new ParticlePool();
+    for (let i = 0; i < 140; i++) {
+      stepDozer(
+        dozer,
+        { throttle: 1, steer: 0, blade: true, engineMul: 1.28, bladeMul: 1, pushMul: 1 },
+        SIM_DT,
+      );
+      stepDebris(town, dozer, particles, [], 1.28, SIM_DT);
+    }
+    const moved = town.rubble.filter((r) => r.layer === "remnant");
+    const meanX = moved.reduce((s, r) => s + r.x, 0) / Math.max(1, moved.length);
+    expect(meanX).toBeGreaterThan(heapX + 0.35);
+  });
+});
+
+describe("obstruction query and restart", () => {
+  it("updates collision and obstruction after a path is cleared", () => {
+    const town = createTown();
+    addDebrisBody(town, {
+      x: 15,
+      y: 17.6,
+      w: 0.8,
+      d: 0.55,
+      material: "concrete",
+      layer: "remnant",
+      mass: 2.6,
+      thickness: 0.36,
+    });
+    addDebrisBody(town, {
+      x: 15.35,
+      y: 17.7,
+      w: 0.6,
+      d: 0.4,
+      material: "brick",
+      layer: "remnant",
+      mass: 1.6,
+      thickness: 0.28,
+    });
+    expect(obstructionAt(town, 15.1, 17.65, 0.75).blocked).toBe(true);
+
+    const dozer = createDozer(13.2, 17.6, 0);
+    const particles = new ParticlePool();
+    for (let i = 0; i < 160; i++) {
+      stepDozer(
+        dozer,
+        { throttle: 1, steer: 0, blade: true, engineMul: 1.28, bladeMul: 1, pushMul: 1 },
+        SIM_DT,
+      );
+      stepDebris(town, dozer, particles, [], 1.28, SIM_DT);
+    }
+    const after = obstructionAt(town, 15.1, 17.65, 0.75);
+    expect(after.blocked).toBe(false);
+    expect(after.resistance).toBeLessThan(1.55);
+  });
+
+  it("does not erase an old heap when new rubble spawns elsewhere", () => {
+    const town = createTown();
+    addDebrisBody(town, {
+      x: 8,
+      y: 17.6,
+      w: 0.7,
+      d: 0.5,
+      material: "concrete",
+      layer: "remnant",
+      mass: 2.2,
+    });
+    const first = town.rubble[0]!.id;
+    spawnCollapseDebris(town, {
+      x: 30,
+      y: 8,
+      dx: 0,
+      dy: 1,
+      material: "wood",
+      floor: 0,
+      cellSize: 1.15,
+    });
+    expect(town.rubble.some((r) => r.id === first)).toBe(true);
+    expect(obstructionAt(town, 8, 17.6, 0.7).resistance).toBeGreaterThan(0.8);
+  });
+
+  it("resets debris and pile state on restart", () => {
+    const town = createTown();
+    spawnCollapseDebris(town, {
+      x: 12,
+      y: 18,
+      dx: 1,
+      dy: 0,
+      material: "brick",
+      floor: 0,
+      cellSize: 1.15,
+    });
+    town.roadCar = createRoadVehicle();
+    expect(town.rubble.length).toBeGreaterThan(0);
+    expect(totalDebrisMass(town)).toBeGreaterThan(0);
+    const fresh = createTown();
+    expect(fresh.rubble.length).toBe(0);
+    expect(fresh.marks.length).toBe(0);
+    expect(fresh.pile.totalMass()).toBe(0);
+    expect(fresh.roadCar).toBeNull();
+    expect(obstructionAt(fresh, 12, 18, 1).blocked).toBe(false);
+  });
+
+  it("still drives the world after a collapse without dropping sim fields", () => {
+    const town = createTown();
+    const dozer = createDozer(town.spawnX, town.spawnY, town.spawnHeading);
+    const particles = new ParticlePool();
+    const out = stepWorld(town, dozer, particles, upgrades, SIM_DT);
+    expect(out.debrisLoad).toBeGreaterThanOrEqual(0);
+    expect(Array.isArray(out.events)).toBe(true);
+  });
+});

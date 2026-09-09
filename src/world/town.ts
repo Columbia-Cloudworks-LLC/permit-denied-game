@@ -1,12 +1,17 @@
 import { CELL } from "../game/constants";
 import { Rng } from "../game/rng";
+import { resetDebrisIds } from "../sim/debris";
+import { PileField } from "../sim/pile";
 import { createBuilding, resetBuildingIds } from "../structure/building";
-import type { Building, Prop, Rubble } from "../structure/types";
+import type { Building, GroundMark, Prop, RoadVehicle, Rubble } from "../structure/types";
 
 export interface Town {
   buildings: Building[];
   props: Prop[];
   rubble: Rubble[];
+  marks: GroundMark[];
+  pile: PileField;
+  roadCar: RoadVehicle | null;
   spawnX: number;
   spawnY: number;
   spawnHeading: number;
@@ -19,7 +24,6 @@ export interface Town {
 }
 
 let propId = 1;
-let rubbleId = 1;
 
 function prop(
   kind: Prop["kind"],
@@ -46,37 +50,10 @@ function prop(
   };
 }
 
-export function addRubble(
-  town: Town,
-  x: number,
-  y: number,
-  w: number,
-  d: number,
-  material: Rubble["material"],
-): Rubble | null {
-  if (town.rubble.length > 180) {
-    town.rubble.splice(0, 20);
-  }
-  const r: Rubble = {
-    id: rubbleId++,
-    x,
-    y,
-    w,
-    d,
-    z: 0.28,
-    material,
-    hp: 18,
-    vx: 0,
-    vy: 0,
-  };
-  town.rubble.push(r);
-  return r;
-}
-
 export function createTown(): Town {
   resetBuildingIds();
+  resetDebrisIds();
   propId = 1;
-  rubbleId = 1;
   const rng = new Rng(0x0ddba11);
 
   const buildings: Building[] = [
@@ -186,6 +163,9 @@ export function createTown(): Town {
     buildings,
     props,
     rubble: [],
+    marks: [],
+    pile: new PileField(0, 0, 40, 36),
+    roadCar: null,
     spawnX: 20.6,
     spawnY: 27.2,
     spawnHeading: -Math.PI / 2,

@@ -1,0 +1,993 @@
+import { DEBRIS, DOZER } from "../game/constants";
+import { clamp, len } from "../game/math";
+import { Rng } from "../game/rng";
+import type { ParticlePool } from "../fx/particles";
+import type {
+  DebrisLayer,
+  DebrisShape,
+  GroundKind,
+  GroundMark,
+  Material,
+  Rubble,
+  VehicleProfile,
+  WorldEvent,
+} from "../structure/types";
+import type { Dozer } from "../vehicle/dozer";
+import { dozerForward, dozerSpeed } from "../vehicle/dozer";
+import type { Town } from "../world/town";
+import { SpatialHash } from "./spatial";
+import { queryObstruction } from "./pile";
+
+let nextDebrisId = 1;
+const playRng = new Rng(0xdeb415);
+const nearbyBodies: Rubble[] = [];
+const bodyHash = new SpatialHash<Rubble>(2.2);
+const contacted = new Set<number>();
+
+export interface CollapseSpawn {
+  x: number;
+  y: number;
+  dx: number;
+  dy: number;
+  material: Material;
+  floor: number;
+  cellSize: number;
+}
+
+export function resetDebrisIds(): void {
+  nextDebrisId = 1;
+}
+
+function rubbleAabb(r: Rubble): { x: number; y: number; w: number; d: number } {
+  const ext = 0.5 * Math.hypot(r.w, r.d) + 0.06;
+  return { x: r.x - ext, y: r.y - ext, w: ext * 2, d: ext * 2 };
+}
+
+export function totalDebrisMass(town: Town): number {
+  let sum = town.pile.totalMass();
+  for (const r of town.rubble) sum += r.mass;
+  return sum;
+}
+
+function materialDensity(material: Material): number {
+  switch (material) {
+    case "wood":
+      return 0.55;
+    case "brick":
+      return 1.05;
+    case "concrete":
+      return 1.35;
+    case "metal":
+      return 1.15;
+    case "glass":
+      return 0.32;
+    default: {
+      const _never: never = material;
+      return _never;
+    }
+  }
+}
+
+function crushabilityOf(material: Material): number {
+  switch (material) {
+    case "wood":
+      return 0.82;
+    case "brick":
+      return 0.55;
+    case "concrete":
+      return 0.26;
+    case "metal":
+      return 0.16;
+    case "glass":
+      return 0.96;
+    default: {
+      const _never: never = material;
+      return _never;
+    }
+  }
+}
+
+function frictionOf(material: Material): number {
+  switch (material) {
+    case "wood":
+      return 0.52;
+    case "brick":
+      return 0.7;
+    case "concrete":
+      return 0.74;
+    case "metal":
+      return 0.42;
+    case "glass":
+      return 0.22;
+    default: {
+      const _never: never = material;
+      return _never;
+    }
+  }
+}
+
+function cellVolume(cellSize: number): number {
+  return cellSize * cellSize * 1.85;
+}
+
+function makeRubble(init: {
+  x: number;
+  y: number;
+  w: number;
+  d: number;
+  material: Material;
+  layer: DebrisLayer;
+  shape?: DebrisShape;
+  heading?: number;
+  elev?: number;
+  thickness?: number;
+  mass?: number;
+  vx?: number;
+  vy?: number;
+  omega?: number;
+  seed?: number;
+}): Rubble {
+  const shape = init.shape ?? defaultShape(init.material, init.layer, init.w, init.d);
+  const thickness = init.thickness ?? defaultThickness(init.material, shape, init.layer);
+  const mass = init.mass ?? Math.max(0.08, init.w * init.d * thickness * materialDensity(init.material) * 3.4);
+  const seed = init.seed ?? ((nextDebrisId * 1103515245 + Math.floor(init.x * 97) + Math.floor(init.y * 53)) >>> 0);
+  return {
+    id: nextDebrisId++,
+    x: init.x,
+    y: init.y,
+    vx: init.vx ?? 0,
+    vy: init.vy ?? 0,
+    vz: 0,
+    heading: init.heading ?? 0,
+    omega: init.omega ?? 0,
+    w: init.w,
+    d: init.d,
+    elev: init.elev ?? 0,
+    thickness,
+    mass,
+    material: init.material,
+    shape,
+    layer: init.layer,
+    seed,
+    hp: 14 + mass * 8,
+    damage: 0,
+    crushability: crushabilityOf(init.material),
+    friction: frictionOf(init.material),
+    sleeping: false,
+    sleepT: 0,
+  };
+}
+
+function defaultShape(material: Material, layer: DebrisLayer, w: number, d: number): DebrisShape {
+  if (material === "wood") return w > d * 1.55 ? "beam" : "panel";
+  if (material === "metal") return w > d * 1.4 ? "beam" : "panel";
+  if (material === "glass") return "chunk";
+  if (layer === "fragment") return "chunk";
+  return "chunk";
+}
+
+function defaultThickness(material: Material, shape: DebrisShape, layer: DebrisLayer): number {
+  if (material === "glass") return 0.05;
+  if (shape === "panel") return layer === "remnant" ? 0.12 : 0.06;
+  if (shape === "beam") return layer === "remnant" ? 0.18 : 0.09;
+  if (material === "concrete") return layer === "remnant" ? 0.34 : 0.16;
+  if (material === "brick") return layer === "remnant" ? 0.28 : 0.1;
+  return layer === "remnant" ? 0.22 : 0.1;
+}
+
+export function addDebrisBody(town: Town, init: Parameters<typeof makeRubble>[0]): Rubble {
+  enforceBudgets(town, init.layer);
+  const r = makeRubble(init);
+  const support = town.pile.heightAt(r.x, r.y);
+  r.elev = Math.max(r.elev, support);
+  town.rubble.push(r);
+  return r;
+}
+
+function addMark(
+  town: Town,
+  x: number,
+  y: number,
+  kind: GroundKind,
+  material: Material,
+  heading = 0,
+): void {
+  if (town.marks.length >= DEBRIS.cosmeticCap) {
+    town.marks.splice(0, 24);
+  }
+  const rng = playRng;
+  const mark: GroundMark = {
+    x,
+    y,
+    w: kind === "scrape" ? rng.range(0.28, 0.7) : rng.range(0.08, 0.22),
+    d: kind === "scrape" ? rng.range(0.05, 0.1) : rng.range(0.06, 0.16),
+    heading,
+    kind,
+    material,
+    seed: rng.int(1, 1_000_000),
+    alpha: kind === "dust" ? 0.22 : kind === "scrape" ? 0.35 : 0.7,
+  };
+  town.marks.push(mark);
+}
+
+export function spawnCollapseDebris(town: Town, spawn: CollapseSpawn): Rubble[] {
+  const rng = new Rng(
+    (Math.floor(spawn.x * 1009) ^ Math.floor(spawn.y * 917) ^ (spawn.floor * 131) ^ materialSeed(spawn.material)) >>> 0,
+  );
+  const volume = cellVolume(spawn.cellSize);
+  const budget = volume * materialDensity(spawn.material);
+  const dirL = len(spawn.dx, spawn.dy) || 1;
+  const dx = spawn.dx / dirL;
+  const dy = spawn.dy / dirL;
+  const heap = town.pile.heightAt(spawn.x, spawn.y);
+  const created: Rubble[] = [];
+
+  const fines = spawn.material === "glass" ? budget * 0.72 : budget * 0.12;
+  town.pile.addMass(spawn.x, spawn.y, fines);
+  let remaining = budget - fines;
+
+  const remnantPlans = remnantPlan(spawn.material, rng);
+  for (const plan of remnantPlans) {
+    if (remaining < 0.08) break;
+    const mass = Math.min(remaining * plan.massShare, remaining);
+    remaining -= mass;
+    const ox = (rng.range(-0.28, 0.28) + plan.along * dx) * spawn.cellSize;
+    const oy = (rng.range(-0.28, 0.28) + plan.along * dy) * spawn.cellSize;
+    const body = addDebrisBody(town, {
+      x: spawn.x + ox,
+      y: spawn.y + oy,
+      w: plan.w,
+      d: plan.d,
+      material: spawn.material,
+      layer: "remnant",
+      shape: plan.shape,
+      heading: Math.atan2(dy, dx) + rng.range(-0.9, 0.9),
+      elev: heap + rng.range(0, 0.08 + spawn.floor * 0.06),
+      thickness: plan.thickness,
+      mass,
+      vx: dx * rng.range(0.4, 1.8) + rng.range(-0.5, 0.5),
+      vy: dy * rng.range(0.4, 1.8) + rng.range(-0.5, 0.5),
+      omega: rng.range(-4, 4),
+      seed: rng.int(1, 0x7fffffff),
+    });
+    created.push(body);
+  }
+
+  const fragCount = spawn.material === "glass" ? rng.int(1, 3) : rng.int(3, 7);
+  for (let i = 0; i < fragCount && remaining > 0.04; i++) {
+    const mass = Math.min(remaining / Math.max(1, fragCount - i), remaining * 0.55);
+    remaining -= mass;
+    const ang = rng.range(0, Math.PI * 2);
+    const rad = rng.range(0.12, 0.55) * spawn.cellSize;
+    const fw = spawn.material === "wood" ? rng.range(0.28, 0.55) : rng.range(0.12, 0.32);
+    const fd = spawn.material === "wood" ? rng.range(0.06, 0.12) : rng.range(0.08, 0.2);
+    created.push(
+      addDebrisBody(town, {
+        x: spawn.x + Math.cos(ang) * rad + dx * 0.12,
+        y: spawn.y + Math.sin(ang) * rad + dy * 0.12,
+        w: fw,
+        d: fd,
+        material: spawn.material,
+        layer: "fragment",
+        heading: ang + rng.range(-0.4, 0.4),
+        elev: heap + rng.range(0.02, 0.16 + spawn.floor * 0.05),
+        mass,
+        vx: dx * rng.range(0.8, 2.6) + Math.cos(ang) * rng.range(0.4, 1.8),
+        vy: dy * rng.range(0.8, 2.6) + Math.sin(ang) * rng.range(0.4, 1.8),
+        omega: rng.range(-8, 8),
+        seed: rng.int(1, 0x7fffffff),
+      }),
+    );
+  }
+
+  if (remaining > 0.02) {
+    town.pile.addMass(spawn.x + dx * 0.15, spawn.y + dy * 0.15, remaining);
+    remaining = 0;
+  }
+
+  const cosmeticN = spawn.material === "glass" ? 10 : 5;
+  for (let i = 0; i < cosmeticN; i++) {
+    const kind: GroundKind =
+      spawn.material === "glass" ? "glass" : spawn.material === "wood" ? "splinter" : i === 0 ? "dust" : "chip";
+    addMark(
+      town,
+      spawn.x + rng.range(-0.45, 0.45) + dx * 0.2,
+      spawn.y + rng.range(-0.45, 0.45) + dy * 0.2,
+      kind,
+      spawn.material,
+      rng.range(0, Math.PI * 2),
+    );
+  }
+
+  return created;
+}
+
+function remnantPlan(
+  material: Material,
+  rng: Rng,
+): { w: number; d: number; thickness: number; shape: DebrisShape; massShare: number; along: number }[] {
+  switch (material) {
+    case "wood":
+      return [
+        { w: rng.range(0.7, 1.15), d: rng.range(0.1, 0.16), thickness: 0.12, shape: "beam", massShare: 0.42, along: 0.15 },
+        { w: rng.range(0.45, 0.8), d: rng.range(0.09, 0.14), thickness: 0.1, shape: "beam", massShare: 0.28, along: -0.1 },
+        ...(rng.chance(0.35)
+          ? [{ w: rng.range(0.5, 0.75), d: rng.range(0.32, 0.5), thickness: 0.08, shape: "panel" as const, massShare: 0.18, along: 0.05 }]
+          : []),
+      ];
+    case "brick":
+      return [
+        { w: rng.range(0.38, 0.62), d: rng.range(0.28, 0.48), thickness: rng.range(0.22, 0.34), shape: "chunk", massShare: 0.48, along: 0.08 },
+        { w: rng.range(0.2, 0.3), d: rng.range(0.1, 0.14), thickness: 0.09, shape: "chunk", massShare: 0.14, along: 0.2 },
+      ];
+    case "concrete":
+      return [
+        { w: rng.range(0.42, 0.72), d: rng.range(0.3, 0.52), thickness: rng.range(0.24, 0.42), shape: "chunk", massShare: 0.52, along: 0.1 },
+        { w: rng.range(0.28, 0.48), d: rng.range(0.2, 0.36), thickness: rng.range(0.16, 0.3), shape: "chunk", massShare: 0.26, along: -0.12 },
+      ];
+    case "metal":
+      return [
+        { w: rng.range(0.7, 1.2), d: rng.range(0.08, 0.14), thickness: 0.1, shape: "beam", massShare: 0.4, along: 0.12 },
+        { w: rng.range(0.4, 0.7), d: rng.range(0.22, 0.4), thickness: 0.07, shape: "panel", massShare: 0.28, along: -0.08 },
+      ];
+    case "glass":
+      return [];
+    default: {
+      const _never: never = material;
+      return _never;
+    }
+  }
+}
+
+function materialSeed(material: Material): number {
+  switch (material) {
+    case "wood":
+      return 11;
+    case "brick":
+      return 23;
+    case "concrete":
+      return 37;
+    case "metal":
+      return 53;
+    case "glass":
+      return 71;
+    default: {
+      const _never: never = material;
+      return _never;
+    }
+  }
+}
+
+export function spawnPropDebris(town: Town, x: number, y: number, w: number, d: number, material: Material): void {
+  const cx = x + w * 0.5;
+  const cy = y + d * 0.5;
+  addDebrisBody(town, {
+    x: cx,
+    y: cy,
+    w: Math.max(0.28, w * 0.7),
+    d: Math.max(0.2, d * 0.65),
+    material,
+    layer: "remnant",
+    heading: playRng.range(-0.4, 0.4),
+    vx: playRng.range(-0.6, 0.6),
+    vy: playRng.range(-0.6, 0.6),
+    omega: playRng.range(-2, 2),
+  });
+  if (material !== "glass") {
+    addDebrisBody(town, {
+      x: cx + playRng.range(-0.2, 0.2),
+      y: cy + playRng.range(-0.2, 0.2),
+      w: playRng.range(0.16, 0.32),
+      d: playRng.range(0.1, 0.18),
+      material,
+      layer: "fragment",
+      heading: playRng.range(0, Math.PI * 2),
+      vx: playRng.range(-1.4, 1.4),
+      vy: playRng.range(-1.4, 1.4),
+      omega: playRng.range(-6, 6),
+    });
+  }
+  addMark(town, cx, cy, material === "wood" ? "splinter" : "chip", material, playRng.range(0, Math.PI));
+}
+
+function absorbBody(town: Town, r: Rubble): void {
+  town.pile.addMass(r.x, r.y, r.mass);
+  addMark(town, r.x, r.y, r.material === "wood" ? "splinter" : "chip", r.material, r.heading);
+  const i = town.rubble.indexOf(r);
+  if (i >= 0) town.rubble.splice(i, 1);
+}
+
+function enforceBudgets(town: Town, incoming: DebrisLayer): void {
+  const remnants = town.rubble.filter((r) => r.layer === "remnant");
+  const fragments = town.rubble.filter((r) => r.layer === "fragment");
+  const cap = incoming === "remnant" ? DEBRIS.remnantCap : DEBRIS.fragmentCap;
+  const list = incoming === "remnant" ? remnants : fragments;
+  if (list.length < cap) return;
+  const sleeping = list.filter((r) => r.sleeping).sort((a, b) => a.mass - b.mass);
+  while (sleeping.length > 0 && town.rubble.filter((r) => r.layer === incoming).length >= cap) {
+    absorbBody(town, sleeping.shift()!);
+  }
+  if (town.rubble.filter((r) => r.layer === incoming).length >= cap) {
+    const smallest = [...list].sort((a, b) => a.mass - b.mass)[0];
+    if (smallest) absorbBody(town, smallest);
+  }
+}
+
+export function crushBody(town: Town, r: Rubble, particles: ParticlePool): void {
+  const budget = r.mass;
+  const idx = town.rubble.indexOf(r);
+  if (idx >= 0) town.rubble.splice(idx, 1);
+  let used = 0;
+  const rng = new Rng(r.seed ^ 0x51a11);
+  if (r.layer === "remnant" && budget > 0.55 && r.material !== "glass") {
+    const n = r.material === "concrete" || r.material === "brick" ? 3 : 2;
+    const shares = splitMass(budget * 0.72, n, rng);
+    for (const share of shares) {
+      used += share;
+      const piece = makeRubble({
+        x: r.x + rng.range(-0.16, 0.16),
+        y: r.y + rng.range(-0.16, 0.16),
+        w: Math.max(0.12, r.w * rng.range(0.32, 0.5)),
+        d: Math.max(0.08, r.d * rng.range(0.35, 0.55)),
+        material: r.material,
+        layer: "fragment",
+        heading: r.heading + rng.range(-0.8, 0.8),
+        elev: r.elev,
+        mass: share,
+        vx: r.vx + rng.range(-0.8, 0.8),
+        vy: r.vy + rng.range(-0.8, 0.8),
+        omega: r.omega + rng.range(-5, 5),
+        seed: rng.int(1, 0x7fffffff),
+      });
+      piece.mass = share;
+      town.rubble.push(piece);
+    }
+  }
+  town.pile.addMass(r.x, r.y, Math.max(0, budget - used));
+  particles.burst(r.material === "wood" ? "wood" : r.material === "brick" ? "brick" : r.material === "metal" ? "metal" : "concrete", r.x, r.y, r.elev + 0.1, 0.45);
+  addMark(town, r.x, r.y, r.material === "wood" ? "splinter" : "chip", r.material, r.heading);
+  addMark(town, r.x + 0.08, r.y, "dust", r.material, r.heading);
+}
+
+function splitMass(total: number, n: number, rng: Rng): number[] {
+  const raw = Array.from({ length: n }, () => 0.7 + rng.range(0, 0.6));
+  const sum = raw.reduce((s, v) => s + v, 0);
+  return raw.map((v) => (total * v) / sum);
+}
+
+function invMass(r: Rubble): number {
+  return r.sleeping ? 0 : 1 / Math.max(0.08, r.mass);
+}
+
+function invInertia(r: Rubble): number {
+  if (r.sleeping) return 0;
+  const i = (r.mass * (r.w * r.w + r.d * r.d)) / 12;
+  return 1 / Math.max(0.02, i);
+}
+
+function wake(r: Rubble): void {
+  r.sleeping = false;
+  r.sleepT = 0;
+}
+
+interface Obb {
+  x: number;
+  y: number;
+  heading: number;
+  hl: number;
+  hw: number;
+}
+
+function asObb(r: Rubble): Obb {
+  return { x: r.x, y: r.y, heading: r.heading, hl: r.w * 0.5, hw: r.d * 0.5 };
+}
+
+function projectObb(o: Obb, ax: number, ay: number): [number, number] {
+  const fx = Math.cos(o.heading);
+  const fy = Math.sin(o.heading);
+  const c = o.x * ax + o.y * ay;
+  const extent = o.hl * Math.abs(fx * ax + fy * ay) + o.hw * Math.abs(-fy * ax + fx * ay);
+  return [c - extent, c + extent];
+}
+
+function obbOverlap(a: Obb, b: Obb): { hit: boolean; nx: number; ny: number; depth: number; px: number; py: number } {
+  const axes = [
+    [Math.cos(a.heading), Math.sin(a.heading)],
+    [-Math.sin(a.heading), Math.cos(a.heading)],
+    [Math.cos(b.heading), Math.sin(b.heading)],
+    [-Math.sin(b.heading), Math.cos(b.heading)],
+  ] as const;
+  let minDepth = Infinity;
+  let nx = 1;
+  let ny = 0;
+  for (const [ax, ay] of axes) {
+    const [a0, a1] = projectObb(a, ax, ay);
+    const [b0, b1] = projectObb(b, ax, ay);
+    const o = Math.min(a1, b1) - Math.max(a0, b0);
+    if (o <= 0) return { hit: false, nx: 0, ny: 0, depth: 0, px: 0, py: 0 };
+    if (o < minDepth) {
+      minDepth = o;
+      nx = ax;
+      ny = ay;
+    }
+  }
+  if ((b.x - a.x) * nx + (b.y - a.y) * ny < 0) {
+    nx = -nx;
+    ny = -ny;
+  }
+  return { hit: true, nx, ny, depth: minDepth, px: (a.x + b.x) * 0.5, py: (a.y + b.y) * 0.5 };
+}
+
+function closestOnObb(px: number, py: number, o: Obb): { x: number; y: number; along: number; across: number } {
+  const fx = Math.cos(o.heading);
+  const fy = Math.sin(o.heading);
+  const rx = -fy;
+  const ry = fx;
+  const dx = px - o.x;
+  const dy = py - o.y;
+  let along = dx * fx + dy * fy;
+  let across = dx * rx + dy * ry;
+  const inside = Math.abs(along) <= o.hl && Math.abs(across) <= o.hw;
+  if (inside) {
+    const gapA = o.hl - Math.abs(along);
+    const gapC = o.hw - Math.abs(across);
+    if (gapA < gapC) along = Math.sign(along || 1) * o.hl;
+    else across = Math.sign(across || 1) * o.hw;
+  } else {
+    along = clamp(along, -o.hl, o.hl);
+    across = clamp(across, -o.hw, o.hw);
+  }
+  return { x: o.x + fx * along + rx * across, y: o.y + fy * along + ry * across, along, across };
+}
+
+function circleObb(
+  cx: number,
+  cy: number,
+  radius: number,
+  o: Obb,
+): { hit: boolean; nx: number; ny: number; depth: number; px: number; py: number; across: number } {
+  const c = closestOnObb(cx, cy, o);
+  const dx = cx - c.x;
+  const dy = cy - c.y;
+  const dist = Math.hypot(dx, dy);
+  if (dist >= radius) return { hit: false, nx: 0, ny: 0, depth: 0, px: 0, py: 0, across: c.across };
+  if (dist < 1e-5) {
+    const fx = Math.cos(o.heading);
+    const fy = Math.sin(o.heading);
+    return { hit: true, nx: fx, ny: fy, depth: radius, px: c.x, py: c.y, across: c.across };
+  }
+  return { hit: true, nx: dx / dist, ny: dy / dist, depth: radius - dist, px: c.x, py: c.y, across: c.across };
+}
+
+function applyImpulse(
+  r: Rubble,
+  nx: number,
+  ny: number,
+  px: number,
+  py: number,
+  jn: number,
+  jt: number,
+): void {
+  if (r.sleeping) wake(r);
+  const im = invMass(r);
+  const ii = invInertia(r);
+  const ix = nx * jn - ny * jt;
+  const iy = ny * jn + nx * jt;
+  r.vx += ix * im;
+  r.vy += iy * im;
+  const rx = px - r.x;
+  const ry = py - r.y;
+  r.omega += (rx * iy - ry * ix) * ii;
+}
+
+function resolveBodies(a: Rubble, b: Rubble): number {
+  const hit = obbOverlap(asObb(a), asObb(b));
+  if (!hit.hit) return 0;
+  const imA = invMass(a);
+  const imB = invMass(b);
+  const invSum = imA + imB;
+  if (invSum <= 1e-8) return 0;
+  const corr = Math.min(DEBRIS.maxCorrect, Math.max(0, hit.depth - DEBRIS.slop) * DEBRIS.baumgarte);
+  if (a.sleeping && hit.depth > 0.02) wake(a);
+  if (b.sleeping && hit.depth > 0.02) wake(b);
+  a.x -= hit.nx * corr * (imA / invSum);
+  a.y -= hit.ny * corr * (imA / invSum);
+  b.x += hit.nx * corr * (imB / invSum);
+  b.y += hit.ny * corr * (imB / invSum);
+
+  const rax = hit.px - a.x;
+  const ray = hit.py - a.y;
+  const rbx = hit.px - b.x;
+  const rby = hit.py - b.y;
+  const vax = a.vx - a.omega * ray;
+  const vay = a.vy + a.omega * rax;
+  const vbx = b.vx - b.omega * rby;
+  const vby = b.vy + b.omega * rbx;
+  const rvx = vax - vbx;
+  const rvy = vay - vby;
+  const vn = rvx * hit.nx + rvy * hit.ny;
+  if (vn > 0) return hit.depth;
+  const rnA = rax * hit.ny - ray * hit.nx;
+  const rnB = rbx * hit.ny - rby * hit.nx;
+  const denom = invSum + rnA * rnA * invInertia(a) + rnB * rnB * invInertia(b);
+  const j = (-(1 + DEBRIS.rest) * vn) / Math.max(1e-5, denom);
+  const jn = clamp(j, 0, 4.5);
+  const tx = -hit.ny;
+  const ty = hit.nx;
+  const vt = rvx * tx + rvy * ty;
+  const mu = Math.min(a.friction, b.friction);
+  const jt = clamp(-vt / Math.max(1e-5, denom), -jn * mu, jn * mu);
+  applyImpulse(a, hit.nx, hit.ny, hit.px, hit.py, jn, jt);
+  applyImpulse(b, -hit.nx, -hit.ny, hit.px, hit.py, jn, jt);
+  return jn;
+}
+
+interface VehicleContact {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  heading: number;
+  radius: number;
+  profile: VehicleProfile;
+  blade?: { cx: number; cy: number; heading: number; hl: number; hw: number; z0: number };
+}
+
+function bladeOf(dozer: Dozer): VehicleContact["blade"] {
+  const f = dozerForward(dozer);
+  const reach = DOZER.bladeReach + (dozer.bladeDown ? 0.1 : 0);
+  return {
+    cx: dozer.x + f.x * reach,
+    cy: dozer.y + f.y * reach,
+    heading: dozer.heading,
+    hl: (DOZER.bladeDepth + 0.14) * 0.5,
+    hw: DOZER.bladeHalf,
+    z0: dozer.bladeDown ? 0.02 : 0.28,
+  };
+}
+
+function resolveVehicleBody(
+  v: VehicleContact,
+  r: Rubble,
+  useBlade: boolean,
+  events: WorldEvent[],
+  particles: ParticlePool,
+): number {
+  const top = r.elev + r.thickness;
+  if (useBlade && v.blade) {
+    if (top < v.blade.z0 + 0.04) return 0;
+    const bladeObb = {
+      x: v.blade.cx,
+      y: v.blade.cy,
+      heading: v.blade.heading,
+      hl: v.blade.hl,
+      hw: v.blade.hw,
+    };
+    const hit = obbOverlap(bladeObb, asObb(r));
+    if (!hit.hit) return 0;
+    const fx = Math.cos(bladeObb.heading);
+    const fy = Math.sin(bladeObb.heading);
+    const rx = -fy;
+    const ry = fx;
+    const across = clamp((r.x - bladeObb.x) * rx + (r.y - bladeObb.y) * ry, -bladeObb.hw, bladeObb.hw);
+    const front = {
+      x: bladeObb.x + fx * bladeObb.hl + rx * across,
+      y: bladeObb.y + fy * bladeObb.hl + ry * across,
+    };
+    const onDebris = closestOnObb(front.x, front.y, asObb(r));
+    const nx = r.x - onDebris.x || fx;
+    const ny = r.y - onDebris.y || fy;
+    const nl = Math.hypot(nx, ny);
+    const nnx = nl > 1e-5 ? nx / nl : fx;
+    const nny = nl > 1e-5 ? ny / nl : fy;
+    return finishVehicleHit(v, r, nnx, nny, onDebris.x, onDebris.y, hit.depth, across, v.blade.hw, events, particles);
+  }
+  if (top < v.profile.clearance && r.layer === "fragment") return 0;
+  const hit = circleObb(v.x, v.y, v.radius, asObb(r));
+  if (!hit.hit) return 0;
+  return finishVehicleHit(v, r, -hit.nx, -hit.ny, hit.px, hit.py, hit.depth, 0, 1, events, particles);
+}
+
+function finishVehicleHit(
+  v: VehicleContact,
+  r: Rubble,
+  nx: number,
+  ny: number,
+  px: number,
+  py: number,
+  depth: number,
+  across: number,
+  halfW: number,
+  events: WorldEvent[],
+  particles: ParticlePool,
+): number {
+  wake(r);
+  const imB = invMass(r);
+  const imV = 1 / Math.max(0.4, v.profile.mass * 2.1);
+  const invSum = imB + imV;
+  const corr = Math.min(DEBRIS.maxCorrect, Math.max(0, depth - DEBRIS.slop) * 0.4);
+  r.x += nx * corr * (imB / invSum);
+  r.y += ny * corr * (imB / invSum);
+
+  const rx = px - r.x;
+  const ry = py - r.y;
+  const bvx = r.vx - r.omega * ry;
+  const bvy = r.vy + r.omega * rx;
+  const rvx = bvx - v.vx;
+  const rvy = bvy - v.vy;
+  const vn = rvx * nx + rvy * ny;
+  if (vn > 0.02) return 0;
+  const rn = rx * ny - ry * nx;
+  const denom = imB + imV + rn * rn * invInertia(r);
+  let j = (-(1 + DEBRIS.rest) * vn) / Math.max(1e-5, denom);
+  const end = Math.abs(across) > halfW * 0.78;
+  if (end) j *= 0.38;
+  const jn = clamp(j, 0, 3.8);
+  const tx = -ny;
+  const ty = nx;
+  const vt = rvx * tx + rvy * ty;
+  const jt = clamp(-vt / Math.max(1e-5, denom), -jn * r.friction, jn * r.friction);
+  applyImpulse(r, nx, ny, px, py, jn, jt);
+
+  const slip = Math.abs(vt);
+  if (slip > 0.9 && playRng.chance(0.12)) {
+    particles.spawn("dust", px, py, 0.08, 2, 0.7, 0.45);
+    addMark(townScratch, px, py, "scrape", r.material, v.heading);
+    events.push({ kind: "scrape", x: px, y: py, z: 0.1, mag: Math.min(1.1, slip * 0.18), material: r.material });
+  } else if (jn > 0.55 && playRng.chance(0.08)) {
+    events.push({ kind: "scrape", x: px, y: py, z: 0.12, mag: Math.min(0.8, jn * 0.25), material: r.material });
+  }
+  return jn * v.profile.resistanceMul;
+}
+
+let townScratch: Town;
+
+function integrateBody(town: Town, r: Rubble, dt: number): void {
+  const support = supportHeight(town, r);
+  if (r.sleeping) {
+    if (r.elev > support + 0.035) wake(r);
+    else {
+      r.vx = 0;
+      r.vy = 0;
+      r.omega = 0;
+      r.vz = 0;
+      return;
+    }
+  }
+  const maxRide = r.layer === "fragment" ? 0.4 : 0.12;
+  if (r.elev > 0.9) {
+    r.elev = Math.min(r.elev, 0.9);
+    if (r.elev > support + 0.04) wake(r);
+  }
+  if (r.elev > support + 0.015) {
+    r.vz -= DEBRIS.gravity * dt;
+    r.elev += r.vz * dt;
+    if (r.elev < support) {
+      r.elev = support;
+      r.vz *= -0.08;
+      if (Math.abs(r.vz) < 0.6) r.vz = 0;
+    }
+  } else {
+    r.vz *= Math.max(0, 1 - 8 * dt);
+    if (r.elev < support) r.elev = approachElev(r.elev, support, 2.8 * dt);
+    if (r.elev > support + maxRide) r.elev = support + maxRide;
+  }
+
+  const slope = town.pile.slope(r.x, r.y);
+  const compact = town.pile.sample(r.x, r.y).compact;
+  if (r.layer === "fragment" && compact < 0.72) {
+    r.vx -= slope.dx * 2.4 * dt;
+    r.vy -= slope.dy * 2.4 * dt;
+  }
+
+  const drag = r.layer === "fragment" ? 2.6 : 2.1;
+  r.vx *= 1 - drag * dt;
+  r.vy *= 1 - drag * dt;
+  r.omega *= 1 - 3.4 * dt;
+  r.x += r.vx * dt;
+  r.y += r.vy * dt;
+  r.heading += r.omega * dt;
+  r.x = clamp(r.x, town.minX + 0.2, town.maxX - 0.2);
+  r.y = clamp(r.y, town.minY + 0.2, town.maxY - 0.2);
+
+  const speed = Math.hypot(r.vx, r.vy);
+  if (speed < DEBRIS.sleepSpeed && Math.abs(r.omega) < DEBRIS.sleepOmega && Math.abs(r.vz) < 0.15 && Math.abs(r.elev - support) < 0.04) {
+    r.sleepT += dt;
+    if (r.sleepT > DEBRIS.sleepTime) {
+      r.sleeping = true;
+      r.vx = 0;
+      r.vy = 0;
+      r.omega = 0;
+      r.vz = 0;
+    }
+  } else {
+    r.sleepT = 0;
+  }
+}
+
+function approachElev(current: number, target: number, maxDelta: number): number {
+  const d = target - current;
+  if (Math.abs(d) <= maxDelta) return target;
+  return current + Math.sign(d) * maxDelta;
+}
+
+function supportHeight(town: Town, r: Rubble): number {
+  let support = Math.min(0.7, town.pile.heightAt(r.x, r.y));
+  if (r.layer === "remnant") return support;
+  const box = rubbleAabb(r);
+  bodyHash.query(box.x, box.y, box.w, box.d, nearbyBodies);
+  for (const other of nearbyBodies) {
+    if (other.id === r.id || other.layer !== "remnant") continue;
+    if (other.elev > r.elev + 0.02) continue;
+    const dx = other.x - r.x;
+    const dy = other.y - r.y;
+    const reach = (Math.max(r.w, r.d) + Math.max(other.w, other.d)) * 0.42;
+    if (dx * dx + dy * dy > reach * reach) continue;
+    const top = other.elev + other.thickness * 0.45;
+    if (top > support) support = top;
+  }
+  return Math.min(0.85, support);
+}
+
+function rebuildBodyHash(town: Town): void {
+  bodyHash.clear();
+  for (const r of town.rubble) {
+    const box = rubbleAabb(r);
+    bodyHash.insert(box.x, box.y, box.w, box.d, r);
+  }
+}
+
+function applyVehicleResistance(vx: { vx: number; vy: number }, heading: number, load: number, profile: VehicleProfile): void {
+  const fx = Math.cos(heading);
+  const fy = Math.sin(heading);
+  const along = vx.vx * fx + vx.vy * fy;
+  const capacity = profile.pushForce * (0.65 + profile.traction);
+  const slow = clamp((load * profile.resistanceMul) / (capacity + 3.5), 0, DEBRIS.maxPushSlow);
+  const next = along * (1 - slow * 0.82);
+  const latX = vx.vx - along * fx;
+  const latY = vx.vy - along * fy;
+  vx.vx = next * fx + latX;
+  vx.vy = next * fy + latY;
+}
+
+function dozerProfile(dozer: Dozer, engineMul: number): VehicleProfile {
+  return {
+    mass: DOZER.mass,
+    radius: DOZER.radius,
+    pushForce: DOZER.pushForce * engineMul,
+    traction: 1,
+    clearance: dozer.bladeDown ? 0.05 : 0.26,
+    resistanceMul: 1,
+  };
+}
+
+export function stepDebris(
+  town: Town,
+  dozer: Dozer,
+  particles: ParticlePool,
+  events: WorldEvent[],
+  engineMul: number,
+  dt: number,
+): { load: number } {
+  townScratch = town;
+  rebuildBodyHash(town);
+  let load = 0;
+  contacted.clear();
+
+  for (let iter = 0; iter < DEBRIS.solverIters; iter++) {
+    rebuildBodyHash(town);
+    for (const r of town.rubble) {
+      const box = rubbleAabb(r);
+      bodyHash.query(box.x - 0.05, box.y - 0.05, box.w + 0.1, box.d + 0.1, nearbyBodies);
+      for (const other of nearbyBodies) {
+        if (other.id <= r.id) continue;
+        resolveBodies(r, other);
+      }
+    }
+  }
+
+  const profile = dozerProfile(dozer, engineMul);
+  const v: VehicleContact = {
+    x: dozer.x,
+    y: dozer.y,
+    vx: dozer.vx,
+    vy: dozer.vy,
+    heading: dozer.heading,
+    radius: DOZER.radius,
+    profile,
+    blade: bladeOf(dozer),
+  };
+
+  bodyHash.query(dozer.x - 3.2, dozer.y - 3.2, 6.4, 6.4, nearbyBodies);
+  for (const r of nearbyBodies) {
+    let j = 0;
+    if (dozer.bladeDown) {
+      j = resolveVehicleBody(v, r, true, events, particles);
+      if (j > 0) contacted.add(r.id);
+    }
+    if (!contacted.has(r.id)) {
+      j += resolveVehicleBody(v, r, false, events, particles);
+    }
+    load += j;
+
+    const dist = Math.hypot(r.x - dozer.x, r.y - dozer.y);
+    if (dist < DOZER.radius * 0.78 && r.elev + r.thickness * 0.5 < 0.4) {
+      r.damage += r.crushability * (0.55 + dozerSpeed(dozer) * 0.12) * dt;
+      town.pile.compactPoint(r.x, r.y, 0.7 * dt);
+      if (r.damage >= 1 && r.crushability > 0.2) {
+        events.push({ kind: "crush", x: r.x, y: r.y, z: r.elev, mag: 0.55 + r.mass * 0.2, material: r.material });
+        crushBody(town, r, particles);
+      }
+    }
+  }
+
+  applyVehicleResistance(dozer, dozer.heading, load, profile);
+  if (load > 0.35) dozer.lastImpact = Math.max(dozer.lastImpact, 0.05);
+  rebuildBodyHash(town);
+
+  if (town.roadCar && town.roadCar.alive) {
+    const car = town.roadCar;
+    const rp: VehicleProfile = {
+      mass: 1.35,
+      radius: 0.7,
+      pushForce: 2.4,
+      traction: 0.5,
+      clearance: 0.13,
+      resistanceMul: 2.55,
+    };
+    const cv: VehicleContact = {
+      x: car.x,
+      y: car.y,
+      vx: car.vx,
+      vy: car.vy,
+      heading: car.heading,
+      radius: rp.radius,
+      profile: rp,
+    };
+    let carLoad = 0;
+    bodyHash.query(car.x - 2.4, car.y - 2.4, 4.8, 4.8, nearbyBodies);
+    for (const r of nearbyBodies) {
+      carLoad += resolveVehicleBody(cv, r, false, events, particles);
+    }
+    applyVehicleResistance(car, car.heading, carLoad, rp);
+  }
+
+  for (const r of town.rubble) integrateBody(town, r, dt);
+
+  const awake = town.rubble.filter((r) => !r.sleeping).length;
+  if (awake > DEBRIS.activeCap) {
+    const extras = town.rubble
+      .filter((r) => !r.sleeping && r.layer === "fragment")
+      .sort((a, b) => a.mass - b.mass);
+    let over = awake - DEBRIS.activeCap;
+    for (const r of extras) {
+      if (over <= 0) break;
+      r.sleeping = true;
+      r.vx = 0;
+      r.vy = 0;
+      r.omega = 0;
+      over--;
+    }
+  }
+
+  return { load };
+}
+
+export function depositSettledParticles(town: Town, particles: ParticlePool): void {
+  for (const p of particles.items) {
+    if (!p.alive || !p.settled || p.kind === "dust") continue;
+    if (p.life > 0.4) continue;
+    const kind: GroundKind = p.kind === "glass" ? "glass" : p.kind === "wood" ? "splinter" : "chip";
+    const material: Material = p.kind;
+    addMark(town, p.x, p.y, kind, material, p.rot);
+    p.alive = false;
+  }
+}
+
+export function obstructionAt(town: Town, x: number, y: number, radius = 0.7) {
+  return queryObstruction(town.pile, town.rubble, x, y, radius);
+}
+
+export function pathBlocked(town: Town, x: number, y: number, radius = 0.7): boolean {
+  return obstructionAt(town, x, y, radius).blocked;
+}

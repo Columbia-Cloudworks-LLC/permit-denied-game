@@ -1,14 +1,15 @@
 import { Container, Graphics } from "pixi.js";
 import { FLOOR_Z } from "../game/constants";
+import { Rng } from "../game/rng";
 import { depthKey, worldToScreen } from "../world/iso";
 import type { ParticlePool } from "../fx/particles";
-import type { Building, Cell, Particle, Prop } from "../structure/types";
+import type { Building, Cell, GroundMark, Particle, Prop, Rubble } from "../structure/types";
 import { cellPresent } from "../structure/types";
 import type { Dozer } from "../vehicle/dozer";
 import type { Town } from "../world/town";
 import type { Bird } from "../structure/types";
-import { cellColors, drawFaceWindow, drawGroundPoly, drawIsoBox, drawShadow, PAL } from "./drawIso";
-import { drawCar, drawDozer } from "./vehicles";
+import { cellColors, drawFaceWindow, drawGroundPoly, drawIsoBox, drawOrientedIsoBox, drawShadow, PAL } from "./drawIso";
+import { drawCar, drawDozer, drawRoadVehicle } from "./vehicles";
 
 interface Cmd {
   depth: number;
@@ -68,6 +69,11 @@ export class WorldRenderer {
       }
     }
 
+    for (const mark of town.marks) {
+      drawGroundMark(this.ground, mark);
+    }
+    drawPileHints(this.ground, town);
+
     for (const b of town.buildings) {
       const fade = occludes(b, occludeX, occludeY) ? 0.38 : 1;
       for (const cell of b.cells) {
@@ -93,12 +99,16 @@ export class WorldRenderer {
 
     for (const r of town.rubble) {
       this.cmds.push({
-        depth: depthKey(r.x + r.w / 2, r.y + r.d / 2, 0.1),
-        run: (g) => {
-          drawShadow(g, r.x, r.y, r.w, r.d, 0.22);
-          const c = cellColors(r.material, true);
-          drawIsoBox(g, r.x, r.y, r.w, r.d, 0, r.z, c.top, c.left, c.right, 1);
-        },
+        depth: depthKey(r.x, r.y, r.elev + r.thickness * 0.5),
+        run: (g) => drawDebris(g, r),
+      });
+    }
+
+    if (town.roadCar?.alive) {
+      const car = town.roadCar;
+      this.cmds.push({
+        depth: depthKey(car.x, car.y, 0.35),
+        run: (g) => drawRoadVehicle(g, car),
       });
     }
 
@@ -220,10 +230,17 @@ function drawProp(g: Graphics, p: Prop): void {
 }
 
 function drawParticle(g: Graphics, p: Particle): void {
+  const fade = Math.min(1, p.life / p.maxLife);
   const s = worldToScreen(p.x, p.y, 0);
   g.ellipse(s.x, s.y, 3.2, 1.6);
-  g.fill({ color: PAL.shadow, alpha: 0.22 * Math.min(1, p.life / p.maxLife) });
-  const c = worldToScreen(p.x, p.y, p.z);
+  g.fill({ color: PAL.shadow, alpha: 0.2 * fade });
+  if (p.kind === "dust") {
+    const c = worldToScreen(p.x, p.y, p.z);
+    const r = 5 + p.size * 10;
+    g.rect(c.x - r / 2, c.y - r / 2, r, r);
+    g.fill({ color: PAL.dust, alpha: 0.32 * fade });
+    return;
+  }
   const color =
     p.kind === "wood"
       ? PAL.wood
@@ -233,13 +250,129 @@ function drawParticle(g: Graphics, p: Particle): void {
           ? PAL.metal
           : p.kind === "glass"
             ? 0xa8c4d0
-            : p.kind === "dust"
-              ? PAL.dust
-              : PAL.concrete;
-  const a = p.kind === "dust" ? 0.35 * (p.life / p.maxLife) : 0.9;
-  const r = p.kind === "dust" ? 5 + p.size * 10 : 2.2 + p.size * 8;
-  g.rect(c.x - r / 2, c.y - r / 2, r, r);
-  g.fill({ color, alpha: a });
+            : PAL.concrete;
+  const dark =
+    p.kind === "wood"
+      ? PAL.woodDark
+      : p.kind === "brick"
+        ? PAL.brickDark
+        : p.kind === "metal"
+          ? PAL.metalDark
+          : PAL.concreteDark;
+  const len = p.kind === "wood" ? 0.18 + p.size * 0.35 : 0.1 + p.size * 0.22;
+  const wid = p.kind === "wood" ? 0.05 + p.size * 0.08 : 0.07 + p.size * 0.12;
+  drawOrientedIsoBox(g, p.x, p.y, p.rot, len, wid, p.z, Math.max(0.04, p.size * 0.2), color, dark, color, 0.92 * fade);
+}
+
+function drawGroundMark(g: Graphics, mark: GroundMark): void {
+  const color =
+    mark.kind === "scrape"
+      ? 0x2a2418
+      : mark.kind === "dust"
+        ? PAL.lotDark
+        : mark.kind === "glass"
+          ? 0x8aa4b0
+          : mark.material === "wood"
+            ? PAL.woodDark
+            : mark.material === "brick"
+              ? PAL.brickDark
+              : mark.material === "metal"
+                ? PAL.metalDark
+                : PAL.concreteDark;
+  const fx = Math.cos(mark.heading);
+  const fy = Math.sin(mark.heading);
+  const hx = mark.w * 0.5;
+  const hy = mark.d * 0.5;
+  const pts = [
+    { x: mark.x + fx * hx - fy * hy, y: mark.y + fy * hx + fx * hy },
+    { x: mark.x + fx * hx + fy * hy, y: mark.y + fy * hx - fx * hy },
+    { x: mark.x - fx * hx + fy * hy, y: mark.y - fy * hx - fx * hy },
+    { x: mark.x - fx * hx - fy * hy, y: mark.y - fy * hx + fx * hy },
+  ];
+  const q = pts.flatMap((p) => {
+    const s = worldToScreen(p.x, p.y, 0);
+    return [s.x, s.y];
+  });
+  g.poly(q);
+  g.fill({ color, alpha: mark.alpha });
+}
+
+function drawPileHints(g: Graphics, town: Town): void {
+  const pile = town.pile;
+  const step = 1;
+  for (let iy = 0; iy < pile.rows; iy += step) {
+    for (let ix = 0; ix < pile.cols; ix += step) {
+      const i = iy * pile.cols + ix;
+      const h = pile.height[i]!;
+      if (h < 0.06) continue;
+      const x = pile.ox + (ix + 0.15) * pile.cell;
+      const y = pile.oy + (iy + 0.15) * pile.cell;
+      drawGroundPoly(g, x, y, pile.cell * 0.72, pile.cell * 0.72, PAL.lotDark, Math.min(0.42, 0.12 + h * 0.55));
+    }
+  }
+}
+
+function drawDebris(g: Graphics, r: Rubble): void {
+  const rng = new Rng(r.seed);
+  const cols = cellColors(r.material, true);
+  const z0 = r.elev;
+  const h = Math.max(0.05, r.thickness);
+  drawOrientedIsoBox(g, r.x, r.y, r.heading, r.w * 1.08, r.d * 1.08, 0, 0.02, PAL.shadow, PAL.shadow, PAL.shadow, 0.26);
+
+  if (r.shape === "beam") {
+    drawOrientedIsoBox(g, r.x, r.y, r.heading, r.w, r.d, z0, h, cols.top, cols.left, cols.right, 1);
+    if (rng.next() > 0.4) {
+      const t = rng.range(-0.22, 0.22);
+      const fx = Math.cos(r.heading);
+      const fy = Math.sin(r.heading);
+      drawOrientedIsoBox(
+        g,
+        r.x + fx * t * r.w,
+        r.y + fy * t * r.w,
+        r.heading + rng.range(-0.25, 0.25),
+        r.w * 0.35,
+        r.d * 0.7,
+        z0 + h * 0.15,
+        h * 0.45,
+        cols.top,
+        cols.left,
+        cols.right,
+        1,
+      );
+    }
+    return;
+  }
+
+  if (r.shape === "panel") {
+    const fold = rng.range(-0.35, 0.35);
+    const fx = Math.cos(r.heading);
+    const fy = Math.sin(r.heading);
+    const rx = -fy;
+    const ry = fx;
+    drawOrientedIsoBox(g, r.x + rx * r.d * 0.18, r.y + ry * r.d * 0.18, r.heading + fold, r.w * 0.72, r.d * 0.7, z0, h, cols.top, cols.left, cols.right, 1);
+    drawOrientedIsoBox(g, r.x - rx * r.d * 0.16, r.y - ry * r.d * 0.16, r.heading - fold * 0.8, r.w * 0.55, r.d * 0.55, z0 + h * 0.2, h * 0.7, cols.top, cols.left, cols.right, 0.95);
+    return;
+  }
+
+  drawOrientedIsoBox(g, r.x, r.y, r.heading, r.w, r.d, z0, h, cols.top, cols.left, cols.right, 1);
+  if (r.layer === "remnant" && rng.next() > 0.35) {
+    const ox = rng.range(-0.18, 0.18);
+    const oy = rng.range(-0.18, 0.18);
+    drawOrientedIsoBox(
+      g,
+      r.x + ox,
+      r.y + oy,
+      r.heading + rng.range(-0.4, 0.4),
+      r.w * rng.range(0.4, 0.65),
+      r.d * rng.range(0.35, 0.6),
+      z0 + h * 0.25,
+      h * rng.range(0.35, 0.7),
+      cols.top,
+      cols.left,
+      cols.right,
+      1,
+    );
+  }
 }
 
 function drawBird(g: Graphics, bird: Bird): void {

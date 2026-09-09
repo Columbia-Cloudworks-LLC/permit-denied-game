@@ -9,7 +9,9 @@ import {
 } from "../structure/building";
 import { cellPresent, cellWorldBox, type Building, type Cell, type WorldEvent } from "../structure/types";
 import { bladePoints, clampDozer, dozerSpeed, resolveCircleSolid, type Dozer } from "../vehicle/dozer";
-import { addRubble, type Town } from "../world/town";
+import { clampRoadVehicle, resolveRoadSolid, stepRoadVehicle } from "../vehicle/roadVehicle";
+import type { Town } from "../world/town";
+import { depositSettledParticles, spawnCollapseDebris, spawnPropDebris, stepDebris } from "./debris";
 import { SpatialHash } from "./spatial";
 
 export interface Upgrades {
@@ -23,14 +25,14 @@ export interface SimFrame {
   score: number;
   events: WorldEvent[];
   birds: { x: number; y: number }[];
+  debrisLoad: number;
 }
 
 interface SolidRef {
-  kind: "cell" | "prop" | "rubble";
+  kind: "cell" | "prop";
   building?: Building;
   cell?: Cell;
   propId?: number;
-  rubbleId?: number;
   x: number;
   y: number;
   w: number;
@@ -57,10 +59,6 @@ function rebuildHash(town: Town): void {
     if (p.broken) continue;
     const ref: SolidRef = { kind: "prop", propId: p.id, x: p.x, y: p.y, w: p.w, d: p.d };
     hash.insert(p.x, p.y, p.w, p.d, ref);
-  }
-  for (const r of town.rubble) {
-    const ref: SolidRef = { kind: "rubble", rubbleId: r.id, x: r.x, y: r.y, w: r.w, d: r.d };
-    hash.insert(r.x, r.y, r.w, r.d, ref);
   }
 }
 
@@ -112,23 +110,6 @@ export function stepWorld(
       if (impact > 0.25) {
         p.hp -= impact * 6;
         if (p.kind === "light" && speed > 5.5) dozer.track += DOZER.trackPole * 0.25;
-      }
-    } else if (ref.kind === "rubble") {
-      const r = town.rubble.find((x) => x.id === ref.rubbleId);
-      if (!r) continue;
-      const impact = resolveCircleSolid(dozer, r.x, r.y, r.w, r.d, 0.02);
-      if (impact > 0) {
-        const nx = dozer.x - (r.x + r.w / 2);
-        const ny = dozer.y - (r.y + r.d / 2);
-        const l = len(nx, ny) || 1;
-        r.vx -= (nx / l) * impact * 2.2;
-        r.vy -= (ny / l) * impact * 2.2;
-        dozer.vx *= 0.92;
-        dozer.vy *= 0.92;
-        if (speed > 5.5) {
-          r.hp -= 8 * dt + impact;
-          r.z = Math.max(0.12, r.z - 0.4 * dt);
-        }
       }
     }
   }
@@ -184,23 +165,13 @@ export function stepWorld(
       events.push({ kind: "snap", x: p.x, y: p.y, z: 0.8, mag: 0.5, cash: pay });
     }
     cash += pay;
-    addRubble(town, p.x, p.y, Math.max(0.4, p.w * 0.8), Math.max(0.35, p.d * 0.8), p.material);
-  }
-
-  for (const r of town.rubble) {
-    r.vx *= 1 - 3.5 * dt;
-    r.vy *= 1 - 3.5 * dt;
-    r.x += r.vx * dt;
-    r.y += r.vy * dt;
-    r.x = clamp(r.x, town.minX, town.maxX - r.w);
-    r.y = clamp(r.y, town.minY, town.maxY - r.d);
-    if (r.hp <= 0) r.z = Math.min(r.z, 0.12);
+    spawnPropDebris(town, p.x, p.y, Math.max(0.4, p.w * 0.8), Math.max(0.35, p.d * 0.8), p.material);
   }
 
   const struct = stepStructures(town.buildings, dt, particles, events);
   cash += struct.cash;
   for (const spawn of struct.rubbleSpawns) {
-    addRubble(town, spawn.x, spawn.y, spawn.w, spawn.d, spawn.material);
+    spawnCollapseDebris(town, spawn);
   }
 
   for (const lean of struct.leans) {
@@ -251,12 +222,25 @@ export function stepWorld(
     }
   }
 
+  const engineMul = 1 + upgrades.engine * 0.28;
+  const debris = stepDebris(town, dozer, particles, events, engineMul, dt);
+
+  if (town.roadCar?.alive) {
+    stepRoadVehicle(town.roadCar, dt);
+    hash.query(town.roadCar.x - 2.2, town.roadCar.y - 2.2, 4.4, 4.4, nearby);
+    for (const ref of nearby) {
+      resolveRoadSolid(town.roadCar, ref.x, ref.y, ref.w, ref.d, 0.06);
+    }
+    clampRoadVehicle(town.roadCar, town.minX + 0.6, town.minY + 0.6, town.maxX - 0.6, town.maxY - 0.6);
+  }
+
   clampDozer(dozer, town.minX + 0.8, town.minY + 0.8, town.maxX - 0.8, town.maxY - 0.8);
   particles.step(dt);
+  depositSettledParticles(town, particles);
 
   for (const e of events) {
     score += e.cash ?? 0;
   }
 
-  return { cash, score, events, birds };
+  return { cash, score, events, birds, debrisLoad: debris.load };
 }
