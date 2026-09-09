@@ -1,7 +1,0 @@
-# Play → F4 enters the destruction lab on the south pose.
-tap f4
-assert scene=lab
-assert blade=down
-assert stance=BLADE DOWN
-dump lab.json
-shot lab.png

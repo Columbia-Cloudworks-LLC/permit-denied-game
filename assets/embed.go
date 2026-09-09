@@ -1,6 +1,0 @@
-package assets
-
-import "embed"
-
-//go:embed usable
-var FS embed.FS

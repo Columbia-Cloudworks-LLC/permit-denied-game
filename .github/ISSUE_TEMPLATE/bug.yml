@@ -1,12 +1,12 @@
 name: Bug
-description: Crash, wrong controls, scoring, beat chart, render, or CI.
+description: Crash, wrong controls, scoring, destruction, render, or CI.
 title: "[Bug]: "
 labels: ["bug"]
 body:
   - type: markdown
     attributes:
       value: |
-        Search existing issues first. This is a one-lot prototype — read `README.md` and `PERMIT_DENIED.md` before filing.
+        Search existing issues first. This is a one-town prototype — read `README.md` before filing.
 
   - type: checkboxes
     id: searched
@@ -22,11 +22,11 @@ body:
       label: Area
       options:
         - Crash or hang
-        - Controls / tank-steer
-        - Heat, plates, or combat
-        - Beat chart / threats
-        - Score / tally
-        - Rendering / assets
+        - Controls / driving
+        - Destruction / collapse
+        - Score / cash / timer
+        - Rendering / depth / HUD
+        - Audio
         - Build / CI
         - Other
     validations:
@@ -45,8 +45,8 @@ body:
     attributes:
       label: Steps to reproduce
       placeholder: |
-        1. `go run ./cmd/permitdenied` (or build.bat)
-        2. Start a run
+        1. `npm run dev`
+        2. Open http://localhost:5173
         3. Hold W from spawn
         4. …
     validations:
@@ -58,9 +58,8 @@ body:
       label: Environment
       value: |
         - OS:
-        - Go version (`go version`):
-        - How you ran it (`go run` / `build.bat` / CI artifact):
-        - F2 overlay notes (if useful):
+        - Browser:
+        - How you ran it (`npm run dev` / `npm run preview`):
     validations:
       required: true
 
@@ -68,6 +67,6 @@ body:
     id: extra
     attributes:
       label: Extra
-      description: Screenshots, F2 dump, or `go test ./...` output. Drag files onto this field.
+      description: Screenshots or `npm test` output. Drag files onto this field.
     validations:
       required: false

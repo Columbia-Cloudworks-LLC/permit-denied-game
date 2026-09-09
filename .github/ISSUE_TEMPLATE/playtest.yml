@@ -1,24 +1,25 @@
 name: Playtest
-description: A show-off test failed, or heat / plates / rubble are not readable in play.
+description: Driving, collapse, rubble, or HUD failed in play.
 title: "[Playtest]: "
 labels: ["playtest"]
 body:
   - type: markdown
     attributes:
       value: |
-        Use this when the lot is playable but the **show-off tests** in `README.md` fail, or the fantasy is unreadable (heat, plates, stolen streets).
+        Use this when the town loads but a play fantasy fails (corner buckle, warehouse push, alley carve, neighbor lean, camera bird).
 
   - type: dropdown
     id: which-test
     attributes:
-      label: Which show-off test failed
+      label: Which moment failed
       options:
-        - "1 — New player dies inside 90s without a tooltip wall"
-        - "2 — Learned player can judge time from the plant pip"
-        - "3 — Coward run (×1.0) vs two-target run (×1.6) cash out differently"
-        - "4 — Heat and plates readable from the sprite (no numeric bars required)"
-        - "5 — Player-made rubble steals a street on the drag"
-        - Feel / readability (not one of the five)
+        - Corner takeout does not buckle
+        - Warehouse support grind does not sag the roof
+        - Alley house cannot be carved
+        - Collapse does not lean into a neighbor
+        - Traffic camera / bird / streetlight feel wrong
+        - Driving / blade / restart
+        - Other feel / readability
     validations:
       required: true
 
@@ -26,7 +27,7 @@ body:
     id: session
     attributes:
       label: What you did
-      description: Stance, targets smashed, roughly when it went wrong (clock or F2 `T=`).
+      description: Approach, building, roughly when it went wrong.
     validations:
       required: true
 
@@ -34,7 +35,6 @@ body:
     id: result
     attributes:
       label: What went wrong
-      description: What a player cannot read or cannot do. Prefer “I could not tell heat from the sprite” over “add an HP bar.”
     validations:
       required: true
 
@@ -42,6 +42,6 @@ body:
     id: extra
     attributes:
       label: Extra
-      description: Screenshot of the lot, pips, or tally. Drag files onto this field.
+      description: Screenshot. Drag files onto this field.
     validations:
       required: false

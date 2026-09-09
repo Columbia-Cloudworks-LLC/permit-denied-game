@@ -1,32 +1,30 @@
 name: Change
-description: Propose a gameplay, code, or asset change that stays on this one strip.
+description: Propose a gameplay, code, or visual change that stays on this one town.
 title: "[Change]: "
 labels: ["change"]
 body:
   - type: markdown
     attributes:
       value: |
-        Tune `internal/game/const.go` before adding a system. A threat that does not change **steering** does not ship.
+        Stay on this town. A change that does not affect driving or demolition probably does not ship.
 
-        Out of spec (do not file): campaign, between-run meta, second lot, second player, chopper rockets, locational armor, soft-body debris, title `KILLDOZER`.
+        Out of spec (do not file): campaign, between-run meta, second town, backend, title names the copy forbids.
 
   - type: checkboxes
     id: scope
     attributes:
       label: Scope
       options:
-        - label: This stays on the current lot (no campaign, meta, or second strip)
+        - label: This stays on the current town (no campaign, meta, or second map)
           required: true
-        - label: I checked `PERMIT_DENIED.md` (what) and `PERMIT_DENIED_GO_IMPLEMENTATION.md` (how)
-          required: true
-        - label: A const.go tweak is not enough (or I explain why below)
+        - label: I read `README.md`
           required: true
 
   - type: textarea
     id: problem
     attributes:
       label: Problem
-      description: What a player cannot do, or which show-off test fails.
+      description: What a player cannot do, or which destruction feel fails.
     validations:
       required: true
 
@@ -34,7 +32,7 @@ body:
     id: proposal
     attributes:
       label: Proposal
-      description: The smallest change. Name the spec section or file if you know it (`const.go`, `lot.go`, `sim.go`, `assets/usable/`).
+      description: The smallest change.
     validations:
       required: true
 
@@ -45,8 +43,8 @@ body:
       options:
         - Tune existing numbers
         - Fix existing system
-        - Art / atlas (same coordinates)
+        - Visual / audio
         - Docs only
-        - New system (justify against the spec)
+        - New system (justify)
     validations:
       required: true
