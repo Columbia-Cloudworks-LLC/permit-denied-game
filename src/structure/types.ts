@@ -46,17 +46,72 @@ export interface Building {
   leanY: number;
 }
 
+export type DebrisLayer = "remnant" | "fragment";
+export type DebrisShape = "chunk" | "beam" | "panel";
+export type GroundKind = "chip" | "splinter" | "dust" | "glass" | "scrape";
+
 export interface Rubble {
   id: number;
   x: number;
   y: number;
-  w: number;
-  d: number;
-  z: number;
-  material: Material;
-  hp: number;
   vx: number;
   vy: number;
+  vz: number;
+  heading: number;
+  omega: number;
+  w: number;
+  d: number;
+  elev: number;
+  thickness: number;
+  mass: number;
+  material: Material;
+  shape: DebrisShape;
+  layer: DebrisLayer;
+  seed: number;
+  hp: number;
+  damage: number;
+  crushability: number;
+  friction: number;
+  sleeping: boolean;
+  sleepT: number;
+}
+
+export interface GroundMark {
+  x: number;
+  y: number;
+  w: number;
+  d: number;
+  heading: number;
+  kind: GroundKind;
+  material: Material;
+  seed: number;
+  alpha: number;
+}
+
+export interface Obstruction {
+  height: number;
+  compaction: number;
+  resistance: number;
+  blocked: boolean;
+}
+
+export interface VehicleProfile {
+  mass: number;
+  radius: number;
+  pushForce: number;
+  traction: number;
+  clearance: number;
+  resistanceMul: number;
+}
+
+export interface RoadVehicle {
+  x: number;
+  y: number;
+  heading: number;
+  vx: number;
+  vy: number;
+  odo: number;
+  alive: boolean;
 }
 
 export interface Prop {
@@ -103,7 +158,7 @@ export interface Particle {
 }
 
 export interface WorldEvent {
-  kind: "chip" | "breach" | "collapse" | "impact" | "cash" | "snap" | "bird";
+  kind: "chip" | "breach" | "collapse" | "impact" | "cash" | "snap" | "bird" | "scrape" | "crush";
   x: number;
   y: number;
   z: number;

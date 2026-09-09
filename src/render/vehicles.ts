@@ -1,6 +1,6 @@
 import { Graphics } from "pixi.js";
-import { DOZER } from "../game/constants";
-import type { Prop } from "../structure/types";
+import { DOZER, ROAD } from "../game/constants";
+import type { Prop, RoadVehicle } from "../structure/types";
 import type { Dozer } from "../vehicle/dozer";
 import { depthKey } from "../world/iso";
 import { drawOrientedIsoBox, headingOffset, PAL } from "./drawIso";
@@ -120,4 +120,22 @@ export function drawCar(g: Graphics, p: Prop): void {
   drawOrientedIsoBox(g, roof.x, roof.y, h, len * 0.36, wid * 0.62, 0.78, 0.08, dark, 0x141820, body, 1);
   const bumper = headingOffset(cx, cy, h, len * 0.46, 0);
   drawOrientedIsoBox(g, bumper.x, bumper.y, h, 0.1, wid * 0.72, 0.18, 0.16, PAL.blade, 0x3a3c40, 0x8a9094, 1);
+}
+
+export function drawRoadVehicle(g: Graphics, v: RoadVehicle): void {
+  const h = v.heading;
+  const len = ROAD.length;
+  const wid = ROAD.width;
+  drawOrientedIsoBox(g, v.x, v.y, h, len, wid, 0, 0.02, PAL.shadow, PAL.shadow, PAL.shadow, 0.28);
+  for (const along of [-len * 0.32, len * 0.3]) {
+    for (const across of [-wid * 0.42, wid * 0.42]) {
+      const w = headingOffset(v.x, v.y, h, along, across);
+      drawOrientedIsoBox(g, w.x, w.y, h, 0.3, 0.15, 0.0, 0.2, 0x1a1a1c, 0x0c0c0e, 0x2a2a2e, 1);
+    }
+  }
+  drawOrientedIsoBox(g, v.x, v.y, h, len * 0.9, wid * 0.76, 0.16, 0.26, 0xc8b24a, 0x6a5418, 0xa88828, 1);
+  const cabin = headingOffset(v.x, v.y, h, -0.08, 0);
+  drawOrientedIsoBox(g, cabin.x, cabin.y, h, len * 0.4, wid * 0.66, 0.4, 0.34, PAL.cabGlass, 0x1a2830, 0x3a5060, 1);
+  const roof = headingOffset(v.x, v.y, h, -0.1, 0);
+  drawOrientedIsoBox(g, roof.x, roof.y, h, len * 0.34, wid * 0.6, 0.72, 0.08, 0x6a5418, 0x3a3010, 0xa88828, 1);
 }

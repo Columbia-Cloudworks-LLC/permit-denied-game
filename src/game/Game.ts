@@ -4,9 +4,11 @@ import { CameraShake } from "../fx/cameraShake";
 import { ParticlePool } from "../fx/particles";
 import { Hud } from "../render/hud";
 import { WorldRenderer } from "../render/WorldRenderer";
+import { obstructionAt } from "../sim/debris";
 import { stepWorld, type Upgrades } from "../sim/worldSim";
 import type { Bird, WorldEvent } from "../structure/types";
 import { createDozer, dozerSpeed, stepDozer } from "../vehicle/dozer";
+import { createRoadVehicle } from "../vehicle/roadVehicle";
 import { worldToScreen } from "../world/iso";
 import { createTown } from "../world/town";
 import {
@@ -44,6 +46,7 @@ export class Game {
   private nextUpgrade = 0;
   private acc = 0;
   private grindAud = 0;
+  private scrapeCd = 0;
   private detachInput: (() => void) | null = null;
 
   async start(root: HTMLElement, hudRoot: HTMLElement): Promise<void> {
@@ -85,6 +88,8 @@ export class Game {
     mode: GameMode;
     dozer: { x: number; y: number; heading: number };
     rubble: number;
+    marks: number;
+    roadCar: { x: number; y: number } | null;
     buildings: { name: string; states: Record<string, number> }[];
   } {
     return {
@@ -94,6 +99,10 @@ export class Game {
       mode: this.mode,
       dozer: { x: this.dozer.x, y: this.dozer.y, heading: this.dozer.heading },
       rubble: this.town.rubble.length,
+      marks: this.town.marks.length,
+      roadCar: this.town.roadCar
+        ? { x: this.town.roadCar.x, y: this.town.roadCar.y }
+        : null,
       buildings: this.town.buildings.map((b) => {
         const states: Record<string, number> = {};
         for (const c of b.cells) states[c.state] = (states[c.state] ?? 0) + 1;
@@ -117,6 +126,7 @@ export class Game {
     this.nextUpgrade = 0;
     this.acc = 0;
     this.grindAud = 0;
+    this.scrapeCd = 0;
     const spawn = worldToScreen(this.dozer.x, this.dozer.y, 0);
     this.renderer.camX = spawn.x;
     this.renderer.camY = spawn.y;
@@ -133,6 +143,7 @@ export class Game {
       this.audio.toggleMute();
     }
     if (this.input.consume("r") || this.input.consume("R")) this.reset();
+    if (this.input.consume("v") || this.input.consume("V")) this.spawnRoadVehicle();
     if (this.input.consume("Escape")) {
       if (this.mode === "play") this.mode = "pause";
       else if (this.mode === "pause") this.mode = "play";
@@ -200,7 +211,13 @@ export class Game {
 
     this.timeLeft -= dt;
     this.hint = Math.max(0, this.hint - dt * 0.12);
-    this.grindAud = lerp(this.grindAud, this.dozer.bladeDown && this.dozer.heat > beforeHeat - 0.01 ? 0.14 : 0, 1 - Math.pow(0.001, dt));
+    this.scrapeCd = Math.max(0, this.scrapeCd - dt);
+    const pushing = this.dozer.bladeDown && out.debrisLoad > 0.2;
+    this.grindAud = lerp(
+      this.grindAud,
+      this.dozer.bladeDown && (this.dozer.heat > beforeHeat - 0.01 || pushing) ? 0.14 + Math.min(0.1, out.debrisLoad * 0.04) : 0,
+      1 - Math.pow(0.001, dt),
+    );
     this.audio.engineLevel(dozerSpeed(this.dozer), this.dozer.heat);
     this.audio.grindLevel(this.dozer.bladeDown ? 0.08 + this.grindAud : 0);
 
@@ -234,7 +251,24 @@ export class Game {
       }
       if (e.kind === "cash") this.audio.cash();
       if (e.kind === "chip" && e.mag > 0.5) this.audio.impact(0.3);
+      if (e.kind === "scrape" && this.scrapeCd <= 0) {
+        this.scrapeCd = 0.08;
+        if (e.material === "metal" || e.material === "wood") this.audio.clatter(e.mag, e.material);
+        else this.audio.scrape(e.mag, e.material);
+      }
+      if (e.kind === "crush") {
+        this.audio.crunch(e.mag);
+        if (e.mag > 0.9) this.shake.punch(e.mag * 0.45);
+      }
     }
+  }
+
+  spawnRoadVehicle(): void {
+    this.town.roadCar = createRoadVehicle();
+  }
+
+  obstructionAt(x: number, y: number, radius = 0.7) {
+    return obstructionAt(this.town, x, y, radius);
   }
 
   private draw(dt: number): void {
