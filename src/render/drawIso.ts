@@ -194,12 +194,12 @@ export function drawWorldPoly(
   g.fill({ color: fill, alpha });
 }
 
-/** One projected polygon. No edge extrusion: that inverted overlap on viewer-facing slopes. */
+/** One projected polygon. No stroke or edge extrusion — those sit on top of the wall eave. */
 export function drawSlopedQuad(
   g: Graphics,
   verts: { x: number; y: number; z: number }[],
   top: number,
-  edge: number,
+  _edge: number,
   alpha = 1,
 ): void {
   if (verts.length < 3) return;
@@ -207,8 +207,6 @@ export function drawSlopedQuad(
   const pts = screen.flatMap((p) => [p.x, p.y]);
   g.poly(pts);
   g.fill({ color: top, alpha });
-  g.poly(pts);
-  g.stroke({ color: edge, width: 1.35, alpha });
 }
 
 export function drawShadow(

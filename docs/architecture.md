@@ -22,7 +22,7 @@ Intact buildings get one merged footprint shadow. Per-cell ground shadows are re
 
 ## Roofs
 
-`src/structure/roof.ts` builds roof sections from the occupied top-floor footprint.
+`src/structure/roof.ts` builds roof sections from the occupied top-floor footprint. Wall spans stop at story height (`floors * FLOOR_Z`) unless that face carries a gable: then the top-floor span is one house-shaped polygon (rectangle plus peak) so there is no triangle seam on the story top. Flat roofs sit on that same story top with a small overhang. Shed roofs keep their slope: the top-floor south/east spans rise as trapezoids to the live shed plane so the lot does not show through under the high eave. Roof planes paint after those walls and own the eave. Do not draw a separate gable triangle or a post-roof fascia.
 
 - Rectangular gable: two sloped planes and a shared ridge, ridge along the longer axis unless the archetype overrides it.
 - Shed and flat: one explicit section so they share the same support/collapse life.

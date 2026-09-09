@@ -5,7 +5,17 @@ import { createDozer } from "../vehicle/dozer";
 import { createTown } from "../world/town";
 import { stepWorld } from "../sim/worldSim";
 import { applyCellDamage, createBuilding, createBuildingFromArchetype, stepStructures } from "./building";
-import { gableEndCaps, gablePlanesSloped, generateRoofs, liveRoofCount, roofCoversOnlyOccupied, roofHeightAt } from "./roof";
+import {
+  gableEndCaps,
+  gablePlanesSloped,
+  gableWallVerts,
+  gableZAlong,
+  generateRoofs,
+  liveRoofCount,
+  roofCoversOnlyOccupied,
+  roofHeightAt,
+  shedWallVerts,
+} from "./roof";
 import { fullMask } from "../world/archetypes";
 import { depthKey, roofPainterDepth } from "../world/iso";
 import { slopeFacingLight } from "../render/drawIso";
@@ -40,6 +50,8 @@ describe("structural roofs", () => {
       frontCell.floor * FLOOR_Z,
     );
     expect(roofPainterDepth(front.verts)).toBeGreaterThan(wallDepth);
+    const eaveZ = Math.min(...b.roofs.flatMap((r) => r.verts.map((v) => v.z)));
+    expect(eaveZ).toBeCloseTo(b.floors * FLOOR_Z, 5);
     const lights = b.roofs.filter((r) => r.style === "gable").map((r) => slopeFacingLight(r.verts));
     expect(Math.max(...lights)).toBeGreaterThan(0);
     expect(Math.min(...lights)).toBeLessThan(0);
@@ -131,6 +143,65 @@ describe("structural roofs", () => {
     expect(caps[0]!.peak.x).toBeCloseTo(b.x + b.w * b.cellSize, 5);
     const walk = createBuildingFromArchetype("walkup", "END", 10, 10);
     expect(gableEndCaps(walk)[0]?.face).toBe("south");
+  });
+
+  it("raises shed walls to the sloped roof so the lot does not show through", () => {
+    const b = createBuildingFromArchetype("warehouse", "SHED FILL", 0, 0);
+    const story = b.floors * FLOOR_Z;
+    const z0 = (b.floors - 1) * FLOOR_Z;
+    const y1 = b.y + b.d * b.cellSize;
+    const x1 = b.x + b.w * b.cellSize;
+    const southZ = roofHeightAt(b, b.x + b.w * b.cellSize * 0.5, y1 - 0.04);
+    expect(southZ).not.toBeNull();
+    expect(southZ!).toBeGreaterThan(story + 0.4);
+    const south = shedWallVerts(b, "south", b.x, x1, y1, z0);
+    expect(south).not.toBeNull();
+    expect(Math.max(...south!.map((v) => v.z))).toBeGreaterThan(story + 0.4);
+    const east = shedWallVerts(b, "east", b.y, y1, x1, z0);
+    expect(east).toHaveLength(4);
+    const eastZs = east!.map((v) => v.z);
+    expect(Math.max(...eastZs)).toBeGreaterThan(Math.min(...eastZs) + 0.3);
+    expect(shedWallVerts(createBuildingFromArchetype("storefront", "FLAT", 4, 0), "south", 4, 8, 3, 0)).toBeNull();
+  });
+
+  it("sits flat roofs on the story top so the lot does not show through", () => {
+    const shop = createBuildingFromArchetype("storefront", "FLAT LID", 0, 0);
+    const zs = shop.roofs.flatMap((r) => r.verts.map((v) => v.z));
+    expect(Math.min(...zs)).toBeCloseTo(shop.floors * FLOOR_Z, 5);
+    expect(Math.max(...zs)).toBeCloseTo(shop.floors * FLOOR_Z, 5);
+    const xs = shop.roofs.flatMap((r) => r.verts.map((v) => v.x));
+    const ys = shop.roofs.flatMap((r) => r.verts.map((v) => v.y));
+    expect(Math.min(...xs)).toBeLessThan(shop.x);
+    expect(Math.max(...xs)).toBeGreaterThan(shop.x + shop.w * shop.cellSize);
+    expect(Math.min(...ys)).toBeLessThan(shop.y);
+    expect(Math.max(...ys)).toBeGreaterThan(shop.y + shop.d * shop.cellSize);
+    const shed = createBuildingFromArchetype("warehouse", "SHED EAVE", 8, 0);
+    const low = Math.min(...shed.roofs.flatMap((r) => r.verts.map((v) => v.z)));
+    expect(low).toBeCloseTo(shed.floors * FLOOR_Z, 5);
+  });
+
+  it("joins the gable peak into one wall polygon instead of a floating triangle", () => {
+    const b = createBuildingFromArchetype("cottage", "GABLE WALL", 0, 0);
+    const cap = gableEndCaps(b)[0]!;
+    const y0 = cap.a.y;
+    const y1 = cap.b.y;
+    const mid = (y0 + y1) * 0.5;
+    expect(gableZAlong(cap, y0)).toBeCloseTo(cap.a.z, 5);
+    expect(gableZAlong(cap, y1)).toBeCloseTo(cap.b.z, 5);
+    expect(gableZAlong(cap, mid)).toBeCloseTo(cap.peak.z, 5);
+    const z0 = (b.floors - 1) * FLOOR_Z;
+    const full = gableWallVerts(cap, y0, y1, cap.a.x, z0);
+    expect(full).toHaveLength(5);
+    expect(Math.min(...full.map((v) => v.z))).toBe(z0);
+    expect(Math.max(...full.map((v) => v.z))).toBeCloseTo(cap.peak.z, 5);
+    const half = gableWallVerts(cap, y0, mid - 0.02, cap.a.x, z0);
+    expect(half).toHaveLength(4);
+    expect(gableZAlong(cap, (y0 + mid) * 0.5)).toBeGreaterThan(cap.a.z + 0.2);
+    const walk = createBuildingFromArchetype("walkup", "SOUTH GABLE", 10, 10);
+    const south = gableEndCaps(walk)[0]!;
+    expect(south.face).toBe("south");
+    const span = gableWallVerts(south, south.a.x, south.b.x, south.a.y, (walk.floors - 1) * FLOOR_Z);
+    expect(span).toHaveLength(5);
   });
 
   it("regenerates the same gable geometry for the same footprint", () => {

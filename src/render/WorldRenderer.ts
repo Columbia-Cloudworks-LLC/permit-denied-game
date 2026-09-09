@@ -3,21 +3,20 @@ import { FLOOR_Z } from "../game/constants";
 import { Rng } from "../game/rng";
 import { depthKey, roofPainterDepth, screenAabbVisible, worldBoundsToScreen, worldToScreen } from "../world/iso";
 import type { ParticlePool } from "../fx/particles";
-import { displacedRoofVerts, gableEndCaps, roofHeightAt } from "../structure/roof";
+import { displacedRoofVerts, roofHeightAt } from "../structure/roof";
 import type { Bird, Building, CollapsedSite, GroundMark, Particle, Prop, RoofSection, Rubble } from "../structure/types";
 import type { Dozer } from "../vehicle/dozer";
 import type { Town } from "../world/town";
 import { aggregateSurfaceStats, getBuildingSurfaces } from "./buildingSurfaces";
-import { cellColors, drawGroundPoly, drawIsoBox, drawOrientedIsoBox, drawShadow, drawSlopedQuad, drawWorldPoly, PAL, shade } from "./drawIso";
+import { cellColors, drawGroundPoly, drawIsoBox, drawOrientedIsoBox, drawShadow, drawSlopedQuad, PAL, shade } from "./drawIso";
 import {
   drawBreachGroup,
   drawBuildingFootprintShadow,
-  drawEaveFascia,
   drawFallingCell,
   drawTopSpan,
   drawWallSpan,
 } from "./facadeDraw";
-import { roofSlopeLight, wallFaceColor, type WallFace } from "./lighting";
+import { roofSlopeLight } from "./lighting";
 import { drawCar, drawDozer, drawRoadVehicle } from "./vehicles";
 
 interface Cmd {
@@ -334,7 +333,6 @@ function ridgeKey(ridge: NonNullable<RoofSection["ridge"]>): string {
 }
 
 function drawBuildingRoofs(g: Graphics, b: Building, roofs: RoofSection[], alpha: number): void {
-  drawGableEnds(g, b, alpha);
   const ordered = roofs.slice().sort((a, c) => {
     const da = roofPainterDepth(roofVerts(a));
     const dc = roofPainterDepth(roofVerts(c));
@@ -346,17 +344,6 @@ function drawBuildingRoofs(g: Graphics, b: Building, roofs: RoofSection[], alpha
   if (b.features.chimney) {
     const ch = chimneyWorld(b);
     if (ch) drawChimney(g, ch, alpha);
-  }
-  drawEaveFascia(g, b, alpha);
-}
-
-function drawGableEnds(g: Graphics, b: Building, alpha: number): void {
-  const top = b.cells.find((c) => c.floor === b.floors - 1 && c.state !== "gone");
-  const mat = top?.material ?? "wood";
-  const damaged = top?.state !== "intact" && top?.state !== undefined;
-  for (const cap of gableEndCaps(b)) {
-    const face: WallFace = cap.face === "east" ? "east" : "south";
-    drawWorldPoly(g, [cap.a, cap.b, cap.peak], wallFaceColor(mat, face, damaged), alpha);
   }
 }
 
