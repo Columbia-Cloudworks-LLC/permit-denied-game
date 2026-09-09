@@ -242,6 +242,8 @@ export class Game {
       renderPrepMs,
       droppedSimSec: this.droppedSimSec,
       budgetConversions: debris.conversions,
+      distanceCleanups: debris.distanceCleanups,
+      emergencyCleanups: debris.emergencyCleanups,
       debrisActive: debris.active,
       debrisSleeping: debris.sleeping,
       contactPairs: debris.contactPairs,

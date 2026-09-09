@@ -5,7 +5,7 @@ import { CLASSIC_PLACEMENTS } from "./families";
 
 function layoutSig(town: ReturnType<typeof createTown>): string {
   return town.buildings
-    .map((b) => `${b.name}:${b.x.toFixed(3)}:${b.y.toFixed(3)}:${b.w}x${b.d}:${b.floors}:${b.cells[0]!.material}`)
+    .map((b) => `${b.archetypeId}:${b.name}:${b.x.toFixed(3)}:${b.y.toFixed(3)}:${b.w}x${b.d}:${b.floors}:${b.roof}:${b.cells[0]!.material}`)
     .join("|");
 }
 

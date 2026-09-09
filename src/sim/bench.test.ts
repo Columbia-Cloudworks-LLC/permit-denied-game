@@ -5,6 +5,7 @@ import { applyCellDamage } from "../structure/building";
 import { createDozer, stepDozer } from "../vehicle/dozer";
 import { createTown } from "../world/town";
 import type { DistrictId } from "../game/session";
+import { DEBRIS } from "../game/constants";
 import { addDebrisBody, spawnCollapseDebris, totalDebrisMass } from "./debris";
 import { stepWorld, type Upgrades } from "./worldSim";
 
@@ -120,5 +121,7 @@ describe("district simulation benches", () => {
     report("classic 20min accelerated (per step)", samples);
     expect(lastMass).toBeGreaterThan(0.5);
     expect(town.buildings.some((b) => b.fullyDown || b.cells.some((c) => c.state !== "intact"))).toBe(true);
+    expect(town.rubble.length).toBeLessThanOrEqual(DEBRIS.remnantCap + DEBRIS.fragmentCap + DEBRIS.hardOverflow);
+    expect(town.collapsedSites.length).toBe(town.buildings.filter((b) => b.fullyDown).length);
   });
 });

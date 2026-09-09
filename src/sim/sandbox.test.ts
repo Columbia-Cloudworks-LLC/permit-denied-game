@@ -101,6 +101,12 @@ describe("rubble persistence and excavation", () => {
     }
     expect(Math.abs(totalDebrisMass(town) - afterSpawn) / afterSpawn).toBeLessThan(0.08);
     expect(spawned).toBe(80);
+    const parked = createDozer(2, 2, 0);
+    for (const r of town.rubble) {
+      r.sleeping = true;
+      r.touchedAt = -10;
+    }
+    for (let i = 0; i < 4; i++) stepWorld(town, parked, particles, upgrades, SIM_DT);
     expect(town.rubble.filter((r) => r.layer === "remnant").length).toBeLessThanOrEqual(96);
     expect(town.rubble.filter((r) => r.layer === "fragment").length).toBeLessThanOrEqual(140);
   });

@@ -105,6 +105,7 @@ export function drawIsoBox(
   left: number,
   right: number,
   alpha = 1,
+  drawTop = true,
 ): void {
   const t00 = worldToScreen(x, y, z0 + h);
   const t10 = worldToScreen(x + w, y, z0 + h);
@@ -118,8 +119,10 @@ export function drawIsoBox(
   g.fill({ color: right, alpha });
   g.poly([t01.x, t01.y, t11.x, t11.y, b11.x, b11.y, b01.x, b01.y]);
   g.fill({ color: left, alpha });
-  g.poly([t00.x, t00.y, t10.x, t10.y, t11.x, t11.y, t01.x, t01.y]);
-  g.fill({ color: top, alpha });
+  if (drawTop) {
+    g.poly([t00.x, t00.y, t10.x, t10.y, t11.x, t11.y, t01.x, t01.y]);
+    g.fill({ color: top, alpha });
+  }
 }
 
 export function drawFaceWindow(
@@ -152,6 +155,56 @@ export function drawFaceWindow(
   g.fill({ color, alpha });
 }
 
+/** Iso light on a world-space roof quad. Positive = faces the camera. */
+export function slopeFacingLight(verts: { x: number; y: number; z: number }[]): number {
+  if (verts.length < 3) return 0;
+  const a = verts[0]!;
+  const b = verts[1]!;
+  const c = verts[2]!;
+  let nx = (b.y - a.y) * (c.z - a.z) - (b.z - a.z) * (c.y - a.y);
+  let ny = (b.z - a.z) * (c.x - a.x) - (b.x - a.x) * (c.z - a.z);
+  let nz = (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+  if (nz < 0) {
+    nx = -nx;
+    ny = -ny;
+    nz = -nz;
+  }
+  const len = Math.hypot(nx, ny, nz) || 1;
+  return (nx + ny) / len;
+}
+
+export function drawWorldPoly(
+  g: Graphics,
+  verts: { x: number; y: number; z: number }[],
+  fill: number,
+  alpha = 1,
+): void {
+  if (verts.length < 3) return;
+  const pts = verts.flatMap((v) => {
+    const p = worldToScreen(v.x, v.y, v.z);
+    return [p.x, p.y];
+  });
+  g.poly(pts);
+  g.fill({ color: fill, alpha });
+}
+
+/** One projected polygon. No edge extrusion: that inverted overlap on viewer-facing slopes. */
+export function drawSlopedQuad(
+  g: Graphics,
+  verts: { x: number; y: number; z: number }[],
+  top: number,
+  edge: number,
+  alpha = 1,
+): void {
+  if (verts.length < 3) return;
+  const screen = verts.map((v) => worldToScreen(v.x, v.y, v.z));
+  const pts = screen.flatMap((p) => [p.x, p.y]);
+  g.poly(pts);
+  g.fill({ color: top, alpha });
+  g.poly(pts);
+  g.stroke({ color: edge, width: 1.35, alpha });
+}
+
 export function drawShadow(
   g: Graphics,
   x: number,
@@ -177,7 +230,7 @@ export function cellColors(material: Material, cracked: boolean): { top: number;
   };
 }
 
-function shade(color: number, mul: number): number {
+export function shade(color: number, mul: number): number {
   const r = Math.round(((color >> 16) & 255) * mul);
   const g = Math.round(((color >> 8) & 255) * mul);
   const b = Math.round((color & 255) * mul);
