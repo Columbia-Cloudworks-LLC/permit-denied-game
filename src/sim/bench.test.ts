@@ -114,7 +114,8 @@ describe("district simulation benches", () => {
       for (let k = 0; k < stride; k++) stepWorld(town, dozer, particles, upgrades, SIM_DT);
       samples.push((performance.now() - t0) / stride);
       lastMass = totalDebrisMass(town);
-      if (samples.length % 400 === 0) await Promise.resolve();
+      // Yield so the Vitest worker can answer RPC (birpc defaults to 60s).
+      if (samples.length % 80 === 0) await new Promise((resolve) => setTimeout(resolve, 0));
     }
     report("classic 20min accelerated (per step)", samples);
     expect(lastMass).toBeGreaterThan(0.5);
