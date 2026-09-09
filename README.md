@@ -55,7 +55,9 @@ Sandbox mode has no county clock and does not end from heat or thrown tracks. Re
 
 Same seed plus the same inputs reproduce a run within ordinary floating-point drift (tests allow about 5–8% mass tolerance through crush/aggregation).
 
-Buildings are cell stacks with load-bearing ground supports. Damage stays on the wall you hit. Take out supports and the floors above sag, crack, and fall. A falling bay can lean into a neighbor and start a second collapse. Rubble stays on the lot and can be pushed or crushed. Press **V** to spawn a lighter test car on the east-west road (or call `window.__pd.spawnRoadVehicle()`). `window.__pd.obstructionAt(x, y)` reports live heap height and resistance.
+Buildings are cell stacks with load-bearing ground supports and explicit sloped roofs. Damage stays on the wall you hit. Take out supports and the floors above sag, crack, and fall; roof sections sag and drop with the bays that hold them. A falling bay can lean into a neighbor and start a second collapse. Live rubble stays on the lot and can be pushed or crushed. Compacted mass stays in the pile field. A demolished building also leaves a permanent collapsed site on its footprint. Press **V** to spawn a lighter test car on the east-west road (or call `window.__pd.spawnRoadVehicle()`). `window.__pd.obstructionAt(x, y)` reports live heap height and resistance.
+
+District lots pick from a small set of archetypes (ranch, cottage, colonial, walk-up, porch house, storefront, corner shop, civic, warehouse). Same district and seed always rebuilds the same silhouettes, roofs, and facades. See `docs/architecture.md` for roofs, debris layers, and cleanup.
 
 ## Stack
 

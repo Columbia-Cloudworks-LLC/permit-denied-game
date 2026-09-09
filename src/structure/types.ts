@@ -2,6 +2,11 @@ export type Material = "wood" | "brick" | "concrete" | "metal" | "glass";
 export type BuildingKind = "house" | "shop" | "industrial";
 export type RoofStyle = "gable" | "flat" | "shed";
 export type CellState = "intact" | "cracked" | "breached" | "falling" | "gone";
+export type RoofSectionState = "intact" | "sagging" | "falling" | "gone";
+export type RoofAxis = "x" | "y";
+export type FacadeTheme = "cottage" | "ranch" | "colonial" | "walkup" | "porch" | "storefront" | "corner" | "civic" | "warehouse";
+export type LotZone = "residential" | "commercial" | "industrial";
+export type SiteMarkKind = "slab" | "dirt" | "crack" | "ridge" | "remnant" | "outline";
 
 export interface Cell {
   gx: number;
@@ -27,10 +32,49 @@ export interface Cell {
   loadingS: boolean;
 }
 
+export interface RoofVertex {
+  x: number;
+  y: number;
+  z: number;
+}
+
+export interface RoofSection {
+  id: number;
+  style: RoofStyle;
+  support: { gx: number; gy: number }[];
+  verts: RoofVertex[];
+  ridge?: { ax: number; ay: number; az: number; bx: number; by: number; bz: number };
+  state: RoofSectionState;
+  sag: number;
+  unsupportedTime: number;
+  fallT: number;
+  fallDx: number;
+  fallDy: number;
+  material: Material;
+}
+
+export interface BuildingFeatureSpec {
+  porch: boolean;
+  awning: boolean;
+  parapet: boolean;
+  chimney: boolean;
+  garage: boolean;
+}
+
+export interface DecorBox {
+  x: number;
+  y: number;
+  w: number;
+  d: number;
+  kind: "porch" | "awning" | "chimney" | "parapet";
+}
+
 export interface Building {
   id: number;
   kind: BuildingKind;
   name: string;
+  archetypeId: string;
+  theme: FacadeTheme;
   x: number;
   y: number;
   w: number;
@@ -38,14 +82,46 @@ export interface Building {
   floors: number;
   cellSize: number;
   roof: RoofStyle;
+  roofAxis: RoofAxis;
+  secondary: Material;
+  windowStride: number;
+  features: BuildingFeatureSpec;
+  decorBoxes: DecorBox[];
   cells: Cell[];
   grid: Cell[][][];
+  roofs: RoofSection[];
   fullyDown: boolean;
   collapseBonusPaid: boolean;
   leanX: number;
   leanY: number;
   structureDirty: boolean;
   collisionDirty: boolean;
+  roofDirty: boolean;
+}
+
+export interface SiteMark {
+  kind: SiteMarkKind;
+  x: number;
+  y: number;
+  w: number;
+  d: number;
+  heading: number;
+  seed: number;
+  z: number;
+}
+
+export interface CollapsedSite {
+  buildingId: number;
+  x: number;
+  y: number;
+  w: number;
+  d: number;
+  seed: number;
+  foundationMaterial: Material;
+  collapseDirectionX: number;
+  collapseDirectionY: number;
+  marks: SiteMark[];
+  channels: { x: number; y: number; r: number }[];
 }
 
 export type DebrisLayer = "remnant" | "fragment";
@@ -76,6 +152,7 @@ export interface Rubble {
   friction: number;
   sleeping: boolean;
   sleepT: number;
+  touchedAt: number;
 }
 
 export interface GroundMark {

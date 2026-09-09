@@ -4,6 +4,8 @@ export interface PerfSnapshot {
   renderPrepMs: number;
   droppedSimSec: number;
   budgetConversions: number;
+  distanceCleanups: number;
+  emergencyCleanups: number;
   debrisActive: number;
   debrisSleeping: number;
   contactPairs: number;
@@ -38,6 +40,8 @@ const EMPTY: PerfSnapshot = {
   renderPrepMs: 0,
   droppedSimSec: 0,
   budgetConversions: 0,
+  distanceCleanups: 0,
+  emergencyCleanups: 0,
   debrisActive: 0,
   debrisSleeping: 0,
   contactPairs: 0,
@@ -119,7 +123,7 @@ export function formatPerfOverlay(s: PerfSnapshot, fps: number): string {
   return [
     `CPU FRAME ${s.frameMs.toFixed(1)}ms  (~${fps.toFixed(0)} Hz)`,
     `SIM ${s.simCpuMs.toFixed(2)}ms  PREP ${s.renderPrepMs.toFixed(2)}ms  (GPU not measured)`,
-    `DEBRIS act ${s.debrisActive} sleep ${s.debrisSleeping} pairs ${s.contactPairs} absorb ${s.budgetConversions}`,
+    `DEBRIS act ${s.debrisActive} sleep ${s.debrisSleeping} pairs ${s.contactPairs} absorb ${s.budgetConversions} far ${s.distanceCleanups} emerg ${s.emergencyCleanups}`,
     `BUILDINGS step ${s.buildingsStepped} skip ${s.buildingsSkipped} hash ${s.collisionRebuilds}`,
     `DRAW vis ${s.renderVisible} / ${s.renderTotal}`,
     `MASS body ${s.bodyMass.toFixed(1)} pile ${s.pileMass.toFixed(1)}  drop ${s.droppedSimSec.toFixed(3)}s`,

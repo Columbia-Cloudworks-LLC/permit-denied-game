@@ -2,10 +2,10 @@ import { CELL } from "../game/constants";
 import { DEFAULT_DISTRICT_SEEDS, type DistrictId } from "../game/session";
 import { resetDebrisSim } from "../sim/debris";
 import { PileField } from "../sim/pile";
-import { createBuilding, resetBuildingIds } from "../structure/building";
-import type { Building, GroundMark, Prop, RoadVehicle, Rubble } from "../structure/types";
+import { createBuildingFromArchetype, resetBuildingIds } from "../structure/building";
+import type { Building, CollapsedSite, GroundMark, Prop, RoadVehicle, Rubble } from "../structure/types";
 import { generateDistrictLayout } from "./districts";
-import { BUILDING_FAMILIES, CLASSIC_PLACEMENTS } from "./families";
+import { CLASSIC_PLACEMENTS } from "./families";
 
 export interface Town {
   buildings: Building[];
@@ -29,6 +29,8 @@ export interface Town {
   roadSpawnY: number;
   roadSpawnHeading: number;
   visualRevision: number;
+  collapsedSites: CollapsedSite[];
+  siteRevision: number;
 }
 
 export interface TownOptions {
@@ -82,24 +84,18 @@ export function createTown(options: TownOptions = {}): Town {
     pile: new PileField(layout.minX - 2, layout.minY - 2, pileW, pileD),
     roadCar: null,
     visualRevision: 1,
+    collapsedSites: [],
+    siteRevision: 1,
   };
 }
 
 function createClassicTown(seed: number): Town {
-  const buildings: Building[] = CLASSIC_PLACEMENTS.map((place) => {
-    const family = BUILDING_FAMILIES[place.family]!;
-    return createBuilding({
-      kind: family.kind,
-      name: place.name,
-      x: place.x,
-      y: place.y,
-      w: family.w,
-      d: family.d,
-      floors: family.floors,
-      material: family.material,
-      roof: family.roof,
-    });
-  });
+  const buildings: Building[] = CLASSIC_PLACEMENTS.map((place) =>
+    createBuildingFromArchetype(place.archetypeId, place.name, place.x, place.y, {
+      w: place.w,
+      d: place.d,
+    }),
+  );
 
   const props: Prop[] = [
     makeProp("light", 16.2, 16.4, 0.28, 0.28, 14, "metal"),
@@ -148,6 +144,8 @@ function createClassicTown(seed: number): Town {
     roadSpawnY: 17.6,
     roadSpawnHeading: 0,
     visualRevision: 1,
+    collapsedSites: [],
+    siteRevision: 1,
   };
 }
 

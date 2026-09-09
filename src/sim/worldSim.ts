@@ -14,6 +14,7 @@ import { clampRoadVehicle, resolveRoadSolid, stepRoadVehicle } from "../vehicle/
 import type { Town } from "../world/town";
 import { depositSettledParticles, spawnCollapseDebris, spawnPropDebris, stepDebris } from "./debris";
 import { SpatialHash } from "./spatial";
+import { ensureCollapsedSite, siteContaining, siteFeel } from "../structure/site";
 
 export interface Upgrades {
   blade: number;
@@ -251,19 +252,26 @@ export function stepWorld(
   }
 
   for (const b of town.buildings) {
-    if (b.fullyDown && !b.collapseBonusPaid) {
-      b.collapseBonusPaid = true;
-      const bonus = buildingBonus(b);
-      cash += bonus;
-      events.push({
-        kind: "cash",
-        x: b.x + (b.w * b.cellSize) / 2,
-        y: b.y + (b.d * b.cellSize) / 2,
-        z: 2,
-        mag: 2.2,
-        cash: bonus,
-      });
-    }
+    if (!b.fullyDown) continue;
+    ensureCollapsedSite(town, b);
+    if (b.collapseBonusPaid) continue;
+    b.collapseBonusPaid = true;
+    const bonus = buildingBonus(b);
+    cash += bonus;
+    events.push({
+      kind: "cash",
+      x: b.x + (b.w * b.cellSize) / 2,
+      y: b.y + (b.d * b.cellSize) / 2,
+      z: 2,
+      mag: 2.2,
+      cash: bonus,
+    });
+  }
+
+  const overSite = siteContaining(town, dozer.x, dozer.y);
+  if (overSite) {
+    const feel = siteFeel(overSite, dozer.x, dozer.y);
+    if (feel > 0.1 && dozerSpeed(dozer) > 1.6) dozer.track += feel * 1.1 * dt;
   }
 
   const engineMul = 1 + upgrades.engine * 0.28;

@@ -34,6 +34,12 @@ export const PAL = {
   car: 0x3d5c8a,
   dumpster: 0x3d6a3a,
   bird: 0xe8d8a0,
+  roofShingle: 0x6e3a30,
+  roofShingleDark: 0x4a241e,
+  roofMetal: 0x6d7270,
+  roofFelt: 0x3c3a36,
+  foundation: 0x6a6458,
+  awning: 0x6a2c28,
 } as const;
 
 export function matColors(material: Material): { side: number; dark: number; top: number } {

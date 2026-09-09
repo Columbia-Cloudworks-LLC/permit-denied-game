@@ -2,9 +2,9 @@ import { CELL } from "../game/constants";
 import { aabbOverlap, pointInAabb } from "../game/math";
 import { Rng } from "../game/rng";
 import { DISTRICT_COUNTS, type DistrictId } from "../game/session";
-import { createBuilding, type BuildingSpec } from "../structure/building";
-import type { Building, Material, Prop } from "../structure/types";
-import { BUILDING_FAMILIES, type BuildingFamily } from "./families";
+import { createBuildingFromArchetype } from "../structure/building";
+import type { Building, Prop } from "../structure/types";
+import { lotZoneFor, pickArchetype } from "./archetypes";
 import type { Town } from "./town";
 
 const LOT_W = 10.6;
@@ -23,39 +23,6 @@ export interface DistrictReport {
   issues: DistrictIssue[];
 }
 
-function varyFamily(family: BuildingFamily, rng: Rng, index: number): BuildingSpec {
-  let w = family.w;
-  let d = family.d;
-  let floors = family.floors;
-  let material: Material = family.material;
-  if (rng.chance(0.38)) {
-    if (family.kind === "house") w = rng.int(2, 3);
-    else if (family.kind === "shop") w = rng.int(3, 4);
-    else w = rng.int(4, 5);
-  }
-  if (rng.chance(0.28)) {
-    if (family.kind === "house") d = rng.int(2, 3);
-    else if (family.kind === "shop") d = 3;
-    else d = rng.int(3, 4);
-  }
-  if (family.kind !== "house" && rng.chance(0.32)) floors = rng.int(2, 3);
-  if (rng.chance(0.22)) {
-    if (family.kind === "house") material = rng.chance(0.55) ? "wood" : "brick";
-    else if (family.kind === "shop") material = rng.chance(0.7) ? "brick" : "wood";
-    else material = rng.chance(0.72) ? "concrete" : "brick";
-  }
-  return {
-    kind: family.kind,
-    name: `LOT ${index + 1} ${family.label}`,
-    x: 0,
-    y: 0,
-    w,
-    d,
-    floors,
-    material,
-    roof: family.roof,
-  };
-}
 
 export function generateDistrictLayout(
   id: Exclude<DistrictId, "classic">,
@@ -70,7 +37,7 @@ export function generateDistrictLayout(
     material: Prop["material"],
     heading?: number,
   ) => Prop,
-): Omit<Town, "pile" | "rubble" | "marks" | "roadCar" | "visualRevision"> {
+): Omit<Town, "pile" | "rubble" | "marks" | "roadCar" | "visualRevision" | "collapsedSites" | "siteRevision"> {
   const count = DISTRICT_COUNTS[id];
   const rng = new Rng(seed);
   const cols = Math.ceil(Math.sqrt(count * 1.15));
@@ -98,15 +65,15 @@ export function generateDistrictLayout(
       const lx = originX + ROAD_W + c * (LOT_W + ROAD_W);
       const ly = originY + ROAD_W + r * (LOT_D + ROAD_W);
       lots.push({ x: lx, y: ly, w: LOT_W, d: LOT_D });
-      const family = BUILDING_FAMILIES[n % BUILDING_FAMILIES.length]!;
-      const spec = varyFamily(family, rng, n);
-      const bw = spec.w * CELL;
-      const bd = spec.d * CELL;
+      const zone = lotZoneFor(r, c, rows, cols);
+      const archetype = pickArchetype(zone, rng);
+      const bw = archetype.w * CELL;
+      const bd = archetype.d * CELL;
       const maxOx = Math.max(0, LOT_W - bw - LOT_PAD * 2);
       const maxOy = Math.max(0, LOT_D - bd - LOT_PAD * 2);
-      spec.x = lx + LOT_PAD + (maxOx > 0 ? rng.range(0, maxOx) : 0);
-      spec.y = ly + LOT_PAD + (maxOy > 0 ? rng.range(0, maxOy) : 0);
-      buildings.push(createBuilding(spec));
+      const x = lx + LOT_PAD + (maxOx > 0 ? rng.range(0, maxOx) : 0);
+      const y = ly + LOT_PAD + (maxOy > 0 ? rng.range(0, maxOy) : 0);
+      buildings.push(createBuildingFromArchetype(archetype.id, `LOT ${n + 1} ${archetype.label}`, x, y));
       n++;
     }
   }
@@ -216,6 +183,13 @@ function spawnClear(buildings: Building[], props: Prop[], x: number, y: number):
   return true;
 }
 
+export function buildingOccupyBoxes(building: Building): { x: number; y: number; w: number; d: number }[] {
+  return [
+    { x: building.x, y: building.y, w: building.w * building.cellSize, d: building.d * building.cellSize },
+    ...building.decorBoxes.map((b) => ({ x: b.x, y: b.y, w: b.w, d: b.d })),
+  ];
+}
+
 export function validateTown(town: Town): DistrictReport {
   const issues: DistrictIssue[] = [];
   if (town.district === "classic") {
@@ -238,16 +212,18 @@ export function validateTown(town: Town): DistrictReport {
 
   for (let i = 0; i < town.buildings.length; i++) {
     const a = town.buildings[i]!;
-    const aw = a.w * a.cellSize;
-    const ad = a.d * a.cellSize;
-    if (a.x < town.minX || a.y < town.minY || a.x + aw > town.maxX || a.y + ad > town.maxY) {
-      issues.push({ code: "bounds", detail: `${a.name} leaves world bounds` });
-    }
-    for (const road of town.roads) {
-      if (aabbOverlap(a.x, a.y, aw, ad, road.x, road.y, road.w, road.d)) {
-        issues.push({ code: "road", detail: `${a.name} overlaps a street` });
+    for (const box of buildingOccupyBoxes(a)) {
+      if (box.x < town.minX || box.y < town.minY || box.x + box.w > town.maxX || box.y + box.d > town.maxY) {
+        issues.push({ code: "bounds", detail: `${a.name} leaves world bounds` });
+      }
+      for (const road of town.roads) {
+        if (aabbOverlap(box.x, box.y, box.w, box.d, road.x, road.y, road.w, road.d)) {
+          issues.push({ code: "road", detail: `${a.name} overlaps a street` });
+        }
       }
     }
+    const aw = a.w * a.cellSize;
+    const ad = a.d * a.cellSize;
     for (let j = i + 1; j < town.buildings.length; j++) {
       const b = town.buildings[j]!;
       if (
@@ -263,6 +239,11 @@ export function validateTown(town: Town): DistrictReport {
         )
       ) {
         issues.push({ code: "overlap", detail: `${a.name} crowds ${b.name}` });
+      }
+      for (const da of a.decorBoxes) {
+        if (aabbOverlap(da.x, da.y, da.w, da.d, b.x, b.y, b.w * b.cellSize, b.d * b.cellSize)) {
+          issues.push({ code: "overlap", detail: `${a.name} attachment crowds ${b.name}` });
+        }
       }
     }
   }

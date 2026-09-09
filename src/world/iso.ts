@@ -19,6 +19,16 @@ export function depthKey(x: number, y: number, z = 0): number {
   return (x + y) * 1000 + z * 2;
 }
 
+/** Front-most vertex so a sloped roof paints after the walls under its eave. */
+export function roofPainterDepth(verts: { x: number; y: number; z: number }[]): number {
+  let best = -Infinity;
+  for (const v of verts) {
+    const d = depthKey(v.x, v.y, v.z);
+    if (d > best) best = d;
+  }
+  return best;
+}
+
 export interface ScreenAabb {
   minX: number;
   minY: number;

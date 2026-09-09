@@ -53,6 +53,9 @@ export const RUBBLE_CAP = 180;
 export const DEBRIS = {
   remnantCap: 96,
   fragmentCap: 140,
+  hardOverflow: 24,
+  protectRadius: 7.5,
+  interactGrace: 0.85,
   cosmeticCap: 420,
   activeCap: 72,
   solverIters: 5,

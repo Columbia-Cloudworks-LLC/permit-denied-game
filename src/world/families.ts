@@ -1,4 +1,5 @@
 import type { BuildingKind, Material, RoofStyle } from "../structure/types";
+import { ARCHETYPES, type ArchetypeId } from "./archetypes";
 
 export interface BuildingFamily {
   kind: BuildingKind;
@@ -8,29 +9,33 @@ export interface BuildingFamily {
   floors: number;
   material: Material;
   roof: RoofStyle;
+  archetypeId: ArchetypeId;
 }
 
-export const BUILDING_FAMILIES: readonly BuildingFamily[] = [
-  { kind: "house", label: "COTTAGE", w: 3, d: 3, floors: 2, material: "wood", roof: "gable" },
-  { kind: "industrial", label: "WORKS", w: 5, d: 4, floors: 3, material: "concrete", roof: "shed" },
-  { kind: "shop", label: "LEDGER", w: 4, d: 3, floors: 2, material: "brick", roof: "flat" },
-  { kind: "shop", label: "MART", w: 4, d: 3, floors: 2, material: "brick", roof: "flat" },
-  { kind: "house", label: "WALK-UP", w: 2, d: 3, floors: 2, material: "wood", roof: "gable" },
-  { kind: "shop", label: "SUPPLY", w: 3, d: 3, floors: 2, material: "brick", roof: "flat" },
-  { kind: "industrial", label: "ANNEX", w: 4, d: 4, floors: 3, material: "concrete", roof: "flat" },
-];
+export const BUILDING_FAMILIES: readonly BuildingFamily[] = ARCHETYPES.map((a) => ({
+  kind: a.kind,
+  label: a.label,
+  w: a.w,
+  d: a.d,
+  floors: a.floors,
+  material: a.material,
+  roof: a.roof,
+  archetypeId: a.id,
+}));
 
 export const CLASSIC_PLACEMENTS: readonly {
-  family: number;
+  archetypeId: ArchetypeId;
   name: string;
   x: number;
   y: number;
+  w?: number;
+  d?: number;
 }[] = [
-  { family: 0, name: "LOT 4 COTTAGE", x: 17, y: 21 },
-  { family: 1, name: "COUNTY WORKS", x: 4, y: 4 },
-  { family: 2, name: "BRICK & LEDGER", x: 9.9, y: 4 },
-  { family: 3, name: "CORNER MART", x: 24, y: 7 },
-  { family: 4, name: "ALLEY WALK-UP", x: 27, y: 20 },
-  { family: 5, name: "SOUTH SUPPLY", x: 6, y: 22.2 },
-  { family: 6, name: "CIVIC ANNEX", x: 31, y: 3.5 },
+  { archetypeId: "cottage", name: "LOT 4 COTTAGE", x: 17, y: 21 },
+  { archetypeId: "warehouse", name: "COUNTY WORKS", x: 4, y: 4 },
+  { archetypeId: "corner-shop", name: "BRICK & LEDGER", x: 9.9, y: 4 },
+  { archetypeId: "storefront", name: "CORNER MART", x: 24, y: 7 },
+  { archetypeId: "walkup", name: "ALLEY WALK-UP", x: 27, y: 20 },
+  { archetypeId: "storefront", name: "SOUTH SUPPLY", x: 6, y: 22.2, w: 3, d: 3 },
+  { archetypeId: "civic", name: "CIVIC ANNEX", x: 31, y: 3.5 },
 ];

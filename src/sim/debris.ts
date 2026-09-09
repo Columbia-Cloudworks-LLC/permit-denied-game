@@ -17,6 +17,7 @@ import { dozerForward, dozerSpeed } from "../vehicle/dozer";
 import type { Town } from "../world/town";
 import { SpatialHash } from "./spatial";
 import { pileResistance, queryObstruction } from "./pile";
+import { siteContaining, siteFeel } from "../structure/site";
 
 let nextDebrisId = 1;
 const playRng = new Rng(0xdeb415);
@@ -29,6 +30,8 @@ export interface DebrisStepStats {
   sleeping: number;
   contactPairs: number;
   conversions: number;
+  distanceCleanups: number;
+  emergencyCleanups: number;
   bodyMass: number;
   pileMass: number;
 }
@@ -38,9 +41,13 @@ const emptyDebrisStats = (): DebrisStepStats => ({
   sleeping: 0,
   contactPairs: 0,
   conversions: 0,
+  distanceCleanups: 0,
+  emergencyCleanups: 0,
   bodyMass: 0,
   pileMass: 0,
 });
+
+let debrisClock = 0;
 
 let stepStats = emptyDebrisStats();
 
@@ -56,12 +63,14 @@ export interface CollapseSpawn {
   material: Material;
   floor: number;
   cellSize: number;
+  source?: "wall" | "roof";
 }
 
 export function resetDebrisSim(seed = 0xdeb415): void {
   nextDebrisId = 1;
   playRng.reset(seed ^ 0xdeb415);
   contacted.clear();
+  debrisClock = 0;
   stepStats = emptyDebrisStats();
 }
 
@@ -182,6 +191,7 @@ function makeRubble(init: {
     friction: frictionOf(init.material),
     sleeping: false,
     sleepT: 0,
+    touchedAt: debrisClock,
   };
 }
 
@@ -203,7 +213,6 @@ function defaultThickness(material: Material, shape: DebrisShape, layer: DebrisL
 }
 
 export function addDebrisBody(town: Town, init: Parameters<typeof makeRubble>[0]): Rubble {
-  enforceBudgets(town, init.layer);
   const r = makeRubble(init);
   const support = town.pile.heightAt(r.x, r.y);
   r.elev = Math.max(r.elev, support);
@@ -254,7 +263,7 @@ export function spawnCollapseDebris(town: Town, spawn: CollapseSpawn): Rubble[] 
   town.pile.addMass(spawn.x, spawn.y, fines, spawn.material);
   let remaining = budget - fines;
 
-  const remnantPlans = remnantPlan(spawn.material, rng);
+  const remnantPlans = spawn.source === "roof" ? roofRemnantPlan(spawn.material, rng) : remnantPlan(spawn.material, rng);
   for (const plan of remnantPlans) {
     if (remaining < 0.08) break;
     const mass = Math.min(remaining * plan.massShare, remaining);
@@ -328,6 +337,26 @@ export function spawnCollapseDebris(town: Town, spawn: CollapseSpawn): Rubble[] 
   }
 
   return created;
+}
+
+function roofRemnantPlan(
+  material: Material,
+  rng: Rng,
+): { w: number; d: number; thickness: number; shape: DebrisShape; massShare: number; along: number }[] {
+  if (material === "wood") {
+    return [
+      { w: rng.range(0.85, 1.35), d: rng.range(0.08, 0.14), thickness: 0.11, shape: "beam", massShare: 0.38, along: 0.12 },
+      { w: rng.range(0.55, 0.95), d: rng.range(0.28, 0.5), thickness: 0.07, shape: "panel", massShare: 0.32, along: -0.08 },
+      { w: rng.range(0.4, 0.7), d: rng.range(0.22, 0.4), thickness: 0.06, shape: "panel", massShare: 0.18, along: 0.2 },
+    ];
+  }
+  if (material === "metal") {
+    return [
+      { w: rng.range(0.8, 1.3), d: rng.range(0.08, 0.14), thickness: 0.08, shape: "beam", massShare: 0.36, along: 0.1 },
+      { w: rng.range(0.5, 0.85), d: rng.range(0.24, 0.42), thickness: 0.05, shape: "panel", massShare: 0.34, along: -0.1 },
+    ];
+  }
+  return remnantPlan(material, rng);
 }
 
 function remnantPlan(
@@ -430,30 +459,93 @@ function heapScore(town: Town, r: Rubble): number {
   return town.pile.sample(r.x, r.y).mass + r.mass;
 }
 
-function pickAbsorb(town: Town, layer: DebrisLayer): Rubble | null {
-  const list = town.rubble.filter((r) => r.layer === layer);
-  if (list.length === 0) return null;
-  const sleeping = list.filter((r) => r.sleeping);
-  const pool = sleeping.length > 0 ? sleeping : list;
-  let best: Rubble | null = null;
-  let bestScore = Infinity;
-  for (const r of pool) {
-    const score = heapScore(town, r) * 4 + r.mass;
-    if (score < bestScore) {
-      bestScore = score;
-      best = r;
-    }
-  }
-  return best;
+export interface CleanupCandidate {
+  body: Rubble;
+  dist2: number;
+  sleeping: boolean;
+  nearby: boolean;
+  recent: boolean;
 }
 
-function enforceBudgets(town: Town, incoming: DebrisLayer): void {
-  const cap = incoming === "remnant" ? DEBRIS.remnantCap : DEBRIS.fragmentCap;
-  while (town.rubble.filter((r) => r.layer === incoming).length >= cap) {
-    const candidate = pickAbsorb(town, incoming);
-    if (!candidate) break;
-    absorbBody(town, candidate);
+function layerCap(layer: DebrisLayer): number {
+  return layer === "remnant" ? DEBRIS.remnantCap : DEBRIS.fragmentCap;
+}
+
+function touchingDozer(r: Rubble, dozerX: number, dozerY: number, touching: ReadonlySet<number>): boolean {
+  if (touching.has(r.id)) return true;
+  const reach = DOZER.radius + Math.max(r.w, r.d) * 0.45;
+  const dx = r.x - dozerX;
+  const dy = r.y - dozerY;
+  return dx * dx + dy * dy <= reach * reach;
+}
+
+export function collectCleanupCandidates(
+  bodies: readonly Rubble[],
+  dozerX: number,
+  dozerY: number,
+  touching: ReadonlySet<number>,
+  clock = debrisClock,
+): CleanupCandidate[] {
+  const protectR2 = DEBRIS.protectRadius * DEBRIS.protectRadius;
+  const out: CleanupCandidate[] = [];
+  for (const body of bodies) {
+    if (touchingDozer(body, dozerX, dozerY, touching)) continue;
+    const dx = body.x - dozerX;
+    const dy = body.y - dozerY;
+    const dist2 = dx * dx + dy * dy;
+    out.push({
+      body,
+      dist2,
+      sleeping: body.sleeping,
+      nearby: dist2 <= protectR2,
+      recent: clock - body.touchedAt < DEBRIS.interactGrace,
+    });
   }
+  out.sort((a, b) => {
+    if (b.dist2 !== a.dist2) return b.dist2 - a.dist2;
+    return b.body.id - a.body.id;
+  });
+  return out;
+}
+
+export function enforceDistanceCleanup(
+  town: Town,
+  dozerX: number,
+  dozerY: number,
+  touching: ReadonlySet<number> = contacted,
+): { distance: number; emergency: number } {
+  let distance = 0;
+  let emergency = 0;
+  for (const layer of ["remnant", "fragment"] as const) {
+    const layerBodies = town.rubble.filter((r) => r.layer === layer);
+    const cap = layerCap(layer);
+    if (layerBodies.length <= cap) continue;
+    const hardCap = cap + DEBRIS.hardOverflow;
+    const candidates = collectCleanupCandidates(layerBodies, dozerX, dozerY, touching);
+    const absorbed = new Set<number>();
+    let count = layerBodies.length;
+    for (const c of candidates) {
+      if (count <= cap) break;
+      if (!c.sleeping || c.nearby || c.recent) continue;
+      absorbBody(town, c.body);
+      absorbed.add(c.body.id);
+      count--;
+      distance++;
+    }
+    if (count > hardCap) {
+      for (const c of candidates) {
+        if (count <= hardCap) break;
+        if (absorbed.has(c.body.id)) continue;
+        absorbBody(town, c.body);
+        absorbed.add(c.body.id);
+        count--;
+        emergency++;
+      }
+    }
+  }
+  stepStats.distanceCleanups += distance;
+  stepStats.emergencyCleanups += emergency;
+  return { distance, emergency };
 }
 
 export function crushBody(town: Town, r: Rubble, particles: ParticlePool): void {
@@ -509,6 +601,7 @@ function invInertia(r: Rubble): number {
 function wake(r: Rubble): void {
   r.sleeping = false;
   r.sleepT = 0;
+  r.touchedAt = debrisClock;
 }
 
 interface Obb {
@@ -966,6 +1059,8 @@ function interactWithPile(
   } else {
     town.pile.compactPoint(v.x, v.y, 0.18 * dt);
   }
+  const site = siteContaining(town, v.x, v.y);
+  if (site) load += siteFeel(site, v.x, v.y) * 0.35 * v.profile.resistanceMul;
   return load;
 }
 
@@ -1015,6 +1110,7 @@ export function stepDebris(
 ): { load: number } {
   townScratch = town;
   stepStats = emptyDebrisStats();
+  debrisClock += dt;
   rebuildBodyHash(town);
   let load = 0;
   let contactPairs = 0;
@@ -1103,6 +1199,7 @@ export function stepDebris(
   }
 
   for (const r of town.rubble) integrateBody(town, r, dt);
+  enforceDistanceCleanup(town, dozer.x, dozer.y, contacted);
   trimActive(town, dozer.x, dozer.y);
 
   let active = 0;
@@ -1117,6 +1214,8 @@ export function stepDebris(
     sleeping: town.rubble.length - active,
     contactPairs,
     conversions: stepStats.conversions,
+    distanceCleanups: stepStats.distanceCleanups,
+    emergencyCleanups: stepStats.emergencyCleanups,
     bodyMass,
     pileMass: town.pile.totalMass(),
   };
@@ -1136,7 +1235,14 @@ export function depositSettledParticles(town: Town, particles: ParticlePool): vo
 }
 
 export function obstructionAt(town: Town, x: number, y: number, radius = 0.7) {
-  return queryObstruction(town.pile, town.rubble, x, y, radius);
+  const base = queryObstruction(town.pile, town.rubble, x, y, radius);
+  const site = siteContaining(town, x, y);
+  if (!site) return base;
+  const feel = siteFeel(site, x, y);
+  return {
+    ...base,
+    resistance: base.resistance + feel * 0.32,
+  };
 }
 
 export function pathBlocked(town: Town, x: number, y: number, radius = 0.7): boolean {
