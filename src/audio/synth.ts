@@ -72,6 +72,13 @@ export class AudioBus {
     this.grindGain.gain.setTargetAtTime(Math.min(0.16, amount), this.ctx.currentTime, 0.05);
   }
 
+  hush(): void {
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    this.engineGain?.gain.setTargetAtTime(0, now, 0.04);
+    this.grindGain?.gain.setTargetAtTime(0, now, 0.04);
+  }
+
   impact(mag: number): void {
     this.blip(80, 0.09, mag * 0.18, "square");
     this.noiseBurst(0.08, mag * 0.2, 400);

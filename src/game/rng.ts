@@ -19,6 +19,7 @@ export class Rng {
   }
 
   pick<T>(items: readonly T[]): T {
+    if (items.length === 0) throw new Error("Rng.pick called with no items");
     return items[this.int(0, items.length - 1)]!;
   }
 

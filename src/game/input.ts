@@ -16,7 +16,10 @@ export class Input {
       const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
       this.down.delete(k);
     };
-    const onBlur = () => this.down.clear();
+    const onBlur = () => {
+      this.down.clear();
+      this.pressed.clear();
+    };
     target.addEventListener("keydown", onDown);
     target.addEventListener("keyup", onUp);
     target.addEventListener("blur", onBlur);

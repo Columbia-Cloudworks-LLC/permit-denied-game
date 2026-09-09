@@ -151,6 +151,7 @@ export class Game {
     } else {
       this.acc = 0;
       this.input.flush();
+      this.audio.hush();
     }
 
     this.draw(realDt);

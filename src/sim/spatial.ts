@@ -1,5 +1,5 @@
 export class SpatialHash<T> {
-  private readonly cells = new Map<number, T[]>();
+  private readonly cells = new Map<string, T[]>();
 
   constructor(private readonly cellSize: number) {}
 
@@ -7,8 +7,8 @@ export class SpatialHash<T> {
     this.cells.clear();
   }
 
-  private key(ix: number, iy: number): number {
-    return (ix + 512) * 1024 + (iy + 512);
+  private key(ix: number, iy: number): string {
+    return `${ix},${iy}`;
   }
 
   insert(x: number, y: number, w: number, d: number, item: T): void {

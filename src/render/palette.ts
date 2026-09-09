@@ -1,3 +1,5 @@
+import type { Material } from "../structure/types";
+
 export const PAL = {
   lot: 0xb89b6a,
   lotDark: 0x8e7548,
@@ -34,7 +36,7 @@ export const PAL = {
   bird: 0xe8d8a0,
 } as const;
 
-export function matColors(material: string): { side: number; dark: number; top: number } {
+export function matColors(material: Material): { side: number; dark: number; top: number } {
   switch (material) {
     case "wood":
       return { side: PAL.wood, dark: PAL.woodDark, top: PAL.woodTop };
@@ -42,7 +44,13 @@ export function matColors(material: string): { side: number; dark: number; top: 
       return { side: PAL.brick, dark: PAL.brickDark, top: PAL.brickTop };
     case "metal":
       return { side: PAL.metal, dark: PAL.metalDark, top: PAL.metalTop };
-    default:
+    case "glass":
+      return { side: PAL.glass, dark: PAL.interior, top: PAL.glassLit };
+    case "concrete":
       return { side: PAL.concrete, dark: PAL.concreteDark, top: PAL.concreteTop };
+    default: {
+      const _never: never = material;
+      return _never;
+    }
   }
 }

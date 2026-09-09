@@ -184,7 +184,6 @@ export function stepWorld(
       events.push({ kind: "snap", x: p.x, y: p.y, z: 0.8, mag: 0.5, cash: pay });
     }
     cash += pay;
-    score += pay;
     addRubble(town, p.x, p.y, Math.max(0.4, p.w * 0.8), Math.max(0.35, p.d * 0.8), p.material);
   }
 
@@ -241,7 +240,6 @@ export function stepWorld(
       b.collapseBonusPaid = true;
       const bonus = buildingBonus(b);
       cash += bonus;
-      score += bonus;
       events.push({
         kind: "cash",
         x: b.x + (b.w * b.cellSize) / 2,

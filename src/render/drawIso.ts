@@ -1,5 +1,6 @@
 import { Graphics } from "pixi.js";
 import { FLOOR_Z } from "../game/constants";
+import type { Material } from "../structure/types";
 import { depthKey, isoQuad, worldToScreen } from "../world/iso";
 import { PAL, matColors } from "./palette";
 
@@ -166,7 +167,7 @@ export function floorZ(floor: number): number {
   return floor * FLOOR_Z;
 }
 
-export function cellColors(material: string, cracked: boolean): { top: number; left: number; right: number } {
+export function cellColors(material: Material, cracked: boolean): { top: number; left: number; right: number } {
   const c = matColors(material);
   if (!cracked) return { top: c.top, left: c.dark, right: c.side };
   return {
