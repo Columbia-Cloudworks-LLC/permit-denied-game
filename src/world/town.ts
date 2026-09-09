@@ -1,9 +1,11 @@
 import { CELL } from "../game/constants";
-import { Rng } from "../game/rng";
-import { resetDebrisIds } from "../sim/debris";
+import { DEFAULT_DISTRICT_SEEDS, type DistrictId } from "../game/session";
+import { resetDebrisSim } from "../sim/debris";
 import { PileField } from "../sim/pile";
 import { createBuilding, resetBuildingIds } from "../structure/building";
 import type { Building, GroundMark, Prop, RoadVehicle, Rubble } from "../structure/types";
+import { generateDistrictLayout } from "./districts";
+import { BUILDING_FAMILIES, CLASSIC_PLACEMENTS } from "./families";
 
 export interface Town {
   buildings: Building[];
@@ -21,11 +23,22 @@ export interface Town {
   maxY: number;
   roads: { x: number; y: number; w: number; d: number }[];
   lots: { x: number; y: number; w: number; d: number }[];
+  district: DistrictId;
+  seed: number;
+  roadSpawnX: number;
+  roadSpawnY: number;
+  roadSpawnHeading: number;
+  visualRevision: number;
+}
+
+export interface TownOptions {
+  district?: DistrictId;
+  seed?: number;
 }
 
 let propId = 1;
 
-function prop(
+function makeProp(
   kind: Prop["kind"],
   x: number,
   y: number,
@@ -50,114 +63,65 @@ function prop(
   };
 }
 
-export function createTown(): Town {
+export function createTown(options: TownOptions = {}): Town {
+  const district = options.district ?? "classic";
+  const seed = options.seed ?? DEFAULT_DISTRICT_SEEDS[district];
   resetBuildingIds();
-  resetDebrisIds();
+  resetDebrisSim(seed);
   propId = 1;
-  const rng = new Rng(0x0ddba11);
 
-  const buildings: Building[] = [
-    createBuilding({
-      kind: "house",
-      name: "LOT 4 COTTAGE",
-      x: 17,
-      y: 21,
-      w: 3,
-      d: 3,
-      floors: 2,
-      material: "wood",
-      roof: "gable",
-    }),
-    createBuilding({
-      kind: "industrial",
-      name: "COUNTY WORKS",
-      x: 4,
-      y: 4,
-      w: 5,
-      d: 4,
-      floors: 3,
-      material: "concrete",
-      roof: "shed",
-    }),
-    createBuilding({
-      kind: "shop",
-      name: "BRICK & LEDGER",
-      x: 9.9,
-      y: 4,
-      w: 4,
-      d: 3,
-      floors: 2,
-      material: "brick",
-      roof: "flat",
-    }),
-    createBuilding({
-      kind: "shop",
-      name: "CORNER MART",
-      x: 24,
-      y: 7,
-      w: 4,
-      d: 3,
-      floors: 2,
-      material: "brick",
-      roof: "flat",
-    }),
-    createBuilding({
-      kind: "house",
-      name: "ALLEY WALK-UP",
-      x: 27,
-      y: 20,
-      w: 2,
-      d: 3,
-      floors: 2,
-      material: "wood",
-      roof: "gable",
-    }),
-    createBuilding({
-      kind: "shop",
-      name: "SOUTH SUPPLY",
-      x: 6,
-      y: 22.2,
-      w: 3,
-      d: 3,
-      floors: 2,
-      material: "brick",
-      roof: "flat",
-    }),
-    createBuilding({
-      kind: "industrial",
-      name: "CIVIC ANNEX",
-      x: 31,
-      y: 3.5,
-      w: 4,
-      d: 4,
-      floors: 3,
-      material: "concrete",
-      roof: "flat",
-    }),
-  ];
+  if (district === "classic") return createClassicTown(seed);
+
+  const layout = generateDistrictLayout(district, seed, makeProp);
+  const pileW = layout.maxX - layout.minX + 4;
+  const pileD = layout.maxY - layout.minY + 4;
+  return {
+    ...layout,
+    rubble: [],
+    marks: [],
+    pile: new PileField(layout.minX - 2, layout.minY - 2, pileW, pileD),
+    roadCar: null,
+    visualRevision: 1,
+  };
+}
+
+function createClassicTown(seed: number): Town {
+  const buildings: Building[] = CLASSIC_PLACEMENTS.map((place) => {
+    const family = BUILDING_FAMILIES[place.family]!;
+    return createBuilding({
+      kind: family.kind,
+      name: place.name,
+      x: place.x,
+      y: place.y,
+      w: family.w,
+      d: family.d,
+      floors: family.floors,
+      material: family.material,
+      roof: family.roof,
+    });
+  });
 
   const props: Prop[] = [
-    prop("light", 16.2, 16.4, 0.28, 0.28, 14, "metal"),
-    prop("light", 22.6, 16.4, 0.28, 0.28, 14, "metal"),
-    prop("light", 18.4, 10.4, 0.28, 0.28, 14, "metal"),
-    prop("light", 12.2, 16.4, 0.28, 0.28, 14, "metal"),
-    prop("camera", 20.1, 15.6, 0.26, 0.26, 8, "metal"),
-    prop("camera", 15.4, 8.6, 0.26, 0.26, 8, "metal"),
-    prop("car", 21.6, 17.4, 1.7, 0.85, 28, "metal", 0.1),
-    prop("car", 13.4, 17.6, 1.7, 0.85, 28, "metal", 3.2),
-    prop("car", 28.4, 16.8, 1.6, 0.8, 26, "metal", -0.2),
-    prop("dumpster", 15.6, 20.2, 0.9, 0.7, 22, "metal"),
-    prop("dumpster", 26.2, 19.4, 0.9, 0.7, 22, "metal"),
-    prop("barricade", 19.2, 19.1, 1.4, 0.28, 12, "wood", 0.05),
+    makeProp("light", 16.2, 16.4, 0.28, 0.28, 14, "metal"),
+    makeProp("light", 22.6, 16.4, 0.28, 0.28, 14, "metal"),
+    makeProp("light", 18.4, 10.4, 0.28, 0.28, 14, "metal"),
+    makeProp("light", 12.2, 16.4, 0.28, 0.28, 14, "metal"),
+    makeProp("camera", 20.1, 15.6, 0.26, 0.26, 8, "metal"),
+    makeProp("camera", 15.4, 8.6, 0.26, 0.26, 8, "metal"),
+    makeProp("car", 21.6, 17.4, 1.7, 0.85, 28, "metal", 0.1),
+    makeProp("car", 13.4, 17.6, 1.7, 0.85, 28, "metal", 3.2),
+    makeProp("car", 28.4, 16.8, 1.6, 0.8, 26, "metal", -0.2),
+    makeProp("dumpster", 15.6, 20.2, 0.9, 0.7, 22, "metal"),
+    makeProp("dumpster", 26.2, 19.4, 0.9, 0.7, 22, "metal"),
+    makeProp("barricade", 19.2, 19.1, 1.4, 0.28, 12, "wood", 0.05),
   ];
 
   for (let i = 0; i < 5; i++) {
-    props.push(prop("fence", 16.6 + i * 1.05, 20.55, 1.0, 0.16, 9, "wood"));
+    props.push(makeProp("fence", 16.6 + i * 1.05, 20.55, 1.0, 0.16, 9, "wood"));
   }
   for (let i = 0; i < 4; i++) {
-    props.push(prop("fence", 26.7, 19.2 + i * 1.05, 0.16, 1.0, 9, "wood"));
+    props.push(makeProp("fence", 26.7, 19.2 + i * 1.05, 0.16, 1.0, 9, "wood"));
   }
-  void rng;
 
   return {
     buildings,
@@ -177,12 +141,17 @@ export function createTown(): Town {
       { x: 1, y: 16, w: 37, d: 3.2 },
       { x: 18.2, y: 1, w: 3.1, d: 33 },
     ],
-    lots: [
-      { x: 1, y: 1, w: 37, d: 33 },
-    ],
+    lots: [{ x: 1, y: 1, w: 37, d: 33 }],
+    district: "classic",
+    seed,
+    roadSpawnX: 3.4,
+    roadSpawnY: 17.6,
+    roadSpawnHeading: 0,
+    visualRevision: 1,
   };
 }
 
-export function townExtent(): { w: number; d: number } {
-  return { w: 40 * CELL, d: 36 * CELL };
+export function townExtent(town?: Town): { w: number; d: number } {
+  if (!town) return { w: 40 * CELL, d: 36 * CELL };
+  return { w: (town.maxX - town.minX + 2) * CELL, d: (town.maxY - town.minY + 2) * CELL };
 }
