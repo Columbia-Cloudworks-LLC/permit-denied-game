@@ -8,9 +8,21 @@ Simulation stays in world coordinates. Isometric drawing is render-only.
 
 Collision uses occupied cells only. Porch, awning, parapet, and chimney are decorative boxes and must not invent wall collision.
 
+## Structural cells vs facade surfaces
+
+`Building.grid` / `Cell` remain the simulation source of truth for HP, support, collapse, debris material, and collision. Rendering does not draw one isometric box per intact cell.
+
+`src/render/buildingSurfaces.ts` extracts exposed south/east walls and optional top caps from live cells, merges compatible spans, and caches by a render-only signature (never reads or clears `structureDirty`). Breached cells merge into cavity groups; falling cells still draw as displaced chunks.
+
+`Cell.material` is structural. `Cell.facadeMaterial` is render-only skin for ground-floor south facades (brick veneer on wood houses, etc.) and does not change HP on house/shop archetypes. Industrial ground-floor metal stays structural.
+
+`src/render/lighting.ts` applies a fixed upper-west sun to wall and roof ramps. `slopeFacingLight` in `drawIso.ts` now delegates to `roofSlopeLight` so roof brightness follows light direction, not camera facing.
+
+Intact buildings get one merged footprint shadow. Per-cell ground shadows are reserved for falling cells, debris, vehicles, and props.
+
 ## Roofs
 
-`src/structure/roof.ts` builds roof sections from the occupied top-floor footprint.
+`src/structure/roof.ts` builds roof sections from the occupied top-floor footprint. Wall spans stop at story height (`floors * FLOOR_Z`) unless that face carries a gable: then the top-floor span is one house-shaped polygon (rectangle plus peak) so there is no triangle seam on the story top. Flat roofs sit on that same story top with a small overhang. Shed roofs keep their slope: the top-floor south/east spans rise as trapezoids to the live shed plane so the lot does not show through under the high eave. Roof planes paint after those walls and own the eave. Do not draw a separate gable triangle or a post-roof fascia.
 
 - Rectangular gable: two sloped planes and a shared ridge, ridge along the longer axis unless the archetype overrides it.
 - Shed and flat: one explicit section so they share the same support/collapse life.

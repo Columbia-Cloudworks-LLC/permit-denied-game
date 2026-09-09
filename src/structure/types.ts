@@ -13,6 +13,8 @@ export interface Cell {
   gy: number;
   floor: number;
   material: Material;
+  /** Render-only south/ground facade skin; structural HP uses `material`. */
+  facadeMaterial: Material;
   hp: number;
   maxHp: number;
   isSupport: boolean;

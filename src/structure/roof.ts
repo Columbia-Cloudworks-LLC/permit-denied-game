@@ -16,7 +16,7 @@ export interface RoofDebrisSpawn {
 }
 
 function wallTopZ(floors: number): number {
-  return (floors - 1) * FLOOR_Z + FLOOR_Z * 0.92;
+  return floors * FLOOR_Z;
 }
 
 function occupiedTop(building: Building): { gx: number; gy: number }[] {
@@ -227,9 +227,9 @@ function gablePlanes(
 function shedPlane(building: Building, cells: { gx: number; gy: number }[], axis: RoofAxis, id: number): RoofSection {
   const b = bbox(cells);
   const eaveZ = wallTopZ(building.floors);
-  const lowZ = eaveZ + 0.18;
+  const lowZ = eaveZ;
   const highZ = eaveZ + 0.92;
-  const oh = 0.1;
+  const oh = 0.12;
   const box = worldBox(building, b.minX, b.maxX, b.minY, b.maxY, oh);
   const verts =
     axis === "y"
@@ -250,8 +250,8 @@ function shedPlane(building: Building, cells: { gx: number; gy: number }[], axis
 
 function flatPlane(building: Building, cells: { gx: number; gy: number }[], id: number): RoofSection {
   const b = bbox(cells);
-  const z = wallTopZ(building.floors) + 0.16;
-  const oh = 0.06;
+  const z = wallTopZ(building.floors);
+  const oh = 0.12;
   const box = worldBox(building, b.minX, b.maxX, b.minY, b.maxY, oh);
   return makeSection(
     id,
@@ -461,7 +461,76 @@ export interface GableEndCap {
   peak: { x: number; y: number; z: number };
 }
 
-/** Viewer-facing gable wall triangles from the flat story top up to the ridge. */
+/** Trapezoid from the top-floor wall up the live shed plane. Null if no shed rise. */
+export function shedWallVerts(
+  building: Building,
+  face: "south" | "east",
+  along0: number,
+  along1: number,
+  plane: number,
+  z0: number,
+): { x: number; y: number; z: number }[] | null {
+  const live = building.roofs.some(
+    (r) => r.style === "shed" && (r.state === "intact" || r.state === "sagging"),
+  );
+  if (!live) return null;
+  const lo = Math.min(along0, along1);
+  const hi = Math.max(along0, along1);
+  const zAt = (along: number) => {
+    const inset = 0.04;
+    return face === "south"
+      ? roofHeightAt(building, along, plane - inset)
+      : roofHeightAt(building, plane - inset, along);
+  };
+  const zLo = zAt(lo);
+  const zHi = zAt(hi);
+  if (zLo == null || zHi == null) return null;
+  const story = wallTopZ(building.floors);
+  if (zLo <= story + 0.03 && zHi <= story + 0.03) return null;
+  const pt = (along: number, z: number) =>
+    face === "south" ? { x: along, y: plane, z } : { x: plane, y: along, z };
+  return [pt(lo, z0), pt(hi, z0), pt(hi, zHi), pt(lo, zLo)];
+}
+
+/** Height on the gable outline at a world X (south) or Y (east) along the face. */
+export function gableZAlong(cap: GableEndCap, along: number): number {
+  const a = cap.face === "south" ? cap.a.x : cap.a.y;
+  const b = cap.face === "south" ? cap.b.x : cap.b.y;
+  const p = cap.face === "south" ? cap.peak.x : cap.peak.y;
+  if (along <= p) {
+    const span = p - a;
+    if (Math.abs(span) < 1e-8) return cap.peak.z;
+    const t = Math.max(0, Math.min(1, (along - a) / span));
+    return cap.a.z + (cap.peak.z - cap.a.z) * t;
+  }
+  const span = b - p;
+  if (Math.abs(span) < 1e-8) return cap.peak.z;
+  const t = Math.max(0, Math.min(1, (along - p) / span));
+  return cap.peak.z + (cap.b.z - cap.peak.z) * t;
+}
+
+/** One house-shaped wall: story rectangle plus the gable peak, no shared eave edge. */
+export function gableWallVerts(
+  cap: GableEndCap,
+  along0: number,
+  along1: number,
+  plane: number,
+  z0: number,
+): { x: number; y: number; z: number }[] {
+  const lo = Math.min(along0, along1);
+  const hi = Math.max(along0, along1);
+  const peakAlong = cap.face === "south" ? cap.peak.x : cap.peak.y;
+  const pt = (along: number, z: number) =>
+    cap.face === "south" ? { x: along, y: plane, z } : { x: plane, y: along, z };
+  const verts = [pt(lo, z0), pt(hi, z0), pt(hi, gableZAlong(cap, hi))];
+  if (peakAlong > lo + 1e-4 && peakAlong < hi - 1e-4) {
+    verts.push(pt(peakAlong, cap.peak.z));
+  }
+  verts.push(pt(lo, gableZAlong(cap, lo)));
+  return verts;
+}
+
+/** Viewer-facing gable outline from the story top up to the ridge. */
 export function gableEndCaps(building: Building): GableEndCap[] {
   const live = building.roofs.filter(
     (r) => r.style === "gable" && (r.state === "intact" || r.state === "sagging") && r.ridge,
@@ -477,7 +546,7 @@ export function gableEndCaps(building: Building): GableEndCap[] {
   const y0 = building.y + b.minY * cs;
   const y1 = building.y + (b.maxY + 1) * cs;
   const sag = Math.max(...live.map((r) => r.sag * 0.35));
-  const eaveZ = Math.min(...live.flatMap((r) => r.verts.map((v) => v.z))) - sag - 0.03;
+  const eaveZ = Math.min(...live.flatMap((r) => r.verts.map((v) => v.z))) - sag;
   const peakZ = ridge.az - sag;
   const axisX = Math.abs(ridge.ay - ridge.by) < 1e-3;
   if (axisX) {
