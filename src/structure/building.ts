@@ -42,6 +42,7 @@ function makeCell(gx: number, gy: number, floor: number, material: Material, isS
     windowW: false,
     doorS: false,
     loadingS: false,
+    facadeMaterial: material,
   };
 }
 
@@ -211,9 +212,11 @@ export function createBuilding(spec: BuildingSpec): Building {
         }
         let mat = spec.material;
         if (spec.kind === "house" && floor === spec.floors - 1) mat = "wood";
-        if (spec.secondary && floor === 0 && gy === spec.d - 1 && live) mat = spec.secondary;
         if (spec.kind === "industrial" && floor === 0 && gy === spec.d - 1) mat = spec.secondary ?? "metal";
         const cell = makeCell(gx, gy, floor, mat, isSupport);
+        if (spec.secondary && floor === 0 && gy === spec.d - 1 && live && spec.kind !== "industrial") {
+          cell.facadeMaterial = spec.secondary;
+        }
         if (!live) {
           cell.state = "gone";
           cell.hp = 0;

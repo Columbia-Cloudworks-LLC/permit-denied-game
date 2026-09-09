@@ -2,6 +2,7 @@ import { Graphics } from "pixi.js";
 import { FLOOR_Z } from "../game/constants";
 import type { Material } from "../structure/types";
 import { depthKey, isoQuad, worldToScreen } from "../world/iso";
+import { roofSlopeLight } from "./lighting";
 import { PAL, matColors } from "./palette";
 
 export function headingOffset(
@@ -155,22 +156,27 @@ export function drawFaceWindow(
   g.fill({ color, alpha });
 }
 
-/** Iso light on a world-space roof quad. Positive = faces the camera. */
+/** @deprecated Use roofSlopeLight — fixed sun, not camera facing. */
 export function slopeFacingLight(verts: { x: number; y: number; z: number }[]): number {
-  if (verts.length < 3) return 0;
-  const a = verts[0]!;
-  const b = verts[1]!;
-  const c = verts[2]!;
-  let nx = (b.y - a.y) * (c.z - a.z) - (b.z - a.z) * (c.y - a.y);
-  let ny = (b.z - a.z) * (c.x - a.x) - (b.x - a.x) * (c.z - a.z);
-  let nz = (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
-  if (nz < 0) {
-    nx = -nx;
-    ny = -ny;
-    nz = -nz;
-  }
-  const len = Math.hypot(nx, ny, nz) || 1;
-  return (nx + ny) / len;
+  return roofSlopeLight(verts);
+}
+
+export function drawTopCap(
+  g: Graphics,
+  x: number,
+  y: number,
+  w: number,
+  d: number,
+  z: number,
+  color: number,
+  alpha = 1,
+): void {
+  const t00 = worldToScreen(x, y, z);
+  const t10 = worldToScreen(x + w, y, z);
+  const t11 = worldToScreen(x + w, y + d, z);
+  const t01 = worldToScreen(x, y + d, z);
+  g.poly([t00.x, t00.y, t10.x, t10.y, t11.x, t11.y, t01.x, t01.y]);
+  g.fill({ color, alpha });
 }
 
 export function drawWorldPoly(

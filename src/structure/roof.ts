@@ -16,7 +16,7 @@ export interface RoofDebrisSpawn {
 }
 
 function wallTopZ(floors: number): number {
-  return (floors - 1) * FLOOR_Z + FLOOR_Z * 0.92;
+  return floors * FLOOR_Z;
 }
 
 function occupiedTop(building: Building): { gx: number; gy: number }[] {

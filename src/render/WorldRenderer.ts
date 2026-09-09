@@ -4,10 +4,19 @@ import { Rng } from "../game/rng";
 import { depthKey, roofPainterDepth, screenAabbVisible, worldBoundsToScreen, worldToScreen } from "../world/iso";
 import type { ParticlePool } from "../fx/particles";
 import { displacedRoofVerts, gableEndCaps, roofHeightAt } from "../structure/roof";
-import type { Bird, Building, Cell, CollapsedSite, GroundMark, Particle, Prop, RoofSection, Rubble } from "../structure/types";
+import type { Bird, Building, CollapsedSite, GroundMark, Particle, Prop, RoofSection, Rubble } from "../structure/types";
 import type { Dozer } from "../vehicle/dozer";
 import type { Town } from "../world/town";
-import { cellColors, drawFaceWindow, drawGroundPoly, drawIsoBox, drawOrientedIsoBox, drawShadow, drawSlopedQuad, drawWorldPoly, PAL, shade, slopeFacingLight } from "./drawIso";
+import { aggregateSurfaceStats, getBuildingSurfaces } from "./buildingSurfaces";
+import { cellColors, drawGroundPoly, drawIsoBox, drawOrientedIsoBox, drawShadow, drawSlopedQuad, drawWorldPoly, PAL, shade } from "./drawIso";
+import {
+  drawBreachGroup,
+  drawBuildingFootprintShadow,
+  drawFallingCell,
+  drawTopSpan,
+  drawWallSpan,
+} from "./facadeDraw";
+import { roofSlopeLight } from "./lighting";
 import { drawCar, drawDozer, drawRoadVehicle } from "./vehicles";
 
 interface Cmd {
@@ -30,7 +39,7 @@ export class WorldRenderer {
   private groundKey = "";
   private overlayKey = "";
   private siteKey = "";
-  stats = { total: 0, visible: 0 };
+  stats = { total: 0, visible: 0, surfaceGeometry: 0 };
 
   constructor() {
     this.root.addChild(this.ground, this.sites, this.overlay, this.world);
@@ -123,6 +132,7 @@ export class WorldRenderer {
       this.overlayKey = oKey;
     }
 
+    const surfaceStats = aggregateSurfaceStats(town.buildings);
     for (const b of town.buildings) {
       const bw = b.w * b.cellSize;
       const bd = b.d * b.cellSize;
@@ -131,8 +141,38 @@ export class WorldRenderer {
       total += b.cells.length;
       if (!this.visibleBox(b.x - fall, b.y - fall, bw + fall * 2, bd + fall * 2, -0.4, z1)) continue;
       const fade = occludes(b, occludeX, occludeY) ? 0.38 : 1;
+      const surfaces = getBuildingSurfaces(b);
+      const hasSolid = b.cells.some((c) => c.state !== "gone" && c.state !== "falling");
+      if (hasSolid) {
+        visible++;
+        this.cmds.push({
+          depth: depthKey(b.x + bw * 0.5, b.y + bd * 0.5, 0),
+          run: (g) => drawBuildingFootprintShadow(g, surfaces.footprint, fade),
+        });
+      }
+      for (const span of surfaces.walls) {
+        visible++;
+        this.cmds.push({
+          depth: span.depth,
+          run: (g) => drawWallSpan(g, b, span, fade),
+        });
+      }
+      for (const span of surfaces.tops) {
+        visible++;
+        this.cmds.push({
+          depth: span.depth,
+          run: (g) => drawTopSpan(g, b, span, fade),
+        });
+      }
+      for (const breach of surfaces.breaches) {
+        visible++;
+        this.cmds.push({
+          depth: breach.depth,
+          run: (g) => drawBreachGroup(g, b, breach, fade),
+        });
+      }
       for (const cell of b.cells) {
-        if (cell.state === "gone") continue;
+        if (cell.state !== "falling") continue;
         const cx = b.x + cell.gx * b.cellSize + cell.fallDx * cell.fallT * 0.85;
         const cy = b.y + cell.gy * b.cellSize + cell.fallDy * cell.fallT * 0.85;
         const z0 = cell.floor * FLOOR_Z - cell.sag * 0.55 - cell.fallT * 1.6;
@@ -144,7 +184,10 @@ export class WorldRenderer {
             b.y + (cell.gy + 0.5) * b.cellSize + cell.fallDy * cell.fallT,
             cell.floor * FLOOR_Z,
           ),
-          run: (g) => drawCell(g, b, cell, fade),
+          run: (g) => {
+            drawShadow(g, cx, cy, b.cellSize, b.cellSize, 0.18 * fade);
+            drawFallingCell(g, b, cell, fade);
+          },
         });
       }
       const liveRoofs = b.roofs.filter((roof) => roof.state !== "gone");
@@ -225,7 +268,7 @@ export class WorldRenderer {
 
     this.cmds.sort((a, b) => a.depth - b.depth);
     for (const cmd of this.cmds) cmd.run(this.world);
-    this.stats = { total, visible };
+    this.stats = { total, visible, surfaceGeometry: surfaceStats.geometryCount };
   }
 }
 
@@ -238,82 +281,8 @@ function occludes(b: Building, px: number, py: number): boolean {
   return dx < b.w * b.cellSize * 0.9 + 2.2 && dy < b.d * b.cellSize * 0.9 + 2.2;
 }
 
-function drawCell(g: Graphics, b: Building, cell: Cell, alpha: number): void {
-  const cs = b.cellSize;
-  let x = b.x + cell.gx * cs + cell.fallDx * cell.fallT * 0.85;
-  let y = b.y + cell.gy * cs + cell.fallDy * cell.fallT * 0.85;
-  const z0 = cell.floor * FLOOR_Z - cell.sag * 0.55 - cell.fallT * 1.6;
-  const h = FLOOR_Z * 0.92;
-  const cols = cellColors(cell.material, cell.state !== "intact");
-
-  drawShadow(g, x, y, cs, cs, 0.18 * alpha);
-
-  if (cell.state === "breached" || cell.state === "falling") {
-    drawIsoBox(g, x + cs * 0.08, y + cs * 0.08, cs * 0.84, cs * 0.84, z0, h * 0.55, PAL.interior, PAL.interior, PAL.interior, alpha);
-    drawIsoBox(g, x, y, cs * 0.22, cs, z0, h * 0.7, cols.top, cols.left, cols.right, alpha);
-    drawIsoBox(g, x + cs * 0.78, y, cs * 0.22, cs, z0, h * 0.65, cols.top, cols.left, cols.right, alpha);
-    if (cell.state === "falling") {
-      drawIsoBox(g, x + 0.1, y + 0.1, cs * 0.5, cs * 0.4, z0 + h * 0.2, h * 0.25, cols.top, cols.left, cols.right, alpha * 0.85);
-    }
-    return;
-  }
-
-  const roofed = cellHasLiveRoof(b, cell);
-  drawIsoBox(g, x, y, cs, cs, z0, h, cols.top, cols.left, cols.right, alpha, !roofed);
-  if (cell.floor === 0) {
-    drawFaceWindow(g, x + cs, y, x + cs, y + cs, z0, z0 + h, 0, 1, 0, 0.12, PAL.foundation, alpha * 0.7);
-    drawFaceWindow(g, x, y + cs, x + cs, y + cs, z0, z0 + h, 0, 1, 0, 0.12, PAL.foundation, alpha * 0.55);
-  }
-  if (cell.material === "brick" || b.theme === "colonial" || b.theme === "corner") {
-    drawFaceWindow(g, x + cs, y, x + cs, y + cs, z0, z0 + h, 0, 1, 0.46, 0.54, cols.left, alpha * 0.35);
-    drawFaceWindow(g, x, y + cs, x + cs, y + cs, z0, z0 + h, 0, 1, 0.46, 0.54, cols.left, alpha * 0.28);
-  }
-  if (b.theme === "colonial" && cell.windowS) {
-    drawFaceWindow(g, x, y + cs, x + cs, y + cs, z0, z0 + h, 0.18, 0.46, 0.32, 0.7, glassFor(cell), alpha);
-    drawFaceWindow(g, x, y + cs, x + cs, y + cs, z0, z0 + h, 0.54, 0.82, 0.32, 0.7, glassFor(cell), alpha);
-  }
-
-  const glass = glassFor(cell);
-  if (cell.windowE && b.theme !== "colonial") {
-    drawFaceWindow(g, x + cs, y, x + cs, y + cs, z0, z0 + h, 0.28, 0.72, 0.28, 0.72, glass, alpha);
-  } else if (cell.windowE) {
-    drawFaceWindow(g, x + cs, y, x + cs, y + cs, z0, z0 + h, 0.28, 0.72, 0.28, 0.72, glass, alpha);
-  }
-  if (cell.windowS && b.theme !== "colonial") {
-    drawFaceWindow(g, x, y + cs, x + cs, y + cs, z0, z0 + h, 0.28, 0.72, 0.28, 0.72, glass, alpha);
-  }
-  if (cell.doorS) {
-    drawFaceWindow(g, x, y + cs, x + cs, y + cs, z0, z0 + h, 0.32, 0.68, 0.0, 0.55, PAL.woodDark, alpha);
-  }
-  if (cell.loadingS) {
-    drawFaceWindow(g, x, y + cs, x + cs, y + cs, z0, z0 + h, 0.08, 0.92, 0.0, 0.82, PAL.metalDark, alpha);
-  }
-  if (b.features.awning && cell.doorS) {
-    drawIsoBox(g, x - 0.04, y + cs * 0.72, cs + 0.08, 0.38, z0 + h * 0.62, 0.1, PAL.awning, PAL.brickDark, PAL.awning, alpha);
-  }
-  if (b.features.porch && cell.doorS) {
-    drawIsoBox(g, x + cs * 0.15, y + cs * 0.82, cs * 0.7, 0.55, 0, 0.12, PAL.woodTop, PAL.woodDark, PAL.wood, alpha);
-  }
-  if (cell.state === "cracked") {
-    drawFaceWindow(g, x + cs, y, x + cs, y + cs, z0, z0 + h, 0.45, 0.52, 0.05, 0.9, PAL.crack, alpha * 0.7);
-    drawFaceWindow(g, x, y + cs, x + cs, y + cs, z0, z0 + h, 0.2, 0.28, 0.1, 0.85, PAL.crack, alpha * 0.55);
-  }
-
-}
-
-function glassFor(cell: Cell): number {
-  return cell.state === "cracked" ? PAL.glass : PAL.glassLit;
-}
-
 function roofVerts(roof: RoofSection): { x: number; y: number; z: number }[] {
   return displacedRoofVerts(roof);
-}
-
-function cellHasLiveRoof(b: Building, cell: Cell): boolean {
-  if (cell.floor !== b.floors - 1) return false;
-  return b.roofs.some(
-    (roof) => roof.state !== "gone" && roof.support.some((s) => s.gx === cell.gx && s.gy === cell.gy),
-  );
 }
 
 function chimneyWorld(b: Building): { x: number; y: number; z: number } | null {
@@ -354,7 +323,7 @@ function roofCenter(verts: { x: number; y: number; z: number }[]): { x: number; 
 function roofColors(b: Building, roof: RoofSection, verts: { x: number; y: number; z: number }[]): { top: number; edge: number } {
   if (roof.material === "metal" || b.roof === "shed") return { top: PAL.roofMetal, edge: PAL.metalDark };
   if (b.roof === "flat") return { top: PAL.roofFelt, edge: PAL.metalDark };
-  const lit = slopeFacingLight(verts);
+  const lit = roofSlopeLight(verts);
   const top = lit >= 0 ? PAL.roofShingle : shade(PAL.roofShingle, 0.78);
   return { top, edge: PAL.roofShingleDark };
 }
