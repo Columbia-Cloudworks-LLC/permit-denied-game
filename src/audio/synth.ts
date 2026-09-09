@@ -94,6 +94,22 @@ export class AudioBus {
     this.noiseBurst(0.32, 0.22, 180);
   }
 
+  scrape(mag: number, material?: string): void {
+    const freq = material === "metal" ? 1400 : material === "wood" ? 700 : 420;
+    this.noiseBurst(0.07, Math.min(0.12, 0.04 + mag * 0.08), freq);
+  }
+
+  clatter(mag: number, material?: string): void {
+    const freq = material === "metal" ? 900 : material === "wood" ? 260 : 180;
+    this.blip(freq, 0.05, Math.min(0.1, 0.03 + mag * 0.05), "triangle");
+    this.noiseBurst(0.06, Math.min(0.1, mag * 0.07), freq * 0.6);
+  }
+
+  crunch(mag: number): void {
+    this.noiseBurst(0.12, 0.1 + mag * 0.06, 220);
+    this.blip(70, 0.08, 0.06, "sine");
+  }
+
   cash(): void {
     this.blip(660, 0.08, 0.09, "square");
     this.blip(880, 0.1, 0.07, "square");

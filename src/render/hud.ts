@@ -64,7 +64,7 @@ export class Hud {
     this.panel = root.querySelector("#hud-panel")!;
 
     root.querySelector("#hud-mute")!.addEventListener("click", () => this.onMute?.());
-    this.hintEl.innerHTML = `W/S drive &nbsp; A/D steer<br>SPACE powered blade &nbsp; R restart<br>ESC pause &nbsp; M mute`;
+    this.hintEl.innerHTML = `W/S drive &nbsp; A/D steer<br>SPACE powered blade &nbsp; R restart<br>ESC pause &nbsp; M mute &nbsp; V test car`;
   }
 
   render(s: HudState): void {

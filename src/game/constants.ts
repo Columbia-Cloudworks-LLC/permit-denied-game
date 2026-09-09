@@ -50,6 +50,44 @@ export const DOZER = {
 export const PARTICLE_CAP = 420;
 export const RUBBLE_CAP = 180;
 
+export const DEBRIS = {
+  remnantCap: 96,
+  fragmentCap: 140,
+  cosmeticCap: 420,
+  activeCap: 72,
+  solverIters: 5,
+  rest: 0.04,
+  slop: 0.012,
+  baumgarte: 0.32,
+  maxCorrect: 0.065,
+  gravity: 22,
+  sleepSpeed: 0.12,
+  sleepOmega: 0.22,
+  sleepTime: 0.28,
+  wakeImpulse: 0.09,
+  maxPushSlow: 0.72,
+  scrapeDust: 0.16,
+} as const;
+
+export const ROAD = {
+  mass: 1.35,
+  radius: 0.7,
+  length: 1.72,
+  width: 0.82,
+  accel: 9.2,
+  maxSpeed: 7.1,
+  coast: 4.2,
+  steer: 2.2,
+  lateralGrip: 14,
+  pushForce: 2.4,
+  traction: 0.5,
+  clearance: 0.13,
+  resistanceMul: 2.55,
+  spawnX: 3.4,
+  spawnY: 17.6,
+  spawnHeading: 0,
+} as const;
+
 export const COPY = {
   bladeUp: "BLADE UP",
   bladeDown: "BLADE DOWN",

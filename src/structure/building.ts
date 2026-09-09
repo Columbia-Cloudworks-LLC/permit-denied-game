@@ -275,7 +275,15 @@ function startFall(
 
 export interface StructureStepResult {
   cash: number;
-  rubbleSpawns: { x: number; y: number; material: Material; w: number; d: number }[];
+  rubbleSpawns: {
+    x: number;
+    y: number;
+    dx: number;
+    dy: number;
+    material: Material;
+    floor: number;
+    cellSize: number;
+  }[];
   leans: { x: number; y: number; dx: number; dy: number; mag: number }[];
 }
 
@@ -303,12 +311,15 @@ export function stepStructures(
           cell.state = "gone";
           cell.fallT = 1;
           const c = cellCenter(building, cell);
+          const disp = 0.65 + cell.floor * 0.55;
           result.rubbleSpawns.push({
-            x: c.x - building.cellSize * 0.35,
-            y: c.y - building.cellSize * 0.35,
+            x: c.x + cell.fallDx * disp,
+            y: c.y + cell.fallDy * disp,
+            dx: cell.fallDx,
+            dy: cell.fallDy,
             material: cell.material,
-            w: building.cellSize * 0.7,
-            d: building.cellSize * 0.7,
+            floor: cell.floor,
+            cellSize: building.cellSize,
           });
           result.leans.push({
             x: c.x,
