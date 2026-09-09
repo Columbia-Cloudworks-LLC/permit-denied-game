@@ -117,7 +117,24 @@ export function createBuilding(spec: BuildingSpec): Building {
     collapseBonusPaid: false,
     leanX: 0,
     leanY: 0,
+    structureDirty: false,
+    collisionDirty: true,
   };
+}
+
+function markBuildingChanged(building: Building, collision = true): void {
+  building.structureDirty = true;
+  if (collision) building.collisionDirty = true;
+}
+
+function buildingNeedsStructureStep(building: Building): boolean {
+  if (building.fullyDown) return false;
+  if (building.structureDirty) return true;
+  for (const cell of building.cells) {
+    if (cell.state === "breached" || cell.state === "falling") return true;
+    if (cell.sag > 1e-4 || cell.unsupportedTime > 1e-4) return true;
+  }
+  return false;
 }
 
 export function resetBuildingIds(): void {
@@ -145,6 +162,7 @@ export function applyCellDamage(
   if (cell.state === "gone" || cell.state === "falling") return 0;
   const before = cell.hp;
   const was = cell.state;
+  const wasSolid = cellPresent(cell);
   cell.hp = Math.max(0, cell.hp - amount);
   cell.lastHitNx = nx;
   cell.lastHitNy = ny;
@@ -169,6 +187,10 @@ export function applyCellDamage(
 
   if (was === "intact" && cell.state === "intact" && before !== cell.hp && amount > 8) {
     particles.spawn(debrisKind(cell.material), c.x, c.y, c.z, 2, 1.2, 2);
+  }
+
+  if (was !== cell.state || wasSolid !== cellPresent(cell)) {
+    markBuildingChanged(building, wasSolid !== cellPresent(cell) || cell.state === "breached");
   }
 
   return cash;
@@ -252,6 +274,7 @@ function startFall(
 ): number {
   cell.state = "falling";
   cell.fallT = 0;
+  markBuildingChanged(building, true);
   const lean = leanFor(building, cell);
   cell.fallDx = lean.dx;
   cell.fallDy = lean.dy;
@@ -287,17 +310,33 @@ export interface StructureStepResult {
   leans: { x: number; y: number; dx: number; dy: number; mag: number }[];
 }
 
+export interface StructureStepStats {
+  stepped: number;
+  skipped: number;
+}
+
 export function stepStructures(
   buildings: Building[],
   dt: number,
   particles: ParticlePool,
   events: WorldEvent[],
+  stats?: StructureStepStats,
 ): StructureStepResult {
   const result: StructureStepResult = { cash: 0, rubbleSpawns: [], leans: [] };
   const scratch: boolean[] = [];
+  let stepped = 0;
+  let skipped = 0;
 
   for (const building of buildings) {
-    if (building.fullyDown) continue;
+    if (building.fullyDown) {
+      skipped++;
+      continue;
+    }
+    if (!buildingNeedsStructureStep(building)) {
+      skipped++;
+      continue;
+    }
+    stepped++;
     scratch.length = building.w * building.d * building.floors;
     markSupported(building, scratch);
     const idx = (floor: number, gx: number, gy: number) =>
@@ -310,6 +349,7 @@ export function stepStructures(
         if (cell.fallT >= 1) {
           cell.state = "gone";
           cell.fallT = 1;
+          markBuildingChanged(building, true);
           const c = cellCenter(building, cell);
           const disp = 0.65 + cell.floor * 0.55;
           result.rubbleSpawns.push({
@@ -364,9 +404,23 @@ export function stepStructures(
 
     const standing = building.cells.some((c) => c.state !== "gone");
     if (!standing) building.fullyDown = true;
+    building.structureDirty = buildingStillUnsettled(building);
   }
 
+  if (stats) {
+    stats.stepped = stepped;
+    stats.skipped = skipped;
+  }
   return result;
+}
+
+function buildingStillUnsettled(building: Building): boolean {
+  if (building.fullyDown) return false;
+  for (const cell of building.cells) {
+    if (cell.state === "breached" || cell.state === "falling") return true;
+    if (cell.sag > 1e-4 || cell.unsupportedTime > 1e-4) return true;
+  }
+  return false;
 }
 
 export function buildingBonus(building: Building): number {

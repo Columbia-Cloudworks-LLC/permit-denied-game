@@ -6,6 +6,7 @@ import {
   buildingBonus,
   footprintSolid,
   stepStructures,
+  type StructureStepStats,
 } from "../structure/building";
 import { cellPresent, cellWorldBox, type Building, type Cell, type WorldEvent } from "../structure/types";
 import { bladePoints, clampDozer, dozerSpeed, resolveCircleSolid, type Dozer } from "../vehicle/dozer";
@@ -20,12 +21,19 @@ export interface Upgrades {
   push: number;
 }
 
+export interface SimMetrics {
+  buildingsStepped: number;
+  buildingsSkipped: number;
+  collisionRebuilds: number;
+}
+
 export interface SimFrame {
   cash: number;
   score: number;
   events: WorldEvent[];
   birds: { x: number; y: number }[];
   debrisLoad: number;
+  metrics: SimMetrics;
 }
 
 interface SolidRef {
@@ -41,8 +49,23 @@ interface SolidRef {
 
 const nearby: SolidRef[] = [];
 const hash = new SpatialHash<SolidRef>(2.4);
+const buildingHash = new SpatialHash<Building>(8);
+const nearbyBuildings: Building[] = [];
+let hashedTown: Town | null = null;
+let hashValid = false;
+let propsBrokenStamp = -1;
+let buildingHashTown: Town | null = null;
 
-function rebuildHash(town: Town): void {
+function collisionNeedsRebuild(town: Town): boolean {
+  if (hashedTown !== town || !hashValid) return true;
+  if (town.buildings.some((b) => b.collisionDirty)) return true;
+  let broken = 0;
+  for (const p of town.props) if (p.broken) broken++;
+  return broken !== propsBrokenStamp;
+}
+
+function rebuildHash(town: Town): boolean {
+  if (!collisionNeedsRebuild(town)) return false;
   hash.clear();
   for (const b of town.buildings) {
     for (let gx = 0; gx < b.w; gx++) {
@@ -54,12 +77,30 @@ function rebuildHash(town: Town): void {
         hash.insert(box.x, box.y, box.w, box.d, ref);
       }
     }
+    b.collisionDirty = false;
   }
+  let broken = 0;
   for (const p of town.props) {
-    if (p.broken) continue;
+    if (p.broken) {
+      broken++;
+      continue;
+    }
     const ref: SolidRef = { kind: "prop", propId: p.id, x: p.x, y: p.y, w: p.w, d: p.d };
     hash.insert(p.x, p.y, p.w, p.d, ref);
   }
+  hashedTown = town;
+  hashValid = true;
+  propsBrokenStamp = broken;
+  return true;
+}
+
+function ensureBuildingHash(town: Town): void {
+  if (buildingHashTown === town) return;
+  buildingHash.clear();
+  for (const b of town.buildings) {
+    buildingHash.insert(b.x, b.y, b.w * b.cellSize, b.d * b.cellSize, b);
+  }
+  buildingHashTown = town;
 }
 
 export function stepWorld(
@@ -74,7 +115,7 @@ export function stepWorld(
   let cash = 0;
   let score = 0;
 
-  rebuildHash(town);
+  const rebuilt = rebuildHash(town);
   hash.query(dozer.x - 3, dozer.y - 3, 6, 6, nearby);
 
   const bladeMul = 1 + upgrades.blade * 0.42;
@@ -168,14 +209,17 @@ export function stepWorld(
     spawnPropDebris(town, p.x, p.y, Math.max(0.4, p.w * 0.8), Math.max(0.35, p.d * 0.8), p.material);
   }
 
-  const struct = stepStructures(town.buildings, dt, particles, events);
+  const structStats: StructureStepStats = { stepped: 0, skipped: 0 };
+  const struct = stepStructures(town.buildings, dt, particles, events, structStats);
   cash += struct.cash;
   for (const spawn of struct.rubbleSpawns) {
     spawnCollapseDebris(town, spawn);
   }
 
+  ensureBuildingHash(town);
   for (const lean of struct.leans) {
-    for (const other of town.buildings) {
+    buildingHash.query(lean.x - 3.2, lean.y - 3.2, 6.4, 6.4, nearbyBuildings);
+    for (const other of nearbyBuildings) {
       const right = other.x + other.w * other.cellSize;
       const bot = other.y + other.d * other.cellSize;
       const qx = clamp(lean.x, other.x, right);
@@ -242,5 +286,16 @@ export function stepWorld(
     score += e.cash ?? 0;
   }
 
-  return { cash, score, events, birds, debrisLoad: debris.load };
+  return {
+    cash,
+    score,
+    events,
+    birds,
+    debrisLoad: debris.load,
+    metrics: {
+      buildingsStepped: structStats.stepped,
+      buildingsSkipped: structStats.skipped,
+      collisionRebuilds: rebuilt ? 1 : 0,
+    },
+  };
 }

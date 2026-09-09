@@ -1,4 +1,5 @@
 import { COPY, CASH_TARGET, MATCH_SECONDS, TITLE, TAGLINE } from "../game/constants";
+import { DISTRICT_LABELS, type DistrictId, type SessionKind } from "../game/session";
 
 export type OverlayMode = "none" | "pause" | "upgrade" | "results";
 
@@ -6,6 +7,9 @@ export interface HudState {
   cash: number;
   score: number;
   timeLeft: number;
+  elapsed: number;
+  session: SessionKind;
+  district: DistrictId;
   bladeDown: boolean;
   muted: boolean;
   heat: number;
@@ -34,6 +38,9 @@ export class Hud {
   onChoice?: (id: "blade" | "engine" | "push") => void;
   onResume?: () => void;
   onRestart?: () => void;
+  onNewSeed?: () => void;
+  onSession?: (kind: SessionKind) => void;
+  onDistrict?: (id: DistrictId) => void;
 
   constructor(root: HTMLElement) {
     this.root = root;
@@ -48,6 +55,7 @@ export class Hud {
         <div class="stat" id="hud-score"></div>
         <button type="button" id="hud-mute">MUTE</button>
       </div>
+      <div class="session" id="hud-session"></div>
       <div class="heat" id="hud-heat"><span></span></div>
       <div class="hint" id="hud-hint"></div>
       <div class="blade" id="hud-blade"></div>
@@ -64,15 +72,47 @@ export class Hud {
     this.panel = root.querySelector("#hud-panel")!;
 
     root.querySelector("#hud-mute")!.addEventListener("click", () => this.onMute?.());
-    this.hintEl.innerHTML = `W/S drive &nbsp; A/D steer<br>SPACE powered blade &nbsp; R restart<br>ESC pause &nbsp; M mute &nbsp; V test car`;
+    this.hintEl.innerHTML = `W/S drive &nbsp; A/D steer<br>SPACE powered blade &nbsp; R same lot<br>N new seed &nbsp; 1/2/3 upgrades<br>ESC pause &nbsp; M mute &nbsp; V test car`;
+    this.bindSessionBar();
+  }
+
+  private bindSessionBar(): void {
+    const bar = this.root.querySelector("#hud-session")!;
+    bar.innerHTML = `
+      <button type="button" data-session="challenge">CLOCK</button>
+      <button type="button" data-session="sandbox">SANDBOX</button>
+      <button type="button" data-district="classic">${DISTRICT_LABELS.classic}</button>
+      <button type="button" data-district="d10">${DISTRICT_LABELS.d10}</button>
+      <button type="button" data-district="d30">${DISTRICT_LABELS.d30}</button>
+      <button type="button" data-district="d100">${DISTRICT_LABELS.d100}</button>
+      <button type="button" data-act="newseed">NEW LOT</button>
+      <button type="button" data-up="blade">BLADE+</button>
+      <button type="button" data-up="engine">ENGINE+</button>
+      <button type="button" data-up="push">PUSH+</button>
+    `;
+    bar.querySelectorAll("button").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const session = (btn as HTMLButtonElement).dataset.session as SessionKind | undefined;
+        const district = (btn as HTMLButtonElement).dataset.district as DistrictId | undefined;
+        const act = (btn as HTMLButtonElement).dataset.act;
+        const up = (btn as HTMLButtonElement).dataset.up as "blade" | "engine" | "push" | undefined;
+        if (session) this.onSession?.(session);
+        if (district) this.onDistrict?.(district);
+        if (act === "newseed") this.onNewSeed?.();
+        if (up) this.onChoice?.(up);
+      });
+    });
   }
 
   render(s: HudState): void {
-    this.cashEl.textContent = `CASH $${Math.floor(s.cash)} / $${CASH_TARGET}`;
-    const t = Math.max(0, s.timeLeft);
-    const m = Math.floor(t / 60);
-    const sec = Math.floor(t % 60).toString().padStart(2, "0");
-    this.timeEl.textContent = `${m}:${sec}`;
+    this.cashEl.textContent =
+      s.session === "sandbox" ? `CASH $${Math.floor(s.cash)}` : `CASH $${Math.floor(s.cash)} / $${CASH_TARGET}`;
+    if (s.session === "sandbox") {
+      this.timeEl.textContent = `LOT ${formatTime(s.elapsed)}`;
+    } else {
+      this.timeEl.textContent = formatTime(Math.max(0, s.timeLeft));
+    }
+    this.paintSessionBar(s.session, s.district);
     this.scoreEl.textContent = `SCORE ${Math.floor(s.score)}`;
     this.bladeEl.textContent = s.bladeDown ? COPY.bladeDown : COPY.bladeUp;
     this.hintEl.style.opacity = String(s.hintAlpha);
@@ -100,9 +140,13 @@ export class Hud {
     this.lastDeath = s.death;
     this.lastWon = s.won;
     if (s.overlay === "pause") {
+      const pauseLine =
+        s.session === "sandbox"
+          ? "Sandbox stays open. R restarts this layout. N rolls a new seed. ESC resumes."
+          : "County clock is still running when you come back. R restarts. ESC resumes.";
       this.panel.innerHTML = `
         <h2>HOLD IT</h2>
-        <p>County clock is still running when you come back. R restarts. ESC resumes.</p>
+        <p>${pauseLine}</p>
         <div class="choices">
           <button type="button" data-act="resume">RESUME</button>
           <button type="button" data-act="restart">RESTART</button>
@@ -136,7 +180,17 @@ export class Hud {
         if (up) this.onChoice?.(up);
         if (act === "resume") this.onResume?.();
         if (act === "restart") this.onRestart?.();
+        if (act === "newseed") this.onNewSeed?.();
       });
+    });
+  }
+
+  private paintSessionBar(session: SessionKind, district: DistrictId): void {
+    const bar = this.root.querySelector("#hud-session");
+    if (!bar) return;
+    bar.querySelectorAll("button").forEach((btn) => {
+      const el = btn as HTMLButtonElement;
+      el.classList.toggle("on", el.dataset.session === session || el.dataset.district === district);
     });
   }
 }

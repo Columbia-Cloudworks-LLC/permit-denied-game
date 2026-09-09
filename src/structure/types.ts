@@ -44,6 +44,8 @@ export interface Building {
   collapseBonusPaid: boolean;
   leanX: number;
   leanY: number;
+  structureDirty: boolean;
+  collisionDirty: boolean;
 }
 
 export type DebrisLayer = "remnant" | "fragment";

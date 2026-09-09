@@ -147,3 +147,39 @@ body {
   background: #d45a20;
   width: 0;
 }
+
+#hud-root .session {
+  position: absolute;
+  left: 14px;
+  top: 58px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-width: 72%;
+}
+
+#hud-root .session button {
+  padding: 3px 8px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+}
+
+#hud-root .session button.on {
+  background: #5a4a20;
+  border-color: #e6c034;
+}
+
+#perf-root {
+  position: fixed;
+  right: 12px;
+  top: 86px;
+  z-index: 4;
+  margin: 0;
+  padding: 8px 10px;
+  background: rgba(10, 8, 4, 0.72);
+  border: 1px solid #8a7a48;
+  color: #d8c898;
+  font: 11px/1.4 "Courier New", Courier, monospace;
+  pointer-events: none;
+  white-space: pre;
+}

@@ -1,7 +1,7 @@
 import { Container, Graphics } from "pixi.js";
 import { FLOOR_Z } from "../game/constants";
 import { Rng } from "../game/rng";
-import { depthKey, worldToScreen } from "../world/iso";
+import { depthKey, screenAabbVisible, worldBoundsToScreen, worldToScreen } from "../world/iso";
 import type { ParticlePool } from "../fx/particles";
 import type { Building, Cell, GroundMark, Particle, Prop, Rubble } from "../structure/types";
 import { cellPresent } from "../structure/types";
@@ -19,20 +19,44 @@ interface Cmd {
 export class WorldRenderer {
   readonly root = new Container();
   private readonly ground = new Graphics();
+  private readonly overlay = new Graphics();
   private readonly world = new Graphics();
   private readonly cmds: Cmd[] = [];
   camX = 0;
   camY = 0;
   zoom = 1.15;
+  private viewW = 1;
+  private viewH = 1;
+  private groundKey = "";
+  private overlayKey = "";
+  stats = { total: 0, visible: 0 };
 
   constructor() {
-    this.root.addChild(this.ground, this.world);
+    this.root.addChild(this.ground, this.overlay, this.world);
     this.root.sortableChildren = false;
   }
 
+  invalidate(): void {
+    this.groundKey = "";
+    this.overlayKey = "";
+  }
+
   layout(viewW: number, viewH: number, shakeX: number, shakeY: number): void {
+    this.viewW = viewW;
+    this.viewH = viewH;
     this.root.position.set(viewW / 2 - this.camX + shakeX, viewH / 2 - this.camY + shakeY);
     this.root.scale.set(this.zoom);
+  }
+
+  private visibleBox(x: number, y: number, w: number, d: number, z0: number, z1: number): boolean {
+    return screenAabbVisible(
+      worldBoundsToScreen(x, y, w, d, z0, z1),
+      this.viewW,
+      this.viewH,
+      this.camX,
+      this.camY,
+      this.zoom,
+    );
   }
 
   draw(
@@ -43,41 +67,68 @@ export class WorldRenderer {
     occludeX: number,
     occludeY: number,
   ): void {
-    this.ground.clear();
     this.world.clear();
     this.cmds.length = 0;
+    let total = 0;
+    let visible = 0;
 
-    for (const lot of town.lots) {
-      drawGroundPoly(this.ground, lot.x, lot.y, lot.w, lot.d, PAL.lot);
-      for (let i = 0; i < 90; i++) {
-        const gx = lot.x + ((i * 17) % 97) * 0.38;
-        const gy = lot.y + ((i * 29) % 89) * 0.36;
-        if (gx > lot.x + lot.w || gy > lot.y + lot.d) continue;
-        drawGroundPoly(this.ground, gx, gy, 0.35, 0.28, PAL.lotDark, 0.22);
-      }
-    }
-    for (const road of town.roads) {
-      drawGroundPoly(this.ground, road.x, road.y, road.w, road.d, PAL.asphalt);
-      if (road.w > road.d) {
-        for (let x = road.x + 1; x < road.x + road.w - 1; x += 2.2) {
-          drawGroundPoly(this.ground, x, road.y + road.d * 0.46, 1.1, 0.12, PAL.asphaltLine, 0.7);
-        }
-      } else {
-        for (let y = road.y + 1; y < road.y + road.d - 1; y += 2.2) {
-          drawGroundPoly(this.ground, road.x + road.w * 0.46, y, 0.12, 1.1, PAL.asphaltLine, 0.7);
+    const gKey = `${town.district}:${town.seed}:${town.lots.length}:${town.roads.length}`;
+    if (gKey !== this.groundKey) {
+      this.ground.clear();
+      for (const lot of town.lots) {
+        drawGroundPoly(this.ground, lot.x, lot.y, lot.w, lot.d, PAL.lot);
+        const speckle = Math.min(90, Math.max(12, Math.floor((lot.w * lot.d) / 14)));
+        for (let i = 0; i < speckle; i++) {
+          const gx = lot.x + ((i * 17) % 97) * 0.38;
+          const gy = lot.y + ((i * 29) % 89) * 0.36;
+          if (gx > lot.x + lot.w || gy > lot.y + lot.d) continue;
+          drawGroundPoly(this.ground, gx, gy, 0.35, 0.28, PAL.lotDark, 0.22);
         }
       }
+      for (const road of town.roads) {
+        drawGroundPoly(this.ground, road.x, road.y, road.w, road.d, PAL.asphalt);
+        if (road.w > road.d) {
+          for (let x = road.x + 1; x < road.x + road.w - 1; x += 2.2) {
+            drawGroundPoly(this.ground, x, road.y + road.d * 0.46, 1.1, 0.12, PAL.asphaltLine, 0.7);
+          }
+        } else {
+          for (let y = road.y + 1; y < road.y + road.d - 1; y += 2.2) {
+            drawGroundPoly(this.ground, road.x + road.w * 0.46, y, 0.12, 1.1, PAL.asphaltLine, 0.7);
+          }
+        }
+      }
+      this.groundKey = gKey;
     }
 
-    for (const mark of town.marks) {
-      drawGroundMark(this.ground, mark);
+    const camCell = `${Math.round(this.camX / 28)}:${Math.round(this.camY / 28)}`;
+    const oKey = `${town.visualRevision}:${town.pile.revision}:${camCell}`;
+    if (oKey !== this.overlayKey) {
+      this.overlay.clear();
+      for (const mark of town.marks) {
+        total++;
+        if (!this.visibleBox(mark.x - mark.w, mark.y - mark.d, mark.w * 2, mark.d * 2, 0, 0.02)) continue;
+        visible++;
+        drawGroundMark(this.overlay, mark);
+      }
+      drawPileHints(this.overlay, town, (x, y, w, d) => this.visibleBox(x, y, w, d, 0, 0.4));
+      this.overlayKey = oKey;
     }
-    drawPileHints(this.ground, town);
 
     for (const b of town.buildings) {
+      const bw = b.w * b.cellSize;
+      const bd = b.d * b.cellSize;
+      const z1 = b.floors * FLOOR_Z + 0.8;
+      const fall = 1.4;
+      total += b.cells.length;
+      if (!this.visibleBox(b.x - fall, b.y - fall, bw + fall * 2, bd + fall * 2, -0.4, z1)) continue;
       const fade = occludes(b, occludeX, occludeY) ? 0.38 : 1;
       for (const cell of b.cells) {
         if (cell.state === "gone") continue;
+        const cx = b.x + cell.gx * b.cellSize + cell.fallDx * cell.fallT * 0.85;
+        const cy = b.y + cell.gy * b.cellSize + cell.fallDy * cell.fallT * 0.85;
+        const z0 = cell.floor * FLOOR_Z - cell.sag * 0.55 - cell.fallT * 1.6;
+        if (!this.visibleBox(cx, cy, b.cellSize, b.cellSize, z0, z0 + FLOOR_Z)) continue;
+        visible++;
         this.cmds.push({
           depth: depthKey(
             b.x + (cell.gx + 0.5) * b.cellSize + cell.fallDx * cell.fallT,
@@ -91,6 +142,9 @@ export class WorldRenderer {
 
     for (const p of town.props) {
       if (p.broken) continue;
+      total++;
+      if (!this.visibleBox(p.x, p.y, p.w, p.d, 0, 2.7)) continue;
+      visible++;
       this.cmds.push({
         depth: depthKey(p.x + p.w / 2, p.y + p.d / 2, 0.4),
         run: (g) => drawProp(g, p),
@@ -98,6 +152,9 @@ export class WorldRenderer {
     }
 
     for (const r of town.rubble) {
+      total++;
+      if (!this.visibleBox(r.x - r.w, r.y - r.d, r.w * 2, r.d * 2, r.elev, r.elev + r.thickness + 0.25)) continue;
+      visible++;
       this.cmds.push({
         depth: depthKey(r.x, r.y, r.elev + r.thickness * 0.5),
         run: (g) => drawDebris(g, r),
@@ -106,12 +163,18 @@ export class WorldRenderer {
 
     if (town.roadCar?.alive) {
       const car = town.roadCar;
-      this.cmds.push({
-        depth: depthKey(car.x, car.y, 0.35),
-        run: (g) => drawRoadVehicle(g, car),
-      });
+      total++;
+      if (this.visibleBox(car.x - 1, car.y - 1, 2, 2, 0, 0.6)) {
+        visible++;
+        this.cmds.push({
+          depth: depthKey(car.x, car.y, 0.35),
+          run: (g) => drawRoadVehicle(g, car),
+        });
+      }
     }
 
+    total++;
+    visible++;
     this.cmds.push({
       depth: depthKey(dozer.x, dozer.y, 0.4),
       run: (g) => drawDozer(g, dozer),
@@ -119,6 +182,9 @@ export class WorldRenderer {
 
     for (const p of particles.items) {
       if (!p.alive) continue;
+      total++;
+      if (!this.visibleBox(p.x - 0.3, p.y - 0.3, 0.6, 0.6, 0, p.z + 0.2)) continue;
+      visible++;
       this.cmds.push({
         depth: depthKey(p.x, p.y, p.z),
         run: (g) => drawParticle(g, p),
@@ -126,6 +192,9 @@ export class WorldRenderer {
     }
 
     for (const bird of birds) {
+      total++;
+      if (!this.visibleBox(bird.x - 0.4, bird.y - 0.4, 0.8, 0.8, bird.z, bird.z + 0.2)) continue;
+      visible++;
       this.cmds.push({
         depth: depthKey(bird.x, bird.y, bird.z),
         run: (g) => drawBird(g, bird),
@@ -134,6 +203,7 @@ export class WorldRenderer {
 
     this.cmds.sort((a, b) => a.depth - b.depth);
     for (const cmd of this.cmds) cmd.run(this.world);
+    this.stats = { total, visible };
   }
 }
 
@@ -297,17 +367,26 @@ function drawGroundMark(g: Graphics, mark: GroundMark): void {
   g.fill({ color, alpha: mark.alpha });
 }
 
-function drawPileHints(g: Graphics, town: Town): void {
+function drawPileHints(
+  g: Graphics,
+  town: Town,
+  visible: (x: number, y: number, w: number, d: number) => boolean,
+): void {
   const pile = town.pile;
-  const step = 1;
-  for (let iy = 0; iy < pile.rows; iy += step) {
-    for (let ix = 0; ix < pile.cols; ix += step) {
+  for (let iy = 0; iy < pile.rows; iy++) {
+    for (let ix = 0; ix < pile.cols; ix++) {
       const i = iy * pile.cols + ix;
       const h = pile.height[i]!;
-      if (h < 0.06) continue;
-      const x = pile.ox + (ix + 0.15) * pile.cell;
-      const y = pile.oy + (iy + 0.15) * pile.cell;
-      drawGroundPoly(g, x, y, pile.cell * 0.72, pile.cell * 0.72, PAL.lotDark, Math.min(0.42, 0.12 + h * 0.55));
+      if (h < 0.05) continue;
+      const x = pile.ox + (ix + 0.12) * pile.cell;
+      const y = pile.oy + (iy + 0.12) * pile.cell;
+      const s = pile.cell * 0.76;
+      if (!visible(x, y, s, s)) continue;
+      const alpha = Math.min(0.62, 0.16 + h * 0.85);
+      drawGroundPoly(g, x, y, s, s, PAL.lotDark, alpha);
+      if (h > 0.14) {
+        drawIsoBox(g, x + 0.04, y + 0.04, s * 0.72, s * 0.72, 0, Math.min(0.42, h * 0.55), PAL.concrete, PAL.concreteDark, PAL.concrete, Math.min(0.85, 0.35 + h));
+      }
     }
   }
 }

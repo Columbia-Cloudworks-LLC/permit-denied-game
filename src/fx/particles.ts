@@ -31,6 +31,11 @@ export class ParticlePool {
     for (const p of this.items) p.alive = false;
   }
 
+  reseed(seed = 0x51f00d): void {
+    this.rng.reset(seed);
+    this.clear();
+  }
+
   spawn(
     kind: ParticleKind,
     x: number,
