@@ -1,34 +1,30 @@
 ---
-description: Sandbox scope lock, doc authority, and ship constraints for PERMIT DENIED
+description: Stack lock and ship constraints for PERMIT DENIED
 alwaysApply: true
 ---
 
 # PERMIT DENIED — project contract
 
-One compact destruction sandbox. Same lot every run. No meta, no campaign, no second map.
+One compact demolition arcade. Same town every run. No meta, no campaign, no second map.
 
-**Title** on the window: `PERMIT DENIED`. Internal shorthand “Killdozer” starts out of copy.
+**Title** on the page: `PERMIT DENIED`. Tagline: “The County Said No.”
 
 ## Doc authority
 
-- `README.md` is how to run, keys, and current sandbox scope.
-- `assets/usable/ASSETS.md` is the tile/atlas contract.
-- `PERMIT_DENIED.md` / `PERMIT_DENIED_GO_IMPLEMENTATION.md` are legacy design notes; prefer the sandbox README when they conflict with cell-based destruction.
+- `README.md` is how to run, controls, and current scope.
 
 ## Stack lock
 
-Go 1.25 + Ebitengine **v2.9.x**. Module `permitdenied`. 60 TPS. Logical screen **320×224**; window starts **1280×896**. `Layout` always returns `(320, 224)`.
+TypeScript + Vite + PixiJS v8. Entirely client-side. Simulation in world coordinates; isometric projection is render-only. Fixed timestep. No React on the game canvas. No backend, accounts, or API keys.
 
 ## Stay on the lot
 
-Tune `internal/game/const.go` before adding a system. A threat that does not change **steering** does not ship.
+Keep out of this build: title/campaign/meta, JSON schemas, plugin systems, between-run unlocks, a second town, ECS, React wrappers around the canvas.
 
-Keep out of this build: title/campaign/meta, JSON schemas, plugin systems, between-run unlocks, a second lot, soft-body / particle debris **as collision**, ECS, Godot / Raylib / React wrappers.
-
-Buildings are **per-cell** destructible. Visual debris is garnish. Rubble collides and matches its sprite.
+Buildings are per-cell destructible with a support/collapse model. Visual debris is garnish; rubble collides and matches the wreck.
 
 Copy: `BLADE UP` / `BLADE DOWN`, deaths `ENGINE COOKED` / `TRACK THROWN` / `COUNTY CLOCK`. Do not write Heemeyer, Granby, manifesto, or wanted stars.
 
 ## Done
 
-Sandbox playable with local bites, collapse dust, rubble aftermath, and captured frames that show it. After that holds, stop expanding.
+Playable three-minute demolition run with driving, localized damage, cascading collapse, rubble, HUD, upgrades, and audio.

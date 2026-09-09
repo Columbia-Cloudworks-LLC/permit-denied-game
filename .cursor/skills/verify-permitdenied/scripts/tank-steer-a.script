@@ -1,9 +1,0 @@
-# Spawn, A 0.5s → heading west-of-north (negative radians).
-tap space
-assert scene=play
-hold a 30
-dump after-a.json
-shot after-a.png
-assert scene=play
-assert heading<0
-assert heading>-3.1416

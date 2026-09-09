@@ -1,23 +1,12 @@
-# built binaries (root only — do not ignore cmd/permitdenied)
-/permitdenied
-/permitdenied.exe
-*.exe
+node_modules/
 dist/
-
-# Go
-
-# Go
-*.test
-*.out
-vendor/
-
-# OS
+*.local
 .DS_Store
 Thumbs.db
-
-# Cursor hook runtime
 .cursor/hooks/state/
+.vite/
+coverage/
 
-# Verification proof artifacts (keep local; cleanup must not delete them)
-.cursor/skills/verify-permitdenied/artifacts/
-.cursor/skills/verify-permitdenied/bin/
+*.exe
+.env
+.env.*
