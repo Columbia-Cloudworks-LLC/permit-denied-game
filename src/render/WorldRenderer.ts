@@ -12,11 +12,12 @@ import { cellColors, drawGroundPoly, drawIsoBox, drawOrientedIsoBox, drawShadow,
 import {
   drawBreachGroup,
   drawBuildingFootprintShadow,
+  drawEaveFascia,
   drawFallingCell,
   drawTopSpan,
   drawWallSpan,
 } from "./facadeDraw";
-import { roofSlopeLight } from "./lighting";
+import { roofSlopeLight, wallFaceColor, type WallFace } from "./lighting";
 import { drawCar, drawDozer, drawRoadVehicle } from "./vehicles";
 
 interface Cmd {
@@ -346,14 +347,16 @@ function drawBuildingRoofs(g: Graphics, b: Building, roofs: RoofSection[], alpha
     const ch = chimneyWorld(b);
     if (ch) drawChimney(g, ch, alpha);
   }
+  drawEaveFascia(g, b, alpha);
 }
 
 function drawGableEnds(g: Graphics, b: Building, alpha: number): void {
   const top = b.cells.find((c) => c.floor === b.floors - 1 && c.state !== "gone");
-  const cols = cellColors(top?.material ?? "wood", top?.state !== "intact" && top?.state !== undefined);
+  const mat = top?.material ?? "wood";
+  const damaged = top?.state !== "intact" && top?.state !== undefined;
   for (const cap of gableEndCaps(b)) {
-    const color = cap.face === "east" ? cols.right : cols.left;
-    drawWorldPoly(g, [cap.a, cap.b, cap.peak], color, alpha);
+    const face: WallFace = cap.face === "east" ? "east" : "south";
+    drawWorldPoly(g, [cap.a, cap.b, cap.peak], wallFaceColor(mat, face, damaged), alpha);
   }
 }
 

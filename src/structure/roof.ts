@@ -477,7 +477,7 @@ export function gableEndCaps(building: Building): GableEndCap[] {
   const y0 = building.y + b.minY * cs;
   const y1 = building.y + (b.maxY + 1) * cs;
   const sag = Math.max(...live.map((r) => r.sag * 0.35));
-  const eaveZ = Math.min(...live.flatMap((r) => r.verts.map((v) => v.z))) - sag - 0.03;
+  const eaveZ = Math.min(...live.flatMap((r) => r.verts.map((v) => v.z))) - sag;
   const peakZ = ridge.az - sag;
   const axisX = Math.abs(ridge.ay - ridge.by) < 1e-3;
   if (axisX) {

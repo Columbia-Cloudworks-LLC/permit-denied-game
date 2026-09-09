@@ -2,7 +2,7 @@ import { Graphics } from "pixi.js";
 import { FLOOR_Z } from "../game/constants";
 import type { Building, Cell } from "../structure/types";
 import type { BreachGroup, TopSpan, WallSpan } from "./buildingSurfaces";
-import { southFacadeCells } from "./buildingSurfaces";
+import { getBuildingSurfaces, southFacadeCells } from "./buildingSurfaces";
 import { drawFaceWindow, drawIsoBox, drawShadow, drawTopCap } from "./drawIso";
 import { brokenEdgeColor, interiorColor, topFaceColor, wallFaceColor } from "./lighting";
 import { PAL } from "./palette";
@@ -16,6 +16,7 @@ function floorZ0(cell: Cell): number {
 export function drawWallSpan(g: Graphics, b: Building, span: WallSpan, alpha: number): void {
   const cs = b.cellSize;
   const z0 = span.floor * FLOOR_Z;
+  const z1 = z0 + STORY_H + (span.floor === b.floors - 1 ? 0.05 : 0);
   const mat = span.dir === "south" && span.floor === 0 ? span.facadeMaterial : span.material;
   const color = wallFaceColor(mat, span.dir, span.visual !== "intact");
   const inset = span.visual === "broken-edge" ? 0.06 : 0;
@@ -24,13 +25,13 @@ export function drawWallSpan(g: Graphics, b: Building, span: WallSpan, alpha: nu
     const x0 = b.x + span.gx0 * cs;
     const y1 = b.y + (span.gy0 + 1) * cs - inset;
     const w = (span.gx1 - span.gx0 + 1) * cs;
-    drawFaceWindow(g, x0, y1, x0 + w, y1, z0, z0 + STORY_H, 0, 1, 0, 1, color, alpha);
+    drawFaceWindow(g, x0, y1, x0 + w, y1, z0, z1, 0, 1, 0, 1, color, alpha);
     if (span.floor === 0) {
-      drawFaceWindow(g, x0, y1, x0 + w, y1, z0, z0 + STORY_H, 0, 1, 0, 0.1, PAL.foundation, alpha * 0.65);
+      drawFaceWindow(g, x0, y1, x0 + w, y1, z0, z1, 0, 1, 0, 0.1, PAL.foundation, alpha * 0.65);
     }
     if (span.visual === "cracked") {
       const mid = x0 + w * 0.48;
-      drawFaceWindow(g, mid - 0.02, y1, mid + 0.02, y1, z0, z0 + STORY_H, 0, 1, 0.2, 0.85, PAL.crack, alpha * 0.55);
+      drawFaceWindow(g, mid - 0.02, y1, mid + 0.02, y1, z0, z1, 0, 1, 0.2, 0.85, PAL.crack, alpha * 0.55);
     }
     if (span.floor === 0) drawSouthFacadeDecor(g, b, span, alpha);
     return;
@@ -39,23 +40,29 @@ export function drawWallSpan(g: Graphics, b: Building, span: WallSpan, alpha: nu
   const x1 = b.x + (span.gx0 + 1) * cs - inset;
   const y0 = b.y + span.gy0 * cs;
   const d = (span.gy1 - span.gy0 + 1) * cs;
-  drawFaceWindow(g, x1, y0, x1, y0 + d, z0, z0 + STORY_H, 0, 1, 0, 1, color, alpha);
+  drawFaceWindow(g, x1, y0, x1, y0 + d, z0, z1, 0, 1, 0, 1, color, alpha);
   if (span.floor === 0) {
-    drawFaceWindow(g, x1, y0, x1, y0 + d, z0, z0 + STORY_H, 0, 1, 0, 0.1, PAL.foundation, alpha * 0.5);
+    drawFaceWindow(g, x1, y0, x1, y0 + d, z0, z1, 0, 1, 0, 0.1, PAL.foundation, alpha * 0.5);
   }
-  drawEastWindows(g, b, span, alpha);
+  drawEastWindows(g, b, span, alpha, z0, z1);
 }
 
-function drawEastWindows(g: Graphics, b: Building, span: WallSpan, alpha: number): void {
+function drawEastWindows(
+  g: Graphics,
+  b: Building,
+  span: WallSpan,
+  alpha: number,
+  z0: number,
+  z1: number,
+): void {
   const cs = b.cellSize;
-  const z0 = span.floor * FLOOR_Z;
   const x1 = b.x + (span.gx0 + 1) * cs;
   for (let gy = span.gy0; gy <= span.gy1; gy++) {
     const cell = b.grid[span.floor]![span.gx0]![gy]!;
     if (!cell.windowE) continue;
     const y0 = b.y + gy * cs;
     const glass = cell.state === "cracked" ? PAL.glass : PAL.glassLit;
-    drawFaceWindow(g, x1, y0, x1, y0 + cs, z0, z0 + STORY_H, 0.28, 0.72, 0.28, 0.72, glass, alpha);
+    drawFaceWindow(g, x1, y0, x1, y0 + cs, z0, z1, 0.28, 0.72, 0.28, 0.72, glass, alpha);
   }
 }
 
@@ -195,6 +202,29 @@ export function drawFallingCell(g: Graphics, b: Building, cell: Cell, alpha: num
   drawIsoBox(g, x, y, cs * 0.22, cs, z0, h * 0.7, top, left, right, alpha);
   drawIsoBox(g, x + cs * 0.78, y, cs * 0.22, cs, z0, h * 0.65, top, left, right, alpha);
   drawIsoBox(g, x + 0.1, y + 0.1, cs * 0.5, cs * 0.4, z0 + h * 0.2, h * 0.25, top, left, right, alpha * 0.85);
+}
+
+/** Top-floor eave strip on south/east walls — wall ramp, drawn after roofs. */
+export function drawEaveFascia(g: Graphics, b: Building, alpha: number): void {
+  const top = b.floors - 1;
+  const zTop = top * FLOOR_Z + STORY_H + 0.05;
+  const z0 = zTop - 0.28;
+  const cs = b.cellSize;
+  for (const span of getBuildingSurfaces(b).walls) {
+    if (span.floor !== top || span.visual === "broken-edge") continue;
+    const color = wallFaceColor(span.material, span.dir, span.visual !== "intact");
+    if (span.dir === "south") {
+      const x0 = b.x + span.gx0 * cs;
+      const y1 = b.y + (span.gy0 + 1) * cs;
+      const w = (span.gx1 - span.gx0 + 1) * cs;
+      drawFaceWindow(g, x0, y1, x0 + w, y1, z0, zTop, 0, 1, 0, 1, color, alpha);
+    } else {
+      const x1 = b.x + (span.gx0 + 1) * cs;
+      const y0 = b.y + span.gy0 * cs;
+      const d = (span.gy1 - span.gy0 + 1) * cs;
+      drawFaceWindow(g, x1, y0, x1, y0 + d, z0, zTop, 0, 1, 0, 1, color, alpha);
+    }
+  }
 }
 
 export function drawBuildingFootprintShadow(
