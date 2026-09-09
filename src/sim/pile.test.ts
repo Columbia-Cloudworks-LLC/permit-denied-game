@@ -15,6 +15,17 @@ describe("pile field excavation", () => {
     expect(Math.abs(pile.totalMass() - before)).toBeLessThan(0.05);
   });
 
+  it("does not revise a saturated pile during extra compaction", () => {
+    const pile = new PileField(0, 0, 8, 8);
+    pile.addMass(2, 2, 6, "concrete");
+    pile.compactPoint(2, 2, 8);
+    const revision = pile.revision;
+    const height = pile.heightAt(2, 2);
+    pile.compactPoint(2, 2, 8);
+    expect(pile.revision).toBe(revision);
+    expect(pile.heightAt(2, 2)).toBeCloseTo(height, 5);
+  });
+
   it("treats a tall pile as a blocked obstruction", () => {
     const pile = new PileField(0, 0, 8, 8);
     pile.addMass(2, 2, 12, "concrete");

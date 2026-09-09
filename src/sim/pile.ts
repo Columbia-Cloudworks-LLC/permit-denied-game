@@ -112,10 +112,11 @@ export class PileField {
       for (let dx = -1; dx <= 1; dx++) {
         const i = this.index(ix + dx, iy + dy);
         if (i < 0) continue;
-        const next = clamp(this.compact[i]! + amount * (dx === 0 && dy === 0 ? 1 : 0.45), 0, 1);
-        const shrink = 1 - (next - this.compact[i]!) * 0.22;
+        const prev = this.compact[i]!;
+        const next = clamp(prev + amount * (dx === 0 && dy === 0 ? 1 : 0.45), 0, 1);
+        if (next === prev) continue;
         this.compact[i] = next;
-        this.height[i] *= shrink;
+        this.height[i] *= 1 - (next - prev) * 0.22;
         changed = true;
       }
     }

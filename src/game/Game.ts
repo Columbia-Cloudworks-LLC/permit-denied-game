@@ -211,7 +211,6 @@ export class Game {
     if (this.input.down.size > 0) void this.audio.unlock();
 
     let simCpuMs = 0;
-    let dropped = 0;
     if (this.mode === "play") {
       this.acc += realDt;
       let steps = 0;
@@ -223,7 +222,6 @@ export class Game {
       }
       simCpuMs = performance.now() - simStart;
       if (steps === SIM_MAX_STEPS) {
-        dropped = this.acc;
         this.droppedSimSec += this.acc;
         this.acc = 0;
       }
@@ -242,7 +240,7 @@ export class Game {
       frameMs,
       simCpuMs,
       renderPrepMs,
-      droppedSimSec: this.droppedSimSec + dropped,
+      droppedSimSec: this.droppedSimSec,
       budgetConversions: debris.conversions,
       debrisActive: debris.active,
       debrisSleeping: debris.sleeping,
