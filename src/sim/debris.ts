@@ -5,6 +5,7 @@ import type { ParticlePool } from "../fx/particles";
 import type {
   DebrisLayer,
   DebrisShape,
+  DebrisSkin,
   GroundKind,
   GroundMark,
   Material,
@@ -64,6 +65,10 @@ export interface CollapseSpawn {
   floor: number;
   cellSize: number;
   source?: "wall" | "roof";
+  heading?: number;
+  elev?: number;
+  panelW?: number;
+  panelD?: number;
 }
 
 export function resetDebrisSim(seed = 0xdeb415): void {
@@ -154,6 +159,7 @@ function makeRubble(init: {
   material: Material;
   layer: DebrisLayer;
   shape?: DebrisShape;
+  skin?: DebrisSkin;
   heading?: number;
   elev?: number;
   thickness?: number;
@@ -184,6 +190,7 @@ function makeRubble(init: {
     material: init.material,
     shape,
     layer: init.layer,
+    skin: init.skin ?? "default",
     seed,
     hp: 14 + mass * 8,
     damage: 0,
@@ -263,13 +270,17 @@ export function spawnCollapseDebris(town: Town, spawn: CollapseSpawn): Rubble[] 
   town.pile.addMass(spawn.x, spawn.y, fines, spawn.material);
   let remaining = budget - fines;
 
-  const remnantPlans = spawn.source === "roof" ? roofRemnantPlan(spawn.material, rng) : remnantPlan(spawn.material, rng);
+  const remnantPlans = spawn.source === "roof" ? roofRemnantPlan(spawn.material, rng, spawn) : remnantPlan(spawn.material, rng);
+  const roofing = spawn.source === "roof";
+  const baseHeading = spawn.heading ?? Math.atan2(dy, dx);
+  const startElev = spawn.elev ?? heap + rng.range(0, 0.08 + spawn.floor * 0.06);
   for (const plan of remnantPlans) {
     if (remaining < 0.08) break;
     const mass = Math.min(remaining * plan.massShare, remaining);
     remaining -= mass;
-    const ox = (rng.range(-0.28, 0.28) + plan.along * dx) * spawn.cellSize;
-    const oy = (rng.range(-0.28, 0.28) + plan.along * dy) * spawn.cellSize;
+    const jitter = roofing ? 0.08 : 0.28;
+    const ox = (rng.range(-jitter, jitter) + plan.along * dx) * (roofing ? 0.55 : spawn.cellSize);
+    const oy = (rng.range(-jitter, jitter) + plan.along * dy) * (roofing ? 0.55 : spawn.cellSize);
     const body = addDebrisBody(town, {
       x: spawn.x + ox,
       y: spawn.y + oy,
@@ -278,19 +289,20 @@ export function spawnCollapseDebris(town: Town, spawn: CollapseSpawn): Rubble[] 
       material: spawn.material,
       layer: "remnant",
       shape: plan.shape,
-      heading: Math.atan2(dy, dx) + rng.range(-0.9, 0.9),
-      elev: heap + rng.range(0, 0.08 + spawn.floor * 0.06),
+      skin: plan.skin,
+      heading: baseHeading + rng.range(roofing ? -0.28 : -0.9, roofing ? 0.28 : 0.9),
+      elev: Math.max(heap, startElev + (roofing ? plan.along * 0.04 : rng.range(0, 0.08))),
       thickness: plan.thickness,
       mass,
-      vx: dx * rng.range(0.4, 1.8) + rng.range(-0.5, 0.5),
-      vy: dy * rng.range(0.4, 1.8) + rng.range(-0.5, 0.5),
-      omega: rng.range(-4, 4),
+      vx: dx * rng.range(roofing ? 0.15 : 0.4, roofing ? 0.7 : 1.8) + rng.range(-0.28, 0.28),
+      vy: dy * rng.range(roofing ? 0.15 : 0.4, roofing ? 0.7 : 1.8) + rng.range(-0.28, 0.28),
+      omega: rng.range(roofing ? -1.6 : -4, roofing ? 1.6 : 4),
       seed: rng.int(1, 0x7fffffff),
     });
     created.push(body);
   }
 
-  const fragCount = spawn.material === "glass" ? rng.int(1, 3) : rng.int(3, 7);
+  const fragCount = spawn.material === "glass" ? rng.int(1, 3) : roofing ? rng.int(1, 2) : rng.int(3, 7);
   for (let i = 0; i < fragCount && remaining > 0.04; i++) {
     const mass = Math.min(remaining / Math.max(1, fragCount - i), remaining * 0.55);
     remaining -= mass;
@@ -322,7 +334,7 @@ export function spawnCollapseDebris(town: Town, spawn: CollapseSpawn): Rubble[] 
     remaining = 0;
   }
 
-  const cosmeticN = spawn.material === "glass" ? 10 : 5;
+  const cosmeticN = spawn.material === "glass" ? 10 : roofing ? 3 : 5;
   for (let i = 0; i < cosmeticN; i++) {
     const kind: GroundKind =
       spawn.material === "glass" ? "glass" : spawn.material === "wood" ? "splinter" : i === 0 ? "dust" : "chip";
@@ -342,50 +354,53 @@ export function spawnCollapseDebris(town: Town, spawn: CollapseSpawn): Rubble[] 
 function roofRemnantPlan(
   material: Material,
   rng: Rng,
-): { w: number; d: number; thickness: number; shape: DebrisShape; massShare: number; along: number }[] {
+  spawn: CollapseSpawn,
+): { w: number; d: number; thickness: number; shape: DebrisShape; massShare: number; along: number; skin: DebrisSkin }[] {
+  const panelW = spawn.panelW ?? rng.range(0.7, 1.05);
+  const panelD = spawn.panelD ?? rng.range(0.32, 0.5);
   if (material === "wood") {
     return [
-      { w: rng.range(0.85, 1.35), d: rng.range(0.08, 0.14), thickness: 0.11, shape: "beam", massShare: 0.38, along: 0.12 },
-      { w: rng.range(0.55, 0.95), d: rng.range(0.28, 0.5), thickness: 0.07, shape: "panel", massShare: 0.32, along: -0.08 },
-      { w: rng.range(0.4, 0.7), d: rng.range(0.22, 0.4), thickness: 0.06, shape: "panel", massShare: 0.18, along: 0.2 },
+      { w: panelW, d: panelD, thickness: 0.14, shape: "panel", massShare: 0.46, along: 0, skin: "roofing" },
+      { w: panelW * 0.62, d: panelD * 0.72, thickness: 0.12, shape: "panel", massShare: 0.24, along: 0.16, skin: "roofing" },
+      { w: rng.range(0.7, 1.05), d: 0.1, thickness: 0.1, shape: "beam", massShare: 0.16, along: -0.1, skin: "default" },
     ];
   }
   if (material === "metal") {
     return [
-      { w: rng.range(0.8, 1.3), d: rng.range(0.08, 0.14), thickness: 0.08, shape: "beam", massShare: 0.36, along: 0.1 },
-      { w: rng.range(0.5, 0.85), d: rng.range(0.24, 0.42), thickness: 0.05, shape: "panel", massShare: 0.34, along: -0.1 },
+      { w: panelW, d: panelD * 0.85, thickness: 0.1, shape: "panel", massShare: 0.48, along: 0, skin: "roofing" },
+      { w: rng.range(0.7, 1.1), d: 0.09, thickness: 0.08, shape: "beam", massShare: 0.22, along: 0.12, skin: "default" },
     ];
   }
-  return remnantPlan(material, rng);
+  return remnantPlan(material, rng).map((plan) => ({ ...plan, skin: "default" as const }));
 }
 
 function remnantPlan(
   material: Material,
   rng: Rng,
-): { w: number; d: number; thickness: number; shape: DebrisShape; massShare: number; along: number }[] {
+): { w: number; d: number; thickness: number; shape: DebrisShape; massShare: number; along: number; skin: DebrisSkin }[] {
   switch (material) {
     case "wood":
       return [
-        { w: rng.range(0.7, 1.15), d: rng.range(0.1, 0.16), thickness: 0.12, shape: "beam", massShare: 0.42, along: 0.15 },
-        { w: rng.range(0.45, 0.8), d: rng.range(0.09, 0.14), thickness: 0.1, shape: "beam", massShare: 0.28, along: -0.1 },
+        { w: rng.range(0.7, 1.15), d: rng.range(0.1, 0.16), thickness: 0.12, shape: "beam", massShare: 0.42, along: 0.15, skin: "default" },
+        { w: rng.range(0.45, 0.8), d: rng.range(0.09, 0.14), thickness: 0.1, shape: "beam", massShare: 0.28, along: -0.1, skin: "default" },
         ...(rng.chance(0.35)
-          ? [{ w: rng.range(0.5, 0.75), d: rng.range(0.32, 0.5), thickness: 0.08, shape: "panel" as const, massShare: 0.18, along: 0.05 }]
+          ? [{ w: rng.range(0.5, 0.75), d: rng.range(0.32, 0.5), thickness: 0.08, shape: "panel" as const, massShare: 0.18, along: 0.05, skin: "default" as const }]
           : []),
       ];
     case "brick":
       return [
-        { w: rng.range(0.38, 0.62), d: rng.range(0.28, 0.48), thickness: rng.range(0.22, 0.34), shape: "chunk", massShare: 0.48, along: 0.08 },
-        { w: rng.range(0.2, 0.3), d: rng.range(0.1, 0.14), thickness: 0.09, shape: "chunk", massShare: 0.14, along: 0.2 },
+        { w: rng.range(0.38, 0.62), d: rng.range(0.28, 0.48), thickness: rng.range(0.22, 0.34), shape: "chunk", massShare: 0.48, along: 0.08, skin: "default" },
+        { w: rng.range(0.2, 0.3), d: rng.range(0.1, 0.14), thickness: 0.09, shape: "chunk", massShare: 0.14, along: 0.2, skin: "default" },
       ];
     case "concrete":
       return [
-        { w: rng.range(0.42, 0.72), d: rng.range(0.3, 0.52), thickness: rng.range(0.24, 0.42), shape: "chunk", massShare: 0.52, along: 0.1 },
-        { w: rng.range(0.28, 0.48), d: rng.range(0.2, 0.36), thickness: rng.range(0.16, 0.3), shape: "chunk", massShare: 0.26, along: -0.12 },
+        { w: rng.range(0.42, 0.72), d: rng.range(0.3, 0.52), thickness: rng.range(0.24, 0.42), shape: "chunk", massShare: 0.52, along: 0.1, skin: "default" },
+        { w: rng.range(0.28, 0.48), d: rng.range(0.2, 0.36), thickness: rng.range(0.16, 0.3), shape: "chunk", massShare: 0.26, along: -0.12, skin: "default" },
       ];
     case "metal":
       return [
-        { w: rng.range(0.7, 1.2), d: rng.range(0.08, 0.14), thickness: 0.1, shape: "beam", massShare: 0.4, along: 0.12 },
-        { w: rng.range(0.4, 0.7), d: rng.range(0.22, 0.4), thickness: 0.07, shape: "panel", massShare: 0.28, along: -0.08 },
+        { w: rng.range(0.7, 1.2), d: rng.range(0.08, 0.14), thickness: 0.1, shape: "beam", massShare: 0.4, along: 0.12, skin: "default" },
+        { w: rng.range(0.4, 0.7), d: rng.range(0.22, 0.4), thickness: 0.07, shape: "panel", massShare: 0.28, along: -0.08, skin: "default" },
       ];
     case "glass":
       return [];

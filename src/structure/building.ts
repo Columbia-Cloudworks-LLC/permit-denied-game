@@ -486,6 +486,10 @@ export interface StructureStepResult {
     floor: number;
     cellSize: number;
     source?: "wall" | "roof";
+    heading?: number;
+    elev?: number;
+    panelW?: number;
+    panelD?: number;
   }[];
   leans: { x: number; y: number; dx: number; dy: number; mag: number }[];
   fixtureFrags: FixtureFrag[];

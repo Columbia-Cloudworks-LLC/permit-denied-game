@@ -48,16 +48,22 @@ describe("sandbox session rules", () => {
       kind: "sandbox",
       district: "classic",
       seed: 0x0ddba11,
+      ranchFocus: false,
     });
     expect(parseSessionFromSearch("?sandbox=1&seed=0").seed).toBe(0);
     expect(parseSessionFromSearch("?district=d100&sandbox=1").seed).toBe(0x100d15c);
+    expect(parseSessionFromSearch("?ranch=1")).toMatchObject({
+      kind: "sandbox",
+      district: "d10",
+      ranchFocus: true,
+    });
   });
 
   it("does not force clock, heat, or track failure in sandbox", () => {
-    const sandbox = sessionFailsOn({ kind: "sandbox", district: "classic", seed: 1 });
+    const sandbox = sessionFailsOn({ kind: "sandbox", district: "classic", seed: 1, ranchFocus: false });
     expect(sandbox).toEqual({ heat: false, track: false, clock: false });
-    expect(sessionForcesUpgrade({ kind: "sandbox", district: "classic", seed: 1 })).toBe(false);
-    const challenge = sessionFailsOn({ kind: "challenge", district: "classic", seed: 1 });
+    expect(sessionForcesUpgrade({ kind: "sandbox", district: "classic", seed: 1, ranchFocus: false })).toBe(false);
+    const challenge = sessionFailsOn({ kind: "challenge", district: "classic", seed: 1, ranchFocus: false });
     expect(challenge).toEqual({ heat: true, track: true, clock: true });
   });
 

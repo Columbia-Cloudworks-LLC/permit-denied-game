@@ -9,11 +9,11 @@ import {
   type FixtureFinish,
   type RanchFloorSpan,
 } from "../structure/interior";
-import { displacedRoofVerts } from "../structure/roof";
+import { ranchRafterBeams } from "../structure/roof";
 import type { Building, Cell, InteriorFixture, RoofSection } from "../structure/types";
 import { cellPresent } from "../structure/types";
 import { depthKey } from "../world/iso";
-import { drawFaceWindow, drawIsoBox, drawShadow, drawTopCap, shade } from "./drawIso";
+import { drawFaceWindow, drawIsoBox, drawShadow, drawSlopedQuad, drawTopCap, shade } from "./drawIso";
 import { brokenEdgeColor, floorFinishColor, plasterColor, topFaceColor, wallFaceColor } from "./lighting";
 import { PAL } from "./palette";
 
@@ -31,22 +31,26 @@ function jag(gx: number, gy: number, k: number): number {
   return (((gx * 13 + gy * 7 + k * 5) % 7) - 3) * 0.018;
 }
 
-function columnSouthOpen(b: Building, gx: number): boolean {
-  const top = b.floors - 1;
-  const cell = b.grid[top]?.[gx]?.[b.d - 1];
-  return !cell || !cellPresent(cell);
+function neighborBayMissing(b: Building, roof: RoofSection, dgx: number): boolean {
+  const gx = roof.support[0]?.gx;
+  if (gx == null) return false;
+  const want = gx + dgx;
+  const minGy = Math.min(...roof.support.map((s) => s.gy));
+  const maxGy = Math.max(...roof.support.map((s) => s.gy));
+  const partner = b.roofs.find(
+    (other) =>
+      other.id !== roof.id &&
+      other.support.some((s) => s.gx === want && s.gy >= minGy && s.gy <= maxGy),
+  );
+  return !!partner && (partner.state === "gone" || partner.state === "falling");
 }
 
-export function ranchRoofCutaway(b: Building, roof: RoofSection): boolean {
+/** Framing is visible when this bay is failing, or a neighbor bay has already dropped. */
+export function ranchRoofShowsRafters(b: Building, roof: RoofSection): boolean {
   if (!hasFurnishedInterior(b)) return false;
   if (roof.state === "gone") return false;
-  if (roof.state === "falling") return false;
-  const top = b.floors - 1;
-  return roof.support.some((s) => {
-    const cell = b.grid[top]?.[s.gx]?.[s.gy];
-    if (!cell || !cellPresent(cell)) return true;
-    return columnSouthOpen(b, s.gx);
-  });
+  if (roof.state === "sagging" || roof.state === "falling") return true;
+  return neighborBayMissing(b, roof, -1) || neighborBayMissing(b, roof, 1);
 }
 
 function floorOpen(
@@ -426,36 +430,43 @@ function fixtureDepth(fixture: InteriorFixture): number {
   return depthKey(fixture.x + fixture.w * 0.5, fixture.y + fixture.d * 0.5, fixture.floor * FLOOR_Z + fixture.h * 0.45);
 }
 
+function drawSlopedBeam(
+  g: Graphics,
+  a: { x: number; y: number; z: number },
+  b: { x: number; y: number; z: number },
+  halfW: number,
+  top: number,
+  side: number,
+  alpha: number,
+): void {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const px = (-dy / len) * halfW;
+  const py = (dx / len) * halfW;
+  const thick = 0.09;
+  const topQuad = [
+    { x: a.x + px, y: a.y + py, z: a.z },
+    { x: a.x - px, y: a.y - py, z: a.z },
+    { x: b.x - px, y: b.y - py, z: b.z },
+    { x: b.x + px, y: b.y + py, z: b.z },
+  ];
+  const under = topQuad.map((v) => ({ x: v.x, y: v.y, z: v.z - thick }));
+  drawSlopedQuad(g, under, side, side, alpha * 0.9);
+  drawSlopedQuad(g, [topQuad[0]!, topQuad[3]!, under[3]!, under[0]!], side, side, alpha);
+  drawSlopedQuad(g, [topQuad[1]!, topQuad[2]!, under[2]!, under[1]!], side, side, alpha);
+  drawSlopedQuad(g, topQuad, top, side, alpha);
+}
+
 export function drawRanchRafters(g: Graphics, _b: Building, roof: RoofSection, alpha: number): void {
-  const verts = displacedRoofVerts(roof);
-  if (verts.length < 4) return;
-  const a = verts[0]!;
-  const c = verts[2]!;
-  const midZ = (a.z + c.z) * 0.5 - 0.08;
-  const beam = PAL.woodDark;
+  const beams = ranchRafterBeams(roof);
+  if (beams.length === 0) return;
   const top = PAL.woodTop;
-  const alongX = Math.abs(c.x - a.x) >= Math.abs(c.y - a.y);
-  if (alongX) {
-    const x0 = Math.min(a.x, c.x) + 0.08;
-    const x1 = Math.max(a.x, c.x) - 0.08;
-    const y = (a.y + c.y) * 0.5;
-    const span = x1 - x0;
-    for (let i = 0; i < 3; i++) {
-      const t = 0.15 + i * 0.32;
-      drawIsoBox(g, x0 + span * t, y - 0.05, 0.09, Math.abs(c.y - a.y) * 0.42, midZ - 0.12, 0.1, top, beam, beam, alpha);
-    }
-    drawIsoBox(g, x0, y - 0.04, span, 0.08, midZ - 0.02, 0.08, top, beam, beam, alpha);
-    return;
+  const side = PAL.woodDark;
+  for (const beam of beams) {
+    const half = beam.kind === "plate" ? 0.055 : 0.045;
+    drawSlopedBeam(g, beam.a, beam.b, half, top, side, alpha);
   }
-  const y0 = Math.min(a.y, c.y) + 0.08;
-  const y1 = Math.max(a.y, c.y) - 0.08;
-  const x = (a.x + c.x) * 0.5;
-  const span = y1 - y0;
-  for (let i = 0; i < 3; i++) {
-    const t = 0.15 + i * 0.32;
-    drawIsoBox(g, x - 0.05, y0 + span * t, Math.abs(c.x - a.x) * 0.42, 0.09, midZ - 0.12, 0.1, top, beam, beam, alpha);
-  }
-  drawIsoBox(g, x - 0.04, y0, 0.08, span, midZ - 0.02, 0.08, top, beam, beam, alpha);
 }
 
 type RanchInteriorKind = "floor" | "stub" | "fixture";

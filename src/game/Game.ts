@@ -157,7 +157,16 @@ export class Game {
   reset(kind: "same" | "new" = "same"): void {
     if (kind === "new") this.rules.seed = nextSeed(this.rules.seed);
     this.town = createTown({ district: this.rules.district, seed: this.rules.seed });
-    this.dozer = createDozer(this.town.spawnX, this.town.spawnY, this.town.spawnHeading);
+    const ranch = this.rules.ranchFocus
+      ? this.town.buildings.find((b) => b.archetypeId === "ranch")
+      : undefined;
+    this.dozer = ranch
+      ? createDozer(
+          ranch.x + ranch.w * ranch.cellSize * 0.5,
+          ranch.y + ranch.d * ranch.cellSize + 3.5,
+          -Math.PI / 2,
+        )
+      : createDozer(this.town.spawnX, this.town.spawnY, this.town.spawnHeading);
     this.particles.reseed(this.rules.seed ^ 0x51f00d);
     this.shake.reset();
     this.renderer.invalidate();

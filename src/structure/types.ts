@@ -99,6 +99,13 @@ export interface RoofSection {
   fallDx: number;
   fallDy: number;
   material: Material;
+  /** World hinge the section tips around while sagging or falling. */
+  hingeX: number;
+  hingeY: number;
+  hingeZ: number;
+  /** Horizontal unit axis for the cheap tip rotation. */
+  tiltAx: number;
+  tiltAy: number;
 }
 
 export interface BuildingFeatureSpec {
@@ -194,6 +201,7 @@ export interface CollapsedSite {
 
 export type DebrisLayer = "remnant" | "fragment";
 export type DebrisShape = "chunk" | "beam" | "panel";
+export type DebrisSkin = "default" | "roofing";
 export type GroundKind = "chip" | "splinter" | "dust" | "glass" | "scrape";
 
 export interface Rubble {
@@ -213,6 +221,7 @@ export interface Rubble {
   material: Material;
   shape: DebrisShape;
   layer: DebrisLayer;
+  skin: DebrisSkin;
   seed: number;
   hp: number;
   damage: number;

@@ -3,14 +3,14 @@ import { FLOOR_Z } from "../game/constants";
 import { Rng } from "../game/rng";
 import { depthKey, roofPainterDepth, screenAabbVisible, worldBoundsToScreen, worldToScreen } from "../world/iso";
 import type { ParticlePool } from "../fx/particles";
-import { displacedRoofVerts, roofHeightAt, sectionOwnsRidge } from "../structure/roof";
+import { applyBrokenRoofEdge, displacedRoofVerts, roofHeightAt, sectionOwnsRidge } from "../structure/roof";
 import type { Bird, Building, CollapsedSite, CoverKind, GroundMark, GroundPatch, Particle, RoofSection, Rubble } from "../structure/types";
 import type { Dozer } from "../vehicle/dozer";
 import type { Town } from "../world/town";
 import { hasFurnishedInterior } from "../structure/interior";
 import { aggregateSurfaceStats, getBuildingSurfaces } from "./buildingSurfaces";
 import { drawCatalogProp } from "./assets";
-import { drawRanchRafters, ranchInteriorCmds, ranchRoofCutaway } from "./interiorDraw";
+import { drawRanchRafters, ranchInteriorCmds, ranchRoofShowsRafters } from "./interiorDraw";
 import { cellColors, drawGroundPoly, drawIsoBox, drawOrientedGround, drawOrientedIsoBox, drawShadow, drawSlopedQuad, PAL, shade } from "./drawIso";
 import {
   drawBreachGroup,
@@ -387,14 +387,10 @@ function drawBuildingRoofs(g: Graphics, b: Building, roofs: RoofSection[], alpha
 }
 
 function drawRanchRoofBay(g: Graphics, b: Building, roof: RoofSection, alpha: number): void {
-  if (ranchRoofCutaway(b, roof)) {
-    drawRanchRafters(g, b, roof, alpha * 0.92);
-    return;
-  }
   const drawn = new Set<string>();
   drawRoofSection(g, b, roof, alpha, drawn);
-  if (roof.state === "sagging" || roof.state === "falling") {
-    drawRanchRafters(g, b, roof, alpha * 0.85);
+  if (ranchRoofShowsRafters(b, roof)) {
+    drawRanchRafters(g, b, roof, alpha * 0.92);
   }
 }
 
@@ -405,9 +401,25 @@ function drawRoofSection(
   alpha: number,
   drawnRidges: Set<string>,
 ): void {
-  const verts = roofVerts(roof);
+  const raw = roofVerts(roof);
+  const verts = b.archetypeId === "ranch" ? applyBrokenRoofEdge(b, roof, raw) : raw;
   const cols = roofColors(b, roof, verts);
-  const faded = roof.state === "falling" ? alpha * 0.88 : alpha;
+  const faded = roof.state === "falling" ? alpha * 0.9 : alpha;
+  const thick = b.archetypeId === "ranch" ? 0.14 : 0;
+  if (thick > 0) {
+    const under = verts.map((v) => ({ x: v.x, y: v.y, z: v.z - thick }));
+    drawSlopedQuad(g, under.slice().reverse(), PAL.wood, PAL.woodDark, faded * 0.95);
+    for (let i = 0; i < verts.length; i++) {
+      const n = (i + 1) % verts.length;
+      drawSlopedQuad(
+        g,
+        [verts[i]!, verts[n]!, under[n]!, under[i]!],
+        i % 2 === 0 ? cols.edge : PAL.wood,
+        PAL.woodDark,
+        faded,
+      );
+    }
+  }
   drawSlopedQuad(g, verts, cols.top, cols.edge, faded);
   if (roof.ridge && roof.state !== "falling" && sectionOwnsRidge(b, roof)) {
     const key = ridgeKey(roof.ridge);
@@ -635,6 +647,42 @@ function drawDebris(g: Graphics, r: Rubble): void {
   const z0 = r.elev;
   const h = Math.max(0.05, r.thickness);
   drawOrientedIsoBox(g, r.x, r.y, r.heading, r.w * 1.08, r.d * 1.08, 0, 0.02, PAL.shadow, PAL.shadow, PAL.shadow, 0.26);
+
+  if (r.skin === "roofing") {
+    drawOrientedIsoBox(g, r.x, r.y, r.heading, r.w, r.d, z0, h, PAL.roofShingle, PAL.wood, PAL.roofShingleDark, 1);
+    drawOrientedIsoBox(
+      g,
+      r.x,
+      r.y,
+      r.heading,
+      r.w * 0.92,
+      r.d * 0.88,
+      z0,
+      Math.max(0.04, h * 0.35),
+      PAL.wood,
+      PAL.woodDark,
+      PAL.wood,
+      0.95,
+    );
+    if (rng.next() > 0.45) {
+      const fold = rng.range(-0.2, 0.2);
+      drawOrientedIsoBox(
+        g,
+        r.x + Math.cos(r.heading) * r.w * 0.12,
+        r.y + Math.sin(r.heading) * r.w * 0.12,
+        r.heading + fold,
+        r.w * 0.42,
+        r.d * 0.55,
+        z0 + h * 0.2,
+        h * 0.55,
+        PAL.roofShingleDark,
+        PAL.woodDark,
+        PAL.roofShingle,
+        1,
+      );
+    }
+    return;
+  }
 
   if (r.shape === "beam") {
     drawOrientedIsoBox(g, r.x, r.y, r.heading, r.w, r.d, z0, h, cols.top, cols.left, cols.right, 1);

@@ -3,7 +3,8 @@ import { applyCellDamage, createBuildingFromArchetype } from "../structure/build
 import { fixtureCatalog } from "../structure/interior";
 import { depthKey } from "../world/iso";
 import { ParticlePool } from "../fx/particles";
-import { ranchInteriorCmds } from "./interiorDraw";
+import { ranchInteriorCmds, ranchRoofShowsRafters } from "./interiorDraw";
+import { ranchRafterBeams } from "../structure/roof";
 import { PAL } from "./palette";
 
 function smash(b: ReturnType<typeof createBuildingFromArchetype>, gx: number, gy: number): void {
@@ -61,6 +62,29 @@ describe("broken fixture remnants", () => {
     toilet.broken = true;
     const cmds = ranchInteriorCmds(b, 1);
     expect(cmds.some((c) => c.kind === "fixture")).toBe(true);
+  });
+});
+
+describe("ranch roof framing", () => {
+  it("does not hide an intact roof bay when a south wall opens", () => {
+    const b = createBuildingFromArchetype("ranch", "ROOF STAYS", 0, 0);
+    smash(b, 2, b.d - 1);
+    const south = b.roofs.find((r) => r.support.some((s) => s.gx === 2 && s.gy === b.d - 1))!;
+    const north = b.roofs.find((r) => r.support.some((s) => s.gx === 2 && s.gy === 0))!;
+    expect(south.state).toBe("intact");
+    expect(north.state).toBe("intact");
+    expect(ranchRoofShowsRafters(b, south)).toBe(false);
+    expect(ranchRoofShowsRafters(b, north)).toBe(false);
+  });
+
+  it("draws rafters along the roof slope instead of a flat ladder", () => {
+    const b = createBuildingFromArchetype("ranch", "RAFTERS", 0, 0);
+    const south = b.roofs.find((r) => r.support.some((s) => s.gy === b.d - 1))!;
+    const rise = ranchRafterBeams(south)
+      .filter((beam) => beam.kind === "rafter")
+      .map((beam) => Math.abs(beam.b.z - beam.a.z));
+    expect(rise.length).toBe(3);
+    expect(Math.min(...rise)).toBeGreaterThan(0.35);
   });
 });
 

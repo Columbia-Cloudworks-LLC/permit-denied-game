@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { SIM_DT } from "../game/constants";
 import { ParticlePool } from "../fx/particles";
-import { applyCellDamage, stepStructures } from "../structure/building";
+import { applyCellDamage, createBuildingFromArchetype, stepStructures } from "../structure/building";
+import { DEBRIS } from "../game/constants";
 import { createDozer, stepDozer } from "../vehicle/dozer";
 import { createRoadVehicle, roadSpeed, stepRoadVehicle } from "../vehicle/roadVehicle";
 import { createTown } from "../world/town";
@@ -64,6 +65,47 @@ describe("debris spawn and mass", () => {
     const after = totalDebrisMass(town);
     expect(Math.abs(after - before)).toBeLessThan(0.04);
     expect(Math.abs(after - before) / before).toBeLessThan(0.05);
+  });
+
+  it("spawns recognizable roof remnants at the falling panel instead of generic scatter", () => {
+    const town = createTown();
+    const created = spawnCollapseDebris(town, {
+      x: 14.2,
+      y: 18.4,
+      dx: 0.15,
+      dy: 0.8,
+      material: "wood",
+      floor: 1,
+      cellSize: 1.15,
+      source: "roof",
+      heading: Math.PI / 2,
+      elev: 0.62,
+      panelW: 1.05,
+      panelD: 0.48,
+    });
+    const panels = created.filter((r) => r.skin === "roofing");
+    expect(panels.length).toBeGreaterThanOrEqual(1);
+    expect(panels[0]!.shape).toBe("panel");
+    expect(panels[0]!.thickness).toBeGreaterThan(0.1);
+    expect(Math.hypot(panels[0]!.x - 14.2, panels[0]!.y - 18.4)).toBeLessThan(0.55);
+    expect(created.filter((r) => r.layer === "fragment").length).toBeLessThanOrEqual(2);
+  });
+
+  it("keeps ranch roof collapse inside debris caps", () => {
+    const town = createTown();
+    const ranch = createBuildingFromArchetype("ranch", "BOUND", 20, 8);
+    town.buildings.push(ranch);
+    const particles = new ParticlePool();
+    const dozer = createDozer(22, 14, -Math.PI / 2);
+    for (const cell of ranch.cells) applyCellDamage(ranch, cell, 999, 0, 1, particles, []);
+    for (let i = 0; i < 240; i++) {
+      stepWorld(town, dozer, particles, upgrades, SIM_DT);
+    }
+    expect(ranch.roofs.every((r) => r.state === "gone")).toBe(true);
+    expect(town.rubble.filter((r) => r.layer === "remnant").length).toBeLessThanOrEqual(DEBRIS.remnantCap);
+    expect(town.rubble.filter((r) => r.layer === "fragment").length).toBeLessThanOrEqual(DEBRIS.fragmentCap);
+    const awake = town.rubble.filter((r) => !r.sleeping).length;
+    expect(awake).toBeLessThanOrEqual(DEBRIS.activeCap + 8);
   });
 });
 

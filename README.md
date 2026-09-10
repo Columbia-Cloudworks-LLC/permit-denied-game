@@ -17,6 +17,7 @@ Sandbox and district presets can be opened directly:
 
 ```
 http://localhost:5173/?sandbox=1&district=d100
+http://localhost:5173/?sandbox=1&ranch=1
 http://localhost:5173/?perf=1
 ```
 
