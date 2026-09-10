@@ -25,8 +25,38 @@ export function drawGroundPoly(
   d: number,
   color: number,
   alpha = 1,
+  z = 0,
 ): void {
-  const q = isoQuad(x, y, w, d, 0);
+  const q = isoQuad(x, y, w, d, z);
+  g.poly(q);
+  g.fill({ color, alpha });
+}
+
+export function drawOrientedGround(
+  g: Graphics,
+  cx: number,
+  cy: number,
+  heading: number,
+  length: number,
+  width: number,
+  color: number,
+  alpha = 1,
+  z = 0,
+): void {
+  const fx = Math.cos(heading);
+  const fy = Math.sin(heading);
+  const hl = length * 0.5;
+  const hw = width * 0.5;
+  const corners = [
+    { x: cx + fx * hl - fy * hw, y: cy + fy * hl + fx * hw },
+    { x: cx + fx * hl + fy * hw, y: cy + fy * hl - fx * hw },
+    { x: cx - fx * hl + fy * hw, y: cy - fy * hl - fx * hw },
+    { x: cx - fx * hl - fy * hw, y: cy - fy * hl + fx * hw },
+  ];
+  const q = corners.flatMap((p) => {
+    const s = worldToScreen(p.x, p.y, z);
+    return [s.x, s.y];
+  });
   g.poly(q);
   g.fill({ color, alpha });
 }

@@ -40,6 +40,16 @@ describe("district generation", () => {
     expect(layoutSig(again)).toBe(saved);
   });
 
+  it("dresses the 100-building district within the asset budget", () => {
+    const town = createTown({ district: "d100", seed: 9 });
+    expect(town.buildings).toHaveLength(100);
+    expect(town.props.length).toBeGreaterThan(40);
+    expect(town.ground.length).toBeGreaterThan(20);
+    expect(town.network.segments.length).toBeGreaterThan(3);
+    const report = validateTown(town);
+    expect(report.issues, report.issues.map((i) => i.detail).join("; ")).toEqual([]);
+  });
+
   it("derives pile coverage and vehicle spawns from the selected district", () => {
     const town = createTown({ district: "d30", seed: 3 });
     expect(town.pile.ox).toBeLessThanOrEqual(town.minX);

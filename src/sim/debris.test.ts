@@ -191,7 +191,7 @@ describe("blade and vehicle contact", () => {
     const carStart = roadSpeed(car);
     void carStart;
     for (let i = 0; i < 90; i++) {
-      stepRoadVehicle(car, SIM_DT);
+      stepRoadVehicle(car, town, SIM_DT);
       stepOnce(town, createDozer(2, 2, 0));
     }
     const blockedSpeed = roadSpeed(car);

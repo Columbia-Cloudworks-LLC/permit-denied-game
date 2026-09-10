@@ -1,6 +1,6 @@
 import { DOZER } from "../game/constants";
 import { clamp, len } from "../game/math";
-import { ParticlePool, debrisKind } from "../fx/particles";
+import { ParticlePool } from "../fx/particles";
 import {
   applyCellDamage,
   buildingBonus,
@@ -8,13 +8,16 @@ import {
   stepStructures,
   type StructureStepStats,
 } from "../structure/building";
-import { cellPresent, cellWorldBox, type Building, type Cell, type WorldEvent } from "../structure/types";
+import { cellPresent, cellWorldBox, type Building, type Cell, type Prop, type WorldEvent } from "../structure/types";
 import { bladePoints, clampDozer, dozerSpeed, resolveCircleSolid, type Dozer } from "../vehicle/dozer";
 import { clampRoadVehicle, resolveRoadSolid, stepRoadVehicle } from "../vehicle/roadVehicle";
 import type { Town } from "../world/town";
-import { depositSettledParticles, spawnCollapseDebris, spawnPropDebris, stepDebris } from "./debris";
+import { applyAssetHit, destroyProp, trackFromAsset } from "./assets";
+import { depositSettledParticles, spawnCollapseDebris, stepDebris } from "./debris";
 import { SpatialHash } from "./spatial";
 import { ensureCollapsedSite, siteContaining, siteFeel } from "../structure/site";
+import { getAsset } from "../world/catalog";
+import { roadSurfaceAt, terrainHeightAt } from "../world/roads";
 
 export interface Upgrades {
   blade: number;
@@ -41,7 +44,7 @@ interface SolidRef {
   kind: "cell" | "prop";
   building?: Building;
   cell?: Cell;
-  propId?: number;
+  prop?: Prop;
   x: number;
   y: number;
   w: number;
@@ -86,7 +89,7 @@ function rebuildHash(town: Town): boolean {
       broken++;
       continue;
     }
-    const ref: SolidRef = { kind: "prop", propId: p.id, x: p.x, y: p.y, w: p.w, d: p.d };
+    const ref: SolidRef = { kind: "prop", prop: p, x: p.x, y: p.y, w: p.w, d: p.d };
     hash.insert(p.x, p.y, p.w, p.d, ref);
   }
   hashedTown = town;
@@ -146,12 +149,16 @@ export function stepWorld(
         damaged.add(ref.cell);
       }
     } else if (ref.kind === "prop") {
-      const p = town.props.find((x) => x.id === ref.propId);
+      const p = ref.prop;
       if (!p || p.broken) continue;
       const impact = resolveCircleSolid(dozer, p.x, p.y, p.w, p.d, 0.05);
       if (impact > 0.25) {
-        p.hp -= impact * 6;
-        if (p.kind === "light" && speed > 5.5) dozer.track += DOZER.trackPole * 0.25;
+        applyAssetHit(p, impact * 6, dozer.x - (p.x + p.w / 2), dozer.y - (p.y + p.d / 2));
+        dozer.track += trackFromAsset(p, speed) * 0.25;
+        const def = getAsset(p.assetId);
+        if (def.sparks && p.hp < p.maxHp * 0.7) {
+          events.push({ kind: "spark", x: p.x + p.w / 2, y: p.y + p.d / 2, z: 0.8, mag: 0.35, material: p.material });
+        }
       }
     }
   }
@@ -180,34 +187,23 @@ export function stepWorld(
           }
         }
       } else if (ref.kind === "prop") {
-        const p = town.props.find((x) => x.id === ref.propId);
+        const p = ref.prop;
         if (!p || p.broken) continue;
-        p.hp -= (8 + speed * 4) * bladeMul * dt;
+        applyAssetHit(p, (8 + speed * 4) * bladeMul * dt, Math.cos(dozer.heading), Math.sin(dozer.heading));
+        const def = getAsset(p.assetId);
+        if (def.sparks && p.hp < p.maxHp * 0.75) {
+          events.push({ kind: "spark", x: p.x + p.w / 2, y: p.y + p.d / 2, z: 0.8, mag: 0.3, material: p.material });
+        }
       }
     }
   }
 
   for (const p of town.props) {
     if (p.broken || p.hp > 0) continue;
-    p.broken = true;
-    p.hp = 0;
-    particles.burst(debrisKind(p.material), p.x + p.w / 2, p.y + p.d / 2, 0.8, 1);
-    let pay = 8;
-    if (p.kind === "car") pay = 28;
-    if (p.kind === "dumpster") pay = 16;
-    if (p.kind === "light") {
-      pay = 12;
-      dozer.track += speed > 6 ? DOZER.trackPole : 10;
-    }
-    if (p.kind === "camera") {
-      pay = 40;
-      birds.push({ x: p.x, y: p.y });
-      events.push({ kind: "bird", x: p.x, y: p.y, z: 2.2, mag: 0.4, cash: pay });
-    } else {
-      events.push({ kind: "snap", x: p.x, y: p.y, z: 0.8, mag: 0.5, cash: pay });
-    }
-    cash += pay;
-    spawnPropDebris(town, p.x, p.y, Math.max(0.4, p.w * 0.8), Math.max(0.35, p.d * 0.8), p.material);
+    const def = getAsset(p.assetId);
+    cash += destroyProp(town, p, particles, events, dozer.x, dozer.y);
+    dozer.track += trackFromAsset(p, speed);
+    if (def.birdGag) birds.push({ x: p.x, y: p.y });
   }
 
   const structStats: StructureStepStats = { stepped: 0, skipped: 0 };
@@ -278,12 +274,17 @@ export function stepWorld(
   const debris = stepDebris(town, dozer, particles, events, engineMul, dt);
 
   if (town.roadCar?.alive) {
-    stepRoadVehicle(town.roadCar, dt);
+    stepRoadVehicle(town.roadCar, town, dt);
     hash.query(town.roadCar.x - 2.2, town.roadCar.y - 2.2, 4.4, 4.4, nearby);
+    let blocked = false;
     for (const ref of nearby) {
-      resolveRoadSolid(town.roadCar, ref.x, ref.y, ref.w, ref.d, 0.06);
+      if (resolveRoadSolid(town.roadCar, ref.x, ref.y, ref.w, ref.d, 0.06) > 0.2) blocked = true;
     }
+    if (blocked) town.roadCar.waitT += dt;
+    else town.roadCar.waitT = 0;
     clampRoadVehicle(town.roadCar, town.minX + 0.6, town.minY + 0.6, town.maxX - 0.6, town.maxY - 0.6);
+    const surf = roadSurfaceAt(town.network, town.roadCar.x, town.roadCar.y, town.roadCar.layer);
+    town.roadCar.elev = surf.on ? surf.elev : terrainHeightAt(town.terrain, town.roadCar.x, town.roadCar.y);
   }
 
   clampDozer(dozer, town.minX + 0.8, town.minY + 0.8, town.maxX - 0.8, town.maxY - 0.8);

@@ -72,6 +72,19 @@ export const DEBRIS = {
   scrapeDust: 0.16,
 } as const;
 
+export const DRESSING = {
+  perLotMax: 8,
+  districtMax: { classic: 80, d10: 96, d30: 240, d100: 560 },
+  roadsidePerSegment: 2,
+} as const;
+
+export const EXPLODE = {
+  maxGeneration: 1,
+  radius: 3.4,
+  damage: 22,
+  impulse: 5.2,
+} as const;
+
 export const ROAD = {
   mass: 1.35,
   radius: 0.7,

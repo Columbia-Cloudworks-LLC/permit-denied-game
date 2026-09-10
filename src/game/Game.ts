@@ -73,7 +73,7 @@ export class Game {
     this.app = new Application();
     await this.app.init({
       resizeTo: root,
-      background: 0x1a1810,
+      background: 0x3a4a24,
       antialias: false,
       roundPixels: true,
       autoDensity: true,
@@ -359,6 +359,11 @@ export class Game {
         this.audio.crunch(e.mag);
         if (e.mag > 0.9) this.shake.punch(e.mag * 0.45);
       }
+      if (e.kind === "blast") {
+        this.shake.punch(e.mag);
+        this.audio.impact(e.mag);
+      }
+      if (e.kind === "spark") this.audio.clatter(e.mag * 0.6, "metal");
     }
   }
 
