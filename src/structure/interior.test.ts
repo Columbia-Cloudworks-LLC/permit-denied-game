@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { SIM_DT } from "../game/constants";
 import { ParticlePool } from "../fx/particles";
 import { extractBuildingSurfaces } from "../render/buildingSurfaces";
-import { ranchRoofCutaway } from "../render/interiorDraw";
+import { ranchRoofShowsRafters } from "../render/interiorDraw";
 import { applyCellDamage, createBuildingFromArchetype, stepStructures } from "./building";
 import {
   cellDrawsRanchFloor,
@@ -224,8 +224,10 @@ describe("ranch roof bays", () => {
     expect(southWalls.some((w) => w.gx0 <= 2 && w.gx1 >= 2)).toBe(false);
     const southBay = b.roofs.find((r) => r.support.some((s) => s.gx === 2 && s.gy === b.d - 1))!;
     const northBay = b.roofs.find((r) => r.support.some((s) => s.gx === 2 && s.gy === 0))!;
-    expect(ranchRoofCutaway(b, southBay)).toBe(true);
-    expect(ranchRoofCutaway(b, northBay)).toBe(true);
+    expect(southBay.state).toBe("intact");
+    expect(northBay.state).toBe("intact");
+    expect(ranchRoofShowsRafters(b, southBay)).toBe(false);
+    expect(ranchRoofShowsRafters(b, northBay)).toBe(false);
     expect(living!.gx0).toBeLessThanOrEqual(2);
     expect(living!.gx1).toBeGreaterThanOrEqual(2);
   });

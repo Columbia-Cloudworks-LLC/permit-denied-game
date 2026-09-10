@@ -6,14 +6,19 @@ import { createTown } from "../world/town";
 import { stepWorld } from "../sim/worldSim";
 import { applyCellDamage, createBuilding, createBuildingFromArchetype, stepStructures } from "./building";
 import {
+  applyBrokenRoofEdge,
+  displacedRoofVerts,
   gableEndCaps,
   gablePlanesSloped,
   gableWallVerts,
   gableZAlong,
   generateRoofs,
   liveRoofCount,
+  ranchRafterBeams,
   roofCoversOnlyOccupied,
+  roofHandoffPose,
   roofHeightAt,
+  roofTiltAngle,
   sectionOwnsRidge,
   shedWallVerts,
 } from "./roof";
@@ -243,6 +248,75 @@ describe("structural roofs", () => {
     expect(end.every((r) => r.ridge!.ax >= holeX1 - 0.02)).toBe(true);
     const east = gableEndCaps(b);
     expect(east[0]?.face).toBe("east");
+  });
+
+  it("keeps a roof bay drawn after a local wall breach instead of cutting the column away", () => {
+    const b = createBuildingFromArchetype("ranch", "NO CUTAWAY", 0, 0);
+    const particles = new ParticlePool();
+    const south = b.roofs.find((r) => r.support.some((s) => s.gx === 2 && s.gy === b.d - 1))!;
+    const north = b.roofs.find((r) => r.support.some((s) => s.gx === 2 && s.gy === 0))!;
+    applyCellDamage(b, b.grid[0]![2]![b.d - 1]!, 999, 0, 1, particles, []);
+    for (let i = 0; i < 4; i++) stepStructures([b], SIM_DT, particles, []);
+    expect(south.state).not.toBe("gone");
+    expect(north.state).toBe("intact");
+    expect(north.sag).toBeLessThan(0.05);
+    expect(liveRoofCount(b)).toBe(b.roofs.length);
+  });
+
+  it("tips a failing ranch bay toward the lost support instead of sliding down flat", () => {
+    const b = createBuildingFromArchetype("ranch", "TIP", 0, 0);
+    const particles = new ParticlePool();
+    const south = b.roofs.find((r) => r.support.some((s) => s.gx === 1 && s.gy === b.d - 1))!;
+    const rest = south.verts.map((v) => ({ ...v }));
+    applyCellDamage(b, b.grid[0]![1]![b.d - 1]!, 999, 0, 1, particles, []);
+    for (let i = 0; i < Math.ceil(0.28 / SIM_DT); i++) stepStructures([b], SIM_DT, particles, []);
+    expect(south.state === "sagging" || south.state === "falling").toBe(true);
+    expect(roofTiltAngle(south)).toBeGreaterThan(0.08);
+    const moved = displacedRoofVerts(south);
+    const restMinZ = Math.min(...rest.map((v) => v.z));
+    const restMaxZ = Math.max(...rest.map((v) => v.z));
+    const eaveIdx = rest.map((v, i) => (v.z <= restMinZ + 0.05 ? i : -1)).filter((i) => i >= 0);
+    const ridgeIdx = rest.map((v, i) => (v.z >= restMaxZ - 0.05 ? i : -1)).filter((i) => i >= 0);
+    const eaveDrop = eaveIdx.reduce((s, i) => s + (rest[i]!.z - moved[i]!.z), 0) / eaveIdx.length;
+    const ridgeDrop = ridgeIdx.reduce((s, i) => s + (rest[i]!.z - moved[i]!.z), 0) / ridgeIdx.length;
+    expect(eaveDrop).toBeGreaterThan(ridgeDrop + 0.04);
+  });
+
+  it("hands a falling bay to debris at the displaced panel pose", () => {
+    const b = createBuildingFromArchetype("ranch", "HANDOFF", 0, 0);
+    const particles = new ParticlePool();
+    const south = b.roofs.find((r) => r.support.some((s) => s.gx === 0 && s.gy === b.d - 1))!;
+    applyCellDamage(b, b.grid[0]![0]![b.d - 1]!, 999, 0, 1, particles, []);
+    let spawn: { x: number; y: number; source?: string; elev?: number } | undefined;
+    let lastPose = roofHandoffPose(south);
+    for (let i = 0; i < Math.ceil(1.4 / SIM_DT); i++) {
+      const out = stepStructures([b], SIM_DT, particles, []);
+      if (south.state === "falling") lastPose = roofHandoffPose(south);
+      const roofSpawn = out.rubbleSpawns.find((s) => s.source === "roof");
+      if (roofSpawn) spawn = roofSpawn;
+    }
+    expect(south.state).toBe("gone");
+    expect(spawn).toBeDefined();
+    expect(Math.hypot(spawn!.x - lastPose.x, spawn!.y - lastPose.y)).toBeLessThan(0.35);
+    expect(spawn!.elev).toBeGreaterThan(0.05);
+  });
+
+  it("keeps sloped rafters attached to a ranch bay and jags only exposed edges", () => {
+    const b = createBuildingFromArchetype("ranch", "FRAMING", 0, 0);
+    const mid = b.roofs.find((r) => r.support.some((s) => s.gx === 2 && s.gy === b.d - 1))!;
+    const beams = ranchRafterBeams(mid);
+    const rafters = beams.filter((beam) => beam.kind === "rafter");
+    expect(rafters.length).toBe(3);
+    expect(rafters.every((beam) => Math.abs(beam.b.z - beam.a.z) > 0.35)).toBe(true);
+    const particles = new ParticlePool();
+    for (const cell of b.cells) {
+      if (cell.gx === 1) applyCellDamage(b, cell, 999, 0, 1, particles, []);
+    }
+    for (let i = 0; i < Math.ceil(1.2 / SIM_DT); i++) stepStructures([b], SIM_DT, particles, []);
+    const raw = displacedRoofVerts(mid);
+    const broken = applyBrokenRoofEdge(b, mid, raw);
+    expect(broken.some((v, i) => Math.hypot(v.x - raw[i]!.x, v.y - raw[i]!.y) > 0.01)).toBe(true);
+    expect(applyBrokenRoofEdge(b, mid, raw)).toEqual(broken);
   });
 
   it("regenerates the same gable geometry for the same footprint", () => {

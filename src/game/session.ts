@@ -27,6 +27,7 @@ export interface SessionRules {
   kind: SessionKind;
   district: DistrictId;
   seed: number;
+  ranchFocus: boolean;
 }
 
 function defaultSessionRules(): SessionRules {
@@ -34,6 +35,7 @@ function defaultSessionRules(): SessionRules {
     kind: "challenge",
     district: "classic",
     seed: DEFAULT_DISTRICT_SEEDS.classic,
+    ranchFocus: false,
   };
 }
 
@@ -45,6 +47,14 @@ export function parseSessionFromSearch(search: string): SessionRules {
   if (district === "classic" || district === "d10" || district === "d30" || district === "d100") {
     rules.district = district;
     rules.seed = DEFAULT_DISTRICT_SEEDS[district];
+  }
+  if (params.get("ranch") === "1") {
+    rules.kind = "sandbox";
+    rules.ranchFocus = true;
+    if (district !== "classic" && district !== "d10" && district !== "d30" && district !== "d100") {
+      rules.district = "d10";
+      rules.seed = DEFAULT_DISTRICT_SEEDS.d10;
+    }
   }
   const rawSeed = params.get("seed");
   if (rawSeed !== null && rawSeed !== "") {

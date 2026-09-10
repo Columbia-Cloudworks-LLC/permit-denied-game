@@ -13,6 +13,10 @@ export interface RoofDebrisSpawn {
   floor: number;
   cellSize: number;
   source: "roof";
+  heading: number;
+  elev: number;
+  panelW: number;
+  panelD: number;
 }
 
 function wallTopZ(floors: number): number {
@@ -120,6 +124,7 @@ function makeSection(
   material: Material,
   ridge?: RoofSection["ridge"],
 ): RoofSection {
+  const c = vertsCenter(verts);
   return {
     id,
     style,
@@ -133,6 +138,11 @@ function makeSection(
     fallDx: 0,
     fallDy: 0,
     material,
+    hingeX: c.x,
+    hingeY: c.y,
+    hingeZ: c.z,
+    tiltAx: 1,
+    tiltAy: 0,
   };
 }
 
@@ -473,13 +483,201 @@ export function roofCoversOnlyOccupied(building: Building): boolean {
   return true;
 }
 
+function vertsCenter(verts: { x: number; y: number; z: number }[]): { x: number; y: number; z: number } {
+  let x = 0;
+  let y = 0;
+  let z = 0;
+  for (const v of verts) {
+    x += v.x;
+    y += v.y;
+    z += v.z;
+  }
+  const n = Math.max(1, verts.length);
+  return { x: x / n, y: y / n, z: z / n };
+}
+
+/** Ease-in so the panel tips first, then drops. */
+function roofFallEase(t: number): number {
+  const u = Math.max(0, Math.min(1, t));
+  return u * u * (1.12 - 0.12 * u);
+}
+
+export function roofTiltAngle(roof: RoofSection): number {
+  return roof.sag * 0.3 + roofFallEase(roof.fallT) * 0.98;
+}
+
+function rotateAroundHinge(
+  v: { x: number; y: number; z: number },
+  roof: RoofSection,
+  angle: number,
+): { x: number; y: number; z: number } {
+  const ax = roof.tiltAx;
+  const ay = roof.tiltAy;
+  const al = Math.hypot(ax, ay) || 1;
+  const kx = ax / al;
+  const ky = ay / al;
+  const px = v.x - roof.hingeX;
+  const py = v.y - roof.hingeY;
+  const pz = v.z - roof.hingeZ;
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  const dot = kx * px + ky * py;
+  const cx = ky * pz;
+  const cy = -kx * pz;
+  const cz = kx * py - ky * px;
+  return {
+    x: roof.hingeX + px * cos + cx * sin + kx * dot * (1 - cos),
+    y: roof.hingeY + py * cos + cy * sin + ky * dot * (1 - cos),
+    z: roof.hingeZ + pz * cos + cz * sin,
+  };
+}
+
 export function displacedRoofVerts(roof: RoofSection): { x: number; y: number; z: number }[] {
-  const drop = roof.sag * 0.35 + roof.fallT * 1.7;
-  return roof.verts.map((v) => ({
-    x: v.x + roof.fallDx * roof.fallT * 0.9,
-    y: v.y + roof.fallDy * roof.fallT * 0.9,
-    z: v.z - drop,
-  }));
+  const angle = roofTiltAngle(roof);
+  const slide = roofFallEase(roof.fallT);
+  const drop = slide * 1.05;
+  return roof.verts.map((v) => {
+    const r = angle === 0 ? { x: v.x, y: v.y, z: v.z } : rotateAroundHinge(v, roof, angle);
+    return {
+      x: r.x + roof.fallDx * slide * 0.55,
+      y: r.y + roof.fallDy * slide * 0.55,
+      z: r.z - drop,
+    };
+  });
+}
+
+type RoofEdge = "minX" | "maxX" | "minY" | "maxY";
+
+function sameBaySide(a: RoofSection, b: RoofSection): boolean {
+  const aMin = Math.min(...a.support.map((s) => s.gy));
+  const aMax = Math.max(...a.support.map((s) => s.gy));
+  const bMin = Math.min(...b.support.map((s) => s.gy));
+  const bMax = Math.max(...b.support.map((s) => s.gy));
+  return aMax >= bMin && bMax >= aMin;
+}
+
+function neighborBayGone(building: Building, roof: RoofSection, dgx: number): boolean {
+  const gxs = roof.support.map((s) => s.gx);
+  const mine = gxs[0];
+  if (mine == null) return false;
+  const want = mine + dgx;
+  const partner = building.roofs.find(
+    (other) =>
+      other.id !== roof.id &&
+      other.style === roof.style &&
+      other.support.some((s) => s.gx === want) &&
+      sameBaySide(roof, other),
+  );
+  if (!partner) return false;
+  return partner.state === "gone" || partner.state === "falling";
+}
+
+function exposedRoofEdges(building: Building, roof: RoofSection): RoofEdge[] {
+  const edges: RoofEdge[] = [];
+  if (roof.state === "gone") return edges;
+  if (neighborBayGone(building, roof, -1)) edges.push("minX");
+  if (neighborBayGone(building, roof, 1)) edges.push("maxX");
+  if (roof.state === "sagging" || roof.state === "falling") {
+    if (roof.fallDy > 0.2) edges.push("maxY");
+    else if (roof.fallDy < -0.2) edges.push("minY");
+    if (roof.fallDx > 0.2) edges.push("maxX");
+    else if (roof.fallDx < -0.2) edges.push("minX");
+  }
+  return edges;
+}
+
+function roofEdgeJag(id: number, i: number, k: number): number {
+  return (((id * 17 + i * 13 + k * 5) % 7) - 3) * 0.03;
+}
+
+/** Deterministic bites on exposed roof edges. Stable across frames. */
+export function applyBrokenRoofEdge(
+  building: Building,
+  roof: RoofSection,
+  verts: { x: number; y: number; z: number }[],
+): { x: number; y: number; z: number }[] {
+  const edges = exposedRoofEdges(building, roof);
+  if (edges.length === 0) return verts;
+  const xs = verts.map((v) => v.x);
+  const ys = verts.map((v) => v.y);
+  const zs = verts.map((v) => v.z);
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+  const minZ = Math.min(...zs);
+  const pad = 0.1;
+  return verts.map((v, i) => {
+    let { x, y, z } = v;
+    const j = roofEdgeJag(roof.id, i, 1);
+    const j2 = roofEdgeJag(roof.id, i, 2);
+    if (edges.includes("minX") && v.x <= minX + pad) {
+      x += Math.abs(j);
+      z -= Math.abs(j2) * 0.4;
+    }
+    if (edges.includes("maxX") && v.x >= maxX - pad) {
+      x -= Math.abs(j);
+      z -= Math.abs(j2) * 0.4;
+    }
+    if (edges.includes("minY") && v.y <= minY + pad) {
+      y += Math.abs(j);
+      z -= Math.abs(j2) * 0.35;
+    }
+    if (edges.includes("maxY") && v.y >= maxY - pad) {
+      y -= Math.abs(j);
+      z -= Math.abs(j2) * 0.35;
+    }
+    if ((roof.state === "sagging" || roof.state === "falling") && v.z <= minZ + 0.2) {
+      z -= Math.abs(roofEdgeJag(roof.id, i, 3)) * 0.45;
+    }
+    return { x, y, z };
+  });
+}
+
+export interface RoofRafterBeam {
+  a: { x: number; y: number; z: number };
+  b: { x: number; y: number; z: number };
+  kind: "rafter" | "plate";
+}
+
+function lerp3(
+  a: { x: number; y: number; z: number },
+  b: { x: number; y: number; z: number },
+  t: number,
+): { x: number; y: number; z: number } {
+  return {
+    x: a.x + (b.x - a.x) * t,
+    y: a.y + (b.y - a.y) * t,
+    z: a.z + (b.z - a.z) * t,
+  };
+}
+
+/** Sloped framing that rides the displaced roof plane. */
+export function ranchRafterBeams(roof: RoofSection): RoofRafterBeam[] {
+  const verts = displacedRoofVerts(roof);
+  if (verts.length < 4) return [];
+  const ranked = verts.slice().sort((a, b) => b.z - a.z);
+  const ridgePair = [ranked[0]!, ranked[1]!];
+  const eavePair = [ranked[ranked.length - 1]!, ranked[ranked.length - 2]!];
+  const alongX = Math.abs(ridgePair[0]!.x - ridgePair[1]!.x) >= Math.abs(ridgePair[0]!.y - ridgePair[1]!.y);
+  const key = (v: { x: number; y: number }) => (alongX ? v.x : v.y);
+  ridgePair.sort((a, b) => key(a) - key(b));
+  eavePair.sort((a, b) => key(a) - key(b));
+  const sink = 0.08;
+  const sinkV = (v: { x: number; y: number; z: number }) => ({ x: v.x, y: v.y, z: v.z - sink });
+  const e0 = sinkV(eavePair[0]!);
+  const e1 = sinkV(eavePair[1]!);
+  const r0 = sinkV(ridgePair[0]!);
+  const r1 = sinkV(ridgePair[1]!);
+  const beams: RoofRafterBeam[] = [
+    { a: e0, b: e1, kind: "plate" },
+    { a: r0, b: r1, kind: "plate" },
+  ];
+  for (let i = 0; i < 3; i++) {
+    const t = 0.16 + i * 0.34;
+    beams.push({ a: lerp3(e0, e1, t), b: lerp3(r0, r1, t), kind: "rafter" });
+  }
+  return beams;
 }
 
 function heightOnPoly(verts: { x: number; y: number; z: number }[], x: number, y: number): number | null {
@@ -689,25 +887,114 @@ export function sectionOwnsRidge(building: Building, roof: RoofSection): boolean
 }
 
 function sectionCenter(roof: RoofSection): { x: number; y: number; z: number } {
-  let x = 0;
-  let y = 0;
-  let z = 0;
-  for (const v of roof.verts) {
-    x += v.x;
-    y += v.y;
-    z += v.z;
+  return vertsCenter(roof.verts);
+}
+
+function supportWorld(
+  building: Building,
+  s: { gx: number; gy: number },
+): { x: number; y: number } {
+  return {
+    x: building.x + (s.gx + 0.5) * building.cellSize,
+    y: building.y + (s.gy + 0.5) * building.cellSize,
+  };
+}
+
+function updateRoofHinge(building: Building, roof: RoofSection): void {
+  if (roof.state === "falling" || roof.state === "gone") return;
+  const top = building.floors - 1;
+  let hx = 0;
+  let hy = 0;
+  let have = 0;
+  let lx = 0;
+  let ly = 0;
+  let lost = 0;
+  for (const s of roof.support) {
+    const cell = building.grid[top]?.[s.gx]?.[s.gy];
+    const p = supportWorld(building, s);
+    if (cell && cellPresent(cell)) {
+      hx += p.x;
+      hy += p.y;
+      have++;
+    } else {
+      lx += p.x;
+      ly += p.y;
+      lost++;
+    }
   }
-  const n = Math.max(1, roof.verts.length);
-  return { x: x / n, y: y / n, z: z / n };
+  if (have > 0) {
+    roof.hingeX = hx / have;
+    roof.hingeY = hy / have;
+    roof.hingeZ = heightOnPoly(roof.verts, roof.hingeX, roof.hingeY) ?? sectionCenter(roof).z;
+  } else {
+    const c = sectionCenter(roof);
+    roof.hingeX = c.x;
+    roof.hingeY = c.y;
+    roof.hingeZ = c.z;
+  }
+  let dx = roof.fallDx;
+  let dy = roof.fallDy;
+  if (lost > 0 && have > 0) {
+    dx = lx / lost - roof.hingeX;
+    dy = ly / lost - roof.hingeY;
+  } else if (lost > 0 && have === 0) {
+    const c = sectionCenter(roof);
+    dx = lx / lost - c.x;
+    dy = ly / lost - c.y;
+  }
+  const len = Math.hypot(dx, dy);
+  if (len > 1e-4) {
+    dx /= len;
+    dy /= len;
+    roof.fallDx = dx;
+    roof.fallDy = dy;
+    roof.tiltAx = -dy;
+    roof.tiltAy = dx;
+  }
+}
+
+export function roofHandoffPose(roof: RoofSection): {
+  x: number;
+  y: number;
+  z: number;
+  heading: number;
+  panelW: number;
+  panelD: number;
+} {
+  const verts = displacedRoofVerts(roof);
+  const c = vertsCenter(verts);
+  const ranked = verts.slice().sort((a, b) => b.z - a.z);
+  const ridge = ranked[0]!;
+  const eave = ranked[ranked.length - 1]!;
+  const heading = Math.atan2(eave.y - ridge.y, eave.x - ridge.x);
+  const xs = verts.map((v) => v.x);
+  const ys = verts.map((v) => v.y);
+  const spanX = Math.max(...xs) - Math.min(...xs);
+  const spanY = Math.max(...ys) - Math.min(...ys);
+  const alongSlope = Math.hypot(eave.x - ridge.x, eave.y - ridge.y);
+  return {
+    x: c.x,
+    y: c.y,
+    z: c.z,
+    heading,
+    panelW: Math.max(0.55, Math.min(spanX, spanY) + 0.12),
+    panelD: Math.max(0.34, alongSlope * 0.42),
+  };
 }
 
 function startRoofFall(building: Building, roof: RoofSection, particles: ParticlePool, events: WorldEvent[]): void {
   if (roof.state === "falling" || roof.state === "gone") return;
+  updateRoofHinge(building, roof);
   roof.state = "falling";
   roof.fallT = 0;
-  const leanL = Math.hypot(building.leanX, building.leanY);
-  roof.fallDx = leanL > 0.15 ? building.leanX / leanL : 0.35;
-  roof.fallDy = leanL > 0.15 ? building.leanY / leanL : 0.1;
+  const leanL = Math.hypot(roof.fallDx, roof.fallDy);
+  if (leanL < 0.08) {
+    const buildL = Math.hypot(building.leanX, building.leanY);
+    roof.fallDx = buildL > 0.15 ? building.leanX / buildL : 0.2;
+    roof.fallDy = buildL > 0.15 ? building.leanY / buildL : 0.55;
+    roof.tiltAx = -roof.fallDy;
+    roof.tiltAy = roof.fallDx;
+  }
   building.roofDirty = true;
   building.structureDirty = true;
   const c = sectionCenter(roof);
@@ -747,26 +1034,30 @@ export function stepRoofs(
     present += frac.have;
     total += frac.total;
     if (roof.state === "falling") {
-      roof.fallT += dt / 0.48;
+      roof.fallT += dt / 0.52;
       if (roof.fallT >= 1) {
-        roof.state = "gone";
         roof.fallT = 1;
+        const pose = roofHandoffPose(roof);
+        roof.state = "gone";
         building.roofDirty = true;
-        const c = sectionCenter(roof);
-        const disp = 0.55 + building.floors * 0.2;
         rubbleSpawns.push({
-          x: c.x + roof.fallDx * disp,
-          y: c.y + roof.fallDy * disp,
+          x: pose.x,
+          y: pose.y,
           dx: roof.fallDx,
           dy: roof.fallDy,
           material: roof.material,
           floor: building.floors,
           cellSize: building.cellSize,
           source: "roof",
+          heading: pose.heading,
+          elev: Math.max(0.06, Math.min(0.86, pose.z - 0.06)),
+          panelW: pose.panelW,
+          panelD: pose.panelD,
         });
       }
       continue;
     }
+    updateRoofHinge(building, roof);
     const ratio = frac.have / frac.total;
     if (ratio >= 0.55) {
       roof.unsupportedTime = Math.max(0, roof.unsupportedTime - dt * 2);

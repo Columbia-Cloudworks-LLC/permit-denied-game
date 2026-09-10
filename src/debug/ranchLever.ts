@@ -13,7 +13,7 @@ import { SIM_DT } from "../game/constants";
 import { DEFAULT_DISTRICT_SEEDS } from "../game/session";
 import { ParticlePool } from "../fx/particles";
 import { extractBuildingSurfaces } from "../render/buildingSurfaces";
-import { ranchRoofCutaway } from "../render/interiorDraw";
+import { ranchRoofShowsRafters } from "../render/interiorDraw";
 import { applyCellDamage } from "../structure/building";
 import {
   fixtureExposed,
@@ -178,7 +178,6 @@ function solidRoofOverHole(b: Building, holes: number[]): number {
     if (roof.state === "gone" || roof.state === "falling") continue;
     const hitsHole = roof.support.some((s) => holes.includes(s.gx));
     if (!hitsHole) continue;
-    if (ranchRoofCutaway(b, roof)) continue;
     n++;
   }
   return n;
@@ -212,7 +211,7 @@ function measure(b: Building): PhaseMetrics {
   };
 }
 
-function judge(kind: LeverPhase["kind"], m: PhaseMetrics): LeverCheck[] {
+function judge(kind: LeverPhase["kind"], m: PhaseMetrics, phaseId: string): LeverCheck[] {
   if (kind === "closed") {
     return [
       {
@@ -233,7 +232,8 @@ function judge(kind: LeverPhase["kind"], m: PhaseMetrics): LeverCheck[] {
   }
   const coverOk = m.coverRatio >= COVER_MIN;
   const gutterOk = m.gutterLeft <= GUTTER_EPS && m.gutterRight <= GUTTER_EPS;
-  const roofOk = m.solidRoofOverHole === 0;
+  const keepRoof = phaseId !== "half-destroyed";
+  const roofOk = keepRoof ? m.solidRoofOverHole > 0 : true;
   const gapOk = m.spanGaps === 0;
   const furnOk = m.fixturesVisible > 0;
   return [
@@ -243,7 +243,7 @@ function judge(kind: LeverPhase["kind"], m: PhaseMetrics): LeverCheck[] {
       ok: gutterOk,
       detail: `gutter L=${m.gutterLeft.toFixed(2)} R=${m.gutterRight.toFixed(2)}`,
     },
-    { id: "roof-not-pristine", ok: roofOk, detail: `solidRoofOverHole=${m.solidRoofOverHole}` },
+    { id: "roof-stays-on-breach", ok: roofOk, detail: `solidRoofOverHole=${m.solidRoofOverHole}` },
     { id: "no-span-gutters", ok: gapOk, detail: `spanGaps=${m.spanGaps}` },
     { id: "furniture-visible", ok: furnOk, detail: `fixturesVisible=${m.fixturesVisible}` },
   ];
@@ -291,10 +291,13 @@ function phaseSvg(b: Building): string {
   }
   for (const roof of b.roofs) {
     if (roof.state === "gone") continue;
-    const cut = ranchRoofCutaway(b, roof);
+    const falling = roof.state === "falling";
     const verts = roof.verts.map((v) => worldToScreen(v.x, v.y, v.z));
     const pts = verts.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
-    parts.push(`<polygon points="${pts}" fill="${cut ? "none" : "#8b3a2a"}" stroke="${cut ? "#6d4c2b" : "#6b2a1e"}" stroke-width="${cut ? 2 : 0.6}" fill-opacity="${cut ? 0 : 0.92}" />`);
+    const framing = ranchRoofShowsRafters(b, roof);
+    parts.push(
+      `<polygon points="${pts}" fill="${falling ? "#6a3428" : "#8b3a2a"}" stroke="${framing ? "#6d4c2b" : "#6b2a1e"}" stroke-width="${framing ? 1.4 : 0.6}" fill-opacity="${falling ? 0.55 : 0.92}" />`,
+    );
   }
   for (const f of b.fixtures) {
     if (!fixtureExposed(b, f)) continue;
@@ -312,7 +315,7 @@ function phaseSvg(b: Building): string {
 
 function capture(id: string, label: string, kind: LeverPhase["kind"], tick: number, b: Building): LeverPhase {
   const metrics = measure(b);
-  const checks = judge(kind, metrics);
+  const checks = judge(kind, metrics, id);
   return {
     id,
     label,
