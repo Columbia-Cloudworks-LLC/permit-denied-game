@@ -224,6 +224,70 @@ function gablePlanes(
   ];
 }
 
+function ranchGableBays(
+  building: Building,
+  cells: { gx: number; gy: number }[],
+  axis: RoofAxis,
+  id0: number,
+): RoofSection[] {
+  if (axis !== "x") return gablePlanes(building, cells, axis, id0);
+  const b = bbox(cells);
+  const eaveZ = wallTopZ(building.floors);
+  const ridgeZ = eaveZ + 1.08;
+  const oh = 0.14;
+  const full = worldBox(building, b.minX, b.maxX, b.minY, b.maxY, oh);
+  const ridgeY = (full.y0 + full.y1) * 0.5;
+  const midGy = (b.minY + b.maxY) * 0.5;
+  const ridge = { ax: full.x0, ay: ridgeY, az: ridgeZ, bx: full.x1, by: ridgeY, bz: ridgeZ };
+  const mat = roofMaterial(building);
+  const cs = building.cellSize;
+  const sections: RoofSection[] = [];
+  let id = id0;
+  for (let gx = b.minX; gx <= b.maxX; gx++) {
+    const col = cells.filter((c) => c.gx === gx);
+    if (col.length === 0) continue;
+    const x0 = building.x + gx * cs - (gx === b.minX ? oh : 0);
+    const x1 = building.x + (gx + 1) * cs + (gx === b.maxX ? oh : 0);
+    const north = supportOf(col, (c) => c.gy <= midGy);
+    const south = supportOf(col, (c) => c.gy >= midGy);
+    if (north.length) {
+      sections.push(
+        makeSection(
+          id++,
+          "gable",
+          north,
+          [
+            { x: x0, y: full.y0, z: eaveZ },
+            { x: x1, y: full.y0, z: eaveZ },
+            { x: x1, y: ridgeY, z: ridgeZ },
+            { x: x0, y: ridgeY, z: ridgeZ },
+          ],
+          mat,
+          ridge,
+        ),
+      );
+    }
+    if (south.length) {
+      sections.push(
+        makeSection(
+          id++,
+          "gable",
+          south,
+          [
+            { x: x0, y: ridgeY, z: ridgeZ },
+            { x: x1, y: ridgeY, z: ridgeZ },
+            { x: x1, y: full.y1, z: eaveZ },
+            { x: x0, y: full.y1, z: eaveZ },
+          ],
+          mat,
+          ridge,
+        ),
+      );
+    }
+  }
+  return sections.length ? sections : gablePlanes(building, cells, axis, id0);
+}
+
 function shedPlane(building: Building, cells: { gx: number; gy: number }[], axis: RoofAxis, id: number): RoofSection {
   const b = bbox(cells);
   const eaveZ = wallTopZ(building.floors);
@@ -376,7 +440,11 @@ export function generateRoofs(building: Building): RoofSection[] {
     if (solidRect(comp)) {
       if (building.roof === "flat") sections.push(flatPlane(building, comp, nextId++));
       else if (building.roof === "shed") sections.push(shedPlane(building, comp, axis, nextId++));
-      else {
+      else if (building.archetypeId === "ranch") {
+        const planes = ranchGableBays(building, comp, axis, nextId);
+        nextId += planes.length;
+        sections.push(...planes);
+      } else {
         const planes = gablePlanes(building, comp, axis, nextId);
         nextId += planes.length;
         sections.push(...planes);

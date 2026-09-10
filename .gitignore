@@ -6,6 +6,7 @@ Thumbs.db
 .cursor/hooks/state/
 .vite/
 coverage/
+.ranch-frames/
 
 *.exe
 .env
