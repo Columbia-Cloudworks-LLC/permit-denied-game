@@ -52,3 +52,53 @@ Caps live in `DEBRIS`: remnant/fragment soft caps, `hardOverflow`, `protectRadiu
 `addDebrisBody` does not absorb. Collapse can overflow for a moment. `stepDebris` then ranks eligible bodies by squared distance from the dozer (farther first, higher id on ties), prefers sleeping bodies, skips anything near the dozer or recently moved/spawned/awake, and never absorbs a body touching the dozer or blade. If the hard cap is still exceeded, the farthest unprotected bodies go regardless of sleep.
 
 The technical overlay (`?perf=1` or `` ` ``) splits `far` (distance cleanup) from `emerg` (hard-cap cleanup).
+
+## Destructible asset catalog
+
+`src/world/catalog.ts` is the immutable data table. Each `AssetDef` carries id, family, tags, footprint, collision, material, HP, mass, resistance, blade multiplier, track hazard, cash, destruction profile, debris recipe, render boxes, placement zones, and optional spark / bird / explosion fields.
+
+Runtime `Prop` instances store only identity, variant, transform, HP, pose, and velocities. Generation, simulation, scoring, and rendering look up the definition by `assetId`. Do not add kind-specific switches in those systems.
+
+### Adding a future asset
+
+Add one `AssetDef` to `ASSET_CATALOG` with a unique id, a destruction profile that already exists, a box recipe, debris numbers, and compatible lot zones. Lot templates in `src/world/dressing.ts` can reference the new id. No generation, collision, or scoring code needs a new branch.
+
+### Destruction profiles
+
+Shared handlers in `src/sim/assets.ts`:
+
+| Profile | Use |
+| --- | --- |
+| `brittle` | Fast shatter into fragments (trash cans, crates) |
+| `bend-snap` | Lean, then snap (mailboxes, poles, signs) |
+| `crush` | Compact under the blade; leftover mass can enter the pile field |
+| `topple` | Fall away from impact; leave a pushable remnant (trees) |
+| `roll` | Become a movable remnant (round hay, barrels) |
+| `panel-collapse` | Drop large panels (billboards, sheds, grain bins) |
+| `explosive` | One arcade blast that pushes debris and damages neighbors; chain depth is capped (`EXPLODE.maxGeneration`) |
+
+Traffic cameras still use the bird-escape gag (`birdGag`). Light poles and power poles keep track hazard.
+
+### Lot dressing and ground
+
+`src/world/dressing.ts` templates (rural residence, family yard, farmstead, roadside service, contractor yard, utility lot, small commercial) place assets relative to lot + building, test occupancy, and keep a driveway corridor. Same seed reproduces selection, variants, headings, and ground patches.
+
+Ground covers (`grass`, `dirt`, `gravel`, `tracks`, `concrete`, `parking`, `driveway`, `planted`) are deterministic and cached with static ground rendering. A tiled grass/scrub field covers the town extent first so the canvas does not show through between lots; lot patches and the road mesh paint on top. Covers are render-only unless a driveway corridor is also used for access checks. Yard slots are placed in heading-aligned lot space (depth along the lot heading, frontage across) so front-yard assets stay on the lot instead of on pavement.
+
+Density budgets live in `DRESSING`: per-lot caps and per-district maxima (`classic` / `d10` / `d30` / `d100`). New debris uses the existing distance-prioritized cleanup; broken props leave the collision hash.
+
+## Road graph (foundation)
+
+`src/world/roads.ts` is the source of truth. Districts are generated road-first (`src/world/rural.ts`): topology family from seed, then lots attached through `RoadAccess` / driveways. `town.roads` AABB boxes are a derived compatibility view.
+
+Types: `RoadNode`, `RoadSegment` (polyline + class + width + layer + elevation), `Lane`, `RoadAccess`, `TerrainField`. Queries: `roadSurfaceAt`, `terrainHeightAt`, `nearestRoadAccess`, `projectPointToRoad`, `connectedLanes`, `canTransitionBetweenSurfaces`, `findRoadRoute`. A spatial hash indexes segments so vehicles do not scan the whole graph each step.
+
+This branch generates and renders `rural`, `residential`, `service`, and `driveway`. `commercial`, `arterial`, `highway`, and `ramp` exist as classes; full highway / bridge / police behavior is not implemented. Elevation is a controlled surface height (not 3D physics). Terrain is a base height field; roads can occupy additional layers at the same X/Y. `makeRaisedRoadFixture` proves a ground road and a raised deck that do not connect without a ramp.
+
+Road mesh is tessellated once into `network.mesh` and cached with static ground. Do not rebuild the whole network every frame.
+
+### Traffic and police contracts
+
+Civilian traffic must stay on road or driveway. The V-key test car follows lane connectivity on a generated route (curve + intersection), not a hard-coded east-west path. Full civilian traffic sim is out of scope.
+
+Police navigation is a **contract only** (`src/world/routing.ts`). Ordinary pursuit prefers roads. Police may leave the road only when the dozer is nearby, a valid off-road approach exists, and pursuit rules allow it. Off-road is slower (`offRoadCostMul`). Routing distinguishes a blocked road from an inaccessible destination. There is no police AI in this branch.

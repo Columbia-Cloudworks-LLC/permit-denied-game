@@ -6,7 +6,50 @@ export type RoofSectionState = "intact" | "sagging" | "falling" | "gone";
 export type RoofAxis = "x" | "y";
 export type FacadeTheme = "cottage" | "ranch" | "colonial" | "walkup" | "porch" | "storefront" | "corner" | "civic" | "warehouse";
 export type LotZone = "residential" | "commercial" | "industrial";
+export type LotIdentity = "residence" | "farm" | "service" | "contractor" | "utility" | "shop";
 export type SiteMarkKind = "slab" | "dirt" | "crack" | "ridge" | "remnant" | "outline";
+export type CoverKind =
+  | "grass"
+  | "scrub"
+  | "dirt"
+  | "gravel"
+  | "tracks"
+  | "concrete"
+  | "parking"
+  | "driveway"
+  | "planted"
+  | "lot";
+export type DestructionProfile =
+  | "brittle"
+  | "bend-snap"
+  | "crush"
+  | "topple"
+  | "roll"
+  | "panel-collapse"
+  | "explosive";
+export type AssetFamily = "residential" | "agricultural" | "commercial" | "roadside" | "vegetation" | "legacy";
+export type AssetTag =
+  | "roadside"
+  | "residential"
+  | "agricultural"
+  | "utility"
+  | "commercial"
+  | "vegetation"
+  | "explosive"
+  | "rollable"
+  | "tall";
+export type RoadClass =
+  | "rural"
+  | "residential"
+  | "commercial"
+  | "arterial"
+  | "highway"
+  | "service"
+  | "driveway"
+  | "ramp";
+export type RoadSurfaceKind = "asphalt" | "gravel" | "dirt" | "concrete";
+export type JunctionType = "none" | "end" | "T" | "cross" | "Y";
+export type VehicleRole = "civilian" | "police";
 
 export interface Cell {
   gx: number;
@@ -81,6 +124,7 @@ export interface Building {
   y: number;
   w: number;
   d: number;
+  elev: number;
   floors: number;
   cellSize: number;
   roof: RoofStyle;
@@ -193,11 +237,29 @@ export interface RoadVehicle {
   vy: number;
   odo: number;
   alive: boolean;
+  layer: number;
+  elev: number;
+  laneId: string | null;
+  route: string[];
+  routeIndex: number;
+  waitT: number;
+  reversing: boolean;
+}
+
+export interface PropPose {
+  lean: number;
+  leanX: number;
+  leanY: number;
+  crush: number;
+  roll: number;
 }
 
 export interface Prop {
   id: number;
-  kind: "fence" | "light" | "camera" | "car" | "dumpster" | "barricade";
+  assetId: string;
+  /** Catalog id; kept so existing camera / pole checks still read a string. */
+  kind: string;
+  variant: number;
   x: number;
   y: number;
   w: number;
@@ -205,8 +267,37 @@ export interface Prop {
   hp: number;
   maxHp: number;
   heading: number;
+  elev: number;
   broken: boolean;
   material: Material;
+  pose: PropPose;
+  vx: number;
+  vy: number;
+  omega: number;
+}
+
+export interface Lot {
+  id: string;
+  x: number;
+  y: number;
+  w: number;
+  d: number;
+  heading: number;
+  zone: LotZone;
+  identity: LotIdentity;
+  accessId: string;
+  templateId: string;
+}
+
+export interface GroundPatch {
+  x: number;
+  y: number;
+  w: number;
+  d: number;
+  heading: number;
+  cover: CoverKind;
+  seed: number;
+  z: number;
 }
 
 export interface Bird {
@@ -239,7 +330,7 @@ export interface Particle {
 }
 
 export interface WorldEvent {
-  kind: "chip" | "breach" | "collapse" | "impact" | "cash" | "snap" | "bird" | "scrape" | "crush";
+  kind: "chip" | "breach" | "collapse" | "impact" | "cash" | "snap" | "bird" | "scrape" | "crush" | "spark" | "blast";
   x: number;
   y: number;
   z: number;

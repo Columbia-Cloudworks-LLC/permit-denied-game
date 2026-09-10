@@ -243,6 +243,7 @@ export function createBuilding(spec: BuildingSpec): Building {
     y: spec.y,
     w: spec.w,
     d: spec.d,
+    elev: 0,
     floors: spec.floors,
     cellSize,
     roof: spec.roof,

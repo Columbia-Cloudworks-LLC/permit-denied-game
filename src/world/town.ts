@@ -1,11 +1,15 @@
 import { CELL } from "../game/constants";
+import { Rng } from "../game/rng";
 import { DEFAULT_DISTRICT_SEEDS, type DistrictId } from "../game/session";
 import { resetDebrisSim } from "../sim/debris";
 import { PileField } from "../sim/pile";
 import { createBuildingFromArchetype, resetBuildingIds } from "../structure/building";
-import type { Building, CollapsedSite, GroundMark, Prop, RoadVehicle, Rubble } from "../structure/types";
+import type { Building, CollapsedSite, GroundMark, GroundPatch, Lot, Prop, RoadVehicle, Rubble } from "../structure/types";
+import { resetPropIds, spawnAsset } from "./catalog";
 import { generateDistrictLayout } from "./districts";
+import { buildingOccupy, dressLot, fillWorldGround, pickTemplate } from "./dressing";
 import { CLASSIC_PLACEMENTS } from "./families";
+import { linePoints, pt, RoadBuilder, emptyTerrain, type RoadNetwork, type TerrainField } from "./roads";
 
 export interface Town {
   buildings: Building[];
@@ -22,7 +26,10 @@ export interface Town {
   maxX: number;
   maxY: number;
   roads: { x: number; y: number; w: number; d: number }[];
-  lots: { x: number; y: number; w: number; d: number }[];
+  lots: Lot[];
+  ground: GroundPatch[];
+  network: RoadNetwork;
+  terrain: TerrainField;
   district: DistrictId;
   seed: number;
   roadSpawnX: number;
@@ -38,43 +45,16 @@ export interface TownOptions {
   seed?: number;
 }
 
-let propId = 1;
-
-function makeProp(
-  kind: Prop["kind"],
-  x: number,
-  y: number,
-  w: number,
-  d: number,
-  hp: number,
-  material: Prop["material"],
-  heading = 0,
-): Prop {
-  return {
-    id: propId++,
-    kind,
-    x,
-    y,
-    w,
-    d,
-    hp,
-    maxHp: hp,
-    heading,
-    broken: false,
-    material,
-  };
-}
-
 export function createTown(options: TownOptions = {}): Town {
   const district = options.district ?? "classic";
   const seed = options.seed ?? DEFAULT_DISTRICT_SEEDS[district];
   resetBuildingIds();
   resetDebrisSim(seed);
-  propId = 1;
+  resetPropIds();
 
   if (district === "classic") return createClassicTown(seed);
 
-  const layout = generateDistrictLayout(district, seed, makeProp);
+  const layout = generateDistrictLayout(district, seed);
   const pileW = layout.maxX - layout.minX + 4;
   const pileD = layout.maxY - layout.minY + 4;
   return {
@@ -98,25 +78,78 @@ function createClassicTown(seed: number): Town {
   );
 
   const props: Prop[] = [
-    makeProp("light", 16.2, 16.4, 0.28, 0.28, 14, "metal"),
-    makeProp("light", 22.6, 16.4, 0.28, 0.28, 14, "metal"),
-    makeProp("light", 18.4, 10.4, 0.28, 0.28, 14, "metal"),
-    makeProp("light", 12.2, 16.4, 0.28, 0.28, 14, "metal"),
-    makeProp("camera", 20.1, 15.6, 0.26, 0.26, 8, "metal"),
-    makeProp("camera", 15.4, 8.6, 0.26, 0.26, 8, "metal"),
-    makeProp("car", 21.6, 17.4, 1.7, 0.85, 28, "metal", 0.1),
-    makeProp("car", 13.4, 17.6, 1.7, 0.85, 28, "metal", 3.2),
-    makeProp("car", 28.4, 16.8, 1.6, 0.8, 26, "metal", -0.2),
-    makeProp("dumpster", 15.6, 20.2, 0.9, 0.7, 22, "metal"),
-    makeProp("dumpster", 26.2, 19.4, 0.9, 0.7, 22, "metal"),
-    makeProp("barricade", 19.2, 19.1, 1.4, 0.28, 12, "wood", 0.05),
+    spawnAsset("light", 16.2, 16.4),
+    spawnAsset("light", 22.6, 16.4),
+    spawnAsset("light", 18.4, 10.4),
+    spawnAsset("light", 12.2, 16.4),
+    spawnAsset("camera", 20.1, 15.6),
+    spawnAsset("camera", 15.4, 8.6),
+    spawnAsset("car", 21.6, 17.4, 0.1),
+    spawnAsset("car", 13.4, 17.6, 3.2),
+    spawnAsset("car", 28.4, 16.8, -0.2),
+    spawnAsset("dumpster", 15.6, 20.2),
+    spawnAsset("dumpster", 26.2, 19.4),
+    spawnAsset("barricade", 19.2, 19.1, 0.05),
+    spawnAsset("mailbox", 16.9, 21.1, 0),
+    spawnAsset("trash-can", 15.1, 20.9),
+    spawnAsset("shrub", 11.4, 12.2),
+    spawnAsset("mature-tree", 27.8, 21.6),
+    spawnAsset("fire-hydrant", 18.9, 19.6),
   ];
 
   for (let i = 0; i < 5; i++) {
-    props.push(makeProp("fence", 16.6 + i * 1.05, 20.55, 1.0, 0.16, 9, "wood"));
+    props.push(spawnAsset("fence", 16.6 + i * 1.05, 20.55, 0, 0, { w: 1.0, d: 0.16 }));
   }
   for (let i = 0; i < 4; i++) {
-    props.push(makeProp("fence", 26.7, 19.2 + i * 1.05, 0.16, 1.0, 9, "wood"));
+    props.push(spawnAsset("fence", 26.7, 19.2 + i * 1.05, Math.PI / 2, 0, { w: 0.16, d: 1.0 }));
+  }
+
+  const b = new RoadBuilder();
+  const west = b.node(1, 17.6, 0, "west");
+  const east = b.node(38, 17.6, 0, "east");
+  const north = b.node(19.75, 1, 0, "north");
+  const south = b.node(19.75, 34, 0, "south");
+  const center = b.node(19.75, 17.6, 0, "center");
+  b.segment(west, center, linePoints(pt(west), pt(center)), { roadClass: "rural", width: 3.2 });
+  b.segment(center, east, linePoints(pt(center), pt(east)), { roadClass: "rural", width: 3.2 });
+  b.segment(north, center, linePoints(pt(north), pt(center)), { roadClass: "residential", width: 3.1 });
+  b.segment(center, south, linePoints(pt(center), pt(south)), { roadClass: "residential", width: 3.1 });
+  const network = b.finish();
+
+  const rng = new Rng(seed ^ 0x51a11);
+  const occBoxes = buildings.flatMap(buildingOccupy);
+  for (const p of props) occBoxes.push({ x: p.x, y: p.y, w: p.w, d: p.d });
+  const lots: Lot[] = buildings.map((building, i) => {
+    const bw = building.w * building.cellSize;
+    const bd = building.d * building.cellSize;
+    const padX = 3.4;
+    const padY = 3.2;
+    const identity = building.kind === "shop" ? "shop" : building.kind === "industrial" ? "contractor" : "residence";
+    const mx = building.x + bw * 0.5 - 19.75;
+    const my = building.y + bd * 0.5 - 17.6;
+    const heading = Math.abs(mx) > Math.abs(my) ? (mx > 0 ? 0 : Math.PI) : my > 0 ? Math.PI / 2 : -Math.PI / 2;
+    return {
+      id: `classic${i}`,
+      x: building.x - padX,
+      y: building.y - padY,
+      w: bw + padX * 2,
+      d: bd + padY * 2,
+      heading,
+      zone: building.kind === "shop" ? "commercial" : building.kind === "industrial" ? "industrial" : "residential",
+      identity,
+      accessId: "",
+      templateId: pickTemplate(identity, rng).id,
+    };
+  });
+  const ground: GroundPatch[] = [
+    ...fillWorldGround(1, 1, 38, 34, seed),
+    { x: 12.2, y: 20.4, w: 4.2, d: 2.4, heading: 0, cover: "dirt", seed: seed ^ 5, z: 0.01 },
+  ];
+  for (let i = 0; i < lots.length; i++) {
+    const dressed = dressLot(lots[i]!, buildings[i], rng, { boxes: occBoxes }, 4);
+    props.push(...dressed.props);
+    ground.push(...dressed.patches);
+    for (const p of dressed.props) occBoxes.push({ x: p.x, y: p.y, w: p.w, d: p.d });
   }
 
   return {
@@ -137,7 +170,10 @@ function createClassicTown(seed: number): Town {
       { x: 1, y: 16, w: 37, d: 3.2 },
       { x: 18.2, y: 1, w: 3.1, d: 33 },
     ],
-    lots: [{ x: 1, y: 1, w: 37, d: 33 }],
+    lots,
+    ground,
+    network,
+    terrain: emptyTerrain(0, 0, 40, 36),
     district: "classic",
     seed,
     roadSpawnX: 3.4,
@@ -152,4 +188,9 @@ function createClassicTown(seed: number): Town {
 export function townExtent(town?: Town): { w: number; d: number } {
   if (!town) return { w: 40 * CELL, d: 36 * CELL };
   return { w: (town.maxX - town.minX + 2) * CELL, d: (town.maxY - town.minY + 2) * CELL };
+}
+
+export function propById(town: Town, id: number): Prop | undefined {
+  for (const p of town.props) if (p.id === id) return p;
+  return undefined;
 }

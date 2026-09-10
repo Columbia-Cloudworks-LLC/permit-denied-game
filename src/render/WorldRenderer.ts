@@ -4,11 +4,12 @@ import { Rng } from "../game/rng";
 import { depthKey, roofPainterDepth, screenAabbVisible, worldBoundsToScreen, worldToScreen } from "../world/iso";
 import type { ParticlePool } from "../fx/particles";
 import { displacedRoofVerts, roofHeightAt } from "../structure/roof";
-import type { Bird, Building, CollapsedSite, GroundMark, Particle, Prop, RoofSection, Rubble } from "../structure/types";
+import type { Bird, Building, CollapsedSite, CoverKind, GroundMark, GroundPatch, Particle, RoofSection, Rubble } from "../structure/types";
 import type { Dozer } from "../vehicle/dozer";
 import type { Town } from "../world/town";
 import { aggregateSurfaceStats, getBuildingSurfaces } from "./buildingSurfaces";
-import { cellColors, drawGroundPoly, drawIsoBox, drawOrientedIsoBox, drawShadow, drawSlopedQuad, PAL, shade } from "./drawIso";
+import { drawCatalogProp } from "./assets";
+import { cellColors, drawGroundPoly, drawIsoBox, drawOrientedGround, drawOrientedIsoBox, drawShadow, drawSlopedQuad, PAL, shade } from "./drawIso";
 import {
   drawBreachGroup,
   drawBuildingFootprintShadow,
@@ -17,7 +18,7 @@ import {
   drawWallSpan,
 } from "./facadeDraw";
 import { roofSlopeLight } from "./lighting";
-import { drawCar, drawDozer, drawRoadVehicle } from "./vehicles";
+import { drawDozer, drawRoadVehicle } from "./vehicles";
 
 interface Cmd {
   depth: number;
@@ -83,29 +84,36 @@ export class WorldRenderer {
     let total = 0;
     let visible = 0;
 
-    const gKey = `${town.district}:${town.seed}:${town.lots.length}:${town.roads.length}`;
+    const gKey = `${town.district}:${town.seed}:${town.lots.length}:${town.network.mesh.length}:${town.ground.length}`;
     if (gKey !== this.groundKey) {
       this.ground.clear();
-      for (const lot of town.lots) {
-        drawGroundPoly(this.ground, lot.x, lot.y, lot.w, lot.d, PAL.lot);
-        const speckle = Math.min(90, Math.max(12, Math.floor((lot.w * lot.d) / 14)));
-        for (let i = 0; i < speckle; i++) {
-          const gx = lot.x + ((i * 17) % 97) * 0.38;
-          const gy = lot.y + ((i * 29) % 89) * 0.36;
-          if (gx > lot.x + lot.w || gy > lot.y + lot.d) continue;
-          drawGroundPoly(this.ground, gx, gy, 0.35, 0.28, PAL.lotDark, 0.22);
-        }
+      const covers = town.ground.length
+        ? town.ground
+        : town.lots.map((lot) => ({
+            x: lot.x,
+            y: lot.y,
+            w: lot.w,
+            d: lot.d,
+            heading: 0,
+            cover: "lot" as CoverKind,
+            seed: town.seed,
+            z: 0,
+          }));
+      for (const patch of covers) {
+        drawCover(this.ground, patch);
       }
-      for (const road of town.roads) {
-        drawGroundPoly(this.ground, road.x, road.y, road.w, road.d, PAL.asphalt);
-        if (road.w > road.d) {
-          for (let x = road.x + 1; x < road.x + road.w - 1; x += 2.2) {
-            drawGroundPoly(this.ground, x, road.y + road.d * 0.46, 1.1, 0.12, PAL.asphaltLine, 0.7);
+      const mesh = town.network.mesh;
+      if (mesh.length) {
+        for (const q of mesh) {
+          if (q.kind === "mark") {
+            drawOrientedGround(this.ground, q.x, q.y, q.heading, q.w, q.d, q.color, 0.72, q.z);
+          } else {
+            drawOrientedGround(this.ground, q.x, q.y, q.heading, q.w, q.d, q.color, 1, q.z);
           }
-        } else {
-          for (let y = road.y + 1; y < road.y + road.d - 1; y += 2.2) {
-            drawGroundPoly(this.ground, road.x + road.w * 0.46, y, 0.12, 1.1, PAL.asphaltLine, 0.7);
-          }
+        }
+      } else {
+        for (const road of town.roads) {
+          drawGroundPoly(this.ground, road.x, road.y, road.w, road.d, PAL.asphalt);
         }
       }
       this.groundKey = gKey;
@@ -208,11 +216,11 @@ export class WorldRenderer {
     for (const p of town.props) {
       if (p.broken) continue;
       total++;
-      if (!this.visibleBox(p.x, p.y, p.w, p.d, 0, 2.7)) continue;
+      if (!this.visibleBox(p.x, p.y, p.w, p.d, p.elev, p.elev + 3.2)) continue;
       visible++;
       this.cmds.push({
-        depth: depthKey(p.x + p.w / 2, p.y + p.d / 2, 0.4),
-        run: (g) => drawProp(g, p),
+        depth: depthKey(p.x + p.w / 2, p.y + p.d / 2, p.elev + 0.4),
+        run: (g) => drawCatalogProp(g, p),
       });
     }
 
@@ -418,31 +426,72 @@ function drawCollapsedSite(g: Graphics, site: CollapsedSite): void {
   void rng;
 }
 
-function drawProp(g: Graphics, p: Prop): void {
-  drawShadow(g, p.x, p.y, p.w, p.d, 0.2);
-  if (p.kind === "fence" || p.kind === "barricade") {
-    drawIsoBox(g, p.x, p.y, p.w, p.d, 0, 0.85, PAL.fence, 0x8a6a28, 0xb48a3a, 1);
-    return;
+function drawCover(g: Graphics, patch: GroundPatch): void {
+  const color = coverColor(patch.cover);
+  if (Math.abs(patch.heading) > 0.05) {
+    drawOrientedGround(g, patch.x + patch.w * 0.5, patch.y + patch.d * 0.5, patch.heading, patch.w, patch.d, color, 1, patch.z);
+  } else {
+    drawGroundPoly(g, patch.x, patch.y, patch.w, patch.d, color, 1, patch.z);
   }
-  if (p.kind === "light") {
-    drawIsoBox(g, p.x, p.y, p.w, p.d, 0, 2.6, PAL.metalTop, PAL.metalDark, PAL.metal, 1);
-    drawIsoBox(g, p.x - 0.12, p.y - 0.12, p.w + 0.24, p.d + 0.24, 2.5, 0.2, PAL.asphaltLine, PAL.asphaltLine, PAL.asphaltLine, 1);
-    return;
+  const speckle = patch.z < 0 ? 1 : Math.min(40, Math.max(4, Math.floor((patch.w * patch.d) / 18)));
+  const dark = coverDark(patch.cover);
+  for (let i = 0; i < speckle; i++) {
+    const gx = patch.x + ((i * 17 + (patch.seed % 13)) % 97) * 0.12 * (patch.w / 8);
+    const gy = patch.y + ((i * 29 + (patch.seed % 17)) % 89) * 0.1 * (patch.d / 8);
+    if (gx > patch.x + patch.w || gy > patch.y + patch.d) continue;
+    drawGroundPoly(g, gx, gy, 0.32, 0.26, dark, 0.2, patch.z);
   }
-  if (p.kind === "camera") {
-    drawIsoBox(g, p.x, p.y, p.w, p.d, 0, 2.1, PAL.metalTop, PAL.metalDark, PAL.metal, 1);
-    drawIsoBox(g, p.x - 0.08, p.y + 0.02, 0.42, 0.22, 1.9, 0.22, 0x222222, 0x111111, 0x333333, 1);
-    return;
+}
+
+function coverColor(cover: CoverKind): number {
+  switch (cover) {
+    case "grass":
+      return PAL.grass;
+    case "scrub":
+      return PAL.grassDark;
+    case "dirt":
+      return PAL.dirt;
+    case "gravel":
+      return PAL.gravel;
+    case "tracks":
+      return PAL.lotDark;
+    case "concrete":
+    case "parking":
+      return PAL.concrete;
+    case "driveway":
+      return 0x5a5248;
+    case "planted":
+      return PAL.planted;
+    case "lot":
+      return PAL.lot;
+    default: {
+      const _never: never = cover;
+      return _never;
+    }
   }
-  if (p.kind === "dumpster") {
-    drawIsoBox(g, p.x, p.y, p.w, p.d, 0, 0.7, PAL.dumpster, 0x244a22, 0x4a8844, 1);
-    return;
+}
+
+function coverDark(cover: CoverKind): number {
+  switch (cover) {
+    case "grass":
+    case "scrub":
+    case "planted":
+      return PAL.grassDark;
+    case "dirt":
+    case "tracks":
+    case "lot":
+      return PAL.lotDark;
+    case "gravel":
+    case "driveway":
+      return 0x5a5448;
+    case "concrete":
+    case "parking":
+      return PAL.concreteDark;
+    default: {
+      const _never: never = cover;
+      return _never;
+    }
   }
-  if (p.kind === "car") {
-    drawCar(g, p);
-    return;
-  }
-  drawIsoBox(g, p.x, p.y, p.w, p.d, 0, 0.55, PAL.car, 0x243850, 0x4a74a4, 1);
 }
 
 function drawParticle(g: Graphics, p: Particle): void {

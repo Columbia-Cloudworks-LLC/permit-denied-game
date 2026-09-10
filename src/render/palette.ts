@@ -3,6 +3,11 @@ import type { Material } from "../structure/types";
 export const PAL = {
   lot: 0xb89b6a,
   lotDark: 0x8e7548,
+  grass: 0x6a8a42,
+  grassDark: 0x4a6230,
+  dirt: 0x8a6a40,
+  gravel: 0x8a8478,
+  planted: 0x4a6a32,
   dust: 0xc4a36a,
   asphalt: 0x3a3a3c,
   asphaltLine: 0xd4c56a,
