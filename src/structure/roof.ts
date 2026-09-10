@@ -238,7 +238,6 @@ function ranchGableBays(
   const full = worldBox(building, b.minX, b.maxX, b.minY, b.maxY, oh);
   const ridgeY = (full.y0 + full.y1) * 0.5;
   const midGy = (b.minY + b.maxY) * 0.5;
-  const ridge = { ax: full.x0, ay: ridgeY, az: ridgeZ, bx: full.x1, by: ridgeY, bz: ridgeZ };
   const mat = roofMaterial(building);
   const cs = building.cellSize;
   const sections: RoofSection[] = [];
@@ -248,6 +247,7 @@ function ranchGableBays(
     if (col.length === 0) continue;
     const x0 = building.x + gx * cs - (gx === b.minX ? oh : 0);
     const x1 = building.x + (gx + 1) * cs + (gx === b.maxX ? oh : 0);
+    const ridge = { ax: x0, ay: ridgeY, az: ridgeZ, bx: x1, by: ridgeY, bz: ridgeZ };
     const north = supportOf(col, (c) => c.gy <= midGy);
     const south = supportOf(col, (c) => c.gy >= midGy);
     if (north.length) {
@@ -665,6 +665,27 @@ function supportFraction(building: Building, roof: RoofSection): { have: number;
     if (cell && cellPresent(cell)) have++;
   }
   return { have, total: Math.max(1, roof.support.length) };
+}
+
+function ridgeIdentity(ridge: NonNullable<RoofSection["ridge"]>): string {
+  return `${ridge.ax}:${ridge.ay}:${ridge.az}:${ridge.bx}:${ridge.by}:${ridge.bz}`;
+}
+
+/** Front-most live section of a shared ridge draws it; demolished partners drop their segment. */
+export function sectionOwnsRidge(building: Building, roof: RoofSection): boolean {
+  if (!roof.ridge || roof.state === "falling" || roof.state === "gone") return false;
+  const key = ridgeIdentity(roof.ridge);
+  const mine = sectionCenter(roof);
+  const mineFront = mine.x + mine.y;
+  for (const other of building.roofs) {
+    if (other.id === roof.id) continue;
+    if (!other.ridge || other.state === "gone" || other.state === "falling") continue;
+    if (ridgeIdentity(other.ridge) !== key) continue;
+    const theirs = sectionCenter(other);
+    const theirFront = theirs.x + theirs.y;
+    if (theirFront > mineFront || (theirFront === mineFront && other.id > roof.id)) return false;
+  }
+  return true;
 }
 
 function sectionCenter(roof: RoofSection): { x: number; y: number; z: number } {

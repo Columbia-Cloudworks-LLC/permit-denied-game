@@ -2,6 +2,7 @@
  * Ranch demolition lever.
  *
  * Deterministically stages the d10 ranch, steps collapse, writes judged frames.
+ * SVG output is a diagnostic illustration of floor/roof exposure, not PixiJS gameplay.
  * Safe to rerun: wipes and overwrites `.ranch-frames/`.
  *
  *   npx vitest run src/debug/ranchLever.test.ts
@@ -338,6 +339,7 @@ function writeArtifacts(report: LeverReport): void {
   const html = `<!doctype html><meta charset="utf-8"><title>Ranch demolition lever</title>
 <style>body{font:14px/1.4 sans-serif;background:#111;color:#eee;padding:16px}figure{display:inline-block;margin:8px;background:#1c1c1c;padding:8px;vertical-align:top}figcaption{max-width:280px;margin-bottom:6px}svg{background:#9ccc65;display:block}</style>
 <h1>Ranch demolition lever</h1>
+<p>Diagnostic illustration of structural exposure — not a PixiJS gameplay capture.</p>
 <p>${report.command} · seed ${report.seed} · ${report.ok ? "PASS" : "FAIL"}</p>
 ${cards}
 `;

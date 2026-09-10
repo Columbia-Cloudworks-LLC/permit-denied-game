@@ -3,7 +3,7 @@ import { FLOOR_Z } from "../game/constants";
 import { Rng } from "../game/rng";
 import { depthKey, roofPainterDepth, screenAabbVisible, worldBoundsToScreen, worldToScreen } from "../world/iso";
 import type { ParticlePool } from "../fx/particles";
-import { displacedRoofVerts, roofHeightAt } from "../structure/roof";
+import { displacedRoofVerts, roofHeightAt, sectionOwnsRidge } from "../structure/roof";
 import type { Bird, Building, CollapsedSite, CoverKind, GroundMark, GroundPatch, Particle, RoofSection, Rubble } from "../structure/types";
 import type { Dozer } from "../vehicle/dozer";
 import type { Town } from "../world/town";
@@ -409,7 +409,7 @@ function drawRoofSection(
   const cols = roofColors(b, roof, verts);
   const faded = roof.state === "falling" ? alpha * 0.88 : alpha;
   drawSlopedQuad(g, verts, cols.top, cols.edge, faded);
-  if (roof.ridge && roof.state !== "falling") {
+  if (roof.ridge && roof.state !== "falling" && sectionOwnsRidge(b, roof)) {
     const key = ridgeKey(roof.ridge);
     if (!drawnRidges.has(key)) {
       drawnRidges.add(key);

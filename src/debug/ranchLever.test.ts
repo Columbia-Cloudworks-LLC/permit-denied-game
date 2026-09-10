@@ -25,6 +25,8 @@ describe("ranch demolition lever", () => {
     expect(shot!.metrics.holeColumns).toEqual(expect.arrayContaining([1, 2, 3]));
     const html = readFileSync(join(RANCH_LEVER_DIR, "index.html"), "utf8");
     expect(html).toContain("south-middle open");
+    expect(html).toContain("Diagnostic illustration");
+    expect(html).toContain("not a PixiJS gameplay capture");
     expect(report.ok, report.failed.map((f) => `${f.phase}:${f.check} ${f.detail}`).join(" | ")).toBe(true);
   });
 });

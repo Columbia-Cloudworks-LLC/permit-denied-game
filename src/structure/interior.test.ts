@@ -5,11 +5,15 @@ import { extractBuildingSurfaces } from "../render/buildingSurfaces";
 import { ranchRoofCutaway } from "../render/interiorDraw";
 import { applyCellDamage, createBuildingFromArchetype, stepStructures } from "./building";
 import {
+  cellDrawsRanchFloor,
   cellHasFloor,
   cellInteriorExposed,
+  fixtureCatalog,
+  fixtureSolid,
   fixtureSupported,
   generateInteriors,
   hasFurnishedInterior,
+  ranchFloorCoverage,
   ranchFloorSpans,
   ranchRoomAt,
   stepInteriors,
@@ -67,6 +71,32 @@ describe("ranch interiors", () => {
     expect(b.cells.every((c) => c.state === "gone" || c.state === "falling")).toBe(true);
     expect(b.fixtures.every((f) => f.broken)).toBe(true);
     expect(b.fixtures.every((f) => !fixtureSupported(b, f))).toBe(true);
+  });
+
+  it("uses one catalog entry for health, material, cash, and remnant finish", () => {
+    const b = createBuildingFromArchetype("ranch", "CATALOG", 0, 0);
+    const toilet = b.fixtures.find((f) => f.kind === "toilet")!;
+    const radiator = b.fixtures.find((f) => f.kind === "radiator")!;
+    const cabinet = b.fixtures.find((f) => f.kind === "cabinet")!;
+    expect(toilet.material).toBe(fixtureCatalog("toilet").material);
+    expect(toilet.maxHp).toBe(fixtureCatalog("toilet").hp);
+    expect(fixtureCatalog("toilet").finish).toBe("ceramic");
+    expect(fixtureCatalog("radiator").finish).toBe("metal");
+    expect(fixtureCatalog("cabinet").finish).toBe("wood");
+    expect(radiator.material).toBe("metal");
+    expect(cabinet.material).toBe("wood");
+    expect(fixtureCatalog("radiator").cash).toBeGreaterThan(fixtureCatalog("toilet").cash);
+  });
+
+  it("stops treating broken furnishings as solid blockers", () => {
+    const b = createBuildingFromArchetype("ranch", "SOLID", 0, 0);
+    smashCell(b, 4, 0);
+    const toilet = b.fixtures.find((f) => f.kind === "toilet")!;
+    expect(fixtureSolid(b, toilet)).toBe(true);
+    toilet.broken = true;
+    toilet.hp = 0;
+    expect(fixtureSolid(b, toilet)).toBe(false);
+    expect(fixtureSupported(b, toilet)).toBe(true);
   });
 
   it("breaks a fixture immediately after its last floor cell disappears", () => {
@@ -141,6 +171,21 @@ describe("ranch floor spans", () => {
     expect(kitchen?.gy1).toBe(2);
     expect(living?.gy1).toBe(2);
     expect(b.x + (kitchen!.gx1 + 1) * b.cellSize).toBeCloseTo(b.x + living!.gx0 * b.cellSize, 5);
+  });
+
+  it("reuses one coverage pass for spans and neighbor floor queries", () => {
+    const b = createBuildingFromArchetype("ranch", "CACHE", 0, 0);
+    smashCell(b, 2, 2);
+    const first = ranchFloorCoverage(b);
+    const second = ranchFloorCoverage(b);
+    expect(second.spans).toBe(first.spans);
+    expect(cellDrawsRanchFloor(b, 2, 2, 0)).toBe(true);
+    expect(first.hasFloor(2, 2, 0)).toBe(true);
+    smashCell(b, 3, 2);
+    const after = ranchFloorCoverage(b);
+    expect(after.spans).not.toBe(first.spans);
+    expect(after.hasFloor(3, 2, 0)).toBe(true);
+    expect(cellDrawsRanchFloor(b, 3, 2, 0)).toBe(true);
   });
 
   it("does not treat a surviving neighbor as a broken floor edge", () => {
