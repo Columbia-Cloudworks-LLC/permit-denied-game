@@ -14,6 +14,7 @@ import {
   liveRoofCount,
   roofCoversOnlyOccupied,
   roofHeightAt,
+  sectionOwnsRidge,
   shedWallVerts,
 } from "./roof";
 import { fullMask } from "../world/archetypes";
@@ -202,6 +203,46 @@ describe("structural roofs", () => {
     expect(south.face).toBe("south");
     const span = gableWallVerts(south, south.a.x, south.b.x, south.a.y, (walk.floors - 1) * FLOOR_Z);
     expect(span).toHaveLength(5);
+  });
+
+  it("clips each ranch bay ridge to the bay it owns", () => {
+    const b = createBuildingFromArchetype("ranch", "RIDGE BAYS", 0, 0);
+    const full = Math.max(...b.roofs.map((r) => r.ridge!.bx)) - Math.min(...b.roofs.map((r) => r.ridge!.ax));
+    expect(full).toBeGreaterThan(b.w * b.cellSize);
+    for (const roof of b.roofs) {
+      const xs = roof.verts.map((v) => v.x);
+      expect(roof.ridge).toBeDefined();
+      expect(roof.ridge!.ax).toBeCloseTo(Math.min(...xs), 5);
+      expect(roof.ridge!.bx).toBeCloseTo(Math.max(...xs), 5);
+      expect(roof.ridge!.bx - roof.ridge!.ax).toBeLessThan(b.cellSize + 0.32);
+    }
+    const col2 = b.roofs.filter((r) => r.support.every((s) => s.gx === 2));
+    expect(col2.length).toBe(2);
+    expect(sectionOwnsRidge(b, col2[0]!)).not.toBe(sectionOwnsRidge(b, col2[1]!));
+    expect(col2.some((r) => sectionOwnsRidge(b, r))).toBe(true);
+  });
+
+  it("drops only the demolished bay's ridge segment", () => {
+    const b = createBuildingFromArchetype("ranch", "RIDGE HOLE", 0, 0);
+    const particles = new ParticlePool();
+    const mid = 2;
+    for (const cell of b.cells) {
+      if (cell.gx === mid) applyCellDamage(b, cell, 999, 0, 1, particles, []);
+    }
+    for (let i = 0; i < Math.ceil(1.4 / SIM_DT); i++) stepStructures([b], SIM_DT, particles, []);
+    const holeX0 = b.x + mid * b.cellSize;
+    const holeX1 = b.x + (mid + 1) * b.cellSize;
+    const live = b.roofs.filter((r) => r.state !== "gone" && r.state !== "falling" && r.ridge);
+    expect(live.length).toBeGreaterThan(0);
+    for (const roof of live) {
+      const spansHole = roof.ridge!.ax < holeX0 + 0.02 && roof.ridge!.bx > holeX1 - 0.02;
+      expect(spansHole).toBe(false);
+    }
+    const end = live.filter((r) => r.support.every((s) => s.gx === b.w - 1));
+    expect(end.length).toBeGreaterThan(0);
+    expect(end.every((r) => r.ridge!.ax >= holeX1 - 0.02)).toBe(true);
+    const east = gableEndCaps(b);
+    expect(east[0]?.face).toBe("east");
   });
 
   it("regenerates the same gable geometry for the same footprint", () => {

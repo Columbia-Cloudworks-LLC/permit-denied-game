@@ -8,7 +8,7 @@ import {
   stepStructures,
   type StructureStepStats,
 } from "../structure/building";
-import { applyFixtureDamage, fixtureExposed, fixtureWorldBox, type FixtureFrag } from "../structure/interior";
+import { applyFixtureDamage, fixtureSolid, fixtureWorldBox, type FixtureFrag } from "../structure/interior";
 import { cellPresent, cellWorldBox, type Building, type Cell, type InteriorFixture, type Prop, type WorldEvent } from "../structure/types";
 import { bladePoints, clampDozer, dozerSpeed, resolveCircleSolid, type Dozer } from "../vehicle/dozer";
 import { clampRoadVehicle, resolveRoadSolid, stepRoadVehicle } from "../vehicle/roadVehicle";
@@ -84,7 +84,7 @@ function rebuildHash(town: Town): boolean {
       }
     }
     for (const fixture of b.fixtures) {
-      if (fixture.broken || !fixtureExposed(b, fixture)) continue;
+      if (!fixtureSolid(b, fixture)) continue;
       const box = fixtureWorldBox(fixture);
       hash.insert(box.x, box.y, box.w, box.d, { kind: "fixture", building: b, fixture, ...box });
     }

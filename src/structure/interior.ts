@@ -21,6 +21,29 @@ export function ranchRoomAt(building: Building, gx: number, _gy: number): RoomKi
   return "living";
 }
 
+export type FixtureFinish = "wood" | "ceramic" | "metal";
+
+interface FixtureCatalogEntry {
+  material: Material;
+  hp: number;
+  cash: number;
+  finish: FixtureFinish;
+}
+
+/** Immutable per-kind stats. Placement and support stay on the building instance. */
+const FIXTURE_CATALOG: Record<FixtureKind, FixtureCatalogEntry> = {
+  cabinet: { material: "wood", hp: 10, cash: 6, finish: "wood" },
+  counter: { material: "wood", hp: 14, cash: 6, finish: "wood" },
+  toilet: { material: "concrete", hp: 8, cash: 6, finish: "ceramic" },
+  sofa: { material: "wood", hp: 12, cash: 6, finish: "wood" },
+  table: { material: "wood", hp: 8, cash: 6, finish: "wood" },
+  radiator: { material: "metal", hp: 16, cash: 10, finish: "metal" },
+};
+
+export function fixtureCatalog(kind: FixtureKind): FixtureCatalogEntry {
+  return FIXTURE_CATALOG[kind];
+}
+
 function ranchFloorFinish(building: Building, gx: number, gy: number): FloorFinish {
   const room = ranchRoomAt(building, gx, gy);
   switch (room) {
@@ -32,45 +55,6 @@ function ranchFloorFinish(building: Building, gx: number, gy: number): FloorFini
       return "plank";
     default: {
       const _never: never = room;
-      return _never;
-    }
-  }
-}
-
-function fixtureHp(kind: FixtureKind): number {
-  switch (kind) {
-    case "cabinet":
-      return 10;
-    case "counter":
-      return 14;
-    case "toilet":
-      return 8;
-    case "sofa":
-      return 12;
-    case "table":
-      return 8;
-    case "radiator":
-      return 16;
-    default: {
-      const _never: never = kind;
-      return _never;
-    }
-  }
-}
-
-function fixtureMaterial(kind: FixtureKind): Material {
-  switch (kind) {
-    case "cabinet":
-    case "counter":
-    case "sofa":
-    case "table":
-      return "wood";
-    case "toilet":
-      return "concrete";
-    case "radiator":
-      return "metal";
-    default: {
-      const _never: never = kind;
       return _never;
     }
   }
@@ -117,7 +101,7 @@ function makeFixture(
   d: number,
   h: number,
 ): InteriorFixture {
-  const hp = fixtureHp(kind);
+  const def = fixtureCatalog(kind);
   return {
     id,
     kind,
@@ -130,9 +114,9 @@ function makeFixture(
     d,
     h,
     heading: 0,
-    material: fixtureMaterial(kind),
-    hp,
-    maxHp: hp,
+    material: def.material,
+    hp: def.hp,
+    maxHp: def.hp,
     broken: false,
   };
 }
@@ -288,15 +272,22 @@ function markedRowMatches(
   return true;
 }
 
-/** Adjacent exposed cells of the same finish become one rectangle so floors share an edge. */
-export function cellDrawsRanchFloor(building: Building, gx: number, gy: number, floor: number): boolean {
-  return ranchFloorSpans(building).some(
-    (span) => span.floor === floor && gx >= span.gx0 && gx <= span.gx1 && gy >= span.gy0 && gy <= span.gy1,
-  );
+function ranchFloorSignature(building: Building): string {
+  const parts: string[] = [`${building.w}:${building.d}:${building.floors}`];
+  for (const cell of building.cells) {
+    parts.push(`${cell.gx},${cell.gy},${cell.floor},${cell.state}`);
+  }
+  for (const roof of building.roofs) {
+    parts.push(`r${roof.id}:${roof.state}`);
+  }
+  return parts.join("|");
 }
 
-export function ranchFloorSpans(building: Building): RanchFloorSpan[] {
-  if (!hasFurnishedInterior(building)) return [];
+function coverIndex(building: Building, gx: number, gy: number, floor: number): number {
+  return floor * building.w * building.d + gy * building.w + gx;
+}
+
+function collectRanchFloorSpans(building: Building): RanchFloorSpan[] {
   const spans: RanchFloorSpan[] = [];
   for (let floor = 0; floor < building.floors; floor++) {
     const marks = ranchFloorMarks(building, floor);
@@ -323,6 +314,58 @@ export function ranchFloorSpans(building: Building): RanchFloorSpan[] {
     }
   }
   return spans;
+}
+
+interface RanchFloorCache {
+  sig: string;
+  spans: RanchFloorSpan[];
+  cover: Uint8Array;
+}
+
+const ranchFloorCache = new WeakMap<Building, RanchFloorCache>();
+
+export interface RanchFloorCoverage {
+  spans: RanchFloorSpan[];
+  hasFloor: (gx: number, gy: number, floor: number) => boolean;
+}
+
+export function ranchFloorCoverage(building: Building): RanchFloorCoverage {
+  if (!hasFurnishedInterior(building)) {
+    return { spans: [], hasFloor: () => false };
+  }
+  const sig = ranchFloorSignature(building);
+  let entry = ranchFloorCache.get(building);
+  if (!entry || entry.sig !== sig) {
+    const spans = collectRanchFloorSpans(building);
+    const cover = new Uint8Array(building.floors * building.w * building.d);
+    for (const span of spans) {
+      for (let gy = span.gy0; gy <= span.gy1; gy++) {
+        for (let gx = span.gx0; gx <= span.gx1; gx++) {
+          cover[coverIndex(building, gx, gy, span.floor)] = 1;
+        }
+      }
+    }
+    entry = { sig, spans, cover };
+    ranchFloorCache.set(building, entry);
+  }
+  return {
+    spans: entry.spans,
+    hasFloor: (gx, gy, floor) => {
+      if (gx < 0 || gy < 0 || floor < 0 || gx >= building.w || gy >= building.d || floor >= building.floors) {
+        return false;
+      }
+      return entry.cover[coverIndex(building, gx, gy, floor)] === 1;
+    },
+  };
+}
+
+/** Adjacent exposed cells of the same finish become one rectangle so floors share an edge. */
+export function cellDrawsRanchFloor(building: Building, gx: number, gy: number, floor: number): boolean {
+  return ranchFloorCoverage(building).hasFloor(gx, gy, floor);
+}
+
+export function ranchFloorSpans(building: Building): RanchFloorSpan[] {
+  return ranchFloorCoverage(building).spans;
 }
 
 export function fixtureSupported(building: Building, fixture: InteriorFixture): boolean {
@@ -357,6 +400,11 @@ export function fixtureExposed(building: Building, fixture: InteriorFixture): bo
   return fixture.support.some((s) => cellInteriorExposed(building, s.gx, s.gy, fixture.floor));
 }
 
+/** Intact furnishings still block the blade. Broken remnants do not. */
+export function fixtureSolid(building: Building, fixture: InteriorFixture): boolean {
+  return !fixture.broken && fixtureExposed(building, fixture);
+}
+
 export interface FixtureFrag {
   x: number;
   y: number;
@@ -382,7 +430,7 @@ function breakFixture(
   building.structureDirty = true;
   const cx = fixture.x + fixture.w * 0.5;
   const cy = fixture.y + fixture.d * 0.5;
-  const cash = fixture.kind === "radiator" ? 10 : 6;
+  const cash = fixtureCatalog(fixture.kind).cash;
   particles.burst(debrisKind(fixture.material), cx, cy, fixture.floor * 2.35 + 0.45, 0.55);
   events.push({ kind: "snap", x: cx, y: cy, z: 0.5, mag: 0.35, material: fixture.material, cash });
   const dir = Math.hypot(nx, ny) || 1;
