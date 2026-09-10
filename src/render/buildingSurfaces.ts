@@ -1,4 +1,5 @@
 import { FLOOR_Z } from "../game/constants";
+import { hasFurnishedInterior, inBuildingNeighborOpen } from "../structure/interior";
 import { depthKey } from "../world/iso";
 import type { Building, Cell, FacadeTheme, Material } from "../structure/types";
 import { cellPresent } from "../structure/types";
@@ -128,6 +129,9 @@ function southExposed(b: Building, cell: Cell): { exposed: boolean; visual: Wall
   const southN = neighbor(b, cell.gx, cell.gy + 1, cell.floor);
   const exposed = !southN || !cellPresent(southN);
   if (!exposed) return { exposed: false, visual: null };
+  if (hasFurnishedInterior(b) && inBuildingNeighborOpen(b, cell.gx, cell.gy + 1, cell.floor)) {
+    return { exposed: false, visual: null };
+  }
   const visual: WallVisual =
     southN && southN.state === "breached" ? "broken-edge" : cell.state === "cracked" ? "cracked" : "intact";
   return { exposed: true, visual };
@@ -136,10 +140,20 @@ function southExposed(b: Building, cell: Cell): { exposed: boolean; visual: Wall
 function eastExposed(b: Building, cell: Cell): { exposed: boolean; visual: WallVisual | null } {
   if (!cellLive(cell) || cell.state === "breached") return { exposed: false, visual: null };
   const eastN = neighbor(b, cell.gx + 1, cell.gy, cell.floor);
-  const exposed = !eastN || !cellPresent(eastN);
+  const selfOpen =
+    hasFurnishedInterior(b) && inBuildingNeighborOpen(b, cell.gx, cell.gy + 1, cell.floor);
+  const openingNeighbor =
+    hasFurnishedInterior(b) &&
+    !!eastN &&
+    (inBuildingNeighborOpen(b, eastN.gx, eastN.gy + 1, cell.floor) || !cellPresent(eastN));
+  const exposed = !eastN || !cellPresent(eastN) || (openingNeighbor && !selfOpen);
   if (!exposed) return { exposed: false, visual: null };
   const visual: WallVisual =
-    eastN && eastN.state === "breached" ? "broken-edge" : cell.state === "cracked" ? "cracked" : "intact";
+    eastN && (eastN.state === "breached" || openingNeighbor)
+      ? "broken-edge"
+      : cell.state === "cracked"
+        ? "cracked"
+        : "intact";
   return { exposed: true, visual };
 }
 
@@ -222,6 +236,7 @@ function mergeEastWalls(b: Building, floor: number, out: WallSpan[]): void {
 }
 
 function mergeTopCaps(b: Building, floor: number, out: TopSpan[]): void {
+  if (b.archetypeId === "ranch") return;
   for (let gy = 0; gy < b.d; gy++) {
     let runGx0 = -1;
     let runMat: Material = "wood";

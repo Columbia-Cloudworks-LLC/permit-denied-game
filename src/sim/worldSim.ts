@@ -8,12 +8,13 @@ import {
   stepStructures,
   type StructureStepStats,
 } from "../structure/building";
-import { cellPresent, cellWorldBox, type Building, type Cell, type Prop, type WorldEvent } from "../structure/types";
+import { applyFixtureDamage, fixtureExposed, fixtureWorldBox, type FixtureFrag } from "../structure/interior";
+import { cellPresent, cellWorldBox, type Building, type Cell, type InteriorFixture, type Prop, type WorldEvent } from "../structure/types";
 import { bladePoints, clampDozer, dozerSpeed, resolveCircleSolid, type Dozer } from "../vehicle/dozer";
 import { clampRoadVehicle, resolveRoadSolid, stepRoadVehicle } from "../vehicle/roadVehicle";
 import type { Town } from "../world/town";
 import { applyAssetHit, destroyProp, trackFromAsset } from "./assets";
-import { depositSettledParticles, spawnCollapseDebris, stepDebris } from "./debris";
+import { addDebrisBody, depositSettledParticles, spawnCollapseDebris, stepDebris } from "./debris";
 import { SpatialHash } from "./spatial";
 import { ensureCollapsedSite, siteContaining, siteFeel } from "../structure/site";
 import { getAsset } from "../world/catalog";
@@ -41,10 +42,11 @@ export interface SimFrame {
 }
 
 interface SolidRef {
-  kind: "cell" | "prop";
+  kind: "cell" | "prop" | "fixture";
   building?: Building;
   cell?: Cell;
   prop?: Prop;
+  fixture?: InteriorFixture;
   x: number;
   y: number;
   w: number;
@@ -81,6 +83,11 @@ function rebuildHash(town: Town): boolean {
         hash.insert(box.x, box.y, box.w, box.d, ref);
       }
     }
+    for (const fixture of b.fixtures) {
+      if (fixture.broken || !fixtureExposed(b, fixture)) continue;
+      const box = fixtureWorldBox(fixture);
+      hash.insert(box.x, box.y, box.w, box.d, { kind: "fixture", building: b, fixture, ...box });
+    }
     b.collisionDirty = false;
   }
   let broken = 0;
@@ -96,6 +103,21 @@ function rebuildHash(town: Town): boolean {
   hashValid = true;
   propsBrokenStamp = broken;
   return true;
+}
+
+function spawnFixtureFrags(town: Town, frags: FixtureFrag[]): void {
+  for (const frag of frags) {
+    addDebrisBody(town, {
+      x: frag.x,
+      y: frag.y,
+      w: frag.w,
+      d: frag.d,
+      material: frag.material,
+      layer: "fragment",
+      vx: frag.vx,
+      vy: frag.vy,
+    });
+  }
 }
 
 function ensureBuildingHash(town: Town): void {
@@ -160,6 +182,24 @@ export function stepWorld(
           events.push({ kind: "spark", x: p.x + p.w / 2, y: p.y + p.d / 2, z: 0.8, mag: 0.35, material: p.material });
         }
       }
+    } else if (ref.kind === "fixture") {
+      const fixture = ref.fixture;
+      const host = ref.building;
+      if (!fixture || !host || fixture.broken) continue;
+      const impact = resolveCircleSolid(dozer, ref.x, ref.y, ref.w, ref.d, 0.04);
+      if (impact > 0.2) {
+        const hit = applyFixtureDamage(
+          host,
+          fixture,
+          impact * 7,
+          dozer.x - (ref.x + ref.w / 2),
+          dozer.y - (ref.y + ref.d / 2),
+          particles,
+          events,
+        );
+        cash += hit.cash;
+        spawnFixtureFrags(town, hit.frags);
+      }
     }
   }
 
@@ -194,6 +234,21 @@ export function stepWorld(
         if (def.sparks && p.hp < p.maxHp * 0.75) {
           events.push({ kind: "spark", x: p.x + p.w / 2, y: p.y + p.d / 2, z: 0.8, mag: 0.3, material: p.material });
         }
+      } else if (ref.kind === "fixture") {
+        const fixture = ref.fixture;
+        const host = ref.building;
+        if (!fixture || !host || fixture.broken) continue;
+        const hit = applyFixtureDamage(
+          host,
+          fixture,
+          (7 + speed * 3) * bladeMul * dt,
+          Math.cos(dozer.heading),
+          Math.sin(dozer.heading),
+          particles,
+          events,
+        );
+        cash += hit.cash;
+        spawnFixtureFrags(town, hit.frags);
       }
     }
   }
@@ -212,6 +267,7 @@ export function stepWorld(
   for (const spawn of struct.rubbleSpawns) {
     spawnCollapseDebris(town, spawn);
   }
+  spawnFixtureFrags(town, struct.fixtureFrags);
 
   ensureBuildingHash(town);
   for (const lean of struct.leans) {

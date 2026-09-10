@@ -7,6 +7,9 @@ export type RoofAxis = "x" | "y";
 export type FacadeTheme = "cottage" | "ranch" | "colonial" | "walkup" | "porch" | "storefront" | "corner" | "civic" | "warehouse";
 export type LotZone = "residential" | "commercial" | "industrial";
 export type LotIdentity = "residence" | "farm" | "service" | "contractor" | "utility" | "shop";
+export type FloorFinish = "plank" | "tile" | "linoleum";
+export type RoomKind = "kitchen" | "bathroom" | "living";
+export type FixtureKind = "cabinet" | "counter" | "toilet" | "sofa" | "table" | "radiator";
 export type SiteMarkKind = "slab" | "dirt" | "crack" | "ridge" | "remnant" | "outline";
 export type CoverKind =
   | "grass"
@@ -114,6 +117,24 @@ export interface DecorBox {
   kind: "porch" | "awning" | "chimney" | "parapet";
 }
 
+export interface InteriorFixture {
+  id: number;
+  kind: FixtureKind;
+  room: RoomKind;
+  floor: number;
+  support: { gx: number; gy: number }[];
+  x: number;
+  y: number;
+  w: number;
+  d: number;
+  h: number;
+  heading: number;
+  material: Material;
+  hp: number;
+  maxHp: number;
+  broken: boolean;
+}
+
 export interface Building {
   id: number;
   kind: BuildingKind;
@@ -133,6 +154,7 @@ export interface Building {
   windowStride: number;
   features: BuildingFeatureSpec;
   decorBoxes: DecorBox[];
+  fixtures: InteriorFixture[];
   cells: Cell[];
   grid: Cell[][][];
   roofs: RoofSection[];

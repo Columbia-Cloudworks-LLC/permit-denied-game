@@ -1,4 +1,4 @@
-import type { Material } from "../structure/types";
+import type { FloorFinish, Material } from "../structure/types";
 import { shade } from "./drawIso";
 import { matColors, PAL } from "./palette";
 
@@ -26,7 +26,26 @@ export function topFaceColor(material: Material, damaged = false): number {
 }
 
 export function interiorColor(): number {
-  return PAL.interiorDeep;
+  return PAL.plasterShadow;
+}
+
+export function plasterColor(occluded = false): number {
+  return occluded ? PAL.plasterShadow : PAL.plaster;
+}
+
+export function floorFinishColor(finish: FloorFinish, edge = false): number {
+  switch (finish) {
+    case "plank":
+      return edge ? PAL.plankDark : PAL.plank;
+    case "tile":
+      return edge ? PAL.tileDark : PAL.tile;
+    case "linoleum":
+      return edge ? PAL.linoleumDark : PAL.linoleum;
+    default: {
+      const _never: never = finish;
+      return _never;
+    }
+  }
 }
 
 export function brokenEdgeColor(material: Material): number {

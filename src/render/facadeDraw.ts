@@ -4,9 +4,11 @@ import { gableEndCaps, gableWallVerts, shedWallVerts } from "../structure/roof";
 import type { Building, Cell } from "../structure/types";
 import type { BreachGroup, TopSpan, WallSpan } from "./buildingSurfaces";
 import { southFacadeCells } from "./buildingSurfaces";
-import { drawFaceWindow, drawIsoBox, drawShadow, drawTopCap, drawWorldPoly } from "./drawIso";
+import { hasFurnishedInterior } from "../structure/interior";
+import { drawFaceWindow, drawIsoBox, drawShadow, drawTopCap, drawWorldPoly, shade } from "./drawIso";
+import { drawRanchThickBrokenWall } from "./interiorDraw";
 import { brokenEdgeColor, interiorColor, topFaceColor, wallFaceColor } from "./lighting";
-import { PAL } from "./palette";
+import { matColors, PAL } from "./palette";
 
 const STORY_H = FLOOR_Z;
 
@@ -36,6 +38,9 @@ export function drawWallSpan(g: Graphics, b: Building, span: WallSpan, alpha: nu
       const mid = x0 + w * 0.48;
       drawFaceWindow(g, mid - 0.02, y1, mid + 0.02, y1, z0, z1, 0, 1, 0.2, 0.85, PAL.crack, alpha * 0.55);
     }
+    if (span.visual === "broken-edge") {
+      drawRanchThickBrokenWall(g, b, "south", x0, y1, w, z0, mat, alpha);
+    }
     if (span.floor === 0) drawSouthFacadeDecor(g, b, span, alpha);
     return;
   }
@@ -48,6 +53,9 @@ export function drawWallSpan(g: Graphics, b: Building, span: WallSpan, alpha: nu
   }
   if (span.floor === 0) {
     drawFaceWindow(g, x1, y0, x1, y0 + d, z0, z1, 0, 1, 0, 0.1, PAL.foundation, alpha * 0.5);
+  }
+  if (span.visual === "broken-edge") {
+    drawRanchThickBrokenWall(g, b, "east", x1, y0, d, z0, mat, alpha);
   }
   drawEastWindows(g, b, span, alpha, z0, z1);
 }
@@ -202,15 +210,17 @@ export function drawBreachGroup(g: Graphics, b: Building, group: BreachGroup, al
     minGy = Math.min(minGy, p.gy);
     maxGy = Math.max(maxGy, p.gy);
   }
+  if (hasFurnishedInterior(b)) return;
   const x0 = b.x + minGx * cs + recess;
   const y0 = b.y + minGy * cs + recess;
   const w = (maxGx - minGx + 1) * cs - recess * 2;
   const d = (maxGy - minGy + 1) * cs - recess * 2;
   const z0 = group.floor * FLOOR_Z;
   const edge = brokenEdgeColor(group.material);
-  drawIsoBox(g, x0, y0, w, d, z0, STORY_H * 0.92, interiorColor(), interiorColor(), interiorColor(), alpha);
-  drawFaceWindow(g, x0, y0 + d, x0 + w, y0 + d, z0, z0 + STORY_H, 0, 1, 0, 0.12, edge, alpha * 0.85);
-  drawFaceWindow(g, x0 + w, y0, x0 + w, y0 + d, z0, z0 + STORY_H, 0, 1, 0, 0.12, edge, alpha * 0.75);
+  const floor = shade(matColors(group.material).top, 0.62);
+  drawIsoBox(g, x0, y0, w, d, z0, 0.12, floor, shade(floor, 0.78), shade(floor, 0.7), alpha);
+  drawFaceWindow(g, x0, y0 + d, x0 + w, y0 + d, z0, z0 + STORY_H * 0.22, 0, 1, 0, 1, edge, alpha * 0.7);
+  drawFaceWindow(g, x0 + w, y0, x0 + w, y0 + d, z0, z0 + STORY_H * 0.22, 0, 1, 0, 1, edge, alpha * 0.6);
   if (group.floor > 0) {
     drawFaceWindow(g, x0, y0 + d, x0 + w, y0 + d, z0, z0 + 0.18, 0, 1, 0, 1, PAL.concrete, alpha * 0.7);
   }

@@ -14,6 +14,7 @@ import type {
   WorldEvent,
 } from "./types";
 import { beamSpan, cellCenter, cellPresent, materialHp } from "./types";
+import { generateInteriors, stepInteriors, type FixtureFrag } from "./interior";
 import { generateRoofs, roofsNeedStep, stepRoofs, type RoofDebrisSpawn } from "./roof";
 
 let nextId = 1;
@@ -252,6 +253,7 @@ export function createBuilding(spec: BuildingSpec): Building {
     windowStride,
     features,
     decorBoxes: makeDecor(spec, cellSize, features),
+    fixtures: [],
     cells,
     grid,
     roofs: [],
@@ -264,6 +266,7 @@ export function createBuilding(spec: BuildingSpec): Building {
     roofDirty: false,
   };
   building.roofs = generateRoofs(building);
+  building.fixtures = generateInteriors(building);
   return building;
 }
 
@@ -485,6 +488,7 @@ export interface StructureStepResult {
     source?: "wall" | "roof";
   }[];
   leans: { x: number; y: number; dx: number; dy: number; mag: number }[];
+  fixtureFrags: FixtureFrag[];
 }
 
 export interface StructureStepStats {
@@ -499,7 +503,7 @@ export function stepStructures(
   events: WorldEvent[],
   stats?: StructureStepStats,
 ): StructureStepResult {
-  const result: StructureStepResult = { cash: 0, rubbleSpawns: [], leans: [] };
+  const result: StructureStepResult = { cash: 0, rubbleSpawns: [], leans: [], fixtureFrags: [] };
   const scratch: boolean[] = [];
   let stepped = 0;
   let skipped = 0;
@@ -582,6 +586,9 @@ export function stepStructures(
     }
 
     stepRoofs(building, dt, particles, events, roofSpawns);
+    const interiors = stepInteriors(building, particles, events);
+    result.cash += interiors.cash;
+    result.fixtureFrags.push(...interiors.frags);
     const cellsDown = building.cells.every((c) => c.state === "gone");
     const roofsDown = building.roofs.every((r) => r.state === "gone");
     if (cellsDown && roofsDown) building.fullyDown = true;

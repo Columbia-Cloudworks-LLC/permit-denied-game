@@ -7,8 +7,10 @@ import { displacedRoofVerts, roofHeightAt } from "../structure/roof";
 import type { Bird, Building, CollapsedSite, CoverKind, GroundMark, GroundPatch, Particle, RoofSection, Rubble } from "../structure/types";
 import type { Dozer } from "../vehicle/dozer";
 import type { Town } from "../world/town";
+import { hasFurnishedInterior } from "../structure/interior";
 import { aggregateSurfaceStats, getBuildingSurfaces } from "./buildingSurfaces";
 import { drawCatalogProp } from "./assets";
+import { drawRanchRafters, ranchInteriorCmds, ranchRoofCutaway } from "./interiorDraw";
 import { cellColors, drawGroundPoly, drawIsoBox, drawOrientedGround, drawOrientedIsoBox, drawShadow, drawSlopedQuad, PAL, shade } from "./drawIso";
 import {
   drawBreachGroup,
@@ -173,11 +175,17 @@ export class WorldRenderer {
         });
       }
       for (const breach of surfaces.breaches) {
+        if (hasFurnishedInterior(b)) continue;
         visible++;
         this.cmds.push({
           depth: breach.depth,
           run: (g) => drawBreachGroup(g, b, breach, fade),
         });
+      }
+      if (hasFurnishedInterior(b)) {
+        const interiors = ranchInteriorCmds(b, fade);
+        visible += interiors.length;
+        this.cmds.push(...interiors);
       }
       for (const cell of b.cells) {
         if (cell.state !== "falling") continue;
@@ -201,14 +209,37 @@ export class WorldRenderer {
       const liveRoofs = b.roofs.filter((roof) => roof.state !== "gone");
       if (liveRoofs.length) {
         total += liveRoofs.length;
-        const moved = liveRoofs.flatMap((roof) => roofVerts(roof));
-        const c = roofCenter(moved);
-        if (this.visibleBox(c.x - 2, c.y - 2, 4, 4, c.z - 1, c.z + 1.4)) {
-          visible += liveRoofs.length;
-          this.cmds.push({
-            depth: roofPainterDepth(moved),
-            run: (g) => drawBuildingRoofs(g, b, liveRoofs, fade),
-          });
+        if (hasFurnishedInterior(b)) {
+          for (const roof of liveRoofs) {
+            const moved = roofVerts(roof);
+            const c = roofCenter(moved);
+            if (!this.visibleBox(c.x - 2, c.y - 2, 4, 4, c.z - 1, c.z + 1.4)) continue;
+            visible++;
+            this.cmds.push({
+              depth: roofPainterDepth(moved),
+              run: (g) => drawRanchRoofBay(g, b, roof, fade),
+            });
+          }
+          if (b.features.chimney) {
+            const ch = chimneyWorld(b);
+            if (ch) {
+              visible++;
+              this.cmds.push({
+                depth: depthKey(ch.x, ch.y, ch.z + 0.4),
+                run: (g) => drawChimney(g, ch, fade),
+              });
+            }
+          }
+        } else {
+          const moved = liveRoofs.flatMap((roof) => roofVerts(roof));
+          const c = roofCenter(moved);
+          if (this.visibleBox(c.x - 2, c.y - 2, 4, 4, c.z - 1, c.z + 1.4)) {
+            visible += liveRoofs.length;
+            this.cmds.push({
+              depth: roofPainterDepth(moved),
+              run: (g) => drawBuildingRoofs(g, b, liveRoofs, fade),
+            });
+          }
         }
       }
     }
@@ -352,6 +383,18 @@ function drawBuildingRoofs(g: Graphics, b: Building, roofs: RoofSection[], alpha
   if (b.features.chimney) {
     const ch = chimneyWorld(b);
     if (ch) drawChimney(g, ch, alpha);
+  }
+}
+
+function drawRanchRoofBay(g: Graphics, b: Building, roof: RoofSection, alpha: number): void {
+  if (ranchRoofCutaway(b, roof)) {
+    drawRanchRafters(g, b, roof, alpha * 0.92);
+    return;
+  }
+  const drawn = new Set<string>();
+  drawRoofSection(g, b, roof, alpha, drawn);
+  if (roof.state === "sagging" || roof.state === "falling") {
+    drawRanchRafters(g, b, roof, alpha * 0.85);
   }
 }
 
