@@ -26,7 +26,13 @@ npm run build     # typecheck + production bundle
 npm run preview   # serve the production build
 ```
 
-No backend, accounts, or API keys. Entirely client-side.
+## Play
+
+https://permitdenied.app (also https://www.permitdenied.app)
+
+Vercel hosts the Vite static build. The GitHub repo `Columbia-Cloudworks-LLC/permit-denied-game` is linked to the `permit-denied` project on the Columbia Cloudworks LLC team. Merges to `main` deploy production. Pull requests get preview URLs.
+
+IONOS is only the registrar. Nameservers are Vercel (`ns1.vercel-dns.com`, `ns2.vercel-dns.com`). No backend, accounts, or API keys. Entirely client-side.
 
 ## Controls
 

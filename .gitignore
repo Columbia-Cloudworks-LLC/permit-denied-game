@@ -11,3 +11,4 @@ coverage/
 *.exe
 .env
 .env.*
+.vercel
