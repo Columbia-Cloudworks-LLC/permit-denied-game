@@ -1,9 +1,6 @@
-import { independentFloors } from "../structure/construction";
 import { FLOOR_Z } from "../game/constants";
-import { hasFurnishedInterior, inBuildingNeighborOpen } from "../structure/interior";
 import { depthKey } from "../world/iso";
 import type { Building, Cell, FacadeTheme, Material } from "../structure/types";
-import { cellPresent } from "../structure/types";
 
 export type WallVisual = "intact" | "cracked" | "broken-edge";
 
@@ -22,38 +19,9 @@ export interface WallSpan {
   depth: number;
 }
 
-export interface TopSpan {
-  kind: "top";
-  floor: number;
-  gx0: number;
-  gy0: number;
-  gx1: number;
-  gy1: number;
-  material: Material;
-  visual: "intact" | "cracked";
-  depth: number;
-}
-
-export interface BreachGroup {
-  kind: "breach";
-  floor: number;
-  cells: { gx: number; gy: number }[];
-  material: Material;
-  depth: number;
-}
-
 export interface BuildingSurfaces {
   walls: WallSpan[];
-  tops: TopSpan[];
-  breaches: BreachGroup[];
   footprint: { x: number; y: number; w: number; d: number };
-  geometryCount: number;
-}
-
-export interface SurfaceStats {
-  wallSpans: number;
-  topSpans: number;
-  breachGroups: number;
   geometryCount: number;
 }
 
@@ -66,13 +34,6 @@ function cellLive(cell: Cell | undefined): boolean {
 function neighbor(b: Building, gx: number, gy: number, floor: number): Cell | undefined {
   if (gx < 0 || gy < 0 || gx >= b.w || gy >= b.d) return undefined;
   return b.grid[floor]?.[gx]?.[gy];
-}
-
-function roofCovers(b: Building, gx: number, gy: number, floor: number): boolean {
-  if (floor !== b.floors - 1) return false;
-  return b.roofs.some(
-    (roof) => roof.state !== "gone" && roof.support.some((s) => s.gx === gx && s.gy === gy),
-  );
 }
 
 function spanDepth(b: Building, gx0: number, gy0: number, gx1: number, gy1: number, floor: number): number {
@@ -125,39 +86,14 @@ function wallKey(
   return `${dir}:${floor}:${material}:${facadeMaterial}:${theme}:${visual}`;
 }
 
-function southExposed(b: Building, cell: Cell): { exposed: boolean; visual: WallVisual | null } {
+function southExposed(_b: Building, cell: Cell): { exposed: boolean; visual: WallVisual | null } {
   if (!cellLive(cell) || cell.state === "breached" || cell.cladding?.hp === 0) return { exposed: false, visual: null };
-  if (independentFloors(b)) return { exposed: cell.gy === b.d - 1, visual: cell.state === "cracked" ? "cracked" : "intact" };
-  const southN = neighbor(b, cell.gx, cell.gy + 1, cell.floor);
-  const exposed = !southN || !cellPresent(southN);
-  if (!exposed) return { exposed: false, visual: null };
-  if (hasFurnishedInterior(b) && inBuildingNeighborOpen(b, cell.gx, cell.gy + 1, cell.floor)) {
-    return { exposed: false, visual: null };
-  }
-  const visual: WallVisual =
-    southN && southN.state === "breached" ? "broken-edge" : cell.state === "cracked" ? "cracked" : "intact";
-  return { exposed: true, visual };
+  return { exposed: cell.exterior.south, visual: cell.state === "cracked" ? "cracked" : "intact" };
 }
 
-function eastExposed(b: Building, cell: Cell): { exposed: boolean; visual: WallVisual | null } {
+function eastExposed(_b: Building, cell: Cell): { exposed: boolean; visual: WallVisual | null } {
   if (!cellLive(cell) || cell.state === "breached" || cell.cladding?.hp === 0) return { exposed: false, visual: null };
-  if (independentFloors(b)) return { exposed: cell.gx === b.w - 1, visual: cell.state === "cracked" ? "cracked" : "intact" };
-  const eastN = neighbor(b, cell.gx + 1, cell.gy, cell.floor);
-  const selfOpen =
-    hasFurnishedInterior(b) && inBuildingNeighborOpen(b, cell.gx, cell.gy + 1, cell.floor);
-  const openingNeighbor =
-    hasFurnishedInterior(b) &&
-    !!eastN &&
-    (inBuildingNeighborOpen(b, eastN.gx, eastN.gy + 1, cell.floor) || !cellPresent(eastN));
-  const exposed = !eastN || !cellPresent(eastN) || (openingNeighbor && !selfOpen);
-  if (!exposed) return { exposed: false, visual: null };
-  const visual: WallVisual =
-    eastN && (eastN.state === "breached" || openingNeighbor)
-      ? "broken-edge"
-      : cell.state === "cracked"
-        ? "cracked"
-        : "intact";
-  return { exposed: true, visual };
+  return { exposed: cell.exterior.east, visual: cell.state === "cracked" ? "cracked" : "intact" };
 }
 
 function flushWallRun(b: Building, dir: "south" | "east", floor: number, run: WallRun | null, out: WallSpan[]): void {
@@ -238,152 +174,24 @@ function mergeEastWalls(b: Building, floor: number, out: WallSpan[]): void {
   }
 }
 
-function mergeTopCaps(b: Building, floor: number, out: TopSpan[]): void {
-  if (hasFurnishedInterior(b)) return;
-  for (let gy = 0; gy < b.d; gy++) {
-    let runGx0 = -1;
-    let runMat: Material = "wood";
-    let runVisual: "intact" | "cracked" = "intact";
-    for (let gx = 0; gx <= b.w; gx++) {
-      const cell = gx < b.w ? neighbor(b, gx, gy, floor) : undefined;
-      const above = gx < b.w ? neighbor(b, gx, gy, floor + 1) : undefined;
-      const open =
-        cell &&
-        cellLive(cell) &&
-        cell.state !== "breached" &&
-        (!above || !cellPresent(above)) &&
-        !roofCovers(b, gx, gy, floor);
-      const visual = cell && cellLive(cell) && cell.state !== "breached"
-        ? cell.state === "cracked" ? "cracked" : "intact"
-        : null;
-
-      if (open && visual) {
-        const key = `${cell!.material}:${visual}`;
-        const prevKey = `${runMat}:${runVisual}`;
-        if (runGx0 >= 0 && (key !== prevKey || gx !== (out[out.length - 1]?.gx1 ?? runGx0) + 1)) {
-          out.push({
-            kind: "top",
-            floor,
-            gx0: runGx0,
-            gy0: gy,
-            gx1: gx - 1,
-            gy1: gy,
-            material: runMat,
-            visual: runVisual,
-            depth: spanDepth(b, runGx0, gy, gx - 1, gy, floor),
-          });
-          runGx0 = -1;
-        }
-        if (runGx0 < 0) {
-          runGx0 = gx;
-          runMat = cell!.material;
-          runVisual = visual;
-        }
-      } else if (runGx0 >= 0) {
-        out.push({
-          kind: "top",
-          floor,
-          gx0: runGx0,
-          gy0: gy,
-          gx1: gx - 1,
-          gy1: gy,
-          material: runMat,
-          visual: runVisual,
-          depth: spanDepth(b, runGx0, gy, gx - 1, gy, floor),
-        });
-        runGx0 = -1;
-      }
-    }
-    if (runGx0 >= 0) {
-      out.push({
-        kind: "top",
-        floor,
-        gx0: runGx0,
-        gy0: gy,
-        gx1: b.w - 1,
-        gy1: gy,
-        material: runMat,
-        visual: runVisual,
-        depth: spanDepth(b, runGx0, gy, b.w - 1, gy, floor),
-      });
-    }
-  }
-}
-
-function breachComponents(b: Building): BreachGroup[] {
-  const groups: BreachGroup[] = [];
-  const seen = new Set<string>();
-  const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]] as const;
-
-  for (const seed of b.cells) {
-    if (seed.state !== "breached") continue;
-    const sk = `${seed.floor}:${seed.gx}:${seed.gy}`;
-    if (seen.has(sk)) continue;
-    const comp: { gx: number; gy: number }[] = [];
-    const stack = [{ gx: seed.gx, gy: seed.gy, floor: seed.floor }];
-    let material = seed.material;
-    while (stack.length) {
-      const cur = stack.pop()!;
-      const ck = `${cur.floor}:${cur.gx}:${cur.gy}`;
-      if (seen.has(ck)) continue;
-      const c = neighbor(b, cur.gx, cur.gy, cur.floor);
-      if (!c || c.state !== "breached") continue;
-      seen.add(ck);
-      comp.push({ gx: cur.gx, gy: cur.gy });
-      for (const [dx, dy] of dirs) stack.push({ gx: cur.gx + dx, gy: cur.gy + dy, floor: cur.floor });
-    }
-    if (comp.length === 0) continue;
-    let minGx = comp[0]!.gx;
-    let maxGx = comp[0]!.gx;
-    let minGy = comp[0]!.gy;
-    let maxGy = comp[0]!.gy;
-    for (const p of comp) {
-      minGx = Math.min(minGx, p.gx);
-      maxGx = Math.max(maxGx, p.gx);
-      minGy = Math.min(minGy, p.gy);
-      maxGy = Math.max(maxGy, p.gy);
-    }
-    groups.push({
-      kind: "breach",
-      floor: seed.floor,
-      cells: comp,
-      material,
-      depth: spanDepth(b, minGx, minGy, maxGx, maxGy, seed.floor),
-    });
-  }
-  return groups;
-}
-
 export function extractBuildingSurfaces(b: Building): BuildingSurfaces {
   const walls: WallSpan[] = [];
-  const tops: TopSpan[] = [];
   for (let floor = 0; floor < b.floors; floor++) {
     mergeSouthWalls(b, floor, walls);
     mergeEastWalls(b, floor, walls);
-    mergeTopCaps(b, floor, tops);
   }
-  const breaches = breachComponents(b);
   return {
     walls,
-    tops,
-    breaches,
     footprint: footprintBox(b),
-    geometryCount: walls.length + tops.length + breaches.length,
+    geometryCount: walls.length,
   };
 }
 
 export function buildingSurfaceSignature(b: Building): string {
-  const parts: string[] = [`${b.w}:${b.d}:${b.floors}:${b.theme}`];
-  for (const cell of b.cells) {
-    parts.push(
-      `${cell.gx},${cell.gy},${cell.floor},${cell.state},${cell.material},${cell.facadeMaterial},${cell.cladding?.hp ?? -1},${cell.sag.toFixed(3)},${cell.fallT.toFixed(3)}`,
-    );
-  }
-  for (const roof of b.roofs) {
-    parts.push(`r${roof.id}:${roof.state}:${roof.sag.toFixed(3)}:${roof.fallT.toFixed(3)}`);
-  }
-  return parts.join("|");
+  return String(b.visualRevision);
 }
+
+export function releaseBuildingSurfaces(b: Building): void { cache.delete(b); }
 
 export function getBuildingSurfaces(b: Building): BuildingSurfaces {
   const sig = buildingSurfaceSignature(b);
@@ -392,21 +200,6 @@ export function getBuildingSurfaces(b: Building): BuildingSurfaces {
   const surfaces = extractBuildingSurfaces(b);
   cache.set(b, { sig, surfaces });
   return surfaces;
-}
-
-export function aggregateSurfaceStats(buildings: Building[]): SurfaceStats {
-  let wallSpans = 0;
-  let topSpans = 0;
-  let breachGroups = 0;
-  let geometryCount = 0;
-  for (const b of buildings) {
-    const s = getBuildingSurfaces(b);
-    wallSpans += s.walls.length;
-    topSpans += s.tops.length;
-    breachGroups += s.breaches.length;
-    geometryCount += s.geometryCount;
-  }
-  return { wallSpans, topSpans, breachGroups, geometryCount };
 }
 
 export function southFacadeCells(b: Building, span: WallSpan): Cell[] {

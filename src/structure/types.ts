@@ -1,4 +1,5 @@
-export type Material = "wood" | "brick" | "concrete" | "metal" | "glass";
+import { MATERIALS, type Material } from './materials';
+export type { Material } from './materials';
 export type BuildingKind = "house" | "shop" | "industrial";
 export type RoofStyle = "gable" | "flat" | "shed";
 export type CellState = "intact" | "cracked" | "breached" | "falling" | "gone";
@@ -30,7 +31,7 @@ export type DestructionProfile =
   | "roll"
   | "panel-collapse"
   | "explosive";
-export type AssetFamily = "residential" | "agricultural" | "commercial" | "roadside" | "vegetation" | "legacy";
+export type AssetFamily = "residential" | "agricultural" | "commercial" | "roadside" | "vegetation";
 export type AssetTag =
   | "roadside"
   | "residential"
@@ -55,6 +56,7 @@ export type JunctionType = "none" | "end" | "T" | "cross" | "Y";
 export type VehicleRole = "civilian" | "police";
 
 export interface Cell {
+  exterior: { north: boolean; south: boolean; east: boolean; west: boolean };
   role?: "wall" | "column";
   cladding?: { material: Material; hp: number; maxHp: number; shed: boolean };
   gx: number;
@@ -89,6 +91,7 @@ export interface RoofVertex {
 }
 
 export interface RoofSection {
+  floor: number;
   /** Covered floor tiles are distinct from the walls/columns carrying the roof. */
   coverage?: { gx: number; gy: number }[];
   id: number;
@@ -129,9 +132,12 @@ export interface DecorBox {
 }
 
 export interface InteriorFixture {
+  pose: PropPose;
   id: number;
   kind: FixtureKind;
   room: RoomKind;
+  roomId: string;
+  placementId: string;
   floor: number;
   support: { gx: number; gy: number }[];
   x: number;
@@ -147,8 +153,13 @@ export interface InteriorFixture {
 }
 
 export interface Building {
-  construction?: import("./construction").ConstructionDef;
-  floorTiles?: FloorTile[];
+  visualRevision: number;
+  retired: boolean;
+  settledAwayTime: number;
+  construction: import("./construction").ConstructionDef;
+  layout: import("./construction").LayoutDef;
+  lotId: string | null;
+  floorTiles: FloorTile[];
   id: number;
   kind: BuildingKind;
   name: string;
@@ -163,7 +174,6 @@ export interface Building {
   cellSize: number;
   roof: RoofStyle;
   roofAxis: RoofAxis;
-  secondary: Material;
   windowStride: number;
   features: BuildingFeatureSpec;
   decorBoxes: DecorBox[];
@@ -181,6 +191,7 @@ export interface Building {
 }
 
 export interface FloorTile {
+  roomId: string;
   gx: number;
   gy: number;
   floor: number;
@@ -220,6 +231,7 @@ export type DebrisSkin = "default" | "roofing";
 export type GroundKind = "chip" | "splinter" | "dust" | "glass" | "scrape";
 
 export interface Rubble {
+  yardOwner?: string;
   id: number;
   x: number;
   y: number;
@@ -248,6 +260,7 @@ export interface Rubble {
 }
 
 export interface GroundMark {
+  yardOwner?: string;
   x: number;
   y: number;
   w: number;
@@ -301,6 +314,7 @@ export interface PropPose {
 }
 
 export interface Prop {
+  lotId: string | null;
   id: number;
   assetId: string;
   /** Catalog id; kept so existing camera / pole checks still read a string. */
@@ -384,6 +398,7 @@ export interface Bird {
 export type ParticleKind = "brick" | "concrete" | "wood" | "glass" | "metal" | "dust";
 
 export interface Particle {
+  yardOwner?: string;
   alive: boolean;
   kind: ParticleKind;
   x: number;
@@ -410,35 +425,8 @@ export interface WorldEvent {
   cash?: number;
 }
 
-export function materialHp(material: Material): number {
-  switch (material) {
-    case "wood":
-      return 26;
-    case "brick":
-      return 40;
-    case "concrete":
-      return 62;
-    case "metal":
-      return 54;
-    case "glass":
-      return 9;
-  }
-}
-
-export function beamSpan(material: Material): number {
-  switch (material) {
-    case "wood":
-      return 1;
-    case "brick":
-      return 2;
-    case "concrete":
-      return 2;
-    case "metal":
-      return 2;
-    case "glass":
-      return 0;
-  }
-}
+export function materialHp(material: Material): number { return MATERIALS[material].hp; }
+export function beamSpan(material: Material): number { return MATERIALS[material].beamSpan; }
 
 export function cellPresent(cell: Cell): boolean {
   return cell.state === "intact" || cell.state === "cracked";
@@ -449,7 +437,7 @@ export function cellSolid(cell: Cell): boolean {
 }
 
 export function cellWorldBox(b: Building, cell: Cell): { x: number; y: number; w: number; d: number } {
-  if (b.construction?.floorSupport === "independent") {
+  {
     const cs = b.cellSize, thick = .18;
     let x = b.x + cell.gx * cs, y = b.y + cell.gy * cs;
     if (cell.role === "column" && cell.cladding?.hp === 0) {
@@ -457,19 +445,13 @@ export function cellWorldBox(b: Building, cell: Cell): { x: number; y: number; w
       if (cell.gy === b.d - 1) y += cs - thick * 2;
       return { x, y, w: thick * 2, d: thick * 2 };
     }
-    if (cell.gy === 0 || cell.gy === b.d - 1) {
-      if (cell.gy !== 0) y += cs - thick;
+    if (cell.exterior.north || cell.exterior.south) {
+      if (!cell.exterior.north) y += cs - thick;
       return { x, y, w: cs, d: thick };
     }
-    if (cell.gx === b.w - 1) x += cs - thick;
+    if (cell.exterior.east && !cell.exterior.west) x += cs - thick;
     return { x, y, w: thick, d: cs };
   }
-  return {
-    x: b.x + cell.gx * b.cellSize,
-    y: b.y + cell.gy * b.cellSize,
-    w: b.cellSize,
-    d: b.cellSize,
-  };
 }
 
 export function cellCenter(b: Building, cell: Cell): { x: number; y: number; z: number } {

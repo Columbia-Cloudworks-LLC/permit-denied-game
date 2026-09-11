@@ -1,3 +1,4 @@
+import { populateTestYard, type TestYard } from './testYard';
 import { CELL } from "../game/constants";
 import { Rng } from "../game/rng";
 import { DEFAULT_DISTRICT_SEEDS, type DistrictId } from "../game/session";
@@ -15,6 +16,8 @@ import { linePoints, pt, RoadBuilder, emptyTerrain, type RoadNetwork, type Terra
 import type { TopologyFamily } from "./rural";
 
 export interface Town {
+  yard?: TestYard;
+  debrisOwnerAt?: (x: number, y: number) => string | undefined;
   buildings: Building[];
   props: Prop[];
   rubble: Rubble[];
@@ -48,6 +51,7 @@ export interface Town {
 
 export interface TownOptions {
   showcase?: boolean;
+  yard?: boolean;
   district?: DistrictId;
   seed?: number;
   topology?: TopologyFamily;
@@ -60,7 +64,10 @@ export function createTown(options: TownOptions = {}): Town {
   resetDebrisSim(seed);
   resetPropIds();
 
-  if (district === "classic") return createClassicTown(seed, options.showcase);
+  if (district === "classic") {
+    const town = createClassicTown(seed, options.showcase);
+    return options.yard ? populateTestYard(town) : town;
+  }
 
   const layout = generateDistrictLayout(district, seed, options.topology);
   const pileW = layout.maxX - layout.minX + 4;

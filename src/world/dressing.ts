@@ -285,6 +285,7 @@ export function dressLot(
 ): { props: Prop[]; patches: GroundPatch[] } {
   const template = DRESS_TEMPLATES.find((t) => t.id === lot.templateId) ?? pickTemplate(lot.identity, rng);
   lot.templateId = template.id;
+  if (building) building.lotId = lot.id;
   const props: Prop[] = [];
   const extras: { x: number; y: number; w: number; d: number }[] = [];
   const driveW = 1.7;
@@ -311,6 +312,7 @@ export function dressLot(
     );
     if (!placed) continue;
     const prop = spawnAsset(slot.assetId, placed.x, placed.y, heading, rng.int(0, def.variants - 1));
+    prop.lotId = lot.id;
     props.push(prop);
     extras.push({ x: prop.x, y: prop.y, w: prop.w, d: prop.d });
   }

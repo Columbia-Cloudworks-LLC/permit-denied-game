@@ -5,7 +5,7 @@ export class Input {
 
   attach(target: Window = window): () => void {
     const onDown = (e: KeyboardEvent) => {
-      if (e.target instanceof Element && (e.target.closest("#debug-panel") ||
+      if (e.target instanceof Element && (e.target.closest("#debug-panel, .yard-panel, input, select, textarea") ||
         (e.target.closest(".debug-menu") && [" ", "Enter"].includes(e.key)))) return;
       const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
       if ([" ", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {

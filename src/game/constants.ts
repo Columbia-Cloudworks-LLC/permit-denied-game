@@ -51,6 +51,8 @@ export const PARTICLE_CAP = 420;
 export const RUBBLE_CAP = 180;
 
 export const DEBRIS = {
+  retireRadius: 28,
+  retireDelay: 8,
   remnantCap: 96,
   fragmentCap: 140,
   hardOverflow: 24,

@@ -1,137 +1,129 @@
-import type { Building, FloorFinish, Material, RoomKind, FixtureKind } from "./types";
+import { getAsset } from '../world/catalog';
+import { MATERIALS } from './materials';
+import type { Building, FloorFinish, Material, RoomKind, FixtureKind } from './types';
 
-/** Recipes use fractions of the occupied footprint; contents use fractions of their room. */
-export interface ContentPlacement {
-  kind: FixtureKind;
-  x: number;
-  y: number;
-  w: number;
-  d: number;
-  h: number;
-}
-
-export interface RoomRecipe {
-  kind: RoomKind;
-  floor: number;
-  x: number;
-  y: number;
-  w: number;
-  d: number;
-  finish: FloorFinish;
-  contents: readonly ContentPlacement[];
-}
-
+/** Structural assembly, independent of any floor plan. All buildings have slabs and perimeter walls. */
 export interface ConstructionDef {
   id: string;
-  walls: "filled" | "masonry" | "frame";
+  walls: 'bearing' | 'masonry' | 'frame';
   structure: Material;
   skin: Material;
   floor: Material;
   roof: Material;
-  bays: boolean;
-  /** Cell-supported preserves the original small-house demolition behavior. */
-  floorSupport: "cell" | "independent";
   fallDuration: number;
   failureDelay: number;
+}
+/** Room-relative fractions; dimensions describe the final rotated footprint. */
+export interface ContentPlacement {
+  id: string;
+  kind: FixtureKind;
+  x: number; y: number; w: number; d: number; h: number;
+  rotation: 0 | 90 | 180 | 270;
+}
+export interface RoomRecipe {
+  id: string;
+  kind: RoomKind;
+  floor: number;
+  x: number; y: number; w: number; d: number;
+  finish: FloorFinish;
+  contents: readonly ContentPlacement[];
+}
+export interface LayoutDef {
   rooms: readonly RoomRecipe[];
-  partitions?: boolean;
+  partitions: boolean;
+  connections?: readonly { a: string; b: string; at: number; width: number }[];
 }
-
-const kitchen: readonly ContentPlacement[] = [
-  { kind: "counter", x: .04, y: .03, w: .92, d: .14, h: .4 },
-  { kind: "cabinet", x: .03, y: .32, w: .15, d: .28, h: .82 },
-  { kind: "table", x: .59, y: .38, w: .26, d: .2, h: .36 },
-];
-const living: readonly ContentPlacement[] = [
-  { kind: "sofa", x: .04, y: .03, w: .89, d: .17, h: .38 },
-  { kind: "table", x: .21, y: .4, w: .34, d: .2, h: .22 },
-  { kind: "radiator", x: .64, y: .92, w: .26, d: .06, h: .3 },
-];
-const bathroom: readonly ContentPlacement[] = [
-  { kind: "toilet", x: .32, y: .05, w: .36, d: .17, h: .4 },
-  { kind: "cabinet", x: .7, y: .35, w: .28, d: .2, h: .68 },
-];
-
-export const TIMBER_HOUSE: ConstructionDef = {
-  id: "timber-house", walls: "filled", structure: "wood", skin: "brick", floor: "wood", roof: "wood",
-  bays: true, floorSupport: "cell", fallDuration: .42, failureDelay: .52,
-  rooms: [
-    { kind: "kitchen", floor: 0, x: 0, y: 0, w: .4, d: 1, finish: "linoleum", contents: kitchen },
-    { kind: "living", floor: 0, x: .4, y: 0, w: .4, d: 1, finish: "plank", contents: living },
-    { kind: "bathroom", floor: 0, x: .8, y: 0, w: .2, d: 1, finish: "tile", contents: bathroom },
-  ],
-};
-
-export const BRICK_MIXED_USE: ConstructionDef = {
-  partitions: true,
-  id: "brick-mixed-use", walls: "masonry", structure: "brick", skin: "brick", floor: "wood", roof: "wood",
-  bays: true, floorSupport: "independent", fallDuration: .5, failureDelay: .38,
-  rooms: [
-    { kind: "retail", floor: 0, x: 0, y: 0, w: .7, d: 1, finish: "tile", contents: [
-      { kind: "shelf", x: .08, y: .15, w: .2, d: .5, h: 1.15 },
-      { kind: "shelf", x: .64, y: .15, w: .2, d: .5, h: 1.15 },
-      { kind: "counter", x: .04, y: .78, w: .27, d: .13, h: .65 },
-    ] },
-    { kind: "storage", floor: 0, x: .7, y: 0, w: .3, d: 1, finish: "concrete", contents: [
-      { kind: "pallet", x: .13, y: .12, w: .72, d: .23, h: .6 },
-      { kind: "fridge", x: .18, y: .52, w: .64, d: .2, h: 1.25 },
-    ] },
-    { kind: "kitchen", floor: 1, x: 0, y: 0, w: .4, d: .55, finish: "linoleum", contents: kitchen },
-    { kind: "living", floor: 1, x: 0, y: .55, w: .6, d: .45, finish: "plank", contents: living },
-    { kind: "bedroom", floor: 1, x: .4, y: 0, w: .6, d: .55, finish: "plank", contents: [
-      { kind: "bed", x: .14, y: .12, w: .58, d: .66, h: .48 },
-    ] },
-    { kind: "bathroom", floor: 1, x: .6, y: .55, w: .4, d: .45, finish: "tile", contents: bathroom },
-  ],
-};
-
-export const STEEL_HALL: ConstructionDef = {
-  id: "steel-hall", walls: "frame", structure: "metal", skin: "metal", floor: "concrete", roof: "metal",
-  bays: true, floorSupport: "independent", fallDuration: .65, failureDelay: .7,
-  rooms: [
-    { kind: "storage", floor: 0, x: 0, y: 0, w: .65, d: 1, finish: "concrete", contents: [
-      { kind: "rack", x: .1, y: .12, w: .17, d: .55, h: 1.75 },
-      { kind: "rack", x: .66, y: .12, w: .17, d: .55, h: 1.75 },
-      { kind: "pallet", x: .08, y: .8, w: .2, d: .13, h: .55 },
-      { kind: "pallet", x: .67, y: .8, w: .2, d: .13, h: .55 },
-    ] },
-    { kind: "production", floor: 0, x: .65, y: 0, w: .35, d: 1, finish: "concrete", contents: [
-      { kind: "machine", x: .12, y: .12, w: .68, d: .28, h: 1.1 },
-      { kind: "counter", x: .12, y: .57, w: .68, d: .12, h: .7 },
-    ] },
-  ],
-};
-
-export function independentFloors(b: Building): boolean {
-  return b.construction?.floorSupport === "independent";
+/** Shared wall in normalized building coordinates. Corner contacts are not doors. */
+export function sharedRoomEdge(a: RoomRecipe, b: RoomRecipe) {
+  if (a.floor !== b.floor) return undefined;
+  const vertical = Math.abs(a.x + a.w - b.x) < 1e-6 || Math.abs(b.x + b.w - a.x) < 1e-6;
+  const horizontal = Math.abs(a.y + a.d - b.y) < 1e-6 || Math.abs(b.y + b.d - a.y) < 1e-6;
+  if (!vertical && !horizontal) return undefined;
+  const start = vertical ? Math.max(a.y, b.y) : Math.max(a.x, b.x);
+  const end = vertical ? Math.min(a.y + a.d, b.y + b.d) : Math.min(a.x + a.w, b.x + b.w);
+  return end - start > 1e-6 ? { vertical, start, end, plane: vertical ? Math.max(a.x, b.x) : Math.max(a.y, b.y) } : undefined;
 }
-
+export interface OpeningDef {
+  floor: number;
+  side: 'south';
+  /** Fraction along occupied south frontage. Doors remain destructible panels. */
+  at: number;
+  kind: 'door' | 'loading';
+}
 export function roomAt(b: Building, gx: number, gy: number, floor: number): RoomRecipe | undefined {
-  const x = (gx + .5) / b.w;
-  const y = (gy + .5) / b.d;
-  return b.construction?.rooms.find(r => r.floor === floor && x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.d);
+  const x = (gx + .5) / b.w, y = (gy + .5) / b.d;
+  return b.layout.rooms.find(r => r.floor === floor && x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.d);
 }
-
-/** Authoring errors must be visible before an invalid recipe reaches a generated district. */
 export function validateConstruction(def: ConstructionDef): string[] {
   const issues: string[] = [];
-  if (def.fallDuration <= 0 || def.failureDelay < 0) issues.push("Invalid collapse timing");
-  const inside = (x: number, y: number, w: number, d: number) =>
-    [x, y, w, d].every(Number.isFinite) && x >= 0 && y >= 0 && w > 0 && d > 0 && x + w <= 1.000001 && y + d <= 1.000001;
-  for (const room of def.rooms) {
-    if (!Number.isInteger(room.floor) || room.floor < 0 || !inside(room.x, room.y, room.w, room.d)) issues.push(`Invalid ${room.kind} room bounds`);
+  if (!def.id || !['bearing', 'masonry', 'frame'].includes(def.walls)) issues.push('Invalid construction identity or wall assembly');
+  for (const part of ['structure', 'skin', 'floor', 'roof'] as const) {
+    if (!Object.hasOwn(MATERIALS, def[part])) issues.push(`Unknown ${part} material ${def[part]}`);
+  }
+  if (!Number.isFinite(def.fallDuration) || !Number.isFinite(def.failureDelay) || def.fallDuration <= 0 || def.failureDelay < 0) issues.push('Invalid collapse timing');
+  return issues;
+}
+const kinds = ['kitchen', 'bathroom', 'living', 'retail', 'storage', 'bedroom', 'production'];
+const finishes = ['plank', 'tile', 'linoleum', 'concrete'];
+const inside = (x: number, y: number, w: number, d: number) =>
+  [x, y, w, d].every(Number.isFinite) && x >= 0 && y >= 0 && w > 0 && d > 0 && x + w <= 1.000001 && y + d <= 1.000001;
+const overlaps = (a: { x: number; y: number; w: number; d: number }, b: typeof a) =>
+  a.x < b.x + b.w - 1e-6 && a.x + a.w > b.x + 1e-6 && a.y < b.y + b.d - 1e-6 && a.y + a.d > b.y + 1e-6;
+
+/** Validate the composed plan, including footprint holes, before allocating runtime state. */
+export function validateLayout(layout: LayoutDef, w: number, d: number, floors: number, mask: boolean[][][]): string[] {
+  const issues: string[] = [], ids = new Set<string>();
+  for (const room of layout.rooms) {
+    if (!room.id || ids.has(room.id)) issues.push(`Duplicate or missing room id ${room.id}`);
+    ids.add(room.id);
+    if (!kinds.includes(room.kind) || !finishes.includes(room.finish)) issues.push(`Unknown room kind or finish in ${room.id}`);
+    if (!Number.isInteger(room.floor) || room.floor < 0 || room.floor >= floors || !inside(room.x, room.y, room.w, room.d)) {
+      issues.push(`Invalid ${room.kind} room bounds`); continue;
+    }
+    for (let gx = 0; gx < w; gx++) for (let gy = 0; gy < d; gy++) {
+      if (overlaps(room, { x: gx / w, y: gy / d, w: 1 / w, d: 1 / d }) && !mask[room.floor]?.[gx]?.[gy]) issues.push(`Room ${room.id} crosses unoccupied footprint at ${gx},${gy}`);
+    }
+    const slots = new Set<string>();
     for (const slot of room.contents) {
-      if (!inside(slot.x, slot.y, slot.w, slot.d) || !Number.isFinite(slot.h) || slot.h <= 0) issues.push(`Invalid ${slot.kind} slot in ${room.kind}`);
+      if (!slot.id || slots.has(slot.id)) issues.push(`Duplicate or missing object id in ${room.id}`);
+      slots.add(slot.id);
+      if (!inside(slot.x, slot.y, slot.w, slot.d) || !Number.isFinite(slot.h) || slot.h <= 0 || ![0, 90, 180, 270].includes(slot.rotation)) issues.push(`Invalid ${slot.kind} slot in ${room.kind}`);
+      try {
+        const object = getAsset(`interior-${slot.kind}`);
+        if (!['brittle', 'crush', 'panel-collapse'].includes(object.destruction)) issues.push(`Object ${slot.kind} requires unsupported room behavior ${object.destruction}`);
+      } catch { issues.push(`Unknown object ${slot.kind} in ${room.id}`); }
     }
     for (let i = 0; i < room.contents.length; i++) for (let j = i + 1; j < room.contents.length; j++) {
-      const a = room.contents[i]!, b = room.contents[j]!;
-      if (a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.d && a.y + a.d > b.y) issues.push(`Overlapping ${a.kind}/${b.kind} in ${room.kind}`);
+      if (overlaps(room.contents[i]!, room.contents[j]!)) issues.push(`Overlapping objects in ${room.id}`);
     }
   }
-  for (let i = 0; i < def.rooms.length; i++) for (let j = i + 1; j < def.rooms.length; j++) {
-    const a = def.rooms[i]!, b = def.rooms[j]!;
-    if (a.floor === b.floor && a.x < b.x + b.w - 1e-6 && a.x + a.w > b.x + 1e-6 && a.y < b.y + b.d - 1e-6 && a.y + a.d > b.y + 1e-6)
-      issues.push(`Overlapping ${a.kind}/${b.kind} rooms`);
+  for (let i = 0; i < layout.rooms.length; i++) for (let j = i + 1; j < layout.rooms.length; j++) {
+    const a = layout.rooms[i]!, b = layout.rooms[j]!;
+    if (a.floor === b.floor && overlaps(a, b)) issues.push(`Overlapping ${a.kind}/${b.kind} rooms`);
+  }
+  for (let floor = 0; floor < floors; floor++) {
+    const area = layout.rooms.filter(r => r.floor === floor).reduce((n, r) => n + r.w * r.d, 0);
+    const occupied = mask[floor]?.flat().filter(Boolean).length ?? 0;
+    if (Math.abs(area - occupied / (w * d)) > 1e-6) issues.push(`Floor ${floor} must have complete room coverage`);
+  }
+  const pairs = new Set<string>();
+  for (const door of layout.connections ?? []) {
+    const a = layout.rooms.find(r => r.id === door.a), b = layout.rooms.find(r => r.id === door.b);
+    const edge = a && b && sharedRoomEdge(a, b);
+    const pair = [door.a, door.b].sort().join(':');
+    if (!edge || pairs.has(pair)) issues.push(`Invalid or duplicate room connection ${pair}`);
+    pairs.add(pair);
+    // Width and position are fractions of the shared wall, so resizing preserves the door.
+    if (![door.at, door.width].every(Number.isFinite) || door.width <= 0 || door.at - door.width / 2 < 0 || door.at + door.width / 2 > 1) issues.push(`Invalid door bounds ${pair}`);
+  }
+  if (layout.partitions) for (let floor = 0; floor < floors; floor++) {
+    const floorRooms = layout.rooms.filter(r => r.floor === floor);
+    const reached = new Set(floorRooms.slice(0, 1).map(r => r.id));
+    for (let pass = 0; pass < floorRooms.length; pass++) for (const door of layout.connections ?? []) {
+      if (reached.has(door.a)) reached.add(door.b);
+      if (reached.has(door.b)) reached.add(door.a);
+    }
+    if (floorRooms.some(r => !reached.has(r.id))) issues.push(`Floor ${floor} contains rooms without a connected doorway`);
   }
   return issues;
 }

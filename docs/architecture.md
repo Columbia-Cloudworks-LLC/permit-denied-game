@@ -6,19 +6,19 @@ The introductory [brick demolition job](brick-job.md) uses the showcase town and
 
 ## Archetypes
 
-Buildings can select a shared construction and room recipe. The ranch, brick mixed-use building, and steel warehouse exercise this path. See [construction authoring](construction-authoring.md) for the definition contract, support rules, and remaining limits.
+Every registered building is authored in `src/world/data/buildings.json`. Construction assemblies and room layouts are separate reusable definitions. `src/world/archetypes.ts` validates and resolves the catalog; `createBuildingFromDefinition` compiles it into runtime state. See [construction authoring](construction-authoring.md) for the complete JSON format and validation rules.
 
-`src/world/archetypes.ts` is the data table. Each archetype sets kind, footprint, floors, materials, roof style/axis, facade theme, window stride, door/loading rules, and optional porch, awning, parapet, chimney, or garage. District lots pick one with lightweight zoning weights. Classic town uses fixed placements.
+All buildings have perimeter walls/columns, independent slabs, identifiable rooms and furnishings. Lots link to placements through `Building.lotId` and `Prop.lotId`; slab and furnishing state retains room IDs. Street props and yard experiments may be unowned. Districts select definitions through zoning weights; the classic town keeps its fixed placements.
 
 Collision uses occupied cells only. Porch, awning, parapet, and chimney are decorative boxes and must not invent wall collision.
 
 ## Structural cells vs facade surfaces
 
-`Building.grid` / `Cell` own wall/column HP, support, collapse, debris material, and collision. Independent constructions also have `floorTiles` for slabs; an empty structural cell can contain usable floor space and furnishings. Steel columns carry sacrificial cladding with its own HP. Rendering does not draw one isometric box per intact cell.
+`Building.grid` / `Cell` own wall/column HP, support, collapse, debris material, and collision. Every building has `floorTiles` for slabs; an empty structural cell can contain usable floor space and furnishings. Steel columns carry sacrificial cladding with its own HP. Rendering does not draw one isometric box per intact cell.
 
-`src/render/buildingSurfaces.ts` extracts exposed south/east walls and optional top caps from live cells, merges compatible spans, and caches by a render-only signature (never reads or clears `structureDirty`). Breached cells merge into cavity groups; falling cells still draw as displaced chunks.
+`src/render/buildingSurfaces.ts` extracts exterior south/east wall spans from live cells, merges compatible spans, and caches by a render-only signature (never reads or clears `structureDirty`). Slabs and interior walls use the common interior renderer; the old cavity and filled-cell top-cap renderers have been removed.
 
-`Cell.material` is structural. `Cell.facadeMaterial` is render-only skin for ground-floor south facades (brick veneer on wood houses, etc.) and does not change HP on house/shop archetypes. Industrial ground-floor metal stays structural.
+`Cell.material` is structural. `Cell.facadeMaterial` comes from the construction skin. Structural HP comes from the shared material defaults in `src/structure/materials.ts`. Frame-column cladding has separate health.
 
 `src/render/lighting.ts` applies a fixed upper-west sun to wall and roof ramps. `slopeFacingLight` in `drawIso.ts` now delegates to `roofSlopeLight` so roof brightness follows light direction, not camera facing.
 
@@ -26,13 +26,13 @@ Intact buildings get one merged footprint shadow. Per-cell ground shadows are re
 
 ## Roofs
 
-`src/structure/roof.ts` builds roof sections from the occupied top-floor footprint. Wall spans stop at story height (`floors * FLOOR_Z`) unless that face carries a gable: then the top-floor span is one house-shaped polygon (rectangle plus peak) so there is no triangle seam on the story top. Flat roofs sit on that same story top with a small overhang. Shed roofs keep their slope: the top-floor south/east spans rise as trapezoids to the live shed plane so the lot does not show through under the high eave. Roof planes paint after those walls and own the eave. Do not draw a separate gable triangle or a post-roof fascia.
+`src/structure/roof.ts` builds locally supported roof bays over exposed floor footprints, including lower extensions. Each roof records its bearing floor. Wall spans stop at story height (`floors * FLOOR_Z`) unless that face carries a gable: then the top-floor span is one house-shaped polygon (rectangle plus peak) so there is no triangle seam on the story top. Flat roofs sit on that same story top with a small overhang. Shed roofs keep their slope: the top-floor south/east spans rise as trapezoids to the live shed plane so the lot does not show through under the high eave. Roof planes paint after those walls and own the eave. Do not draw a separate gable triangle or a post-roof fascia.
 
-- Rectangular gable: two sloped planes and a shared ridge, ridge along the longer axis unless the archetype overrides it.
-- Shed and flat: one explicit section so they share the same support/collapse life.
+- Rectangular gable: paired sloped bays with local ridge segments, ridge along the chosen axis.
+- Shed and flat: the roof plane is divided into local structural bays.
 - Irregular top floors: deterministic strips over occupied cells only.
 
-An intact top-floor cell supports its section. Lost local support sags, then drops that section. If most top-floor support is gone, remaining sections fail together. Roof debris is wood beams and panels (or metal panels) and follows the same mass budget as wall debris. Roof fall does not pay a second building bonus.
+Authored construction determines which perimeter cells or columns support each roof bay. Floor coverage and bearing cells are separate. Lost local support sags, then drops that section. If most top-floor support is gone, remaining sections fail together. Roof debris is wood beams and panels (or metal panels) and follows the same mass budget as wall debris. Roof fall does not pay a second building bonus.
 
 Intact districts do not scan every roof every frame. Roof stepping runs only on dirty or unsettled buildings.
 
@@ -69,7 +69,7 @@ Add one `AssetDef` to `ASSET_CATALOG` with a unique id, a destruction profile th
 
 ### Destruction profiles
 
-Shared handlers in `src/sim/assets.ts`:
+Shared damage response and fragment recipes live in `src/sim/objectBehavior.ts`; `src/sim/assets.ts` handles outdoor world effects such as explosions and bird events:
 
 | Profile | Use |
 | --- | --- |
@@ -122,3 +122,15 @@ Developer overlay: `?nhood=1` or press `G` to draw nodes, segment IDs, parcel ri
 Civilian traffic must stay on road or driveway. The V-key test car follows lane connectivity on a generated route (curve + intersection), not a hard-coded east-west path. Full civilian traffic sim is out of scope.
 
 Police navigation is a **contract only** (`src/world/routing.ts`). Ordinary pursuit prefers roads. Police may leave the road only when the dozer is nearby, a valid off-road approach exists, and pursuit rules allow it. Off-road is slower (`offRoadCostMul`). Routing distinguishes a blocked road from an inaccessible destination. There is no police AI in this branch.
+
+## Wreckage lifecycle and performance
+
+Broken furnishings transfer into the same debris stream as outdoor objects. Their old fixture visuals are not retained beside the emitted debris. Each world step removes their inactive fixture records.
+
+Debris continuously more than 28 world units from the dozer retires after eight unattended seconds and interaction grace, even below the normal caps. This deadline also retires numerical contact jitter that would otherwise keep a remote pile awake indefinitely. Nearby road vehicles protect their surroundings. Retirement preserves material mass and test-yard ownership in the editable pile. Normal budget and emergency cleanup still apply independently.
+
+Fully demolished buildings retain their identity and one-time reward status. After eight seconds more than 28 units from their footprint, their cells, structural grid, floors, roofs, fixtures and decoration arrays are released. A persistent site and editable pile represent the aftermath. Returning does not respawn the building; restoration constructs a fresh instance.
+
+Building geometry and floor-coverage caches use `visualRevision`. Code that changes visual or structural state must advance that revision; direct state mutation is not an authoring API. The renderer reuses submitted graphics by identity and visual state, preserves painter order, and destroys cached graphics when they leave the submitted view. Interior floor and wall caches are released when a building retires. Sleeping debris reuses its spatial index and support checks until positions, elevations, membership or pile state change.
+
+Enable the performance overlay with `?perf=1` or DEBUG. It reports simulation CPU time, drawing preparation time, live runtime-record counts, retired buildings, retained drawing objects and geometry rebuilds. Browser heap usage is shown only when available; it is a sampled JavaScript heap estimate, not GPU memory. Compare object counts after repeated demolition/restoration and heap trends across garbage-collection cycles, rather than treating a single heap reading as a leak.

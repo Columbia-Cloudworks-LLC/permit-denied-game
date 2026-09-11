@@ -22,14 +22,14 @@ import {
   sectionOwnsRidge,
   shedWallVerts,
 } from "./roof";
-import { fullMask } from "../world/archetypes";
+import { fullMask, archetypeById } from "../world/archetypes";
 import { depthKey, roofPainterDepth } from "../world/iso";
 import { slopeFacingLight } from "../render/drawIso";
 
 describe("structural roofs", () => {
-  it("builds two sloped gable planes that share a ridge", () => {
+  it("builds sloped gable bays with paired ridge segments", () => {
     const b = createBuildingFromArchetype("cottage", "TEST COTTAGE", 0, 0);
-    expect(b.roofs.filter((r) => r.style === "gable")).toHaveLength(2);
+    expect(b.roofs.filter((r) => r.style === "gable")).toHaveLength(b.w * 2);
     expect(gablePlanesSloped(b.roofs)).toBe(true);
     const zs = b.roofs.flatMap((r) => r.verts.map((v) => v.z));
     expect(Math.max(...zs) - Math.min(...zs)).toBeGreaterThan(0.5);
@@ -66,7 +66,10 @@ describe("structural roofs", () => {
   it("places roof sections only over occupied top-floor cells", () => {
     const mask = fullMask(2, 4, 3);
     for (let gy = 0; gy < 3; gy++) mask[1]![0]![gy] = false;
+    const a = archetypeById("cottage");
     const b = createBuilding({
+      construction: a.construction, openings: a.openings,
+      layout: { partitions: false, rooms: [0, 1].map(floor => ({ id: `room-${floor}`, kind: "living", floor, x: floor ? .25 : 0, y: 0, w: floor ? .75 : 1, d: 1, finish: "plank", contents: [] })) },
       kind: "house",
       name: "NOTCH",
       x: 0,
@@ -74,13 +77,12 @@ describe("structural roofs", () => {
       w: 4,
       d: 3,
       floors: 2,
-      material: "wood",
       roof: "gable",
       mask,
     });
     expect(roofCoversOnlyOccupied(b)).toBe(true);
     for (const roof of b.roofs) {
-      expect(roof.support.some((s) => s.gx === 0)).toBe(false);
+      if (roof.floor === 1) expect(roof.support.some((s) => s.gx === 0)).toBe(false);
     }
   });
 

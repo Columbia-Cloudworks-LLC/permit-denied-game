@@ -131,6 +131,22 @@ describe("debris spawn and mass", () => {
 });
 
 describe("blade and vehicle contact", () => {
+  it.each([false, true])("moving debris wakes a sleeping target regardless of creation order (%s)", sleeperFirst => {
+    const town = createTown();
+    const make = (x: number) => addDebrisBody(town, { x, y: 18, w: .6, d: .6, material: "metal", layer: "remnant", mass: 1, heading: 0 });
+    const first = make(sleeperFirst ? 12.4 : 12);
+    const second = make(sleeperFirst ? 12 : 12.4);
+    const sleeper = sleeperFirst ? first : second;
+    const moving = sleeperFirst ? second : first;
+    sleeper.sleeping = true;
+    sleeper.vx = sleeper.vy = sleeper.omega = 0;
+    moving.vx = 2;
+    stepOnce(town);
+    expect(sleeper.sleeping).toBe(false);
+    expect(sleeper.x).toBeGreaterThan(12.4);
+    expect(totalDebrisMass(town)).toBeCloseTo(2, 4);
+  });
+
   it("blade contact pushes and rotates off-center debris", () => {
     const town = createTown();
     const dozer = createDozer(10, 17.6, 0);

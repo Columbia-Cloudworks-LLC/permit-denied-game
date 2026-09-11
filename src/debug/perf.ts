@@ -1,4 +1,9 @@
 export interface PerfSnapshot {
+  heapMB: number | null;
+  runtimeObjects: number;
+  retiredBuildings: number;
+  drawCached: number;
+  drawRebuilt: number;
   frameMs: number;
   simCpuMs: number;
   renderPrepMs: number;
@@ -35,6 +40,7 @@ export interface Percentiles {
 }
 
 const EMPTY: PerfSnapshot = {
+  heapMB: null, runtimeObjects: 0, retiredBuildings: 0, drawCached: 0, drawRebuilt: 0,
   frameMs: 0,
   simCpuMs: 0,
   renderPrepMs: 0,
@@ -125,6 +131,8 @@ export function formatPerfOverlay(s: PerfSnapshot, fps: number): string {
     `SIM ${s.simCpuMs.toFixed(2)}ms  PREP ${s.renderPrepMs.toFixed(2)}ms  (GPU not measured)`,
     `DEBRIS act ${s.debrisActive} sleep ${s.debrisSleeping} pairs ${s.contactPairs} absorb ${s.budgetConversions} far ${s.distanceCleanups} emerg ${s.emergencyCleanups}`,
     `BUILDINGS step ${s.buildingsStepped} skip ${s.buildingsSkipped} hash ${s.collisionRebuilds}`,
+    `MEM heap ${s.heapMB === null ? "unavailable" : s.heapMB.toFixed(1) + " MB"} objects ${s.runtimeObjects} retired ${s.retiredBuildings}`,
+    `GEOMETRY cached ${s.drawCached} rebuilt ${s.drawRebuilt}`,
     `DRAW vis ${s.renderVisible} / ${s.renderTotal}`,
     `MASS body ${s.bodyMass.toFixed(1)} pile ${s.pileMass.toFixed(1)}  drop ${s.droppedSimSec.toFixed(3)}s`,
   ].join("\n");

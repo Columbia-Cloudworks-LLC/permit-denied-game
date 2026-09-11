@@ -226,3 +226,15 @@ body {
 .debug-actions { display: flex; gap: 8px; margin-top: 14px; }
 #hud-root button:disabled { opacity: .4; cursor: default; }
 #hud-root button:focus-visible, #debug-panel input:focus-visible, #debug-panel select:focus-visible { outline: 2px solid #ffe49c; outline-offset: 3px; }
+.yard-panel { position: absolute; top: 112px; left: 12px; z-index: 15; width: min(350px, calc(100vw - 24px)); pointer-events: auto; background: #17221ef2; color: #f4e9c9; border: 1px solid #a79e72; border-radius: 6px; font: 12px/1.4 monospace; }
+.yard-panel[hidden] { display: none; }
+.yard-panel summary { cursor: pointer; padding: 9px; font-weight: bold; }
+.yard-body { padding: 0 10px 10px; max-height: calc(100vh - 190px); overflow: auto; }
+.yard-body p { margin: 7px 0; white-space: pre-line; }
+.yard-body input:not([type=checkbox]), .yard-body select { box-sizing: border-box; color: #fff5d9; background: #29352e; border: 1px solid #697567; padding: 5px; min-width: 0; width: 100%; font: inherit; }
+.yard-body button { font: inherit; padding: 5px; white-space: normal; }
+.yard-body button:disabled { opacity: .45; }
+.yard-row, .yard-filters { display: flex; gap: 5px; margin: 5px 0; }
+.yard-row > * { flex: 1; min-width: 0; }
+.yard-filters { flex-wrap: wrap; }
+.yard-filters select { flex: 1 1 90px; }

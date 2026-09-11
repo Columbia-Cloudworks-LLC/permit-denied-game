@@ -108,7 +108,7 @@ export const ASSET_CATALOG: readonly AssetDef[] = [
   ...CONTENT_ASSETS,
   asset({
     id: "fence",
-    family: "legacy",
+    family: "residential",
     tags: ["residential"],
     footprint: { w: 1, d: 0.16, h: 0.85 },
     collision: { w: 1, d: 0.16 },
@@ -135,7 +135,7 @@ export const ASSET_CATALOG: readonly AssetDef[] = [
   }),
   asset({
     id: "light",
-    family: "legacy",
+    family: "roadside",
     tags: ["roadside", "tall"],
     footprint: { w: 0.28, d: 0.28, h: 2.7 },
     collision: { w: 0.28, d: 0.28 },
@@ -165,7 +165,7 @@ export const ASSET_CATALOG: readonly AssetDef[] = [
   }),
   asset({
     id: "camera",
-    family: "legacy",
+    family: "roadside",
     tags: ["roadside", "tall"],
     footprint: { w: 0.26, d: 0.26, h: 2.2 },
     collision: { w: 0.26, d: 0.26 },
@@ -195,7 +195,7 @@ export const ASSET_CATALOG: readonly AssetDef[] = [
   }),
   asset({
     id: "car",
-    family: "legacy",
+    family: "roadside",
     tags: ["commercial"],
     footprint: { w: 1.7, d: 0.85, h: 0.9 },
     collision: { w: 1.7, d: 0.85 },
@@ -222,7 +222,7 @@ export const ASSET_CATALOG: readonly AssetDef[] = [
   }),
   asset({
     id: "dumpster",
-    family: "legacy",
+    family: "commercial",
     tags: ["commercial"],
     footprint: { w: 0.9, d: 0.7, h: 0.7 },
     collision: { w: 0.9, d: 0.7 },
@@ -249,7 +249,7 @@ export const ASSET_CATALOG: readonly AssetDef[] = [
   }),
   asset({
     id: "barricade",
-    family: "legacy",
+    family: "roadside",
     tags: ["roadside"],
     footprint: { w: 1.4, d: 0.28, h: 0.85 },
     collision: { w: 1.4, d: 0.28 },
@@ -1193,7 +1193,7 @@ export const ASSET_CATALOG: readonly AssetDef[] = [
 
 const BY_ID = new Map(ASSET_CATALOG.map((a) => [a.id, a]));
 
-export const NEW_ASSET_IDS = ASSET_CATALOG.filter((a) => a.family !== "legacy").map((a) => a.id);
+export const ASSET_IDS = ASSET_CATALOG.map((a) => a.id);
 
 export function getAsset(id: string): AssetDef {
   const found = BY_ID.get(id);
@@ -1249,11 +1249,15 @@ export function spawnAsset(
   variant = 0,
   size?: { w: number; d: number },
 ): Prop {
-  const def = getAsset(assetId);
+  return spawnAssetDefinition(getAsset(assetId), x, y, heading, variant, size);
+}
+
+export function spawnAssetDefinition(def: AssetDef, x: number, y: number, heading = 0, variant = 0, size?: { w: number; d: number }): Prop {
   const w = size?.w ?? def.footprint.w;
   const d = size?.d ?? def.footprint.d;
   return {
     id: propSeq++,
+    lotId: null,
     assetId: def.id,
     kind: def.id,
     variant: ((variant % def.variants) + def.variants) % def.variants,

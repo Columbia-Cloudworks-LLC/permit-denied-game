@@ -1,23 +1,13 @@
 import { SIM_DT } from "../game/constants";
 import { ParticlePool } from "../fx/particles";
-import { applyCellDamage, createBuilding, stepStructures } from "../structure/building";
+import { applyCellDamage, createBuildingFromArchetype, stepStructures } from "../structure/building";
 import { cellPresent, type Building } from "../structure/types";
 import { createDozer, stepDozer } from "../vehicle/dozer";
 import { createTown } from "../world/town";
 import { stepWorld, type Upgrades } from "./worldSim";
 
 export function freshWarehouse(): Building {
-  return createBuilding({
-    kind: "industrial",
-    name: "TEST SHED",
-    x: 0,
-    y: 0,
-    w: 5,
-    d: 4,
-    floors: 3,
-    material: "concrete",
-    roof: "shed",
-  });
+  return createBuildingFromArchetype("warehouse", "TEST SHED", 0, 0);
 }
 
 export function smashCorner(building: Building, amount = 999): void {

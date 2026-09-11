@@ -27,7 +27,7 @@ export function debugLines(town: Town, dozer: Dozer, view: DebugView): DebugLine
     }
   }
   for (const b of town.buildings) {
-    if (view.rooms) for (const room of b.construction?.rooms ?? []) {
+    if (view.rooms) for (const room of b.layout.rooms) {
       if (room.floor >= b.floors || room.floor > view.maxFloor) continue;
       const w = b.w * b.cellSize, d = b.d * b.cellSize;
       lines.push({ points: box(b.x + room.x * w, b.y + room.y * d, room.w * w, room.d * d, room.floor * FLOOR_Z + .15), color: 0xf6d677 });

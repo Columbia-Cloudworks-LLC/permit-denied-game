@@ -1,3 +1,5 @@
+import { DrawCache } from './drawCache';
+import type { YardBay } from '../world/yardCatalog';
 import { defaultDebugView } from "../debug/view";
 import { drawDebugOverlay } from "./debugOverlay";
 import { Container, Graphics, Text } from "pixi.js";
@@ -9,16 +11,13 @@ import { applyBrokenRoofEdge, displacedRoofVerts, roofHeightAt, sectionOwnsRidge
 import type { Bird, Building, CollapsedSite, CoverKind, GroundMark, GroundPatch, Particle, RoofSection, Rubble } from "../structure/types";
 import type { Dozer } from "../vehicle/dozer";
 import type { Town } from "../world/town";
-import { hasFurnishedInterior } from "../structure/interior";
-import { getBuildingSurfaces } from "./buildingSurfaces";
+import { getBuildingSurfaces, releaseBuildingSurfaces } from "./buildingSurfaces";
 import { drawCatalogProp } from "./assets";
 import { drawRoofFrame, interiorCmds, roofShowsFrame } from "./interiorDraw";
 import { cellColors, drawGroundPoly, drawIsoBox, drawOrientedGround, drawOrientedIsoBox, drawShadow, drawSlopedQuad, drawWorldPoly, PAL, shade } from "./drawIso";
 import {
-  drawBreachGroup,
   drawBuildingFootprintShadow,
   drawFallingCell,
-  drawTopSpan,
   drawWallSpan,
 } from "./facadeDraw";
 import { roofSlopeLight } from "./lighting";
@@ -27,18 +26,25 @@ import { drawNhoodOverlay } from "./nhoodOverlay";
 import { objectOcclusionFade, VisibilityFades, wallSpanFadeRuns } from "./occlusion";
 
 interface Cmd {
+  key?: string;
+  version?: string | number;
   depth: number;
   run: (g: Graphics) => void;
 }
 
 export class WorldRenderer {
   readonly root = new Container();
+  yardPreview: YardBay[] = [];
+  yardPreviewValid = true;
+  private yardLabels: Text[] = [];
+  private yardLabelKey = "";
   private readonly ground = new Graphics();
   private readonly sites = new Graphics();
   private readonly overlay = new Graphics();
   private readonly nhood = new Graphics();
   private readonly nhoodLabels: Text[] = [];
   private readonly world = new Graphics();
+  private readonly drawing = new DrawCache();
   private readonly cmds: Cmd[] = [];
   readonly debug = defaultDebugView();
   jobTarget?: Building;
@@ -54,14 +60,15 @@ export class WorldRenderer {
   private groundKey = "";
   private overlayKey = "";
   private siteKey = "";
-  stats = { total: 0, visible: 0, surfaceGeometry: 0 };
+  stats = { total: 0, visible: 0, surfaceGeometry: 0, cached: 0, rebuilt: 0 };
 
   constructor() {
-    this.root.addChild(this.ground, this.sites, this.overlay, this.world, this.nhood, this.debugOverlay);
+    this.root.addChild(this.ground, this.sites, this.overlay, this.drawing.root, this.world, this.nhood, this.debugOverlay);
     this.root.sortableChildren = false;
   }
 
   invalidate(): void {
+    this.drawing.clear();
     this.groundKey = "";
     this.overlayKey = "";
     this.siteKey = "";
@@ -91,6 +98,18 @@ export class WorldRenderer {
     this.sites.visible = view.sites;
     this.nhood.visible = this.showNhood;
     this.world.clear();
+    const yardKey = town.yard ? `${town.seed}:${town.yard.bays.map(b => b.key).join(',')}` : '';
+    if (yardKey !== this.yardLabelKey) {
+      for (const label of this.yardLabels) label.destroy();
+      this.yardLabels = [];
+      for (const bay of town.yard?.bays ?? []) {
+        const label = new Text({ text: `${bay.asset.category} / ${bay.asset.name}`, style: { fontSize: 10, fill: 0xffe7a0, fontFamily: 'monospace' } });
+        const p = worldToScreen(bay.x, bay.y); label.position.set(p.x, p.y); this.root.addChild(label); this.yardLabels.push(label);
+      }
+      this.yardLabelKey = yardKey;
+    }
+    for (const b of this.yardPreview) drawOrientedGround(this.world, b.x + b.w / 2, b.y + b.d / 2, 0, b.w, b.d, this.yardPreviewValid ? 0x55ff99 : 0xff5555, .3, .03);
+
     this.cmds.length = 0;
     let total = 0;
     let visible = 0;
@@ -167,6 +186,9 @@ export class WorldRenderer {
 
     let surfaceGeometry = 0;
     for (const b of town.buildings) {
+      if (b.retired) { releaseBuildingSurfaces(b); continue; }
+      const commandStart = this.cmds.length;
+      const fadeValues: number[] = [];
       const bw = b.w * b.cellSize;
       const bd = b.d * b.cellSize;
       const z1 = b.floors * FLOOR_Z + 0.8;
@@ -177,6 +199,7 @@ export class WorldRenderer {
       surfaceGeometry += surfaces.geometryCount;
       const fadeBox = (key: string, x: number, y: number, w: number, d: number, z: number, top: number) => {
         const alpha = this.fades.sample(`${b.id}:${key}`, objectOcclusionFade(dozer, x, y, w, d, z, top), dt);
+        fadeValues.push(Math.round(alpha * 1000));
         if (alpha < .6) occluded = true;
         return alpha;
       };
@@ -214,7 +237,8 @@ export class WorldRenderer {
               s.dir === "east" ? .08 : (s.gx1 - s.gx0 + 1) * cs,
               s.dir === "south" ? .08 : (s.gy1 - s.gy0 + 1) * cs,
               s.floor * FLOOR_Z, (s.floor + 1) * FLOOR_Z)), dt);
-          if (alpha < .6) occluded = true;
+          fadeValues.push(Math.round(alpha * 1000));
+        if (alpha < .6) occluded = true;
           visible++;
           this.cmds.push({
             depth: run.span.depth,
@@ -222,24 +246,7 @@ export class WorldRenderer {
           });
         }
       }
-      for (const span of view.floors ? surfaces.tops : []) {
-        if (span.floor > view.maxFloor) continue;
-        visible++;
-        this.cmds.push({
-          depth: span.depth,
-          run: (g) => drawTopSpan(g, b, span, 1),
-        });
-      }
-      for (const breach of view.walls ? surfaces.breaches : []) {
-        if (breach.floor > view.maxFloor) continue;
-        if (hasFurnishedInterior(b)) continue;
-        visible++;
-        this.cmds.push({
-          depth: breach.depth,
-          run: (g) => drawBreachGroup(g, b, breach, 1),
-        });
-      }
-      if (hasFurnishedInterior(b)) {
+      {
         const interiors = interiorCmds(b, 1, { fadeBox, reveal: view.reveal || !view.roofs || !view.walls || view.maxFloor < b.floors - 1, maxFloor: view.maxFloor })
           .filter(c => c.kind === "floor" ? view.floors : c.kind === "fixture" ? view.contents : view.walls);
         visible += interiors.length;
@@ -264,10 +271,10 @@ export class WorldRenderer {
           },
         });
       }
-      const liveRoofs = b.roofs.filter((roof) => roof.state !== "gone");
-      if (view.roofs && b.floors - 1 <= view.maxFloor && liveRoofs.length) {
+      const liveRoofs = b.roofs.filter((roof) => roof.state !== "gone" && roof.floor <= view.maxFloor);
+      if (view.roofs && liveRoofs.length) {
         total += liveRoofs.length;
-        if (b.construction?.bays) {
+        {
           for (const roof of liveRoofs) {
             const moved = roofVerts(roof);
             const c = roofCenter(moved);
@@ -291,18 +298,12 @@ export class WorldRenderer {
               });
             }
           }
-        } else {
-          const moved = liveRoofs.flatMap((roof) => roofVerts(roof));
-          const c = roofCenter(moved);
-          const alpha = fadeBox("roof", b.x, b.y, bw, bd, b.floors * FLOOR_Z, b.floors * FLOOR_Z + .8);
-          if (this.visibleBox(c.x - 2, c.y - 2, 4, 4, c.z - 1, c.z + 1.4)) {
-            visible += liveRoofs.length;
-            this.cmds.push({
-              depth: roofPainterDepth(moved),
-              run: (g) => drawBuildingRoofs(g, b, liveRoofs, alpha),
-            });
-          }
         }
+      }
+      const version = [b.visualRevision, this.camX, this.camY, this.zoom, this.viewW, this.viewH, near ? dozer.x : 0, near ? dozer.y : 0, fadeValues.join(","), JSON.stringify(view)].join(':');
+      for (let j = commandStart; j < this.cmds.length; j++) {
+        this.cmds[j]!.key = 'building:' + b.id + ':' + (j - commandStart);
+        this.cmds[j]!.version = version;
       }
     }
 
@@ -312,6 +313,8 @@ export class WorldRenderer {
       if (!this.visibleBox(p.x, p.y, p.w, p.d, p.elev, p.elev + 3.2)) continue;
       visible++;
       this.cmds.push({
+        key: 'prop:' + p.id,
+        version: [p.x, p.y, p.w, p.d, p.elev, p.heading, p.hp, JSON.stringify(p.pose)].join(':'),
         depth: depthKey(p.x + p.w / 2, p.y + p.d / 2, p.elev + 0.4),
         run: (g) => drawCatalogProp(g, p),
       });
@@ -322,6 +325,8 @@ export class WorldRenderer {
       if (!this.visibleBox(r.x - r.w, r.y - r.d, r.w * 2, r.d * 2, r.elev, r.elev + r.thickness + 0.25)) continue;
       visible++;
       this.cmds.push({
+        key: 'debris:' + r.id,
+        version: r.sleeping ? [r.x, r.y, r.elev, r.heading, r.w, r.d, r.damage].join(':') : undefined,
         depth: depthKey(r.x, r.y, r.elev + r.thickness * 0.5),
         run: (g) => drawDebris(g, r),
       });
@@ -368,7 +373,7 @@ export class WorldRenderer {
     }
 
     this.cmds.sort((a, b) => a.depth - b.depth);
-    for (const cmd of this.cmds) cmd.run(this.world);
+    this.drawing.draw(this.cmds);
     if (occluded && !view.overview) {
       const fx = Math.cos(dozer.heading), fy = Math.sin(dozer.heading);
       const point = (along: number, across: number) => {
@@ -383,7 +388,7 @@ export class WorldRenderer {
     }
     drawDebugOverlay(this.debugOverlay, town, dozer, view);
     this.fades.end();
-    this.stats = { total, visible, surfaceGeometry };
+    this.stats = { total, visible, surfaceGeometry, cached: this.drawing.size, rebuilt: this.drawing.rebuilt };
   }
 }
 
@@ -438,21 +443,6 @@ function ridgeKey(ridge: NonNullable<RoofSection["ridge"]>): string {
   return `${ridge.ax}:${ridge.ay}:${ridge.az}:${ridge.bx}:${ridge.by}:${ridge.bz}`;
 }
 
-function drawBuildingRoofs(g: Graphics, b: Building, roofs: RoofSection[], alpha: number): void {
-  const ordered = roofs.slice().sort((a, c) => {
-    const da = roofPainterDepth(roofVerts(a));
-    const dc = roofPainterDepth(roofVerts(c));
-    if (da !== dc) return da - dc;
-    return a.id - c.id;
-  });
-  const drawnRidges = new Set<string>();
-  for (const roof of ordered) drawRoofSection(g, b, roof, alpha, drawnRidges);
-  if (b.features.chimney) {
-    const ch = chimneyWorld(b);
-    if (ch) drawChimney(g, ch, alpha);
-  }
-}
-
 function drawRoofBay(g: Graphics, b: Building, roof: RoofSection, alpha: number): void {
   const drawn = new Set<string>();
   drawRoofSection(g, b, roof, alpha, drawn, () => {
@@ -471,10 +461,10 @@ function drawRoofSection(
   beforeCover?: () => void,
 ): void {
   const raw = roofVerts(roof);
-  const verts = !!b.construction?.bays ? applyBrokenRoofEdge(b, roof, raw) : raw;
+  const verts = applyBrokenRoofEdge(b, roof, raw);
   const cols = roofColors(b, roof, verts);
   const faded = roof.state === "falling" ? alpha * 0.9 : alpha;
-  const thick = !!b.construction?.bays ? 0.14 : 0;
+  const thick = 0.14;
   if (thick > 0) {
     const under = verts.map((v) => ({ x: v.x, y: v.y, z: v.z - thick }));
     drawSlopedQuad(g, under.slice().reverse(), cols.edge, cols.edge, faded * 0.95);

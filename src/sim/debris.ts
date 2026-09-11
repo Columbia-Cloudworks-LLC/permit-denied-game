@@ -1,3 +1,4 @@
+import { MATERIALS } from '../structure/materials';
 import { DEBRIS, DOZER } from "../game/constants";
 import { clamp, len } from "../game/math";
 import { Rng } from "../game/rng";
@@ -73,6 +74,8 @@ export interface CollapseSpawn {
 
 export function resetDebrisSim(seed = 0xdeb415): void {
   nextDebrisId = 1;
+  bodyHashTown = null; bodySnapshot = []; bodyHash.clear();
+  unattendedSince = new WeakMap();
   playRng.reset(seed ^ 0xdeb415);
   contacted.clear();
   debrisClock = 0;
@@ -90,68 +93,16 @@ export function totalDebrisMass(town: Town): number {
   return sum;
 }
 
-function materialDensity(material: Material): number {
-  switch (material) {
-    case "wood":
-      return 0.55;
-    case "brick":
-      return 1.05;
-    case "concrete":
-      return 1.35;
-    case "metal":
-      return 1.15;
-    case "glass":
-      return 0.32;
-    default: {
-      const _never: never = material;
-      return _never;
-    }
-  }
-}
-
-function crushabilityOf(material: Material): number {
-  switch (material) {
-    case "wood":
-      return 0.82;
-    case "brick":
-      return 0.55;
-    case "concrete":
-      return 0.26;
-    case "metal":
-      return 0.16;
-    case "glass":
-      return 0.96;
-    default: {
-      const _never: never = material;
-      return _never;
-    }
-  }
-}
-
-function frictionOf(material: Material): number {
-  switch (material) {
-    case "wood":
-      return 0.52;
-    case "brick":
-      return 0.7;
-    case "concrete":
-      return 0.74;
-    case "metal":
-      return 0.42;
-    case "glass":
-      return 0.22;
-    default: {
-      const _never: never = material;
-      return _never;
-    }
-  }
-}
+function materialDensity(material: Material): number { return MATERIALS[material].density; }
+function crushabilityOf(material: Material): number { return MATERIALS[material].crushability; }
+function frictionOf(material: Material): number { return MATERIALS[material].friction; }
 
 function cellVolume(cellSize: number): number {
   return cellSize * cellSize * 1.85;
 }
 
 function makeRubble(init: {
+  yardOwner?: string;
   x: number;
   y: number;
   w: number;
@@ -221,6 +172,7 @@ function defaultThickness(material: Material, shape: DebrisShape, layer: DebrisL
 
 export function addDebrisBody(town: Town, init: Parameters<typeof makeRubble>[0]): Rubble {
   const r = makeRubble(init);
+  r.yardOwner = init.yardOwner ?? town.debrisOwnerAt?.(init.x, init.y);
   const support = town.pile.heightAt(r.x, r.y);
   r.elev = Math.max(r.elev, support);
   town.rubble.push(r);
@@ -234,6 +186,7 @@ function addMark(
   kind: GroundKind,
   material: Material,
   heading = 0,
+  owner?: string,
 ): void {
   if (town.marks.length >= DEBRIS.cosmeticCap) {
     town.marks.splice(0, 24);
@@ -250,6 +203,7 @@ function addMark(
     seed: rng.int(1, 1_000_000),
     alpha: kind === "dust" ? 0.22 : kind === "scrape" ? 0.35 : 0.7,
   };
+  mark.yardOwner = owner ?? town.debrisOwnerAt?.(x, y);
   town.marks.push(mark);
   town.visualRevision++;
 }
@@ -462,8 +416,8 @@ export function spawnPropDebris(town: Town, x: number, y: number, w: number, d: 
 }
 
 function absorbBody(town: Town, r: Rubble): void {
-  town.pile.addMass(r.x, r.y, r.mass, r.material);
-  addMark(town, r.x, r.y, r.material === "wood" ? "splinter" : "chip", r.material, r.heading);
+  town.pile.addMass(r.x, r.y, r.mass, r.material, r.yardOwner);
+  addMark(town, r.x, r.y, r.material === "wood" ? "splinter" : "chip", r.material, r.heading, r.yardOwner);
   const i = town.rubble.indexOf(r);
   if (i >= 0) town.rubble.splice(i, 1);
   stepStats.conversions++;
@@ -522,6 +476,8 @@ export function collectCleanupCandidates(
   return out;
 }
 
+let unattendedSince = new WeakMap<Rubble, number>();
+
 export function enforceDistanceCleanup(
   town: Town,
   dozerX: number,
@@ -530,6 +486,21 @@ export function enforceDistanceCleanup(
 ): { distance: number; emergency: number } {
   let distance = 0;
   let emergency = 0;
+  // Unattended destruction becomes the editable pile after a bounded grace.
+  // Contact jitter must not keep distant bodies in the solver indefinitely.
+  for (const r of [...town.rubble]) {
+    const car = town.roadCar;
+    const protectedNow = touchingDozer(r, dozerX, dozerY, touching)
+      || Math.hypot(r.x - dozerX, r.y - dozerY) <= DEBRIS.retireRadius
+      || (car?.alive && Math.hypot(r.x - car.x, r.y - car.y) <= DEBRIS.protectRadius);
+    if (protectedNow) { unattendedSince.delete(r); continue; }
+    const since = unattendedSince.get(r);
+    if (since === undefined) { unattendedSince.set(r, debrisClock); continue; }
+    if (debrisClock - since < DEBRIS.retireDelay || debrisClock - r.touchedAt < DEBRIS.retireDelay) continue;
+    absorbBody(town, r);
+    unattendedSince.delete(r);
+    distance++;
+  }
   for (const layer of ["remnant", "fragment"] as const) {
     const layerBodies = town.rubble.filter((r) => r.layer === layer);
     const cap = layerCap(layer);
@@ -574,6 +545,7 @@ export function crushBody(town: Town, r: Rubble, particles: ParticlePool): void 
     for (const share of shares) {
       used += share;
       addDebrisBody(town, {
+        yardOwner: r.yardOwner,
         x: r.x + rng.range(-0.16, 0.16),
         y: r.y + rng.range(-0.16, 0.16),
         w: Math.max(0.12, r.w * rng.range(0.32, 0.5)),
@@ -590,10 +562,10 @@ export function crushBody(town: Town, r: Rubble, particles: ParticlePool): void 
       });
     }
   }
-  town.pile.addMass(r.x, r.y, Math.max(0, budget - used), r.material);
-  particles.burst(r.material === "wood" ? "wood" : r.material === "brick" ? "brick" : r.material === "metal" ? "metal" : "concrete", r.x, r.y, r.elev + 0.1, 0.45);
-  addMark(town, r.x, r.y, r.material === "wood" ? "splinter" : "chip", r.material, r.heading);
-  addMark(town, r.x + 0.08, r.y, "dust", r.material, r.heading);
+  town.pile.addMass(r.x, r.y, Math.max(0, budget - used), r.material, r.yardOwner);
+  particles.burst(r.material === "wood" ? "wood" : r.material === "brick" ? "brick" : r.material === "metal" ? "metal" : "concrete", r.x, r.y, r.elev + 0.1, 0.45, r.yardOwner);
+  addMark(town, r.x, r.y, r.material === "wood" ? "splinter" : "chip", r.material, r.heading, r.yardOwner);
+  addMark(town, r.x + 0.08, r.y, "dust", r.material, r.heading, r.yardOwner);
 }
 
 function splitMass(total: number, n: number, rng: Rng): number[] {
@@ -612,10 +584,10 @@ function invInertia(r: Rubble): number {
   return 1 / Math.max(0.02, i);
 }
 
-function wake(r: Rubble): void {
+function wake(r: Rubble, interacted = false): void {
   r.sleeping = false;
   r.sleepT = 0;
-  r.touchedAt = debrisClock;
+  if (interacted) r.touchedAt = debrisClock;
 }
 
 interface Obb {
@@ -849,7 +821,7 @@ function finishVehicleHit(
   events: WorldEvent[],
   particles: ParticlePool,
 ): number {
-  wake(r);
+  wake(r, true);
   const imB = invMass(r);
   const imV = 1 / Math.max(0.4, v.profile.mass * 2.1);
   const invSum = imB + imV;
@@ -880,7 +852,7 @@ function finishVehicleHit(
   const slip = Math.abs(vt);
   if (slip > 0.9 && playRng.chance(0.12)) {
     particles.spawn("dust", px, py, 0.08, 2, 0.7, 0.45);
-    addMark(townScratch, px, py, "scrape", r.material, v.heading);
+    addMark(townScratch, px, py, "scrape", r.material, v.heading, r.yardOwner);
     events.push({ kind: "scrape", x: px, y: py, z: 0.1, mag: Math.min(1.1, slip * 0.18), material: r.material });
   } else if (jn > 0.55 && playRng.chance(0.08)) {
     events.push({ kind: "scrape", x: px, y: py, z: 0.12, mag: Math.min(0.8, jn * 0.25), material: r.material });
@@ -895,6 +867,7 @@ function integrateBody(town: Town, r: Rubble, dt: number): void {
   if (r.sleeping) {
     if (r.elev > support + 0.035) wake(r);
     else {
+      r.sleepT += dt;
       r.vx = 0;
       r.vy = 0;
       r.omega = 0;
@@ -959,7 +932,15 @@ function approachElev(current: number, target: number, maxDelta: number): number
   return current + Math.sign(d) * maxDelta;
 }
 
+const supportCache = new WeakMap<Rubble, { pile: Town['pile']; revision: number; hash: number; elev: number; height: number }>();
 function supportHeight(town: Town, r: Rubble): number {
+  const old = supportCache.get(r);
+  if (r.sleeping && old?.pile === town.pile && old.revision === town.pile.revision && old.hash === bodyHashRevision && old.elev === r.elev) return old.height;
+  const height = calculateSupportHeight(town, r);
+  supportCache.set(r, { pile: town.pile, revision: town.pile.revision, hash: bodyHashRevision, elev: r.elev, height });
+  return height;
+}
+function calculateSupportHeight(town: Town, r: Rubble): number {
   let support = Math.min(0.7, town.pile.heightAt(r.x, r.y));
   if (r.layer === "remnant") return support;
   const box = rubbleAabb(r);
@@ -977,7 +958,17 @@ function supportHeight(town: Town, r: Rubble): number {
   return Math.min(0.85, support);
 }
 
+let bodyHashTown: Town | null = null;
+let bodyHashRevision = 0;
+let bodySnapshot: { body: Rubble; x: number; y: number; w: number; d: number; heading: number; elev: number }[] = [];
 function rebuildBodyHash(town: Town): void {
+  if (bodyHashTown === town && bodySnapshot.length === town.rubble.length && town.rubble.every((r, i) => {
+    const old = bodySnapshot[i]!;
+    return old.body === r && old.x === r.x && old.y === r.y && old.w === r.w && old.d === r.d && old.heading === r.heading && old.elev === r.elev;
+  })) return;
+  bodyHashTown = town;
+  bodyHashRevision++;
+  bodySnapshot = town.rubble.map(r => ({ body: r, x: r.x, y: r.y, w: r.w, d: r.d, heading: r.heading, elev: r.elev }));
   bodyHash.clear();
   for (const r of town.rubble) {
     const box = rubbleAabb(r);
@@ -1007,10 +998,11 @@ function reactivatePileMass(
   heading: number,
   vx: number,
   vy: number,
+  owner?: string,
 ): void {
   if (mass <= 1e-6) return;
   if (mass < 0.05) {
-    town.pile.addMass(x, y, mass, material);
+    town.pile.addMass(x, y, mass, material, owner);
     return;
   }
   const n = mass > 0.38 ? 2 : 1;
@@ -1019,6 +1011,7 @@ function reactivatePileMass(
     const share = i === n - 1 ? left : mass / n;
     left -= share;
     addDebrisBody(town, {
+      yardOwner: owner,
       x: x + playRng.range(-0.14, 0.14),
       y: y + playRng.range(-0.14, 0.14),
       w: material === "wood" ? playRng.range(0.28, 0.5) : playRng.range(0.16, 0.34),
@@ -1059,9 +1052,14 @@ function interactWithPile(
         const pushed = extracted.mass * 0.52;
         const spawned = extracted.mass - pushed;
         if (pushed > 0.008) {
-          town.pile.addMass(px + fx * 0.9, py + fy * 0.9, pushed, extracted.material);
+          town.pile.addMass(px + fx * 0.9, py + fy * 0.9, pushed, extracted.material, extracted.owners);
         }
-        reactivatePileMass(town, px + fx * 0.32, py + fy * 0.32, spawned, extracted.material, v.heading, v.vx, v.vy);
+        let owned = 0;
+        for (const [owner, fraction] of Object.entries(extracted.owners ?? {})) {
+          owned += fraction;
+          reactivatePileMass(town, px + fx * .32, py + fy * .32, spawned * fraction, extracted.material, v.heading, v.vx, v.vy, owner);
+        }
+        if (owned < 1 - 1e-6) reactivatePileMass(town, px + fx * .32, py + fy * .32, spawned * (1 - owned), extracted.material, v.heading, v.vx, v.vy);
         town.pile.compactPoint(px, py, 0.28 * dt);
         if (playRng.chance(0.14)) {
           particles.spawn("dust", px, py, 0.1, 2, 0.8, 0.4);
@@ -1131,13 +1129,17 @@ export function stepDebris(
   contacted.clear();
 
   for (let iter = 0; iter < DEBRIS.solverIters; iter++) {
-    rebuildBodyHash(town);
-    for (const r of town.rubble) {
+    // Query from moving pieces; sleeping pieces remain in the hash as targets.
+    // Snapshot membership so a newly woken piece cannot duplicate a pair.
+    const active = town.rubble.filter(r => !r.sleeping);
+    if (!active.length) break;
+    const activeIds = new Set(active.map(r => r.id));
+    if (iter > 0) rebuildBodyHash(town);
+    for (const r of active) {
       const box = rubbleAabb(r);
       bodyHash.query(box.x - 0.05, box.y - 0.05, box.w + 0.1, box.d + 0.1, nearbyBodies);
       for (const other of nearbyBodies) {
-        if (other.id <= r.id) continue;
-        if (r.sleeping && other.sleeping) continue;
+        if (other.id === r.id || (activeIds.has(other.id) && other.id < r.id)) continue;
         contactPairs++;
         resolveBodies(r, other);
       }
@@ -1244,6 +1246,7 @@ export function depositSettledParticles(town: Town, particles: ParticlePool): vo
     const kind: GroundKind = p.kind === "glass" ? "glass" : p.kind === "wood" ? "splinter" : "chip";
     const material: Material = p.kind;
     addMark(town, p.x, p.y, kind, material, p.rot);
+    town.marks[town.marks.length - 1]!.yardOwner = p.yardOwner;
     p.alive = false;
   }
 }
