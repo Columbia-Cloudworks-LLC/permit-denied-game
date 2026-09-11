@@ -4,7 +4,7 @@ import { invalidateWorldCollision } from '../sim/worldSim';
 import type { ParticlePool } from '../fx/particles';
 import { createRoadVehicle } from '../vehicle/roadVehicle';
 import { emptyTerrain, RoadBuilder, linePoints, pt } from './roads';
-import { discoverYardAssets, yardAssetIssue, instantiateBay, layoutYard, overlap, type YardAsset, type YardBay, type YardBox } from './yardCatalog';
+import { bayBuildings, bayProps, discoverYardAssets, yardAssetIssue, yardGridSlots, instantiateBay, layoutYard, overlap, type YardAsset, type YardBay, type YardBox } from './yardCatalog';
 import type { Town } from './town';
 
 export interface TestYard { assets: YardAsset[]; bays: YardBay[]; sequence: number; baselineEnd: number; issues: string[] }
@@ -33,17 +33,19 @@ export function populateTestYard(town: Town): Town {
 }
 function addBay(town: Town, bay: YardBay): void {
   instantiateBay(bay);
-  if (bay.building) town.buildings.push(bay.building);
-  if (bay.prop) town.props.push(bay.prop);
+  town.buildings.push(...bayBuildings(bay));
+  town.props.push(...bayProps(bay));
 }
 export function ownerAt(town: Town, x: number, y: number): string | undefined {
-  const moving = town.yard?.bays.find(b => b.prop && x >= b.prop.x - .2 && x <= b.prop.x + b.prop.w + .2 && y >= b.prop.y - .2 && y <= b.prop.y + b.prop.d + .2);
+  const moving = town.yard?.bays.find(b => bayProps(b).some(p => x >= p.x - .2 && x <= p.x + p.w + .2 && y >= p.y - .2 && y <= p.y + p.d + .2));
   if (moving) return moving.key;
   return town.yard?.bays.find(b => x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.d)?.key;
 }
 export function planBatch(assets: YardAsset[], quantity: number, variants: boolean, x: number, y: number, variant = 0): YardBay[] {
   if (!Number.isInteger(quantity) || quantity < 1 || quantity > 100) throw new Error('Quantity must be 1–100.');
   const out: YardBay[] = []; let cx = x, cy = y, row = 0;
+  const slots = assets.reduce((n, a) => n + yardGridSlots(a) * quantity * (variants ? a.variants : 1), 0);
+  if (slots > 32768) throw new Error('Batch exceeds 32768 building grid slots; place fewer large structures.');
   for (const asset of assets) for (let v = 0; v < (variants ? asset.variants : 1); v++) for (let n = 0; n < quantity; n++) {
     if (out.length >= 500) throw new Error('Limit each placement to 500 instances.');
     const issue = yardAssetIssue(asset); if (issue) throw new Error(issue);
@@ -56,6 +58,7 @@ export function planBatch(assets: YardAsset[], quantity: number, variants: boole
 }
 export function placementError(town: Town, plan: YardBay[], dozer?: { x: number; y: number }): string | undefined {
   if (!plan.length) return 'No matching assets.';
+  if (town.buildings.reduce((n, b) => n + b.w * b.d * b.floors, 0) + plan.reduce((n, b) => n + yardGridSlots(b.asset), 0) > 65536) return 'Yard exceeds 65536 building grid slots; remove some structures first.';
   for (const [index, b] of plan.entries()) {
     const issue = yardAssetIssue(b.asset); if (issue) return issue;
     if (plan.slice(index + 1).some(other => overlap(b, other))) return "Batch bays overlap each other.";
@@ -89,8 +92,8 @@ export function spawnBatch(town: Town, plan: YardBay[], dozer?: { x: number; y: 
   }
   for (const bay of plan) {
     bay.key = `user:${++yard.sequence}`;
-    if (bay.prop) town.props.push(bay.prop);
-    if (bay.building) town.buildings.push(bay.building);
+    town.props.push(...bayProps(bay));
+    town.buildings.push(...bayBuildings(bay));
     yard.bays.push(bay);
   }
   changed(town);
@@ -112,19 +115,21 @@ export function clearBayDebris(town: Town, bay: YardBay, particles?: ParticlePoo
 }
 export function removeBay(town: Town, bay: YardBay, particles?: ParticlePool): void {
   clearBayDebris(town, bay, particles);
-  town.props = town.props.filter(p => p !== bay.prop);
-  town.buildings = town.buildings.filter(b => b !== bay.building);
-  town.collapsedSites = town.collapsedSites.filter(s => s.buildingId !== bay.building?.id);
+  const buildings = new Set(bayBuildings(bay)), props = new Set(bayProps(bay));
+  town.props = town.props.filter(p => !props.has(p));
+  town.buildings = town.buildings.filter(b => !buildings.has(b));
+  const ids = new Set([...buildings].map(b => b.id));
+  town.collapsedSites = town.collapsedSites.filter(s => !ids.has(s.buildingId));
   town.yard!.bays = town.yard!.bays.filter(b => b !== bay);
   changed(town);
 }
 export function restoreBay(town: Town, bay: YardBay, particles?: ParticlePool): void {
-  const replacement = { ...bay, prop: undefined, building: undefined };
+  const replacement = { ...bay, prop: undefined, building: undefined, site: undefined };
   instantiateBay(replacement);
   removeBay(town, bay, particles);
-  bay.prop = replacement.prop; bay.building = replacement.building;
-  if (bay.prop) town.props.push(bay.prop);
-  if (bay.building) town.buildings.push(bay.building);
+  bay.prop = replacement.prop; bay.building = replacement.building; bay.site = replacement.site;
+  town.props.push(...bayProps(bay));
+  town.buildings.push(...bayBuildings(bay));
   town.yard!.bays.push(bay); changed(town);
 }
 function changed(town: Town): void { town.visualRevision++; town.siteRevision++; invalidateWorldCollision(); }

@@ -1,4 +1,5 @@
 import { applyFixtureDamage } from '../structure/interior';
+import { bayBuildings, bayProps, type YardBay } from '../world/yardCatalog';
 import { YardPanel } from '../render/yardPanel';
 import { applyCellDamage } from '../structure/building';
 import { destroyProp } from '../sim/assets';
@@ -59,12 +60,14 @@ export class Game {
   private hud!: Hud;
   private yardPanel?: YardPanel;
   private followRoadCamera = true;
+  private towerOverview = true;
+  private yardFocus?: YardBay;
   private perfEl: HTMLElement | null = null;
   private perfExportAt = 0;
   private rules: SessionRules = parseSessionFromSearch(
     typeof window === "undefined" ? "" : window.location.search,
   );
-  private town = createTown({ district: this.rules.district, seed: this.rules.seed, showcase: !!this.rules.demo, yard: this.rules.kind === "sandbox" && this.rules.district === "classic" && !this.rules.demo && !this.rules.ranchFocus });
+  private town = createTown({ towerTest: this.rules.towerTest, district: this.rules.district, seed: this.rules.seed, showcase: !!this.rules.demo, yard: this.rules.kind === "sandbox" && this.rules.district === "classic" && !this.rules.demo && !this.rules.ranchFocus });
   private dozer = createDozer(this.town.spawnX, this.town.spawnY, this.town.spawnHeading);
   private birds: Bird[] = [];
   private cash = 0;
@@ -111,6 +114,26 @@ export class Game {
     this.hud.onNewSeed = () => this.reset("new");
     this.hud.onSession = (kind) => this.setSession(kind);
     this.hud.onDistrict = (id) => this.setDistrict(id);
+    this.hud.onTower = () => {
+      this.rules = { kind: 'sandbox', district: 'classic', seed: this.rules.seed, ranchFocus: false, towerTest: true };
+      this.reset('same');
+    };
+    this.hud.onTowerAction = action => {
+      if (!this.rules.towerTest) return;
+      const b = this.town.buildings[0]!;
+      if (action === 'reset') { this.reset('same'); return; }
+      if (action === 'view') { this.towerOverview = !this.towerOverview; if (this.towerOverview) { this.renderer.debug.maxFloor = 99; this.renderer.debug.reveal = false; this.syncDebug(); } return; }
+      if (action === 'core-view') {
+        this.towerOverview = false;
+        this.renderer.debug.maxFloor = this.renderer.debug.maxFloor === 0 ? 99 : 0;
+        this.renderer.debug.reveal = this.renderer.debug.maxFloor === 0;
+        this.syncDebug(); return;
+      }
+      if (b.coreCollapse?.phase !== 'standing') return;
+      for (const c of b.cells) if (c.floor === 0 && (action === 'core' ? c.coreSupport : c.exterior.south))
+        applyCellDamage(b, c, 10000, 0, -1, this.particles, []);
+      if (action === 'core') { this.towerOverview = true; this.renderer.debug.maxFloor = 99; this.renderer.debug.reveal = false; this.syncDebug(); }
+    };
     this.hud.onDemo = (id) => this.setDemo(id);
     this.hud.onJob = () => this.startJob();
     this.hud.onDrive = (key, down) => { if (down) this.input.down.add(key); else this.input.down.delete(key); };
@@ -121,19 +144,20 @@ export class Game {
     this.hud.onDebugStep = () => { if (this.renderer.debug.freeze && this.mode === "play") this.step(SIM_DT); };
     this.yardPanel = new YardPanel(hudRoot, {
       town: () => this.town, particles: this.particles, dozer: () => this.dozer,
-      jump: (x, y) => { this.followRoadCamera = false; this.dozer = createDozer(x, y, -Math.PI / 2); this.renderer.showNhood = false; },
+      jump: (x, y) => { this.yardFocus = undefined; this.followRoadCamera = false; this.dozer = createDozer(x, y, -Math.PI / 2); this.renderer.showNhood = false; },
+      frame: bay => { this.yardFocus = bay; this.followRoadCamera = false; this.renderer.showNhood = false; },
       followRoad: () => { this.followRoadCamera = true; },
       releaseInput: () => { this.input.down.clear(); this.input.flush(); },
       preview: (bays, valid) => { this.renderer.yardPreview = bays; this.renderer.yardPreviewValid = valid; },
       changed: () => this.renderer.invalidate(),
       destroy: bay => {
-        if (bay.prop && !bay.prop.broken) destroyProp(this.town, bay.prop, this.particles, [], bay.prop.x - 1, bay.prop.y);
+        for (const prop of bayProps(bay)) if (!prop.broken) destroyProp(this.town, prop, this.particles, [], prop.x - 1, prop.y);
         if (bay.building && bay.asset.fixture) {
           for (const f of bay.building.fixtures) {
             const hit = applyFixtureDamage(bay.building, f, 10000, 1, 0, this.particles, []);
             spawnFixtureFrags(this.town, hit.frags);
           }
-        } else if (bay.building) for (const cell of bay.building.cells) applyCellDamage(bay.building, cell, 10000, 1, 0, this.particles, []);
+        } else for (const building of bayBuildings(bay)) for (const cell of building.cells) applyCellDamage(building, cell, 10000, 1, 0, this.particles, []);
       },
     });
     this.detachInput = this.input.attach();
@@ -188,6 +212,7 @@ export class Game {
   }
 
   setSession(kind: SessionKind): void {
+    this.rules.towerTest = false;
     this.rules.job = false;
     this.rules.demo = undefined;
     this.rules.kind = kind;
@@ -195,6 +220,7 @@ export class Game {
   }
 
   setDistrict(district: DistrictId): void {
+    this.rules.towerTest = false;
     this.rules.job = false;
     this.rules.demo = undefined;
     this.rules.district = district;
@@ -203,10 +229,12 @@ export class Game {
   }
 
   reset(kind: "same" | "new" = "same"): void {
+    this.towerOverview = true;
+    if (this.rules.towerTest) { this.renderer.debug.maxFloor = 99; this.renderer.debug.reveal = false; this.syncDebug(); }
     this.input.down.clear();
     this.followRoadCamera = true;
     if (kind === "new") this.rules.seed = nextSeed(this.rules.seed);
-    this.town = createTown({ district: this.rules.district, seed: this.rules.seed, showcase: !!this.rules.demo, yard: this.rules.kind === "sandbox" && this.rules.district === "classic" && !this.rules.demo && !this.rules.ranchFocus });
+    this.town = createTown({ towerTest: this.rules.towerTest, district: this.rules.district, seed: this.rules.seed, showcase: !!this.rules.demo, yard: this.rules.kind === "sandbox" && this.rules.district === "classic" && !this.rules.demo && !this.rules.ranchFocus });
     const ranch = this.rules.demo || this.rules.ranchFocus
       ? this.town.buildings.find((b) => b.archetypeId === (this.rules.demo ?? "ranch"))
       : undefined;
@@ -246,6 +274,7 @@ export class Game {
   }
 
   setDemo(demo: DemoAsset): void {
+    this.rules.towerTest = false;
     this.rules.job = false;
     this.rules.demo = demo;
     this.rules.kind = "sandbox";
@@ -507,7 +536,21 @@ export class Game {
   }
 
   private draw(dt: number): void {
-    if (this.town.roadCar && this.followRoadCamera) {
+    if (this.input.axis().throttle || this.input.axis().steer || !this.town.yard?.bays.includes(this.yardFocus!)) this.yardFocus = undefined;
+    if (this.rules.towerTest && (this.towerOverview || this.town.buildings[0]?.coreCollapse?.phase === 'falling')) {
+      const b = this.town.buildings[0]!;
+      const box = worldBoundsToScreen(b.x - 7, b.y - 7, b.w * b.cellSize + 14, b.d * b.cellSize + 14, 0, b.floors * 2.35 + 1);
+      const zoom = Math.min(1.15, .72 * Math.min(this.app.renderer.width / (box.maxX - box.minX), this.app.renderer.height / (box.maxY - box.minY)));
+      this.renderer.zoom = zoom; this.renderer.camX = (box.minX + box.maxX) / 2 * zoom; this.renderer.camY = (box.minY + box.maxY) / 2 * zoom;
+    } else if (this.yardFocus) {
+      const bay = this.yardFocus, asset = bay.asset;
+      const height = Math.max(1, ...bayBuildings(bay).map(b => b.floors * 2.35 + .8));
+      const box = worldBoundsToScreen(bay.x + asset.clearance - 2, bay.y + asset.clearance - 2, asset.w + 4, asset.d + 4, 0, height);
+      const zoom = Math.min(1.15, .78 * Math.min(this.app.renderer.width / (box.maxX - box.minX), this.app.renderer.height / (box.maxY - box.minY)));
+      this.renderer.zoom = zoom;
+      this.renderer.camX = (box.minX + box.maxX) / 2 * zoom;
+      this.renderer.camY = (box.minY + box.maxY) / 2 * zoom;
+    } else if (this.town.roadCar && this.followRoadCamera) {
       const car = this.town.roadCar;
       const focus = worldToScreen(car.x, car.y, 0.3);
       const zoom = 0.62;
@@ -527,6 +570,8 @@ export class Game {
     this.renderer.draw(this.town, this.dozer, this.particles, this.birds, dt);
     this.yardPanel?.tick(dt);
     this.hud.render({
+      pileResistance: this.dozer.pileResistance,
+      tower: this.rules.towerTest ? this.town.buildings[0]?.coreCollapse : undefined,
       job: this.job ? { ...this.job.status(), paid: this.job.paid, payout: this.job.payout } : undefined,
       cash: this.cash,
       score: this.score,

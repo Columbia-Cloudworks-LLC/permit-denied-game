@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "id": "ranch",
+  "kind": "house",
+  "label": "RANCH",
+  "w": 5,
+  "d": 3,
+  "floors": 1,
+  "roof": "gable",
+  "roofAxis": "x",
+  "theme": "ranch",
+  "windowStride": 2,
+  "features": {
+    "porch": false,
+    "awning": false,
+    "parapet": false,
+    "chimney": true,
+    "garage": false
+  },
+  "zones": {
+    "residential": 8,
+    "commercial": 1,
+    "industrial": 0
+  },
+  "construction": "timber-house",
+  "layout": "main.layout.json",
+  "footprint": [
+    [
+      "#####",
+      "#####",
+      "#####"
+    ]
+  ],
+  "openings": [
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.5,
+      "kind": "door"
+    }
+  ],
+  "generationOrder": 2
+}

@@ -1,0 +1,27 @@
+{
+  "partitions": false,
+  "rooms": [
+    {
+      "id": "docks",
+      "kind": "storage",
+      "floor": 0,
+      "x": 0,
+      "y": 0,
+      "w": 1,
+      "d": 1,
+      "finish": "concrete",
+      "contents": [
+        {
+          "id": "freight",
+          "kind": "pallet",
+          "x": 0.15,
+          "y": 0.25,
+          "w": 0.08,
+          "d": 0.35,
+          "h": 1,
+          "rotation": 0
+        }
+      ]
+    }
+  ]
+}

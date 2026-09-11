@@ -49,6 +49,8 @@ export interface OpeningDef {
   /** Fraction along occupied south frontage. Doors remain destructible panels. */
   at: number;
   kind: 'door' | 'loading';
+  /** Optional cell for recessed south-facing section frontage. */
+  cell?: { x: number; y: number };
 }
 export function roomAt(b: Building, gx: number, gy: number, floor: number): RoomRecipe | undefined {
   const x = (gx + .5) / b.w, y = (gy + .5) / b.d;

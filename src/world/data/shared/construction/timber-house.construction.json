@@ -1,0 +1,10 @@
+{
+  "id": "timber-house",
+  "walls": "bearing",
+  "structure": "wood",
+  "skin": "brick",
+  "floor": "wood",
+  "roof": "wood",
+  "fallDuration": 0.42,
+  "failureDelay": 0.52
+}

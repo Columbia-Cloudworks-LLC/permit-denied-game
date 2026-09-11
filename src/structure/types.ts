@@ -56,6 +56,8 @@ export type JunctionType = "none" | "end" | "T" | "cross" | "Y";
 export type VehicleRole = "civilian" | "police";
 
 export interface Cell {
+  coreSupport?: boolean;
+  transferSupport?: { gx: number; gy: number }[];
   exterior: { north: boolean; south: boolean; east: boolean; west: boolean };
   role?: "wall" | "column";
   cladding?: { material: Material; hp: number; maxHp: number; shed: boolean };
@@ -153,6 +155,7 @@ export interface InteriorFixture {
 }
 
 export interface Building {
+  coreCollapse?: import("./coreCollapse").CoreCollapseState;
   visualRevision: number;
   retired: boolean;
   settledAwayTime: number;
@@ -440,6 +443,7 @@ export function cellWorldBox(b: Building, cell: Cell): { x: number; y: number; w
   {
     const cs = b.cellSize, thick = .18;
     let x = b.x + cell.gx * cs, y = b.y + cell.gy * cs;
+    if (cell.coreSupport) return { x: x + cs * .5 - .3, y: y + cs * .5 - .3, w: .6, d: .6 };
     if (cell.role === "column" && cell.cladding?.hp === 0) {
       x += cs * .5 - thick;
       if (cell.gy === b.d - 1) y += cs - thick * 2;

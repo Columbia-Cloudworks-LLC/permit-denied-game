@@ -25,6 +25,7 @@ export const DISTRICT_LABELS: Record<DistrictId, string> = {
 };
 
 export interface SessionRules {
+  towerTest?: boolean;
   job?: boolean;
   demo?: DemoAsset;
   kind: SessionKind;
@@ -71,7 +72,9 @@ export function parseSessionFromSearch(search: string): SessionRules {
     const seed = Number(rawSeed);
     if (Number.isFinite(seed) && seed >= 0) rules.seed = seed >>> 0;
   }
+  if (params.get("tower") === "1") { rules.towerTest = true; rules.kind = "sandbox"; rules.district = "classic"; rules.demo = undefined; rules.ranchFocus = false; }
   if (params.get("job") === "brick") {
+    rules.towerTest = false;
     rules.job = true;
     rules.demo = "rivertown";
     rules.kind = "challenge";

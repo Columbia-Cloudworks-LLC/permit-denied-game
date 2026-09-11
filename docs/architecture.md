@@ -6,7 +6,7 @@ The introductory [brick demolition job](brick-job.md) uses the showcase town and
 
 ## Archetypes
 
-Every registered building is authored in `src/world/data/buildings.json`. Construction assemblies and room layouts are separate reusable definitions. `src/world/archetypes.ts` validates and resolves the catalog; `createBuildingFromDefinition` compiles it into runtime state. See [construction authoring](construction-authoring.md) for the complete JSON format and validation rules.
+Building packages are discovered recursively under `src/world/data/`. Each building owns sibling layouts and explicitly references shared construction presets. `src/world/archetypes.ts` validates and expands sections/repeated floors; `createBuildingFromDefinition` compiles the resolved definition into runtime state. `buildingSites.ts` groups independently destructible buildings and exterior props for campus placement. See [construction authoring](construction-authoring.md) for the complete JSON format and validation rules.
 
 All buildings have perimeter walls/columns, independent slabs, identifiable rooms and furnishings. Lots link to placements through `Building.lotId` and `Prop.lotId`; slab and furnishing state retains room IDs. Street props and yard experiments may be unowned. Districts select definitions through zoning weights; the classic town keeps its fixed placements.
 

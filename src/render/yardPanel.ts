@@ -7,6 +7,7 @@ export interface YardControls {
   town: () => Town; particles: ParticlePool; dozer: () => { x: number; y: number };
   jump: (x: number, y: number) => void; followRoad: () => void; releaseInput: () => void;
   preview: (bays: YardBay[], valid: boolean) => void; changed: () => void; destroy: (bay: YardBay) => void;
+  frame: (bay: YardBay) => void;
 }
 export class YardPanel {
   readonly root = document.createElement('details');
@@ -32,7 +33,7 @@ export class YardPanel {
       <div class="yard-row"><button data-preview>Preview selected</button><button data-filtered>Preview all filtered</button></div>
       <div class="yard-row"><button data-place disabled>Place preview</button><button data-cancel>Cancel</button></div>
       <select data-instances aria-label="Selected test instance"></select>
-      <button data-instance-jump>Jump to selected instance</button><p data-inspect></p>
+      <button data-instance-jump>Jump to selected instance</button><button data-frame>View whole example</button><p data-inspect></p>
       <div class="yard-row"><button data-destroy>Destroy example</button><button data-restore>Restore bay</button></div>
       <div class="yard-row"><button data-remove>Remove added instance</button><button data-debris>Clear debris</button></div>
       <button data-baseline>Restore complete baseline</button>
@@ -48,6 +49,7 @@ export class YardPanel {
     this.instances.addEventListener('change', () => { this.selected = controls.town().yard?.bays.find(b => b.key === this.instances.value); this.inspect(); });
     this.action('jump', () => { this.selected = controls.town().yard?.bays.find(b => b.baseline && b.asset.id === this.list.value); this.refreshInstances(); this.jump(); });
     this.action('instance-jump', () => this.jump());
+    this.action('frame', () => { if (this.selected) controls.frame(this.selected); });
     this.action('area', () => { const t = controls.town(); this.setNumber('x', 8); this.setNumber('y', t.yard!.baselineEnd + 6); controls.jump(4, t.yard!.baselineEnd + 3); });
     this.action('preview', () => this.preview(false)); this.action('filtered', () => this.preview(true));
     this.action('cancel', () => this.cancel());
@@ -68,13 +70,13 @@ export class YardPanel {
   reset(): void {
     const yard = this.controls.town().yard; this.root.hidden = !yard; this.cancel(); if (!yard) return;
     this.assets = yard.assets;
-    this.el('[data-coverage]').textContent = `${yard.bays.filter(b => b.prop || b.building).length}/${this.assets.length} baseline contexts · ${this.assets.filter(a => a.prop).length} props · ${this.assets.filter(a => a.archetype).length} buildings · ${this.assets.filter(a => a.fixture).length} fixtures · ${yard.issues.length} invalid`;
+    this.el('[data-coverage]').textContent = `${yard.bays.filter(b => b.prop || b.building || b.site).length}/${this.assets.length} contexts · ${this.assets.filter(a => a.prop).length} props · ${this.assets.filter(a => a.archetype).length} buildings · ${this.assets.filter(a => a.site).length} sites · ${this.assets.filter(a => a.fixture).length} fixtures · ${yard.issues.length} invalid`;
     for (const [field, key] of [['category', 'category'], ['material', 'material'], ['profile', 'destruction']] as const) this.options(this.el(`[data-${field}]`), [['', `All ${field}`], ...[...new Set(this.assets.map(a => a[key]))].map(v => [v, v] as [string, string])]);
     this.setNumber('x', 8); this.setNumber('y', yard.baselineEnd + 6); this.filter(); this.status.textContent = yard.issues.join('\n');
   }
   private filter(): void {
     const q = this.el<HTMLInputElement>('[data-search]').value.toLowerCase();
-    this.filtered = this.assets.filter(a => `${a.name} ${a.id}`.toLowerCase().includes(q) &&
+    this.filtered = this.assets.filter(a => `${a.name} ${a.id} ${Object.values(a.archetype?.traits ?? {}).flat().join(' ')}`.toLowerCase().includes(q) &&
       (['category', 'material', 'profile'] as const).every(f => { const value = this.el<HTMLSelectElement>(`[data-${f}]`).value; return !value || a[f === 'profile' ? 'destruction' : f] === value; }));
     this.options(this.list, this.filtered.map(a => [a.id, `${a.name} · ${a.id}`]));
     if (this.filtered[0]) this.list.value = this.filtered[0].id;
@@ -89,13 +91,13 @@ export class YardPanel {
   tick(dt: number): void { this.timer += dt; if (this.timer > .3 && this.root.open) { this.timer = 0; this.inspect(); } }
   private inspect(): void {
     const b = this.selected;
-    const health = b?.prop ? `${b.prop.hp.toFixed(0)}/${b.prop.maxHp}` : b?.building ?
+    const health = b?.site ? b.site.buildings.map(member => `${member.name.split(' / ').at(-1)}: ${member.cells.filter(c => c.hp > 0).length}/${member.cells.length} cells`).join(' · ') : b?.prop ? `${b.prop.hp.toFixed(0)}/${b.prop.maxHp}` : b?.building ?
       (b.asset.fixture ? b.building.fixtures.map(f => `floor ${f.floor}: ${f.hp.toFixed(0)}/${f.maxHp}`).join(' · ') :
       `${b.building.cells.reduce((hp, c) => hp + c.hp, 0).toFixed(0)}/${b.building.cells.reduce((hp, c) => hp + c.maxHp, 0)} HP · ${b.building.cells.filter(c => c.state !== 'gone').length}/${b.building.cells.length} cells`) : 'unavailable';
     this.el('[data-inspect]').textContent = b ? `${b.asset.id} · ${b.key} · variant ${b.variant}\n${b.asset.material} · ${b.asset.destruction}${b.asset.fixture ? " / interior support loss" : ""}${b.asset.prop?.explodeRadius ? " / blast radius " + b.asset.prop.explodeRadius : ""}\nHealth: ${health}` : 'Select an asset.';
     this.el<HTMLButtonElement>('[data-remove]').disabled = !b || b.baseline;
   }
-  private jump(): void { const b = this.selected; if (b) this.controls.jump(b.x + b.w / 2, b.y + b.d + 2); }
+  private jump(): void { const b = this.selected; if (b) this.controls.jump(b.x + b.w / 2, b.y + b.asset.clearance + b.asset.d + 3); }
   private preview(all: boolean): void {
     const assets = all ? this.filtered : this.assets.filter(a => a.id === this.list.value);
     this.plan = planBatch(assets, this.number('quantity'), this.el<HTMLInputElement>('[data-expand]').checked, this.number('x'), this.number('y'), this.number('variant'));

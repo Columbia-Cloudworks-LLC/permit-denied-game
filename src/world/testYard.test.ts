@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { createTown } from './town';
 import { ASSET_CATALOG } from './catalog';
 import { ARCHETYPES } from './archetypes';
+import { BUILDING_SITES } from './buildingSites';
 import { CONTENT_ASSETS } from './contents';
 import { discoverYardAssets, layoutYard, instantiateBay, overlap } from './yardCatalog';
 import { clearBayDebris, clearTestArea, planBatch, placementError, removeBay, restoreBay, spawnBatch } from './testYard';
@@ -48,7 +49,7 @@ describe('generated asset test yard', () => {
   it('covers every catalog and archetype, plus both floors of every fixture', () => {
     const t = yard();
     expect(t.yard!.issues).toEqual([]);
-    expect(t.yard!.bays).toHaveLength(ASSET_CATALOG.length + ARCHETYPES.length + CONTENT_ASSETS.length);
+    expect(t.yard!.bays).toHaveLength(ASSET_CATALOG.length + ARCHETYPES.length + CONTENT_ASSETS.length + BUILDING_SITES.length);
     expect(new Set(t.props.map(p => p.assetId))).toEqual(new Set(ASSET_CATALOG.map(a => a.id)));
     for (const a of ARCHETYPES) expect(t.buildings.some(b => b.archetypeId === a.id)).toBe(true);
     for (const a of CONTENT_ASSETS) {
@@ -62,7 +63,7 @@ describe('generated asset test yard', () => {
     const prop = { ...ASSET_CATALOG[0]!, id: 'new-test-prop', variants: 3 };
     const building = { ...ARCHETYPES[0]!, id: 'new-test-building', label: 'NEW TEST BUILDING', w: 7,
       footprint: Array.from({ length: 2 }, () => Array<string>(4).fill('#######')) };
-    const discovered = discoverYardAssets([prop], [building]);
+    const discovered = discoverYardAssets([prop], [building], []);
     expect(discovered.map(a => a.id).sort()).toEqual(['building:new-test-building', 'prop:new-test-prop']);
     const bays = layoutYard(discovered);
     for (const b of bays) instantiateBay(b);
@@ -129,7 +130,7 @@ describe('generated asset test yard', () => {
     const t = yard(); const bay = t.yard!.bays[0]!;
     t.pile.addMass(bay.x + 2, bay.y + 2, 3, 'wood');
     const oldMax = t.maxY;
-    spawnBatch(t, planBatch(t.yard!.assets.filter(a => a.archetype), 10, false, 8, t.yard!.baselineEnd));
+    spawnBatch(t, planBatch(t.yard!.assets.filter(a => a.archetype?.generationOrder !== undefined), 10, false, 8, t.yard!.baselineEnd));
     expect(t.maxY).toBeGreaterThan(oldMax); expect(sum(t.pile.mass)).toBeCloseTo(3, 4);
     clearBayDebris(t, bay); expect(sum(t.pile.mass)).toBeCloseTo(0, 4);
   });

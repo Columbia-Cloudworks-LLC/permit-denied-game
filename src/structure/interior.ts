@@ -1,5 +1,6 @@
 import { hitObject, objectFragments } from '../sim/objectBehavior';
 import { FLOOR_Z } from "../game/constants";
+import { floorIndex, releaseFloorIndex } from './floorIndex';
 import { roomAt, sharedRoomEdge } from "./construction";
 import { roofCoverage } from "./roof";
 import { getAsset } from "../world/catalog";
@@ -47,7 +48,7 @@ function cellsCovered(
   const out: { gx: number; gy: number }[] = [];
   for (let gx = gx0; gx <= gx1; gx++) {
     for (let gy = gy0; gy <= gy1; gy++) {
-      if (building.floorTiles.some(t => t.floor === floor && t.gx === gx && t.gy === gy)) out.push({ gx, gy });
+      if (floorIndex(building).at(floor, gx, gy)) out.push({ gx, gy });
     }
   }
   if (out.length === 0) throw new Error("Object has no supporting floor");
@@ -153,7 +154,8 @@ function markIndependentFloorTiles(
   reveal: boolean,
 ): void {
   const w = building.w;
-  const tiles = (building.floorTiles).filter((t) => t.floor === floor && t.state === "intact");
+  const index = floorIndex(building);
+  const tiles = index.byFloor[floor]!.filter(t => t.state === 'intact');
   const finishAt = (gx: number, gy: number) => interiorFloorFinish(building, gx, gy, floor);
   if (reveal) {
     for (const tile of tiles) marks[tile.gy * w + tile.gx] = finishAt(tile.gx, tile.gy);
@@ -183,7 +185,7 @@ function markIndependentFloorTiles(
     }
   }
   for (const tile of tiles) {
-    if (marks[tile.gy * w + tile.gx] || building.floorTiles.some(t => t.floor > floor && t.gx === tile.gx && t.gy === tile.gy && t.state !== 'gone') || roofCoversCell(building, tile.gx, tile.gy, floor)) continue;
+    if (marks[tile.gy * w + tile.gx] || index.columns[tile.gx * building.d + tile.gy]!.some(t => t.floor > floor && t.state !== 'gone') || roofCoversCell(building, tile.gx, tile.gy, floor)) continue;
     marks[tile.gy * w + tile.gx] = finishAt(tile.gx, tile.gy);
   }
 }
@@ -261,6 +263,7 @@ const interiorFloorCache = new WeakMap<Building, InteriorFloorCache>();
 const inspectionFloorCache = new WeakMap<Building, InteriorFloorCache>();
 
 export function releaseInteriorCache(building: Building): void {
+  releaseFloorIndex(building);
   interiorFloorCache.delete(building);
   inspectionFloorCache.delete(building);
 }
@@ -308,7 +311,8 @@ export function interiorFloorSpans(building: Building): InteriorFloorSpan[] {
 }
 
 export function fixtureSupported(building: Building, fixture: InteriorFixture): boolean {
-  return fixture.support.some(s => building.floorTiles.some(t => t.floor === fixture.floor && t.gx === s.gx && t.gy === s.gy && t.state === "intact"));
+  const index = floorIndex(building);
+  return fixture.support.some(s => index.at(fixture.floor, s.gx, s.gy)?.state === 'intact');
 }
 
 function roofCoversCell(building: Building, gx: number, gy: number, floor: number): boolean {
@@ -409,7 +413,7 @@ export function stepInteriors(
       continue;
     }
     const roofImpact = building.roofs.some(r => r.floor >= fixture.floor && r.state === "gone" && roofCoverage(r).some(c => fixture.support.some(s => s.gx === c.gx && s.gy === c.gy)));
-    const floorImpact = building.floorTiles.some(t => t.floor === fixture.floor + 1 && t.state === "gone" && fixture.support.some(s => s.gx === t.gx && s.gy === t.gy));
+    const floorImpact = fixture.support.some(s => floorIndex(building).at(fixture.floor + 1, s.gx, s.gy)?.state === 'gone');
     if (fixtureSupported(building, fixture) && !roofImpact && !floorImpact) continue;
     const out = breakFixture(building, fixture, particles, events, 0.2, 0.4);
     cash += out.cash;

@@ -1,0 +1,10 @@
+{
+  "id": "concrete-bearing",
+  "walls": "masonry",
+  "structure": "concrete",
+  "skin": "concrete",
+  "floor": "concrete",
+  "roof": "metal",
+  "fallDuration": 0.5,
+  "failureDelay": 0.38
+}

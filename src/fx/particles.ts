@@ -72,6 +72,20 @@ export class ParticlePool {
     }
   }
 
+  radialDust(x: number, y: number, radius: number, count: number, owner?: string): void {
+    let n = 0;
+    for (const p of this.items) {
+      if (n >= count) break;
+      if (p.alive && !p.settled) continue;
+      const a = this.rng.range(0, Math.PI * 2), speed = this.rng.range(3, 7);
+      Object.assign(p, { alive: true, settled: false, kind: 'dust', yardOwner: owner ?? this.ownerAt?.(x, y),
+        x: x + Math.cos(a) * radius, y: y + Math.sin(a) * radius, z: this.rng.range(.3, 1.5),
+        vx: Math.cos(a) * speed, vy: Math.sin(a) * speed, vz: 2.2,
+        life: 1.1, maxLife: 1.1, size: this.rng.range(.5, 1.1), rot: a, spin: .3 });
+      n++;
+    }
+  }
+
   burst(kind: ParticleKind, x: number, y: number, z: number, mag: number, owner?: string): void {
     const chunks = kind === "dust" ? 0 : Math.min(18, 4 + Math.floor(mag * 3));
     const dust = Math.min(22, 6 + Math.floor(mag * 4));

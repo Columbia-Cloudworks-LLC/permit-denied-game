@@ -208,12 +208,18 @@ function addMark(
   town.visualRevision++;
 }
 
-export function spawnCollapseDebris(town: Town, spawn: CollapseSpawn): Rubble[] {
+export function spawnCollapseDebris(town: Town, spawn: CollapseSpawn, bodyLimit = Infinity): Rubble[] {
   const rng = new Rng(
     (Math.floor(spawn.x * 1009) ^ Math.floor(spawn.y * 917) ^ (spawn.floor * 131) ^ materialSeed(spawn.material)) >>> 0,
   );
   const volume = cellVolume(spawn.cellSize);
   const budget = volume * materialDensity(spawn.material);
+  // A large collapse must not allocate thousands of bodies before the cleanup
+  // pass. Keep the excess as owned, editable pile mass at the collapse location.
+  if (town.rubble.length >= bodyLimit) {
+    town.pile.addMass(spawn.x, spawn.y, budget, spawn.material);
+    return [];
+  }
   const dirL = len(spawn.dx, spawn.dy) || 1;
   const dx = spawn.dx / dirL;
   const dy = spawn.dy / dirL;

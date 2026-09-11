@@ -1,5 +1,7 @@
+import { applyCoreImpact } from './coreImpact';
+import { resistCorePile } from './corePileResistance';
 import { retireStructures } from './retirement';
-import { DOZER } from "../game/constants";
+import { DEBRIS, DOZER } from "../game/constants";
 import { clamp, len } from "../game/math";
 import { ParticlePool } from "../fx/particles";
 import {
@@ -116,9 +118,13 @@ function rebuildHash(town: Town): boolean {
   return true;
 }
 
-export function spawnFixtureFrags(town: Town, frags: FixtureFrag[]): void {
+export function spawnFixtureFrags(town: Town, frags: FixtureFrag[], bodyLimit = Infinity): void {
   for (const frag of frags) {
     if (frag.pileMass) town.pile.addMass(frag.x, frag.y, frag.pileMass, frag.material);
+    if (town.rubble.length >= bodyLimit) {
+      town.pile.addMass(frag.x, frag.y, frag.mass, frag.material);
+      continue;
+    }
     addDebrisBody(town, {
       x: frag.x,
       y: frag.y,
@@ -156,6 +162,8 @@ export function stepWorld(
   const birds: { x: number; y: number }[] = [];
   let cash = 0;
   let score = 0;
+
+  resistCorePile(town, dozer, dt);
 
   const rebuilt = rebuildHash(town);
   hash.query(dozer.x - 3, dozer.y - 3, 6, 6, nearby);
@@ -280,10 +288,12 @@ export function stepWorld(
   const structStats: StructureStepStats = { stepped: 0, skipped: 0 };
   const struct = stepStructures(town.buildings, dt, particles, events, structStats);
   cash += struct.cash;
+  for (const impact of struct.coreImpacts) applyCoreImpact(town, dozer, particles, impact, events);
+  const bodyLimit = struct.rubbleSpawns.length + struct.fixtureFrags.length > 32 ? DEBRIS.activeCap : Infinity;
   for (const spawn of struct.rubbleSpawns) {
-    spawnCollapseDebris(town, spawn);
+    spawnCollapseDebris(town, spawn, spawn.aggregate ? DEBRIS.activeCap : bodyLimit);
   }
-  spawnFixtureFrags(town, struct.fixtureFrags);
+  spawnFixtureFrags(town, struct.fixtureFrags, bodyLimit);
 
   ensureBuildingHash(town);
   for (const lean of struct.leans) {

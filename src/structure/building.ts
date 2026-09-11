@@ -1,3 +1,4 @@
+import { initializeCore, stepCoreCollapse, type CoreImpact } from './coreCollapse';
 import { CELL, FLOOR_Z } from "../game/constants";
 import { validateConstruction, validateLayout, roomAt, type LayoutDef, type OpeningDef, type ConstructionDef } from "./construction";
 import { debrisKind, ParticlePool } from "../fx/particles";
@@ -120,12 +121,14 @@ function applyFacade(
 
 function placeOpenings(spec: BuildingSpec, grid: Cell[][][], occupied: boolean[][][]): void {
   for (const opening of spec.openings) {
-    const south = Array.from({ length: spec.w }, (_, gx) => gx).filter(gx => occupied[opening.floor]?.[gx]?.[spec.d - 1]);
-    const gx = south[Math.min(south.length - 1, Math.floor(opening.at * south.length))];
+    const gy = opening.cell?.y ?? spec.d - 1;
+    const south = Array.from({ length: spec.w }, (_, gx) => gx).filter(gx => occupied[opening.floor]?.[gx]?.[gy] && !occupied[opening.floor]?.[gx]?.[gy + 1]);
+    const gx = opening.cell?.x ?? south[Math.min(south.length - 1, Math.floor(opening.at * south.length))];
     if (gx === undefined) throw new Error('Entrance has no occupied frontage');
-    const cell = grid[opening.floor]![gx]![spec.d - 1]!;
+    if (!south.includes(gx)) throw new Error('Entrance must touch exposed south frontage');
+    const cell = grid[opening.floor]![gx]![gy]!;
     if (opening.kind === 'loading') {
-      for (const x of south) if (Math.abs(x - gx) <= 1) grid[opening.floor]![x]![spec.d - 1]!.loadingS = true;
+      for (const x of south) if (Math.abs(x - gx) <= 1) grid[opening.floor]![x]![gy]!.loadingS = true;
     } else cell.doorS = true;
   }
 }
@@ -176,7 +179,9 @@ function makeDecor(spec: BuildingSpec, cellSize: number, features: BuildingFeatu
 export function createBuilding(spec: BuildingSpec, definition?: Archetype): Building {
   const cellSize = spec.cellSize ?? CELL;
   if (![spec.w, spec.d, spec.floors].every(n => Number.isInteger(n) && n > 0 && n <= 64) || ![spec.x, spec.y, cellSize].every(Number.isFinite) || cellSize <= 0) throw new Error('Invalid building dimensions or placement');
+  if (spec.w * spec.d * spec.floors > 8192) throw new Error('Building exceeds 8192 grid slots');
   const archetype = definition ?? (spec.archetypeId ? archetypeById(spec.archetypeId) : undefined);
+  if (archetype?.coreCollapse && (spec.w !== archetype.w || spec.d !== archetype.d || spec.floors !== archetype.floors || spec.roof !== 'flat')) throw new Error('Core-collapse buildings require their authored dimensions and flat roof; create a variation to move supports');
   const construction = spec.construction;
   {
     const issues = validateConstruction(construction);
@@ -211,7 +216,8 @@ export function createBuilding(spec: BuildingSpec, definition?: Archetype): Buil
         const occupied = mask[floor]?.[gx]?.[gy] === true;
         const occN = (x: number, y: number) => mask[floor]?.[x]?.[y] === true;
         const edge = !occN(gx - 1, gy) || !occN(gx + 1, gy) || !occN(gx, gy - 1) || !occN(gx, gy + 1);
-        const live = occupied && edge;
+        const coreSupport = floor === 0 && !!archetype?.coreCollapse?.supports.some(p => p.x === gx && p.y === gy);
+        const live = occupied && (edge || coreSupport);
         const mat = construction.structure;
         const cell = makeCell(gx, gy, floor, mat, live);
         cell.exterior = { north: !occN(gx, gy - 1), south: !occN(gx, gy + 1), west: !occN(gx - 1, gy), east: !occN(gx + 1, gy) };
@@ -224,6 +230,7 @@ export function createBuilding(spec: BuildingSpec, definition?: Archetype): Buil
             cell.hp = cell.maxHp = materialHp(mat) * .35;
           }
         }
+        if (archetype?.coreCollapse) { cell.isSupport = coreSupport; cell.coreSupport = coreSupport; if (coreSupport) cell.role = "column"; }
         if (!live) {
           cell.state = "gone";
           cell.hp = 0;
@@ -240,6 +247,18 @@ export function createBuilding(spec: BuildingSpec, definition?: Archetype): Buil
   }
   placeOpenings(filled, grid, mask);
 
+  // The bearing line depends only on floor and x, not on each individual slab tile.
+  const bearing = Array.from({ length: spec.floors }, (_, floor) =>
+    Array.from({ length: spec.w }, (_, gx) => cells.filter(c => c.floor === floor && c.isSupport && Math.abs(c.gx - gx) <= 1)
+      .map(c => ({ gx: c.gx, gy: c.gy }))));
+  if (archetype?.sections) for (const cell of cells) {
+    // Setbacks bear on the lower slab's existing bearing line. Transfer disappears
+    // when that line is lost; this is a controlled collapse model, not engineering FEA.
+    if (cell.floor > 0 && !cellPresent(grid[cell.floor - 1]![cell.gx]![cell.gy]!)) {
+      cell.transferSupport = bearing[cell.floor - 1]![cell.gx];
+    }
+  }
+
   const building: Building = {
     visualRevision: 1,
     retired: false,
@@ -250,8 +269,7 @@ export function createBuilding(spec: BuildingSpec, definition?: Archetype): Buil
     floorTiles: Array.from({ length: spec.floors }, (_, floor) =>
       Array.from({ length: spec.w }, (_, gx) => Array.from({ length: spec.d }, (_, gy) => ({
         gx, gy, floor, roomId: "", state: "intact" as const, fallT: 0,
-        support: cells.filter(c => c.floor === floor - 1 && c.isSupport && Math.abs(c.gx - gx) <= 1)
-          .map(c => ({ gx: c.gx, gy: c.gy })),
+        support: floor === 0 ? [] : bearing[floor - 1]![gx]!,
       })).filter(t => mask[floor]?.[gx]?.[t.gy])).flat()).flat(),
     id: nextId++,
     kind: spec.kind,
@@ -285,6 +303,7 @@ export function createBuilding(spec: BuildingSpec, definition?: Archetype): Buil
   for (const tile of building.floorTiles) tile.roomId = roomAt(building, tile.gx, tile.gy, tile.floor)!.id;
   building.roofs = generateRoofs(building);
   building.fixtures = generateInteriors(building);
+  if (archetype?.coreCollapse) initializeCore(building, archetype.coreCollapse);
   return building;
 }
 
@@ -303,6 +322,7 @@ export function createBuildingFromDefinition(a: Archetype, name: string, x: numb
   if (issues.length) throw new Error(`Invalid building ${a.id}: ${issues.join("; ")}`);
   return createBuilding({
     construction: a.construction, layout: a.layout, openings: a.openings,
+    cellSize: a.cellSize,
     kind: a.kind,
     name,
     x,
@@ -342,7 +362,7 @@ export function resetBuildingIds(): void {
   nextId = 1;
 }
 
-function cashFor(cell: Cell, kind: "chip" | "breach" | "collapse"): number {
+export function cashFor(cell: Cell, kind: "chip" | "breach" | "collapse"): number {
   const base =
     cell.material === "concrete" ? 18 : cell.material === "brick" ? 14 : cell.material === "metal" ? 16 : 10;
   if (kind === "chip") return 3 + (cell.isSupport ? 2 : 0);
@@ -428,7 +448,8 @@ function markSupported(building: Building, supported: boolean[]): void {
       for (let gy = 0; gy < d; gy++) {
         const cell = building.grid[floor]![gx]![gy]!;
         if (!cellPresent(cell)) continue;
-        const underOk = floor === 0 || cellPresent(building.grid[floor - 1]![gx]![gy]!);
+        const underOk = floor === 0 || cellPresent(building.grid[floor - 1]![gx]![gy]!) ||
+          !!cell.transferSupport?.some(s => cellPresent(building.grid[floor - 1]![s.gx]![s.gy]!));
         if (cell.isSupport && !underOk) continue;
         if (!underOk) continue;
         const i = gx * d + gy;
@@ -510,6 +531,7 @@ function startFall(
 }
 
 export interface StructureStepResult {
+  coreImpacts: CoreImpact[];
   cash: number;
   rubbleSpawns: {
     x: number;
@@ -519,6 +541,7 @@ export interface StructureStepResult {
     material: Material;
     floor: number;
     cellSize: number;
+    aggregate?: boolean;
     source?: "wall" | "roof";
     heading?: number;
     elev?: number;
@@ -541,7 +564,7 @@ export function stepStructures(
   events: WorldEvent[],
   stats?: StructureStepStats,
 ): StructureStepResult {
-  const result: StructureStepResult = { cash: 0, rubbleSpawns: [], leans: [], fixtureFrags: [] };
+  const result: StructureStepResult = { cash: 0, rubbleSpawns: [], leans: [], fixtureFrags: [], coreImpacts: [] };
   const scratch: boolean[] = [];
   let stepped = 0;
   let skipped = 0;
@@ -549,6 +572,10 @@ export function stepStructures(
   const roofSpawns: RoofDebrisSpawn[] = [];
 
   for (const building of buildings) {
+    if (building.coreCollapse) {
+      if (building.coreCollapse.phase === 'settled' || (building.coreCollapse.phase === 'standing' && !building.structureDirty)) { skipped++; continue; }
+      stepCoreCollapse(building, dt, result, particles, events); stepped++; continue;
+    }
     if (building.fullyDown && !roofsNeedStep(building)) {
       skipped++;
       continue;

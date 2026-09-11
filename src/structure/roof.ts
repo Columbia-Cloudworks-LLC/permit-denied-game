@@ -345,7 +345,21 @@ function stripFallback(
   axis: RoofAxis,
   id0: number,
 ): RoofSection[] {
-  if (style === "flat") return [flatPlane(building, cells, id0)];
+  if (style === "flat") {
+    // A podium ring or L-shaped hall is not its bounding rectangle. Merge equal
+    // row runs into rectangles so lower roofs cannot cover a tower/office above.
+    const b = bbox(cells), have = new Set(cells.map(c => `${c.gx},${c.gy}`));
+    const rectangles: { gx0: number; gx1: number; gy0: number; gy1: number }[] = [];
+    for (let gy = b.minY; gy <= b.maxY; gy++) for (let gx = b.minX; gx <= b.maxX; gx++) {
+      if (!have.has(`${gx},${gy}`)) continue;
+      const gx0 = gx;
+      while (gx < b.maxX && have.has(`${gx + 1},${gy}`)) gx++;
+      const previous = rectangles.find(r => r.gx0 === gx0 && r.gx1 === gx && r.gy1 === gy - 1);
+      if (previous) previous.gy1 = gy;
+      else rectangles.push({ gx0, gx1: gx, gy0: gy, gy1: gy });
+    }
+    return rectangles.map((r, i) => flatPlane(building, cells.filter(c => c.gx >= r.gx0 && c.gx <= r.gx1 && c.gy >= r.gy0 && c.gy <= r.gy1), id0 + i));
+  }
   if (style === "shed") return [shedPlane(building, cells, axis, id0)];
   const b = bbox(cells);
   const eaveZ = wallTopZ(building.floors);
@@ -439,8 +453,9 @@ function stripFallback(
 
 export function generateRoofs(building: Building): RoofSection[] {
   const roofs: RoofSection[] = [];
+  const occupied = new Set(building.floorTiles.map(t => t.floor * building.w * building.d + t.gx * building.d + t.gy));
   for (let floor = 0; floor < building.floors; floor++) {
-    const exposed = building.floorTiles.filter(t => t.floor === floor && !building.floorTiles.some(above => above.floor === floor + 1 && above.gx === t.gx && above.gy === t.gy));
+    const exposed = building.floorTiles.filter(t => t.floor === floor && !occupied.has((floor + 1) * building.w * building.d + t.gx * building.d + t.gy));
     if (!exposed.length) continue;
     const layer = { ...building, floors: floor + 1, floorTiles: exposed };
     for (const roof of generateRoofLayer(layer)) roofs.push({ ...roof, floor, id: roofs.length + 1 });

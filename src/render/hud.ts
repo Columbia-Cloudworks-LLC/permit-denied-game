@@ -5,6 +5,8 @@ import { DISTRICT_LABELS, type DistrictId, type SessionKind, type DemoAsset } fr
 export type OverlayMode = "none" | "pause" | "upgrade" | "results";
 
 export interface HudState {
+  pileResistance?: number;
+  tower?: { phase: string; capacity: number };
   job?: { progress: number; remaining: number; instruction: string; paid: boolean; payout: number };
   cash: number;
   score: number;
@@ -44,6 +46,8 @@ export class Hud {
   onSession?: (kind: SessionKind) => void;
   onDistrict?: (id: DistrictId) => void;
   onDemo?: (id: DemoAsset) => void;
+  onTower?: () => void;
+  onTowerAction?: (action: string) => void;
   onJob?: () => void;
   onDrive?: (key: string, down: boolean) => void;
   onDebugToggle?: (key: DebugToggle, value: boolean) => void;
@@ -66,6 +70,12 @@ export class Hud {
         <button type="button" id="hud-mute">MUTE</button>
       </div>
       <div class="session" id="hud-session"></div>
+      <section id="hud-tower" class="tower-test" aria-label="Skyscraper test controls" hidden>
+        <strong>SKYSCRAPER TEST</strong> <span id="tower-status"></span>
+        <p>W/S drive · A/D steer · SPACE powered blade. Break the facade, then reach the central supports.</p>
+        <button data-tower="view">Tower / dozer view</button><button data-tower="core-view">Inspect ground floor</button>
+        <button data-tower="facade">Breach facade</button><button data-tower="core">Fail core</button><button data-tower="reset">Reset tower</button>
+      </section>
       <div id="hud-job" class="job" hidden></div>
       <div class="debug-menu">
         <button type="button" id="debug-toggle" aria-expanded="false" aria-controls="debug-panel">DEBUG</button>
@@ -104,6 +114,7 @@ export class Hud {
 
     root.querySelector("#hud-mute")!.addEventListener("click", () => this.onMute?.());
     this.hintEl.innerHTML = `W/S drive &nbsp; A/D steer<br>Hold SPACE: powered blade<br>ESC pause &nbsp; R replay &nbsp; M mute`;
+    root.querySelectorAll<HTMLButtonElement>('[data-tower]').forEach(button => button.addEventListener('click', () => this.onTowerAction?.(button.dataset.tower!)));
     this.bindSessionBar();
     this.bindDebugMenu();
     const pad = root.querySelector<HTMLElement>("#drive-pad")!;
@@ -167,6 +178,7 @@ export class Hud {
       <button type="button" data-demo="ranch">RANCH</button>
       <button type="button" data-demo="rivertown">BRICK</button>
       <button type="button" data-demo="steel-warehouse">STEEL</button>
+      <button type="button" data-act="tower">SKYSCRAPER</button>
       <button type="button" data-up="blade">BLADE+</button>
       <button type="button" data-up="engine">ENGINE+</button>
       <button type="button" data-up="push">PUSH+</button>
@@ -182,6 +194,7 @@ export class Hud {
         if (district) this.onDistrict?.(district);
         if (demo) this.onDemo?.(demo);
         if (act === "newseed") this.onNewSeed?.();
+        if (act === "tower") this.onTower?.();
         if (act === "job") this.onJob?.();
         if (up) this.onChoice?.(up);
       });
@@ -189,6 +202,12 @@ export class Hud {
   }
 
   render(s: HudState): void {
+    this.root.querySelector<HTMLElement>('#hud-tower')!.hidden = !s.tower;
+    if (s.tower) {
+      const text = s.tower.phase === 'warning' ? 'CORE FAILING — BACK AWAY' : s.tower.phase === 'falling' ? 'COLLAPSE — DEBRIS MOVING OUTWARD' : s.tower.phase === 'settled' ? 'SETTLED — CLEAR THE RUBBLE' : 'Support capacity ' + Math.round(s.tower.capacity * 100) + '%';
+      this.root.querySelector<HTMLElement>('#tower-status')!.textContent = text;
+      for (const action of ['facade', 'core']) this.root.querySelector<HTMLButtonElement>('[data-tower="' + action + '"]')!.disabled = s.tower.phase !== 'standing';
+    }
     this.root.querySelector<HTMLElement>('[data-district="classic"]')!.textContent = s.session === "sandbox" ? "TEST YARD" : DISTRICT_LABELS.classic;
     const job = this.root.querySelector<HTMLElement>("#hud-job")!;
     job.hidden = !s.job;
@@ -208,6 +227,7 @@ export class Hud {
     this.paintSessionBar(s.session, s.district);
     this.scoreEl.textContent = `SCORE ${Math.floor(s.score)}`;
     this.bladeEl.textContent = `${s.bladeDown ? COPY.bladeDown : COPY.bladeUp}\nHEAT ${Math.round(s.heat)}%${s.heat > 65 ? " · RELEASE BLADE" : ""}\nTRACKS ${Math.round(s.track)}%${s.track > 65 ? " · BACK OFF RUBBLE" : ""}`;
+    if ((s.pileResistance ?? 0) > .4) this.bladeEl.textContent += "\nDENSE RUBBLE · CLEAR A PATH";
     this.hintEl.style.opacity = String(s.hintAlpha);
     const stress = Math.max(s.heat, s.track);
     this.heatEl.style.opacity = stress > 18 ? "1" : "0";

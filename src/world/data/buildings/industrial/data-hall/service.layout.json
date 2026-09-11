@@ -1,0 +1,27 @@
+{
+  "partitions": false,
+  "rooms": [
+    {
+      "id": "service",
+      "kind": "storage",
+      "floor": 0,
+      "x": 0,
+      "y": 0,
+      "w": 1,
+      "d": 1,
+      "finish": "concrete",
+      "contents": [
+        {
+          "id": "spares",
+          "kind": "shelf",
+          "x": 0.2,
+          "y": 0.2,
+          "w": 0.2,
+          "d": 0.4,
+          "h": 1,
+          "rotation": 0
+        }
+      ]
+    }
+  ]
+}

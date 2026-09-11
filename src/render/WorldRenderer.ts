@@ -1,3 +1,6 @@
+import { corePileAreas, drawCorePiles } from './corePileDraw';
+import { drawCoreFloor } from './coreCollapseDraw';
+import { cellWorldBox, cellPresent } from '../structure/types';
 import { DrawCache } from './drawCache';
 import type { YardBay } from '../world/yardCatalog';
 import { defaultDebugView } from "../debug/view";
@@ -176,7 +179,7 @@ export class WorldRenderer {
         visible++;
         drawGroundMark(this.overlay, mark);
       }
-      if (view.debris) drawPileHints(this.overlay, town, (x, y, w, d) => this.visibleBox(x, y, w, d, 0, 0.4));
+      if (view.debris) drawPileHints(this.overlay, town, (x, y, w, d) => this.visibleBox(x, y, w, d, 0, 3.5));
       this.overlayKey = oKey;
     }
 
@@ -197,6 +200,22 @@ export class WorldRenderer {
       const fall = 1.4;
       total += b.cells.length;
       if (!this.visibleBox(b.x - fall, b.y - fall, bw + fall * 2, bd + fall * 2, -0.4, z1)) continue;
+      // The aggregate mound owns the finished visual; a ground slab must not paint over it.
+      if (b.coreCollapse?.phase === 'settled') continue;
+      if (b.coreCollapse?.phase === 'falling') {
+        for (const rect of b.coreCollapse.floors) {
+          const z = rect.floor * FLOOR_Z - b.coreCollapse.drop;
+          if (z + FLOOR_Z <= 0) continue;
+          visible++;
+          this.cmds.push({ depth: depthKey(b.x + (rect.x + rect.w / 2) * b.cellSize, b.y + (rect.y + rect.d / 2) * b.cellSize, Math.max(0, z)), key: `core:${b.id}:${rect.floor}:${rect.x}:${rect.y}`, version: b.visualRevision, run: g => drawCoreFloor(g, b, rect, Math.min(3.5, town.pile.sample(b.x + bw / 2, b.y + bd / 2).height)) });
+        }
+        continue;
+      }
+      for (const c of b.cells) if (c.coreSupport && cellPresent(c) && view.walls) {
+        const box = cellWorldBox(b, c);
+        const alpha = view.reveal || view.maxFloor === 0 ? 1 : objectOcclusionFade(dozer, box.x, box.y, box.w, box.d, 0, FLOOR_Z);
+        this.cmds.push({ depth: depthKey(box.x + .3, box.y + .3, .1), run: g => drawIsoBox(g, box.x, box.y, box.w, box.d, 0, FLOOR_Z, 0xb6a784, 0x827754, 0x9c8d68, alpha) });
+      }
       const surfaces = getBuildingSurfaces(b);
       surfaceGeometry += surfaces.geometryCount;
       const fadeBox = (key: string, x: number, y: number, w: number, d: number, z: number, top: number) => {
@@ -669,6 +688,8 @@ function drawPileHints(
   visible: (x: number, y: number, w: number, d: number) => boolean,
 ): void {
   const pile = town.pile;
+  const coreAreas = corePileAreas(town).filter(a => visible(a.x, a.y, a.w, a.d));
+  drawCorePiles(g, town, coreAreas);
   for (let iy = 0; iy < pile.rows; iy++) {
     for (let ix = 0; ix < pile.cols; ix++) {
       const i = iy * pile.cols + ix;
@@ -676,12 +697,13 @@ function drawPileHints(
       if (h < 0.05) continue;
       const x = pile.ox + (ix + 0.12) * pile.cell;
       const y = pile.oy + (iy + 0.12) * pile.cell;
+      if (coreAreas.some(a => x >= a.x && x <= a.x + a.w && y >= a.y && y <= a.y + a.d)) continue;
       const s = pile.cell * 0.76;
       if (!visible(x, y, s, s)) continue;
       const alpha = Math.min(0.62, 0.16 + h * 0.85);
       drawGroundPoly(g, x, y, s, s, PAL.lotDark, alpha);
       if (h > 0.14) {
-        drawIsoBox(g, x + 0.04, y + 0.04, s * 0.72, s * 0.72, 0, Math.min(0.42, h * 0.55), PAL.concrete, PAL.concreteDark, PAL.concrete, Math.min(0.85, 0.35 + h));
+        drawIsoBox(g, x + 0.04, y + 0.04, s * 0.72, s * 0.72, 0, Math.min(.42, h * .55), PAL.concrete, PAL.concreteDark, PAL.concrete, Math.min(0.85, 0.35 + h));
       }
     }
   }

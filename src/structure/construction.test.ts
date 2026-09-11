@@ -147,7 +147,7 @@ describe("shared building construction", () => {
   it.each(ARCHETYPES.map(a => a.id))("settles complete %s demolition without floating contents or repeating spawns", id => {
     const b = createBuildingFromArchetype(id, "DOWN", 0, 0);
     for (const c of b.cells) smash(b, c.floor, c.gx, c.gy);
-    settle(b, 4);
+    settle(b, b.coreCollapse ? 8 : 4);
     expect(b.fullyDown).toBe(true);
     expect(b.fixtures.every(f => f.broken)).toBe(true);
     const after = stepStructures([b], SIM_DT, particles(), []);

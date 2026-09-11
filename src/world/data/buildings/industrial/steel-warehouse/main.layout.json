@@ -1,0 +1,97 @@
+{
+  "rooms": [
+    {
+      "kind": "storage",
+      "floor": 0,
+      "x": 0,
+      "y": 0,
+      "w": 0.65,
+      "d": 1,
+      "finish": "concrete",
+      "contents": [
+        {
+          "kind": "rack",
+          "x": 0.1,
+          "y": 0.12,
+          "w": 0.17,
+          "d": 0.55,
+          "h": 1.75,
+          "id": "rack-1",
+          "rotation": 0
+        },
+        {
+          "kind": "rack",
+          "x": 0.66,
+          "y": 0.12,
+          "w": 0.17,
+          "d": 0.55,
+          "h": 1.75,
+          "id": "rack-2",
+          "rotation": 0
+        },
+        {
+          "kind": "pallet",
+          "x": 0.08,
+          "y": 0.8,
+          "w": 0.2,
+          "d": 0.13,
+          "h": 0.55,
+          "id": "pallet-3",
+          "rotation": 0
+        },
+        {
+          "kind": "pallet",
+          "x": 0.67,
+          "y": 0.8,
+          "w": 0.2,
+          "d": 0.13,
+          "h": 0.55,
+          "id": "pallet-4",
+          "rotation": 0
+        }
+      ],
+      "id": "0-storage"
+    },
+    {
+      "kind": "production",
+      "floor": 0,
+      "x": 0.65,
+      "y": 0,
+      "w": 0.35,
+      "d": 1,
+      "finish": "concrete",
+      "contents": [
+        {
+          "kind": "machine",
+          "x": 0.12,
+          "y": 0.12,
+          "w": 0.68,
+          "d": 0.28,
+          "h": 1.1,
+          "id": "machine-1",
+          "rotation": 0
+        },
+        {
+          "kind": "counter",
+          "x": 0.12,
+          "y": 0.57,
+          "w": 0.68,
+          "d": 0.12,
+          "h": 0.7,
+          "id": "counter-2",
+          "rotation": 0
+        }
+      ],
+      "id": "0-production"
+    }
+  ],
+  "partitions": false,
+  "connections": [
+    {
+      "a": "0-storage",
+      "b": "0-production",
+      "at": 0.5,
+      "width": 0.4
+    }
+  ]
+}

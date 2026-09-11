@@ -1,0 +1,10 @@
+{
+  "id": "brick-mixed-use",
+  "walls": "masonry",
+  "structure": "brick",
+  "skin": "brick",
+  "floor": "wood",
+  "roof": "wood",
+  "fallDuration": 0.5,
+  "failureDelay": 0.38
+}

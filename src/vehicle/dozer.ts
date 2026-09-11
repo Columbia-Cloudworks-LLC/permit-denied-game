@@ -2,6 +2,10 @@ import { DOZER } from "../game/constants";
 import { approach, clamp, circleAabb, len } from "../game/math";
 
 export interface Dozer {
+  /** One-step movement origin, consumed by world-space terrain constraints. */
+  motionStartX?: number;
+  motionStartY?: number;
+  pileResistance?: number;
   x: number;
   y: number;
   heading: number;
@@ -69,6 +73,8 @@ export interface DriveInput {
 }
 
 export function stepDozer(d: Dozer, input: DriveInput, dt: number): void {
+  d.motionStartX = d.x;
+  d.motionStartY = d.y;
   if (input.blade && d.pushCd <= 0 && d.pushT <= 0) {
     d.pushT = DOZER.pushSeconds * input.pushMul;
     d.pushCd = DOZER.pushCooldown;

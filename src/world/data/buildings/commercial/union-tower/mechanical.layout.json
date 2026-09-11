@@ -1,0 +1,27 @@
+{
+  "partitions": false,
+  "rooms": [
+    {
+      "id": "plant",
+      "kind": "production",
+      "floor": 0,
+      "x": 0,
+      "y": 0,
+      "w": 1,
+      "d": 1,
+      "finish": "concrete",
+      "contents": [
+        {
+          "id": "plant",
+          "kind": "machine",
+          "x": 0.3,
+          "y": 0.3,
+          "w": 0.35,
+          "d": 0.3,
+          "h": 1,
+          "rotation": 0
+        }
+      ]
+    }
+  ]
+}
