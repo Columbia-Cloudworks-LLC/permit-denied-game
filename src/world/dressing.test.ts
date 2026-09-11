@@ -3,6 +3,7 @@ import { createTown } from "./town";
 import { DRESS_TEMPLATES, lotLocalToWorld, pickTemplate } from "./dressing";
 import { Rng } from "../game/rng";
 import { validateTown } from "./districts";
+import { completeLot } from "./parcels";
 import type { Lot } from "../structure/types";
 
 function dressingSig(town: ReturnType<typeof createTown>): string {
@@ -43,7 +44,7 @@ describe("lot dressing", () => {
   });
 
   it("places front-yard slots inside a north-facing lot, not past the road edge", () => {
-    const lot: Lot = {
+    const lot: Lot = completeLot({
       id: "t",
       x: 10,
       y: 10,
@@ -54,7 +55,7 @@ describe("lot dressing", () => {
       identity: "residence",
       accessId: "",
       templateId: "family-yard",
-    };
+    });
     const p = lotLocalToWorld(lot, 0.16, 0);
     expect(p.y).toBeGreaterThan(lot.y + 0.55);
     expect(p.y).toBeLessThan(lot.y + lot.d * 0.5);

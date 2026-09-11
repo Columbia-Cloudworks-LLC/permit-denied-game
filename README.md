@@ -19,6 +19,7 @@ Sandbox and district presets can be opened directly:
 http://localhost:5173/?sandbox=1&district=d100
 http://localhost:5173/?sandbox=1&ranch=1
 http://localhost:5173/?perf=1
+http://localhost:5173/?sandbox=1&district=d30&nhood=1
 ```
 
 ```powershell
@@ -50,6 +51,7 @@ IONOS is only the registrar. Nameservers are Vercel (`ns1.vercel-dns.com`, `ns2.
 | Esc | Pause |
 | M | Mute |
 | V | Spawn a lighter test road vehicle on a generated route |
+| G | Toggle neighborhood graph overlay (also `?nhood=1`) |
 | ` | Toggle technical timing overlay |
 
 HUD shows **BLADE UP** / **BLADE DOWN**. Deaths: **ENGINE COOKED** (heat from grinding), **TRACK THROWN** (high-speed pole/impact stress), **COUNTY CLOCK** (time).

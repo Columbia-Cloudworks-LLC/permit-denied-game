@@ -6,10 +6,13 @@ import { PileField } from "../sim/pile";
 import { createBuildingFromArchetype, resetBuildingIds } from "../structure/building";
 import type { Building, CollapsedSite, GroundMark, GroundPatch, Lot, Prop, RoadVehicle, Rubble } from "../structure/types";
 import { resetPropIds, spawnAsset } from "./catalog";
+import type { DistrictReport } from "./districts";
 import { generateDistrictLayout } from "./districts";
 import { buildingOccupy, dressLot, fillWorldGround, pickTemplate } from "./dressing";
 import { CLASSIC_PLACEMENTS } from "./families";
+import { completeLot, type NhoodDebug } from "./parcels";
 import { linePoints, pt, RoadBuilder, emptyTerrain, type RoadNetwork, type TerrainField } from "./roads";
+import type { TopologyFamily } from "./rural";
 
 export interface Town {
   buildings: Building[];
@@ -38,11 +41,15 @@ export interface Town {
   visualRevision: number;
   collapsedSites: CollapsedSite[];
   siteRevision: number;
+  diagnostic: DistrictReport;
+  nhood: NhoodDebug;
+  topology?: TopologyFamily;
 }
 
 export interface TownOptions {
   district?: DistrictId;
   seed?: number;
+  topology?: TopologyFamily;
 }
 
 export function createTown(options: TownOptions = {}): Town {
@@ -54,7 +61,7 @@ export function createTown(options: TownOptions = {}): Town {
 
   if (district === "classic") return createClassicTown(seed);
 
-  const layout = generateDistrictLayout(district, seed);
+  const layout = generateDistrictLayout(district, seed, options.topology);
   const pileW = layout.maxX - layout.minX + 4;
   const pileD = layout.maxY - layout.minY + 4;
   return {
@@ -128,7 +135,7 @@ function createClassicTown(seed: number): Town {
     const mx = building.x + bw * 0.5 - 19.75;
     const my = building.y + bd * 0.5 - 17.6;
     const heading = Math.abs(mx) > Math.abs(my) ? (mx > 0 ? 0 : Math.PI) : my > 0 ? Math.PI / 2 : -Math.PI / 2;
-    return {
+    return completeLot({
       id: `classic${i}`,
       x: building.x - padX,
       y: building.y - padY,
@@ -139,7 +146,7 @@ function createClassicTown(seed: number): Town {
       identity,
       accessId: "",
       templateId: pickTemplate(identity, rng).id,
-    };
+    });
   });
   const ground: GroundPatch[] = [
     ...fillWorldGround(1, 1, 38, 34, seed),
@@ -182,6 +189,8 @@ function createClassicTown(seed: number): Town {
     visualRevision: 1,
     collapsedSites: [],
     siteRevision: 1,
+    diagnostic: { ok: true, issues: [] },
+    nhood: { rejected: [] },
   };
 }
 

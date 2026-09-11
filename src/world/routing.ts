@@ -75,6 +75,8 @@ export function findTrafficRoute(network: RoadNetwork, req: RouteRequest): Route
 }
 
 export function pickVerificationRoute(network: RoadNetwork): string[] | null {
+  const drivewayPath = pickDrivewayDemoRoute(network);
+  if (drivewayPath && drivewayPath.length >= 2) return drivewayPath;
   const idx = indexNetwork(network);
   const lanes = network.lanes.filter((l) => l.dir === 1 && idx.segmentById.get(l.segmentId)?.roadClass !== "driveway");
   if (lanes.length < 2) return lanes[0] ? [lanes[0].id] : null;
@@ -86,6 +88,37 @@ export function pickVerificationRoute(network: RoadNetwork): string[] | null {
     }
   }
   return best ?? [lanes[0]!.id];
+}
+
+export function pickDrivewayDemoRoute(network: RoadNetwork): string[] | null {
+  const idx = indexNetwork(network);
+  const starts = network.lanes.filter((l) => {
+    const seg = idx.segmentById.get(l.segmentId);
+    return l.dir === 1 && seg && seg.roadClass !== "driveway" && seg.roadClass !== "ramp";
+  });
+  const drives = network.lanes.filter((l) => idx.segmentById.get(l.segmentId)?.roadClass === "driveway");
+  let best: string[] | null = null;
+  for (const start of starts) {
+    for (const dest of drives) {
+      const path = findRoadRoute(network, start.id, dest.id);
+      if (!path || path.length < 2) continue;
+      if (routeUsesIntersection(network, path) && (!best || path.length > best.length)) best = path;
+    }
+  }
+  return best;
+}
+
+function routeUsesIntersection(network: RoadNetwork, path: string[]): boolean {
+  const idx = indexNetwork(network);
+  for (const id of path) {
+    const lane = idx.laneById.get(id);
+    if (!lane) continue;
+    const seg = idx.segmentById.get(lane.segmentId);
+    if (!seg) continue;
+    const node = idx.nodeById.get(lane.dir === 1 ? seg.endId : seg.startId);
+    if (node && node.segmentIds.length >= 3) return true;
+  }
+  return false;
 }
 
 export function routeUsesCurveAndIntersection(network: RoadNetwork, path: string[]): boolean {

@@ -89,13 +89,29 @@ Density budgets live in `DRESSING`: per-lot caps and per-district maxima (`class
 
 ## Road graph (foundation)
 
-`src/world/roads.ts` is the source of truth. Districts are generated road-first (`src/world/rural.ts`): topology family from seed, then lots attached through `RoadAccess` / driveways. `town.roads` AABB boxes are a derived compatibility view.
+`src/world/roads.ts` is the source of truth. Districts are generated road-first (`src/world/rural.ts`): topology family from seed, then frontage parcels, then buildings and driveway segments. `town.roads` AABB boxes are a derived compatibility view.
 
-Types: `RoadNode`, `RoadSegment` (polyline + class + width + layer + elevation), `Lane`, `RoadAccess`, `TerrainField`. Queries: `roadSurfaceAt`, `terrainHeightAt`, `nearestRoadAccess`, `projectPointToRoad`, `connectedLanes`, `canTransitionBetweenSurfaces`, `findRoadRoute`. A spatial hash indexes segments so vehicles do not scan the whole graph each step.
+Types: `RoadNode`, `RoadSegment` (polyline + class + width + layer + elevation), `Lane`, `RoadAccess`, `TerrainField`. Queries: `roadSurfaceAt`, `terrainHeightAt`, `nearestRoadAccess`, `projectPointToRoad`, `connectedLanes`, `canTransitionBetweenSurfaces`, `findRoadRoute`, `publicStreetsReachable`. A spatial hash indexes segments so vehicles do not scan the whole graph each step. `invalidateNetworkIndex` clears that cache after a finished network is mutated.
+
+`RoadBuilder.joinAt` / `splitSegment` / `normalizeJunctions` make same-layer T-junctions and crossings share real nodes. Connecting to a segment interior splits it and remaps lanes and accesses. Different layers do not join just because X/Y overlap. Graph mutations finish before `finish()` builds lane wiring and `network.mesh`.
 
 This branch generates and renders `rural`, `residential`, `service`, and `driveway`. `commercial`, `arterial`, `highway`, and `ramp` exist as classes; full highway / bridge / police behavior is not implemented. Elevation is a controlled surface height (not 3D physics). Terrain is a base height field; roads can occupy additional layers at the same X/Y. `makeRaisedRoadFixture` proves a ground road and a raised deck that do not connect without a ramp.
 
 Road mesh is tessellated once into `network.mesh` and cached with static ground. Do not rebuild the whole network every frame.
+
+### Neighborhood parcels
+
+`src/world/parcels.ts` allocates lots from distance along public street polylines. Each developed lot stores `frontage` (segment, side, t interval), a world-space `boundary`, a buildable envelope after setbacks, and a driveway arrival. Intersection clearance and road/shoulder width are reserved before slots are cut. Parcel interiors may not overlap or occupy public corridors.
+
+For D10 and larger, the capacity skeleton is an orthogonal connected block grid (`buildBlockGrid`) so public streets share real nodes. Topology families (`county`, `crossroads`, `tjunction`, `curve-farm`, `loop`, `frontage`) add flavor on that grid: a loop with a chord (two routes), a curved spur, a T / dead-end, or a service stub. If estimated frontage is still short, bounded `expandStreets` adds local streets and normalizes junctions before any lots are cut. Distant unserved rows are not used. After lots exist, generation does not add new public streets (that would cut parcels). Driveway splits remap remaining lot `frontage.segmentId` values. `finish({ normalize: false })` then builds lane wiring and the mesh without a second junction pass that would stale those IDs.
+
+Failed candidates are recorded on `town.nhood.rejected` with reasons; their access records are dropped. If the target still cannot be met, `town.diagnostic` reports `capacity` instead of keeping invalid lots.
+
+Buildings stay axis-aligned in world space (no structural rotation). The full footprint and decorative boxes must sit in the buildable envelope. A continuous driveway segment then joins the frontage street at a real node and runs to an explicit arrival point. Dressing treats that corridor polygon as reserved occupancy; yard props whose centers fall in the lot boundary and outside the corridor are kept.
+
+`validateTown` checks lane reachability from the road spawn, full parcel/building/corridor geometry, and that every access belongs to a retained lot. Legacy AABB road-box connectivity is not an escape hatch for generated districts.
+
+Developer overlay: `?nhood=1` or press `G` to draw nodes, segment IDs, parcel rings, frontage edges, buildable envelopes, driveway corridors, and rejected candidates. While the overlay is on, the camera frames the whole town so junctions and parcels stay readable.
 
 ### Traffic and police contracts
 
