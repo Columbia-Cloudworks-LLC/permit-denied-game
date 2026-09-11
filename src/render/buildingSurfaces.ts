@@ -1,3 +1,4 @@
+import { independentFloors } from "../structure/construction";
 import { FLOOR_Z } from "../game/constants";
 import { hasFurnishedInterior, inBuildingNeighborOpen } from "../structure/interior";
 import { depthKey } from "../world/iso";
@@ -125,7 +126,8 @@ function wallKey(
 }
 
 function southExposed(b: Building, cell: Cell): { exposed: boolean; visual: WallVisual | null } {
-  if (!cellLive(cell) || cell.state === "breached") return { exposed: false, visual: null };
+  if (!cellLive(cell) || cell.state === "breached" || cell.cladding?.hp === 0) return { exposed: false, visual: null };
+  if (independentFloors(b)) return { exposed: cell.gy === b.d - 1, visual: cell.state === "cracked" ? "cracked" : "intact" };
   const southN = neighbor(b, cell.gx, cell.gy + 1, cell.floor);
   const exposed = !southN || !cellPresent(southN);
   if (!exposed) return { exposed: false, visual: null };
@@ -138,7 +140,8 @@ function southExposed(b: Building, cell: Cell): { exposed: boolean; visual: Wall
 }
 
 function eastExposed(b: Building, cell: Cell): { exposed: boolean; visual: WallVisual | null } {
-  if (!cellLive(cell) || cell.state === "breached") return { exposed: false, visual: null };
+  if (!cellLive(cell) || cell.state === "breached" || cell.cladding?.hp === 0) return { exposed: false, visual: null };
+  if (independentFloors(b)) return { exposed: cell.gx === b.w - 1, visual: cell.state === "cracked" ? "cracked" : "intact" };
   const eastN = neighbor(b, cell.gx + 1, cell.gy, cell.floor);
   const selfOpen =
     hasFurnishedInterior(b) && inBuildingNeighborOpen(b, cell.gx, cell.gy + 1, cell.floor);
@@ -236,7 +239,7 @@ function mergeEastWalls(b: Building, floor: number, out: WallSpan[]): void {
 }
 
 function mergeTopCaps(b: Building, floor: number, out: TopSpan[]): void {
-  if (b.archetypeId === "ranch") return;
+  if (hasFurnishedInterior(b)) return;
   for (let gy = 0; gy < b.d; gy++) {
     let runGx0 = -1;
     let runMat: Material = "wood";
@@ -373,7 +376,7 @@ export function buildingSurfaceSignature(b: Building): string {
   const parts: string[] = [`${b.w}:${b.d}:${b.floors}:${b.theme}`];
   for (const cell of b.cells) {
     parts.push(
-      `${cell.gx},${cell.gy},${cell.floor},${cell.state},${cell.material},${cell.facadeMaterial},${cell.sag.toFixed(3)},${cell.fallT.toFixed(3)}`,
+      `${cell.gx},${cell.gy},${cell.floor},${cell.state},${cell.material},${cell.facadeMaterial},${cell.cladding?.hp ?? -1},${cell.sag.toFixed(3)},${cell.fallT.toFixed(3)}`,
     );
   }
   for (const roof of b.roofs) {

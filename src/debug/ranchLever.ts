@@ -13,13 +13,13 @@ import { SIM_DT } from "../game/constants";
 import { DEFAULT_DISTRICT_SEEDS } from "../game/session";
 import { ParticlePool } from "../fx/particles";
 import { extractBuildingSurfaces } from "../render/buildingSurfaces";
-import { ranchRoofShowsRafters } from "../render/interiorDraw";
+import { roofShowsFrame } from "../render/interiorDraw";
 import { applyCellDamage } from "../structure/building";
 import {
   fixtureExposed,
   hasFurnishedInterior,
-  ranchFloorSpans,
-  type RanchFloorSpan,
+  interiorFloorSpans,
+  type InteriorFloorSpan,
 } from "../structure/interior";
 import type { Building } from "../structure/types";
 import { cellPresent } from "../structure/types";
@@ -119,11 +119,11 @@ function openingCells(b: Building, floor = 0): { gx: number; gy: number }[] {
   return cells;
 }
 
-function spanCovers(span: RanchFloorSpan, gx: number, gy: number): boolean {
+function spanCovers(span: InteriorFloorSpan, gx: number, gy: number): boolean {
   return gx >= span.gx0 && gx <= span.gx1 && gy >= span.gy0 && gy <= span.gy1;
 }
 
-function spanGapCount(b: Building, spans: RanchFloorSpan[]): number {
+function spanGapCount(b: Building, spans: InteriorFloorSpan[]): number {
   const covered = (gx: number, gy: number) => spans.some((s) => spanCovers(s, gx, gy));
   let gaps = 0;
   for (let gy = 0; gy < b.d; gy++) {
@@ -156,7 +156,7 @@ function wingInners(b: Building, holes: number[]): { left: number; right: number
   };
 }
 
-function floorXRange(b: Building, spans: RanchFloorSpan[], holes: number[]): { min: number; max: number } | null {
+function floorXRange(b: Building, spans: InteriorFloorSpan[], holes: number[]): { min: number; max: number } | null {
   if (spans.length === 0 || holes.length === 0) return null;
   const minH = Math.min(...holes);
   const maxH = Math.max(...holes);
@@ -188,7 +188,7 @@ function cellStateSig(b: Building): string {
 }
 
 function measure(b: Building): PhaseMetrics {
-  const spans = ranchFloorSpans(b);
+  const spans = interiorFloorSpans(b);
   const holes = southHoleColumns(b);
   const opening = openingCells(b);
   const covered = opening.filter((c) => spans.some((s) => spanCovers(s, c.gx, c.gy))).length;
@@ -270,7 +270,7 @@ function phaseSvg(b: Building): string {
   const surfaces = extractBuildingSurfaces(b);
   const parts: string[] = [];
   parts.push(`<polygon points="${isoPoly(b.x, b.y, b.w * cs, b.d * cs, 0)}" fill="#7cb342" />`);
-  for (const span of ranchFloorSpans(b)) {
+  for (const span of interiorFloorSpans(b)) {
     const fill = span.finish === "tile" ? "#c4c0b4" : span.finish === "linoleum" ? "#c4a86a" : "#c49a5c";
     parts.push(
       `<polygon points="${isoPoly(b.x + span.gx0 * cs, b.y + span.gy0 * cs, (span.gx1 - span.gx0 + 1) * cs, (span.gy1 - span.gy0 + 1) * cs, 0.11)}" fill="${fill}" />`,
@@ -294,7 +294,7 @@ function phaseSvg(b: Building): string {
     const falling = roof.state === "falling";
     const verts = roof.verts.map((v) => worldToScreen(v.x, v.y, v.z));
     const pts = verts.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
-    const framing = ranchRoofShowsRafters(b, roof);
+    const framing = roofShowsFrame(b, roof);
     parts.push(
       `<polygon points="${pts}" fill="${falling ? "#6a3428" : "#8b3a2a"}" stroke="${framing ? "#6d4c2b" : "#6b2a1e"}" stroke-width="${framing ? 1.4 : 0.6}" fill-opacity="${falling ? 0.55 : 0.92}" />`,
     );

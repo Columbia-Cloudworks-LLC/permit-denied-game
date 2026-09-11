@@ -4,13 +4,15 @@ Simulation stays in world coordinates. Isometric drawing is render-only.
 
 ## Archetypes
 
+Buildings can select a shared construction and room recipe. The ranch, brick mixed-use building, and steel warehouse exercise this path. See [construction authoring](construction-authoring.md) for the definition contract, support rules, and remaining limits.
+
 `src/world/archetypes.ts` is the data table. Each archetype sets kind, footprint, floors, materials, roof style/axis, facade theme, window stride, door/loading rules, and optional porch, awning, parapet, chimney, or garage. District lots pick one with lightweight zoning weights. Classic town uses fixed placements.
 
 Collision uses occupied cells only. Porch, awning, parapet, and chimney are decorative boxes and must not invent wall collision.
 
 ## Structural cells vs facade surfaces
 
-`Building.grid` / `Cell` remain the simulation source of truth for HP, support, collapse, debris material, and collision. Rendering does not draw one isometric box per intact cell.
+`Building.grid` / `Cell` own wall/column HP, support, collapse, debris material, and collision. Independent constructions also have `floorTiles` for slabs; an empty structural cell can contain usable floor space and furnishings. Steel columns carry sacrificial cladding with its own HP. Rendering does not draw one isometric box per intact cell.
 
 `src/render/buildingSurfaces.ts` extracts exposed south/east walls and optional top caps from live cells, merges compatible spans, and caches by a render-only signature (never reads or clears `structureDirty`). Breached cells merge into cavity groups; falling cells still draw as displaced chunks.
 

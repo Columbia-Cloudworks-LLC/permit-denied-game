@@ -1,3 +1,4 @@
+import { TIMBER_HOUSE, BRICK_MIXED_USE, STEEL_HALL, type ConstructionDef } from "../structure/construction";
 import type {
   BuildingFeatureSpec,
   BuildingKind,
@@ -10,6 +11,8 @@ import type {
 
 export type ArchetypeId =
   | "ranch"
+  | "rivertown"
+  | "steel-warehouse"
   | "cottage"
   | "colonial"
   | "walkup"
@@ -20,6 +23,7 @@ export type ArchetypeId =
   | "warehouse";
 
 export interface Archetype {
+  construction?: ConstructionDef;
   id: ArchetypeId;
   kind: BuildingKind;
   label: string;
@@ -66,7 +70,22 @@ function garageHouseMask(w: number, d: number, floors: number, garageW = 2): boo
 
 export const ARCHETYPES: readonly Archetype[] = [
   {
+    id: "rivertown", construction: BRICK_MIXED_USE, kind: "shop", label: "RIVER MERCANTILE",
+    w: 5, d: 4, floors: 2, material: "brick", secondary: "brick", roof: "flat", roofAxis: "x",
+    theme: "storefront", windowStride: 1, door: "center-s", loading: false,
+    features: { porch: false, awning: true, parapet: true, chimney: false, garage: false },
+    zones: { residential: 0, commercial: 4, industrial: 0 },
+  },
+  {
+    id: "steel-warehouse", construction: STEEL_HALL, kind: "industrial", label: "STEEL WORKSHOP",
+    w: 6, d: 5, floors: 1, material: "metal", secondary: "metal", roof: "shed", roofAxis: "y",
+    theme: "warehouse", windowStride: 3, door: "center-s", loading: true,
+    features: { porch: false, awning: false, parapet: false, chimney: false, garage: false },
+    zones: { residential: 0, commercial: 0, industrial: 5 },
+  },
+  {
     id: "ranch",
+    construction: TIMBER_HOUSE,
     kind: "house",
     label: "RANCH",
     w: 5,

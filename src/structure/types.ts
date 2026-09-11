@@ -7,9 +7,9 @@ export type RoofAxis = "x" | "y";
 export type FacadeTheme = "cottage" | "ranch" | "colonial" | "walkup" | "porch" | "storefront" | "corner" | "civic" | "warehouse";
 export type LotZone = "residential" | "commercial" | "industrial";
 export type LotIdentity = "residence" | "farm" | "service" | "contractor" | "utility" | "shop";
-export type FloorFinish = "plank" | "tile" | "linoleum";
-export type RoomKind = "kitchen" | "bathroom" | "living";
-export type FixtureKind = "cabinet" | "counter" | "toilet" | "sofa" | "table" | "radiator";
+export type FloorFinish = "plank" | "tile" | "linoleum" | "concrete";
+export type RoomKind = "kitchen" | "bathroom" | "living" | "retail" | "storage" | "bedroom" | "production";
+export type FixtureKind = "cabinet" | "counter" | "toilet" | "sofa" | "table" | "radiator" | "shelf" | "rack" | "pallet" | "fridge" | "bed" | "machine" | "partition";
 export type SiteMarkKind = "slab" | "dirt" | "crack" | "ridge" | "remnant" | "outline";
 export type CoverKind =
   | "grass"
@@ -55,6 +55,8 @@ export type JunctionType = "none" | "end" | "T" | "cross" | "Y";
 export type VehicleRole = "civilian" | "police";
 
 export interface Cell {
+  role?: "wall" | "column";
+  cladding?: { material: Material; hp: number; maxHp: number; shed: boolean };
   gx: number;
   gy: number;
   floor: number;
@@ -87,6 +89,8 @@ export interface RoofVertex {
 }
 
 export interface RoofSection {
+  /** Covered floor tiles are distinct from the walls/columns carrying the roof. */
+  coverage?: { gx: number; gy: number }[];
   id: number;
   style: RoofStyle;
   support: { gx: number; gy: number }[];
@@ -143,6 +147,8 @@ export interface InteriorFixture {
 }
 
 export interface Building {
+  construction?: import("./construction").ConstructionDef;
+  floorTiles?: FloorTile[];
   id: number;
   kind: BuildingKind;
   name: string;
@@ -172,6 +178,15 @@ export interface Building {
   structureDirty: boolean;
   collisionDirty: boolean;
   roofDirty: boolean;
+}
+
+export interface FloorTile {
+  gx: number;
+  gy: number;
+  floor: number;
+  state: "intact" | "falling" | "gone";
+  fallT: number;
+  support: { gx: number; gy: number }[];
 }
 
 export interface SiteMark {
@@ -434,6 +449,21 @@ export function cellSolid(cell: Cell): boolean {
 }
 
 export function cellWorldBox(b: Building, cell: Cell): { x: number; y: number; w: number; d: number } {
+  if (b.construction?.floorSupport === "independent") {
+    const cs = b.cellSize, thick = .18;
+    let x = b.x + cell.gx * cs, y = b.y + cell.gy * cs;
+    if (cell.role === "column" && cell.cladding?.hp === 0) {
+      x += cs * .5 - thick;
+      if (cell.gy === b.d - 1) y += cs - thick * 2;
+      return { x, y, w: thick * 2, d: thick * 2 };
+    }
+    if (cell.gy === 0 || cell.gy === b.d - 1) {
+      if (cell.gy !== 0) y += cs - thick;
+      return { x, y, w: cs, d: thick };
+    }
+    if (cell.gx === b.w - 1) x += cs - thick;
+    return { x, y, w: thick, d: cs };
+  }
   return {
     x: b.x + cell.gx * b.cellSize,
     y: b.y + cell.gy * b.cellSize,

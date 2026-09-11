@@ -1,3 +1,5 @@
+import { defaultDebugView } from "../debug/view";
+import { drawDebugOverlay } from "./debugOverlay";
 import { Container, Graphics, Text } from "pixi.js";
 import { FLOOR_Z } from "../game/constants";
 import { Rng } from "../game/rng";
@@ -10,7 +12,7 @@ import type { Town } from "../world/town";
 import { hasFurnishedInterior } from "../structure/interior";
 import { aggregateSurfaceStats, getBuildingSurfaces } from "./buildingSurfaces";
 import { drawCatalogProp } from "./assets";
-import { drawRanchRafters, ranchInteriorCmds, ranchRoofShowsRafters } from "./interiorDraw";
+import { drawRoofFrame, interiorCmds, roofShowsFrame } from "./interiorDraw";
 import { cellColors, drawGroundPoly, drawIsoBox, drawOrientedGround, drawOrientedIsoBox, drawShadow, drawSlopedQuad, drawWorldPoly, PAL, shade } from "./drawIso";
 import {
   drawBreachGroup,
@@ -38,7 +40,10 @@ export class WorldRenderer {
   private readonly nhoodLabels: Text[] = [];
   private readonly world = new Graphics();
   private readonly cmds: Cmd[] = [];
-  showNhood = false;
+  readonly debug = defaultDebugView();
+  private readonly debugOverlay = new Graphics();
+  get showNhood(): boolean { return this.debug.overview; }
+  set showNhood(value: boolean) { this.debug.overview = value; }
   camX = 0;
   camY = 0;
   zoom = 1.15;
@@ -50,7 +55,7 @@ export class WorldRenderer {
   stats = { total: 0, visible: 0, surfaceGeometry: 0 };
 
   constructor() {
-    this.root.addChild(this.ground, this.sites, this.overlay, this.nhood, this.world);
+    this.root.addChild(this.ground, this.sites, this.overlay, this.world, this.nhood, this.debugOverlay);
     this.root.sortableChildren = false;
   }
 
@@ -79,12 +84,15 @@ export class WorldRenderer {
   }
 
   draw(town: Town, dozer: Dozer, particles: ParticlePool, birds: Bird[]): void {
+    const view = this.debug;
+    this.sites.visible = view.sites;
+    this.nhood.visible = this.showNhood;
     this.world.clear();
     this.cmds.length = 0;
     let total = 0;
     let visible = 0;
 
-    const gKey = `${town.district}:${town.seed}:${town.lots.length}:${town.network.mesh.length}:${town.ground.length}`;
+    const gKey = `${view.terrain}:${view.roads}:${town.district}:${town.seed}:${town.lots.length}:${town.network.mesh.length}:${town.ground.length}`;
     if (gKey !== this.groundKey) {
       this.ground.clear();
       const covers = town.ground.length
@@ -99,11 +107,11 @@ export class WorldRenderer {
             seed: town.seed,
             z: 0,
           }));
-      for (const patch of covers) {
+      for (const patch of view.terrain ? covers : []) {
         drawCover(this.ground, patch);
       }
       const mesh = town.network.mesh;
-      if (mesh.length) {
+      if (view.roads && mesh.length) {
         // RoadMeshQuad x/y are world centers; drawOrientedGround uses the same convention.
         for (const q of mesh) {
           const alpha = q.kind === "mark" ? 0.72 : 1;
@@ -118,7 +126,7 @@ export class WorldRenderer {
             drawOrientedGround(this.ground, q.x, q.y, q.heading, q.w, q.d, q.color, alpha, q.z);
           }
         }
-      } else {
+      } else if (view.roads) {
         for (const road of town.roads) {
           drawGroundPoly(this.ground, road.x, road.y, road.w, road.d, PAL.asphalt);
         }
@@ -134,16 +142,16 @@ export class WorldRenderer {
     }
 
     const camCell = `${Math.round(this.camX / 28)}:${Math.round(this.camY / 28)}`;
-    const oKey = `${town.visualRevision}:${town.pile.revision}:${camCell}`;
+    const oKey = `${view.effects}:${view.debris}:${town.visualRevision}:${town.pile.revision}:${camCell}`;
     if (oKey !== this.overlayKey) {
       this.overlay.clear();
-      for (const mark of town.marks) {
+      for (const mark of view.effects ? town.marks : []) {
         total++;
         if (!this.visibleBox(mark.x - mark.w, mark.y - mark.d, mark.w * 2, mark.d * 2, 0, 0.02)) continue;
         visible++;
         drawGroundMark(this.overlay, mark);
       }
-      drawPileHints(this.overlay, town, (x, y, w, d) => this.visibleBox(x, y, w, d, 0, 0.4));
+      if (view.debris) drawPileHints(this.overlay, town, (x, y, w, d) => this.visibleBox(x, y, w, d, 0, 0.4));
       this.overlayKey = oKey;
     }
 
@@ -163,14 +171,15 @@ export class WorldRenderer {
       if (!this.visibleBox(b.x - fall, b.y - fall, bw + fall * 2, bd + fall * 2, -0.4, z1)) continue;
       const surfaces = getBuildingSurfaces(b);
       const hasSolid = b.cells.some((c) => c.state !== "gone" && c.state !== "falling");
-      if (hasSolid) {
+      if (hasSolid && view.walls) {
         visible++;
         this.cmds.push({
           depth: depthKey(b.x + bw * 0.5, b.y + bd * 0.5, 0),
           run: (g) => drawBuildingFootprintShadow(g, surfaces.footprint, 1),
         });
       }
-      for (const span of surfaces.walls) {
+      for (const span of view.walls ? surfaces.walls : []) {
+        if (span.floor > view.maxFloor) continue;
         for (const run of wallSpanFadeRuns(b, span, dozer)) {
           visible++;
           this.cmds.push({
@@ -179,14 +188,16 @@ export class WorldRenderer {
           });
         }
       }
-      for (const span of surfaces.tops) {
+      for (const span of view.floors ? surfaces.tops : []) {
+        if (span.floor > view.maxFloor) continue;
         visible++;
         this.cmds.push({
           depth: span.depth,
           run: (g) => drawTopSpan(g, b, span, 1),
         });
       }
-      for (const breach of surfaces.breaches) {
+      for (const breach of view.walls ? surfaces.breaches : []) {
+        if (breach.floor > view.maxFloor) continue;
         if (hasFurnishedInterior(b)) continue;
         visible++;
         this.cmds.push({
@@ -195,12 +206,13 @@ export class WorldRenderer {
         });
       }
       if (hasFurnishedInterior(b)) {
-        const interiors = ranchInteriorCmds(b, 1);
+        const interiors = interiorCmds(b, 1, { reveal: view.reveal || !view.roofs || !view.walls || view.maxFloor < b.floors - 1, maxFloor: view.maxFloor })
+          .filter(c => c.kind === "floor" ? view.floors : c.kind === "fixture" ? view.contents : view.walls);
         visible += interiors.length;
         this.cmds.push(...interiors);
       }
       for (const cell of b.cells) {
-        if (cell.state !== "falling") continue;
+        if (!view.walls || cell.floor > view.maxFloor || cell.state !== "falling") continue;
         const cx = b.x + cell.gx * b.cellSize + cell.fallDx * cell.fallT * 0.85;
         const cy = b.y + cell.gy * b.cellSize + cell.fallDy * cell.fallT * 0.85;
         const z0 = cell.floor * FLOOR_Z - cell.sag * 0.55 - cell.fallT * 1.6;
@@ -219,9 +231,9 @@ export class WorldRenderer {
         });
       }
       const liveRoofs = b.roofs.filter((roof) => roof.state !== "gone");
-      if (liveRoofs.length) {
+      if (view.roofs && b.floors - 1 <= view.maxFloor && liveRoofs.length) {
         total += liveRoofs.length;
-        if (hasFurnishedInterior(b)) {
+        if (b.construction?.bays) {
           for (const roof of liveRoofs) {
             const moved = roofVerts(roof);
             const c = roofCenter(moved);
@@ -229,7 +241,7 @@ export class WorldRenderer {
             visible++;
             this.cmds.push({
               depth: roofPainterDepth(moved),
-              run: (g) => drawRanchRoofBay(g, b, roof, 1),
+              run: (g) => drawRoofBay(g, b, roof, 1),
             });
           }
           if (b.features.chimney) {
@@ -256,7 +268,7 @@ export class WorldRenderer {
       }
     }
 
-    for (const p of town.props) {
+    for (const p of view.props ? town.props : []) {
       if (p.broken) continue;
       total++;
       if (!this.visibleBox(p.x, p.y, p.w, p.d, p.elev, p.elev + 3.2)) continue;
@@ -267,7 +279,7 @@ export class WorldRenderer {
       });
     }
 
-    for (const r of town.rubble) {
+    for (const r of view.debris ? town.rubble : []) {
       total++;
       if (!this.visibleBox(r.x - r.w, r.y - r.d, r.w * 2, r.d * 2, r.elev, r.elev + r.thickness + 0.25)) continue;
       visible++;
@@ -296,7 +308,7 @@ export class WorldRenderer {
       run: (g) => drawDozer(g, dozer),
     });
 
-    for (const p of particles.items) {
+    for (const p of view.effects ? particles.items : []) {
       if (!p.alive) continue;
       total++;
       if (!this.visibleBox(p.x - 0.3, p.y - 0.3, 0.6, 0.6, 0, p.z + 0.2)) continue;
@@ -307,7 +319,7 @@ export class WorldRenderer {
       });
     }
 
-    for (const bird of birds) {
+    for (const bird of view.effects ? birds : []) {
       total++;
       if (!this.visibleBox(bird.x - 0.4, bird.y - 0.4, 0.8, 0.8, bird.z, bird.z + 0.2)) continue;
       visible++;
@@ -319,6 +331,7 @@ export class WorldRenderer {
 
     this.cmds.sort((a, b) => a.depth - b.depth);
     for (const cmd of this.cmds) cmd.run(this.world);
+    drawDebugOverlay(this.debugOverlay, town, dozer, view);
     this.stats = { total, visible, surfaceGeometry: surfaceStats.geometryCount };
   }
 }
@@ -389,11 +402,11 @@ function drawBuildingRoofs(g: Graphics, b: Building, roofs: RoofSection[], alpha
   }
 }
 
-function drawRanchRoofBay(g: Graphics, b: Building, roof: RoofSection, alpha: number): void {
+function drawRoofBay(g: Graphics, b: Building, roof: RoofSection, alpha: number): void {
   const drawn = new Set<string>();
   drawRoofSection(g, b, roof, alpha, drawn, () => {
-    if (ranchRoofShowsRafters(b, roof)) {
-      drawRanchRafters(g, b, roof, alpha * 0.92);
+    if (roofShowsFrame(b, roof)) {
+      drawRoofFrame(g, b, roof, alpha * 0.92);
     }
   });
 }
@@ -407,20 +420,20 @@ function drawRoofSection(
   beforeCover?: () => void,
 ): void {
   const raw = roofVerts(roof);
-  const verts = b.archetypeId === "ranch" ? applyBrokenRoofEdge(b, roof, raw) : raw;
+  const verts = !!b.construction?.bays ? applyBrokenRoofEdge(b, roof, raw) : raw;
   const cols = roofColors(b, roof, verts);
   const faded = roof.state === "falling" ? alpha * 0.9 : alpha;
-  const thick = b.archetypeId === "ranch" ? 0.14 : 0;
+  const thick = !!b.construction?.bays ? 0.14 : 0;
   if (thick > 0) {
     const under = verts.map((v) => ({ x: v.x, y: v.y, z: v.z - thick }));
-    drawSlopedQuad(g, under.slice().reverse(), PAL.wood, PAL.woodDark, faded * 0.95);
+    drawSlopedQuad(g, under.slice().reverse(), cols.edge, cols.edge, faded * 0.95);
     for (let i = 0; i < verts.length; i++) {
       const n = (i + 1) % verts.length;
       drawSlopedQuad(
         g,
         [verts[i]!, verts[n]!, under[n]!, under[i]!],
-        i % 2 === 0 ? cols.edge : PAL.wood,
-        PAL.woodDark,
+        cols.edge,
+        cols.edge,
         faded,
       );
     }

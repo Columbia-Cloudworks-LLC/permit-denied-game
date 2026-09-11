@@ -1,3 +1,4 @@
+import { CONTENT_ASSETS } from "./contents";
 import type {
   AssetFamily,
   AssetTag,
@@ -104,6 +105,7 @@ const FOL = { t: 0x5a9a42, l: 0x244820, r: 0x3d6a32 };
 const TRUNK = { t: 0x8a6238, l: 0x4a3018, r: 0x6a4428 };
 
 export const ASSET_CATALOG: readonly AssetDef[] = [
+  ...CONTENT_ASSETS,
   asset({
     id: "fence",
     family: "legacy",

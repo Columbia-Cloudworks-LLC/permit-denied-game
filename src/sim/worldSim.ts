@@ -113,7 +113,10 @@ function spawnFixtureFrags(town: Town, frags: FixtureFrag[]): void {
       w: frag.w,
       d: frag.d,
       material: frag.material,
-      layer: "fragment",
+      layer: frag.layer,
+      shape: frag.shape,
+      elev: frag.elev,
+      mass: frag.mass,
       vx: frag.vx,
       vy: frag.vy,
     });

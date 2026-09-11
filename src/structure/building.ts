@@ -1,4 +1,5 @@
 import { CELL, FLOOR_Z } from "../game/constants";
+import { independentFloors, validateConstruction, type ConstructionDef } from "./construction";
 import { debrisKind, ParticlePool } from "../fx/particles";
 import { archetypeById, fullMask, occupiedMask, type ArchetypeId } from "../world/archetypes";
 import type {
@@ -48,6 +49,7 @@ function makeCell(gx: number, gy: number, floor: number, material: Material, isS
 }
 
 export interface BuildingSpec {
+  construction?: ConstructionDef;
   kind: BuildingKind;
   name: string;
   x: number;
@@ -181,6 +183,12 @@ function makeDecor(spec: BuildingSpec, cellSize: number, features: BuildingFeatu
 export function createBuilding(spec: BuildingSpec): Building {
   const cellSize = spec.cellSize ?? CELL;
   const archetype = spec.archetypeId ? archetypeById(spec.archetypeId) : undefined;
+  const construction = spec.construction ?? archetype?.construction;
+  if (construction) {
+    const issues = validateConstruction(construction);
+    if (issues.length) throw new Error(`Invalid construction ${construction.id}: ${issues.join("; ")}`);
+  }
+  const shell = construction?.floorSupport === "independent";
   const features: BuildingFeatureSpec = {
     porch: spec.features?.porch ?? archetype?.features.porch ?? false,
     awning: spec.features?.awning ?? archetype?.features.awning ?? false,
@@ -203,18 +211,28 @@ export function createBuilding(spec: BuildingSpec): Building {
     for (let gx = 0; gx < spec.w; gx++) {
       const col: Cell[] = [];
       for (let gy = 0; gy < spec.d; gy++) {
-        const live = mask[floor]?.[gx]?.[gy] === true;
+        const occupied = mask[floor]?.[gx]?.[gy] === true;
         const occN = (x: number, y: number) => mask[floor]?.[x]?.[y] === true;
         const edge = !occN(gx - 1, gy) || !occN(gx + 1, gy) || !occN(gx, gy - 1) || !occN(gx, gy + 1);
         const corner = (!occN(gx - 1, gy) || !occN(gx + 1, gy)) && (!occN(gx, gy - 1) || !occN(gx, gy + 1));
+        const live = occupied && (!shell || edge);
         let isSupport = live && (corner || (floor === 0 && edge && (gx + gy) % 2 === 0));
         if (spec.kind === "industrial" && floor === 0 && gx === Math.floor(spec.w / 2) && gy === Math.floor(spec.d / 2)) {
           isSupport = live;
         }
-        let mat = spec.material;
-        if (spec.kind === "house" && floor === spec.floors - 1) mat = "wood";
-        if (spec.kind === "industrial" && floor === 0 && gy === spec.d - 1) mat = spec.secondary ?? "metal";
+        let mat = construction?.structure ?? spec.material;
+        if (!construction && spec.kind === "house" && floor === spec.floors - 1) mat = "wood";
+        if (!construction && spec.kind === "industrial" && floor === 0 && gy === spec.d - 1) mat = spec.secondary ?? "metal";
         const cell = makeCell(gx, gy, floor, mat, isSupport);
+        if (shell) {
+          cell.role = construction.walls === "frame" && (gy === 0 || gy === spec.d - 1) && gx % 2 === 0 ? "column" : "wall";
+          cell.isSupport = construction.walls === "masonry" || cell.role === "column";
+          cell.facadeMaterial = construction.skin;
+          if (cell.role === "column") cell.cladding = { material: construction.skin, hp: 12, maxHp: 12, shed: false };
+          if (construction.walls === "frame" && cell.role === "wall") {
+            cell.hp = cell.maxHp = materialHp(mat) * .35;
+          }
+        }
         if (spec.secondary && floor === 0 && gy === spec.d - 1 && live && spec.kind !== "industrial") {
           cell.facadeMaterial = spec.secondary;
         }
@@ -235,6 +253,13 @@ export function createBuilding(spec: BuildingSpec): Building {
   placeOpenings(filled, grid, mask);
 
   const building: Building = {
+    construction,
+    floorTiles: shell ? Array.from({ length: spec.floors }, (_, floor) =>
+      Array.from({ length: spec.w }, (_, gx) => Array.from({ length: spec.d }, (_, gy) => ({
+        gx, gy, floor, state: "intact" as const, fallT: 0,
+        support: cells.filter(c => c.floor === floor - 1 && c.isSupport && Math.abs(c.gx - gx) <= 1)
+          .map(c => ({ gx: c.gx, gy: c.gy })),
+      })).filter(t => mask[floor]?.[gx]?.[t.gy])).flat()).flat() : undefined,
     id: nextId++,
     kind: spec.kind,
     name: spec.name,
@@ -339,6 +364,17 @@ export function applyCellDamage(
 ): number {
   if (amount <= 0) return 0;
   if (cell.state === "gone" || cell.state === "falling") return 0;
+  if (cell.cladding && cell.cladding.hp > 0) {
+    const beforeSkin = cell.cladding.hp;
+    cell.cladding.hp = Math.max(0, beforeSkin - amount);
+    amount = Math.max(0, amount - beforeSkin);
+    if (cell.cladding.hp === 0) {
+      markBuildingChanged(building);
+      const center = cellCenter(building, cell);
+      particles.burst(debrisKind(cell.cladding.material), center.x, center.y, center.z, .6);
+    }
+    if (amount === 0) return 0;
+  }
   const before = cell.hp;
   const was = cell.state;
   const wasSolid = cellPresent(cell);
@@ -530,9 +566,15 @@ export function stepStructures(
       floor * building.w * building.d + gx * building.d + gy;
 
     for (const cell of building.cells) {
+      if (cell.cladding && cell.cladding.hp === 0 && !cell.cladding.shed) {
+        cell.cladding.shed = true;
+        const c = cellCenter(building, cell);
+        result.rubbleSpawns.push({ x: c.x, y: c.y, dx: 0, dy: 1, material: cell.cladding.material,
+          floor: cell.floor, cellSize: building.cellSize * .4, source: "roof", panelW: building.cellSize, panelD: .5 });
+      }
       if (cell.state === "gone") continue;
       if (cell.state === "falling") {
-        cell.fallT += dt / 0.42;
+        cell.fallT += dt / (building.construction?.fallDuration ?? .42);
         if (cell.fallT >= 1) {
           cell.state = "gone";
           cell.fallT = 1;
@@ -584,18 +626,20 @@ export function stepStructures(
       if (cell.unsupportedTime > 0.38) {
         result.cash += applyCellDamage(building, cell, 26 * dt, cell.lastHitNx, cell.lastHitNy, particles, events);
       }
-      if (cell.unsupportedTime > 0.52) {
+      if (cell.unsupportedTime > (building.construction?.failureDelay ?? .52)) {
         result.cash += startFall(building, cell, particles, events);
       }
     }
 
+    stepFloorTiles(building, dt, result);
     stepRoofs(building, dt, particles, events, roofSpawns);
     const interiors = stepInteriors(building, particles, events);
     result.cash += interiors.cash;
     result.fixtureFrags.push(...interiors.frags);
     const cellsDown = building.cells.every((c) => c.state === "gone");
     const roofsDown = building.roofs.every((r) => r.state === "gone");
-    if (cellsDown && roofsDown) building.fullyDown = true;
+    const floorsDown = !building.floorTiles?.some(t => t.floor > 0 && t.state !== "gone");
+    if (cellsDown && roofsDown && floorsDown) building.fullyDown = true;
     building.structureDirty = buildingStillUnsettled(building);
     building.roofDirty = roofsNeedStep(building);
   }
@@ -611,11 +655,37 @@ export function stepStructures(
 
 function buildingStillUnsettled(building: Building): boolean {
   if (building.fullyDown) return false;
+  if (building.floorTiles?.some(t => t.state === "falling")) return true;
   for (const cell of building.cells) {
     if (cell.state === "breached" || cell.state === "falling") return true;
     if (cell.sag > 1e-4 || cell.unsupportedTime > 1e-4) return true;
   }
   return false;
+}
+
+/** Ground slabs persist. Upper slabs fall only when their authored bearing line is lost. */
+function stepFloorTiles(building: Building, dt: number, result: StructureStepResult): void {
+  if (!independentFloors(building)) return;
+  for (const tile of building.floorTiles ?? []) {
+    if (tile.floor === 0 || tile.state === "gone") continue;
+    const supported = tile.support.some(s => {
+      const cell = building.grid[tile.floor - 1]?.[s.gx]?.[s.gy];
+      return cell && cellPresent(cell);
+    });
+    if (tile.state === "intact" && supported) continue;
+    tile.state = "falling";
+    tile.fallT += dt / .55;
+    building.structureDirty = true;
+    building.collisionDirty = true;
+    if (tile.fallT < 1) continue;
+    tile.state = "gone";
+    result.rubbleSpawns.push({
+      x: building.x + (tile.gx + .5) * building.cellSize,
+      y: building.y + (tile.gy + .5) * building.cellSize,
+      dx: .2, dy: 1, material: building.construction!.floor,
+      floor: tile.floor, cellSize: building.cellSize,
+    });
+  }
 }
 
 export function buildingBonus(building: Building): number {

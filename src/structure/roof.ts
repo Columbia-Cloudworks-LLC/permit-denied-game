@@ -3,6 +3,7 @@ import type { ParticlePool } from "../fx/particles";
 import { debrisKind } from "../fx/particles";
 import type { Building, Material, RoofAxis, RoofSection, RoofStyle, WorldEvent } from "./types";
 import { cellPresent } from "./types";
+import { independentFloors } from "./construction";
 
 export interface RoofDebrisSpawn {
   x: number;
@@ -25,6 +26,7 @@ function wallTopZ(floors: number): number {
 
 function occupiedTop(building: Building): { gx: number; gy: number }[] {
   const top = building.floors - 1;
+  if (independentFloors(building)) return building.floorTiles!.filter(t => t.floor === top).map(t => ({ gx: t.gx, gy: t.gy }));
   const out: { gx: number; gy: number }[] = [];
   for (let gx = 0; gx < building.w; gx++) {
     for (let gy = 0; gy < building.d; gy++) {
@@ -96,6 +98,7 @@ function connected(cells: { gx: number; gy: number }[]): { gx: number; gy: numbe
 }
 
 function roofMaterial(building: Building): Material {
+  if (building.construction) return building.construction.roof;
   if (building.kind === "house") return "wood";
   if (building.roof === "shed") return "metal";
   return building.secondary === "metal" ? "metal" : "wood";
@@ -234,13 +237,21 @@ function gablePlanes(
   ];
 }
 
-function ranchGableBays(
+function gableBays(
   building: Building,
   cells: { gx: number; gy: number }[],
   axis: RoofAxis,
   id0: number,
 ): RoofSection[] {
-  if (axis !== "x") return gablePlanes(building, cells, axis, id0);
+  if (axis === "y") {
+    const transposed = { ...building, x: building.y, y: building.x, w: building.d, d: building.w };
+    return gableBays(transposed, cells.map(c => ({ gx: c.gy, gy: c.gx })), "x", id0).map(r => ({
+      ...r, support: r.support.map(s => ({ gx: s.gy, gy: s.gx })),
+      verts: r.verts.map(v => ({ x: v.y, y: v.x, z: v.z })).reverse(),
+      hingeX: r.hingeY, hingeY: r.hingeX, tiltAx: r.tiltAy, tiltAy: r.tiltAx,
+      ridge: r.ridge && { ax: r.ridge.ay, ay: r.ridge.ax, az: r.ridge.az, bx: r.ridge.by, by: r.ridge.bx, bz: r.ridge.bz },
+    }));
+  }
   const b = bbox(cells);
   const eaveZ = wallTopZ(building.floors);
   const ridgeZ = eaveZ + 1.08;
@@ -450,8 +461,8 @@ export function generateRoofs(building: Building): RoofSection[] {
     if (solidRect(comp)) {
       if (building.roof === "flat") sections.push(flatPlane(building, comp, nextId++));
       else if (building.roof === "shed") sections.push(shedPlane(building, comp, axis, nextId++));
-      else if (building.archetypeId === "ranch") {
-        const planes = ranchGableBays(building, comp, axis, nextId);
+      else if (building.construction?.bays) {
+        const planes = gableBays(building, comp, axis, nextId);
         nextId += planes.length;
         sections.push(...planes);
       } else {
@@ -465,7 +476,48 @@ export function generateRoofs(building: Building): RoofSection[] {
       sections.push(...extra);
     }
   }
-  return sections;
+  return independentFloors(building) ? splitStructuralBays(building, sections) : sections;
+}
+
+/** Slice existing planes so shed pitch and flat deck elevation remain continuous across bays. */
+function splitStructuralBays(building: Building, sections: RoofSection[]): RoofSection[] {
+  const out: RoofSection[] = [];
+  const cs = building.cellSize;
+  for (const section of sections) {
+    const covered = section.support;
+    const bounds = bbox(covered);
+    for (let gx = bounds.minX; gx <= bounds.maxX; gx += 2) {
+      const end = Math.min(bounds.maxX, gx + 1);
+      const x0 = building.x + gx * cs - (gx === bounds.minX ? .14 : 0);
+      const x1 = building.x + (end + 1) * cs + (end === bounds.maxX ? .14 : 0);
+      let verts = section.verts;
+      for (const [plane, keepGreater] of [[x0, true], [x1, false]] as const) {
+        const clipped: typeof verts = [];
+        for (let i = 0; i < verts.length; i++) {
+          const a = verts[i]!;
+          const b = verts[(i + 1) % verts.length]!;
+          const inA = keepGreater ? a.x >= plane : a.x <= plane;
+          const inB = keepGreater ? b.x >= plane : b.x <= plane;
+          if (inA) clipped.push(a);
+          if (inA !== inB) {
+            const t = (plane - a.x) / (b.x - a.x);
+            clipped.push({ x: plane, y: a.y + (b.y - a.y) * t, z: a.z + (b.z - a.z) * t });
+          }
+        }
+        verts = clipped;
+      }
+      if (verts.length < 3) continue;
+      const coverage = covered.filter(c => c.gx >= gx && c.gx <= end);
+      const support = building.cells.filter(c => c.floor === building.floors - 1 && c.isSupport && c.gx >= gx && c.gx <= end)
+        .map(c => ({ gx: c.gx, gy: c.gy }));
+      out.push({ ...makeSection(out.length + 1, section.style, support, verts, section.material), coverage });
+    }
+  }
+  return out;
+}
+
+export function roofCoverage(roof: RoofSection): { gx: number; gy: number }[] {
+  return roof.coverage ?? roof.support;
 }
 
 export function roofCoversOnlyOccupied(building: Building): boolean {
@@ -561,7 +613,7 @@ export function displacedRoofVerts(roof: RoofSection): { x: number; y: number; z
   const t = Math.max(0, Math.min(1, roof.fallT));
   const slide = roofFallEase(t);
   const settle = roofSettle(t);
-  const sagDrop = t <= 0 ? roof.sag * ROOF_SAG_DROP : 0;
+  const sagDrop = roof.sag * ROOF_SAG_DROP * (1 - slide);
   const drop = slide * 1.4 + sagDrop;
   const swung = roof.verts.map((v) => {
     const r = angle === 0 ? { x: v.x, y: v.y, z: v.z } : rotateAroundHinge(v, roof, angle);
@@ -581,26 +633,20 @@ export function displacedRoofVerts(roof: RoofSection): { x: number; y: number; z
 
 type RoofEdge = "minX" | "maxX" | "minY" | "maxY";
 
-function sameBaySide(a: RoofSection, b: RoofSection): boolean {
-  const aMin = Math.min(...a.support.map((s) => s.gy));
-  const aMax = Math.max(...a.support.map((s) => s.gy));
-  const bMin = Math.min(...b.support.map((s) => s.gy));
-  const bMax = Math.max(...b.support.map((s) => s.gy));
-  return aMax >= bMin && bMax >= aMin;
-}
-
-/** Adjacent ranch/gable bay in the same row, if one exists. */
+/** Neighbor lookup follows actual bay extent, including multi-cell and rotated bays. */
 function neighborRoofBay(building: Building, roof: RoofSection, dgx: number): RoofSection | undefined {
-  const mine = roof.support[0]?.gx;
-  if (mine == null) return undefined;
-  const want = mine + dgx;
-  return building.roofs.find(
-    (other) =>
-      other.id !== roof.id &&
-      other.style === roof.style &&
-      other.support.some((s) => s.gx === want) &&
-      sameBaySide(roof, other),
-  );
+  const alongY = roof.style === "gable" && building.roofAxis === "y";
+  const coord = (s: { gx: number; gy: number }) => alongY ? s.gy : s.gx;
+  const coverage = roofCoverage(roof);
+  if (!coverage.length) return undefined;
+  const edge = dgx < 0 ? Math.min(...coverage.map(coord)) : Math.max(...coverage.map(coord));
+  const side = (r: RoofSection) => {
+    if (!r.ridge) return 0;
+    const center = vertsCenter(r.verts);
+    return Math.sign(alongY ? center.x - r.ridge.ax : center.y - r.ridge.ay);
+  };
+  return building.roofs.find(other => other.id !== roof.id && other.style === roof.style && side(other) === side(roof)
+    && roofCoverage(other).some(s => coord(s) === edge + dgx));
 }
 
 /** True when the neighboring bay has already dropped or is falling away. */
@@ -623,8 +669,9 @@ function roofNeighborFallDelay(building: Building, roof: RoofSection): number {
 function exposedRoofEdges(building: Building, roof: RoofSection): RoofEdge[] {
   const edges: RoofEdge[] = [];
   if (roof.state === "gone") return edges;
-  if (neighborRoofBayOpen(building, roof, -1)) edges.push("minX");
-  if (neighborRoofBayOpen(building, roof, 1)) edges.push("maxX");
+  const alongY = roof.style === "gable" && building.roofAxis === "y";
+  if (neighborRoofBayOpen(building, roof, -1)) edges.push(alongY ? "minY" : "minX");
+  if (neighborRoofBayOpen(building, roof, 1)) edges.push(alongY ? "maxY" : "maxX");
   if (roof.state === "sagging" || roof.state === "falling") {
     if (roof.fallDy > 0.2) edges.push("maxY");
     else if (roof.fallDy < -0.2) edges.push("minY");
@@ -701,7 +748,7 @@ function lerp3(
 }
 
 /** Sloped framing that rides the displaced roof plane. */
-export function ranchRafterBeams(roof: RoofSection): RoofRafterBeam[] {
+export function roofFrameBeams(roof: RoofSection): RoofRafterBeam[] {
   const verts = displacedRoofVerts(roof);
   if (verts.length < 4) return [];
   const ranked = verts.slice().sort((a, b) => b.z - a.z);

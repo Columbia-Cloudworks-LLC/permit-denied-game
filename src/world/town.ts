@@ -47,6 +47,7 @@ export interface Town {
 }
 
 export interface TownOptions {
+  showcase?: boolean;
   district?: DistrictId;
   seed?: number;
   topology?: TopologyFamily;
@@ -59,7 +60,7 @@ export function createTown(options: TownOptions = {}): Town {
   resetDebrisSim(seed);
   resetPropIds();
 
-  if (district === "classic") return createClassicTown(seed);
+  if (district === "classic") return createClassicTown(seed, options.showcase);
 
   const layout = generateDistrictLayout(district, seed, options.topology);
   const pileW = layout.maxX - layout.minX + 4;
@@ -76,8 +77,13 @@ export function createTown(options: TownOptions = {}): Town {
   };
 }
 
-function createClassicTown(seed: number): Town {
-  const buildings: Building[] = CLASSIC_PLACEMENTS.map((place) =>
+function createClassicTown(seed: number, showcase = false): Town {
+  const placements: typeof CLASSIC_PLACEMENTS = showcase ? [
+    { archetypeId: "ranch", name: "TIMBER RANCH", x: 5, y: 8 },
+    { archetypeId: "rivertown", name: "RIVER MERCANTILE", x: 16, y: 8 },
+    { archetypeId: "steel-warehouse", name: "STEEL WORKSHOP", x: 28, y: 8 },
+  ] : CLASSIC_PLACEMENTS;
+  const buildings: Building[] = placements.map((place) =>
     createBuildingFromArchetype(place.archetypeId, place.name, place.x, place.y, {
       w: place.w,
       d: place.d,
@@ -111,6 +117,7 @@ function createClassicTown(seed: number): Town {
     props.push(spawnAsset("fence", 26.7, 19.2 + i * 1.05, Math.PI / 2, 0, { w: 0.16, d: 1.0 }));
   }
 
+  if (showcase) props.length = 0;
   const b = new RoadBuilder();
   const west = b.node(1, 17.6, 0, "west");
   const east = b.node(38, 17.6, 0, "east");
@@ -119,8 +126,10 @@ function createClassicTown(seed: number): Town {
   const center = b.node(19.75, 17.6, 0, "center");
   b.segment(west, center, linePoints(pt(west), pt(center)), { roadClass: "rural", width: 3.2 });
   b.segment(center, east, linePoints(pt(center), pt(east)), { roadClass: "rural", width: 3.2 });
-  b.segment(north, center, linePoints(pt(north), pt(center)), { roadClass: "residential", width: 3.1 });
-  b.segment(center, south, linePoints(pt(center), pt(south)), { roadClass: "residential", width: 3.1 });
+  if (!showcase) {
+    b.segment(north, center, linePoints(pt(north), pt(center)), { roadClass: "residential", width: 3.1 });
+    b.segment(center, south, linePoints(pt(center), pt(south)), { roadClass: "residential", width: 3.1 });
+  }
   const network = b.finish();
 
   const rng = new Rng(seed ^ 0x51a11);
@@ -153,7 +162,7 @@ function createClassicTown(seed: number): Town {
     { x: 12.2, y: 20.4, w: 4.2, d: 2.4, heading: 0, cover: "dirt", seed: seed ^ 5, z: 0.01 },
   ];
   for (let i = 0; i < lots.length; i++) {
-    const dressed = dressLot(lots[i]!, buildings[i], rng, { boxes: occBoxes }, 4);
+    const dressed = dressLot(lots[i]!, buildings[i], rng, { boxes: occBoxes }, showcase ? 0 : 4);
     props.push(...dressed.props);
     ground.push(...dressed.patches);
     for (const p of dressed.props) occBoxes.push({ x: p.x, y: p.y, w: p.w, d: p.d });
@@ -175,7 +184,7 @@ function createClassicTown(seed: number): Town {
     maxY: 34,
     roads: [
       { x: 1, y: 16, w: 37, d: 3.2 },
-      { x: 18.2, y: 1, w: 3.1, d: 33 },
+      ...(!showcase ? [{ x: 18.2, y: 1, w: 3.1, d: 33 }] : []),
     ],
     lots,
     ground,

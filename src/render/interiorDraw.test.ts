@@ -3,9 +3,9 @@ import { SIM_DT } from "../game/constants";
 import { ParticlePool } from "../fx/particles";
 import { applyCellDamage, createBuildingFromArchetype, stepStructures } from "../structure/building";
 import { fixtureCatalog } from "../structure/interior";
-import { neighborRoofBayOpen, ranchRafterBeams } from "../structure/roof";
+import { neighborRoofBayOpen, roofFrameBeams } from "../structure/roof";
 import { depthKey } from "../world/iso";
-import { ranchInteriorCmds, ranchRoofShowsRafters } from "./interiorDraw";
+import { interiorCmds, roofShowsFrame } from "./interiorDraw";
 import { PAL } from "./palette";
 
 function smash(b: ReturnType<typeof createBuildingFromArchetype>, gx: number, gy: number): void {
@@ -19,7 +19,7 @@ describe("ranch interior draw order", () => {
       smash(b, 0, gy);
       smash(b, 1, gy);
     }
-    const cmds = ranchInteriorCmds(b, 1);
+    const cmds = interiorCmds(b, 1);
     const kitchenFloors = cmds.filter((c) => c.kind === "floor");
     const fixtures = cmds.filter((c) => c.kind === "fixture");
     expect(kitchenFloors.length).toBeGreaterThan(0);
@@ -30,7 +30,7 @@ describe("ranch interior draw order", () => {
   it("keeps a vehicle-sized marker in the back half of a slab above the floor", () => {
     const b = createBuildingFromArchetype("ranch", "CROSS", 0, 0);
     for (const gx of [1, 2, 3]) smash(b, gx, b.d - 1);
-    const living = ranchInteriorCmds(b, 1).filter((c) => c.kind === "floor");
+    const living = interiorCmds(b, 1).filter((c) => c.kind === "floor");
     expect(living.length).toBeGreaterThan(0);
     const floor = living[0]!;
     const cs = b.cellSize;
@@ -42,7 +42,7 @@ describe("ranch interior draw order", () => {
   it("gives a south wall stub a later depth than furniture behind it", () => {
     const b = createBuildingFromArchetype("ranch", "STUB", 0, 0);
     smash(b, 2, 1);
-    const cmds = ranchInteriorCmds(b, 1);
+    const cmds = interiorCmds(b, 1);
     const fixture = cmds.find((c) => c.kind === "fixture");
     const southStubs = cmds.filter((c) => c.kind === "stub" && c.depth > (fixture?.depth ?? 0));
     expect(fixture).toBeDefined();
@@ -61,7 +61,7 @@ describe("broken fixture remnants", () => {
     smash(b, 4, 0);
     const toilet = b.fixtures.find((f) => f.kind === "toilet")!;
     toilet.broken = true;
-    const cmds = ranchInteriorCmds(b, 1);
+    const cmds = interiorCmds(b, 1);
     expect(cmds.some((c) => c.kind === "fixture")).toBe(true);
   });
 });
@@ -74,15 +74,15 @@ describe("ranch roof framing", () => {
     const north = b.roofs.find((r) => r.support.some((s) => s.gx === 2 && s.gy === 0))!;
     expect(south.state).toBe("intact");
     expect(north.state).toBe("intact");
-    expect(ranchRoofShowsRafters(b, south)).toBe(false);
-    expect(ranchRoofShowsRafters(b, north)).toBe(false);
+    expect(roofShowsFrame(b, south)).toBe(false);
+    expect(roofShowsFrame(b, north)).toBe(false);
   });
 
   it("exposes framing on an intact bay only after the neighbor opening appears", () => {
     const b = createBuildingFromArchetype("ranch", "OPENING", 0, 0);
     const left = b.roofs.find((r) => r.support.some((s) => s.gx === 1 && s.gy === b.d - 1))!;
     const mid = b.roofs.find((r) => r.support.some((s) => s.gx === 2 && s.gy === b.d - 1))!;
-    expect(ranchRoofShowsRafters(b, mid)).toBe(false);
+    expect(roofShowsFrame(b, mid)).toBe(false);
     expect(neighborRoofBayOpen(b, mid, -1)).toBe(false);
     for (const cell of b.cells) {
       if (cell.gx === 1) smash(b, cell.gx, cell.gy);
@@ -91,13 +91,13 @@ describe("ranch roof framing", () => {
     expect(left.state === "gone" || left.state === "falling").toBe(true);
     expect(mid.state).toBe("intact");
     expect(neighborRoofBayOpen(b, mid, -1)).toBe(true);
-    expect(ranchRoofShowsRafters(b, mid)).toBe(true);
+    expect(roofShowsFrame(b, mid)).toBe(true);
   });
 
   it("draws rafters along the roof slope instead of a flat ladder", () => {
     const b = createBuildingFromArchetype("ranch", "RAFTERS", 0, 0);
     const south = b.roofs.find((r) => r.support.some((s) => s.gy === b.d - 1))!;
-    const rise = ranchRafterBeams(south)
+    const rise = roofFrameBeams(south)
       .filter((beam) => beam.kind === "rafter")
       .map((beam) => Math.abs(beam.b.z - beam.a.z));
     expect(rise.length).toBe(3);
@@ -109,7 +109,7 @@ describe("ranch interior depth vs facades", () => {
   it("keeps floor painter depth behind a south-edge wall at the same cells", () => {
     const b = createBuildingFromArchetype("ranch", "FACADE", 0, 0);
     smash(b, 2, 2);
-    const floor = ranchInteriorCmds(b, 1).find((c) => c.kind === "floor");
+    const floor = interiorCmds(b, 1).find((c) => c.kind === "floor");
     expect(floor).toBeDefined();
     const wallD = depthKey(b.x + 2.5 * b.cellSize, b.y + 2.9 * b.cellSize, 1.1);
     expect(floor!.depth).toBeLessThan(wallD);

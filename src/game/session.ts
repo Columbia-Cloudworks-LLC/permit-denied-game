@@ -1,4 +1,5 @@
 export type SessionKind = "challenge" | "sandbox";
+export type DemoAsset = "ranch" | "rivertown" | "steel-warehouse";
 export type DistrictId = "classic" | "d10" | "d30" | "d100";
 export type PlayMode = "play" | "pause" | "upgrade" | "results";
 
@@ -24,6 +25,7 @@ export const DISTRICT_LABELS: Record<DistrictId, string> = {
 };
 
 export interface SessionRules {
+  demo?: DemoAsset;
   kind: SessionKind;
   district: DistrictId;
   seed: number;
@@ -57,6 +59,13 @@ export function parseSessionFromSearch(search: string): SessionRules {
     }
   }
   const rawSeed = params.get("seed");
+  const demo = params.get("demo");
+  if (demo === "ranch" || demo === "rivertown" || demo === "steel-warehouse") {
+    rules.demo = demo;
+    rules.kind = "sandbox";
+    rules.district = "classic";
+    rules.seed = DEFAULT_DISTRICT_SEEDS.classic;
+  }
   if (rawSeed !== null && rawSeed !== "") {
     const seed = Number(rawSeed);
     if (Number.isFinite(seed) && seed >= 0) rules.seed = seed >>> 0;

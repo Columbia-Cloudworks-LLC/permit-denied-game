@@ -14,7 +14,7 @@ import {
   gableZAlong,
   generateRoofs,
   liveRoofCount,
-  ranchRafterBeams,
+  roofFrameBeams,
   roofCoversOnlyOccupied,
   roofHandoffPose,
   roofHeightAt,
@@ -327,7 +327,7 @@ describe("structural roofs", () => {
   it("keeps sloped rafters attached to a ranch bay and jags only exposed edges", () => {
     const b = createBuildingFromArchetype("ranch", "FRAMING", 0, 0);
     const mid = b.roofs.find((r) => r.support.some((s) => s.gx === 2 && s.gy === b.d - 1))!;
-    const beams = ranchRafterBeams(mid);
+    const beams = roofFrameBeams(mid);
     const rafters = beams.filter((beam) => beam.kind === "rafter");
     expect(rafters.length).toBe(3);
     expect(rafters.every((beam) => Math.abs(beam.b.z - beam.a.z) > 0.35)).toBe(true);

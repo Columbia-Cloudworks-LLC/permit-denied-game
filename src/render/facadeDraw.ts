@@ -1,12 +1,12 @@
 import { Graphics } from "pixi.js";
 import { FLOOR_Z } from "../game/constants";
 import { gableEndCaps, gableWallVerts, shedWallVerts } from "../structure/roof";
-import type { Building, Cell } from "../structure/types";
+import { cellWorldBox, type Building, type Cell } from "../structure/types";
 import type { BreachGroup, TopSpan, WallSpan } from "./buildingSurfaces";
 import { southFacadeCells } from "./buildingSurfaces";
 import { hasFurnishedInterior } from "../structure/interior";
 import { drawFaceWindow, drawIsoBox, drawShadow, drawTopCap, drawWorldPoly, shade } from "./drawIso";
-import { drawRanchThickBrokenWall } from "./interiorDraw";
+import { drawThickBrokenWall } from "./interiorDraw";
 import { brokenEdgeColor, interiorColor, topFaceColor, wallFaceColor } from "./lighting";
 import { matColors, PAL } from "./palette";
 
@@ -31,6 +31,7 @@ export function drawWallSpan(g: Graphics, b: Building, span: WallSpan, alpha: nu
     if (!drawPitchedWall(g, b, span, color, alpha, z0, x0, x0 + w, y1)) {
       drawFaceWindow(g, x0, y1, x0 + w, y1, z0, z1, 0, 1, 0, 1, color, alpha);
     }
+    if (b.construction) drawSurfacePattern(g, mat, x0, y1, x0 + w, y1, z0, z1, alpha);
     if (span.floor === 0) {
       drawFaceWindow(g, x0, y1, x0 + w, y1, z0, z1, 0, 1, 0, 0.1, PAL.foundation, alpha * 0.65);
     }
@@ -39,9 +40,9 @@ export function drawWallSpan(g: Graphics, b: Building, span: WallSpan, alpha: nu
       drawFaceWindow(g, mid - 0.02, y1, mid + 0.02, y1, z0, z1, 0, 1, 0.2, 0.85, PAL.crack, alpha * 0.55);
     }
     if (span.visual === "broken-edge") {
-      drawRanchThickBrokenWall(g, b, "south", x0, y1, w, z0, mat, alpha);
+      drawThickBrokenWall(g, b, "south", x0, y1, w, z0, mat, alpha);
     }
-    if (span.floor === 0) drawSouthFacadeDecor(g, b, span, alpha);
+    drawSouthFacadeDecor(g, b, span, alpha);
     return;
   }
 
@@ -51,13 +52,33 @@ export function drawWallSpan(g: Graphics, b: Building, span: WallSpan, alpha: nu
   if (!drawPitchedWall(g, b, span, color, alpha, z0, y0, y0 + d, x1)) {
     drawFaceWindow(g, x1, y0, x1, y0 + d, z0, z1, 0, 1, 0, 1, color, alpha);
   }
+  if (b.construction) drawSurfacePattern(g, mat, x1, y0, x1, y0 + d, z0, z1, alpha);
   if (span.floor === 0) {
     drawFaceWindow(g, x1, y0, x1, y0 + d, z0, z1, 0, 1, 0, 0.1, PAL.foundation, alpha * 0.5);
   }
   if (span.visual === "broken-edge") {
-    drawRanchThickBrokenWall(g, b, "east", x1, y0, d, z0, mat, alpha);
+    drawThickBrokenWall(g, b, "east", x1, y0, d, z0, mat, alpha);
   }
   drawEastWindows(g, b, span, alpha, z0, z1);
+}
+
+function drawSurfacePattern(g: Graphics, material: Cell["material"], ax: number, ay: number, bx: number, by: number, z0: number, z1: number, alpha: number): void {
+  const length = Math.hypot(bx - ax, by - ay);
+  if (material === "brick") {
+    for (let row = 1; row < 8; row++) {
+      const v = row / 8;
+      drawFaceWindow(g, ax, ay, bx, by, z0, z1, 0, 1, v, v + .008, PAL.frame, alpha * .15);
+      for (let along = (row % 2) * .32; along < length; along += .64) {
+        const u = along / length;
+        drawFaceWindow(g, ax, ay, bx, by, z0, z1, u, Math.min(1, u + .012 / length), v, v + .12, PAL.frame, alpha * .13);
+      }
+    }
+  } else if (material === "metal") {
+    for (let along = .35; along < length; along += .35) {
+      const u = along / length;
+      drawFaceWindow(g, ax, ay, bx, by, z0, z1, u, Math.min(1, u + .018 / length), 0, 1, PAL.metalTop, alpha * .22);
+    }
+  }
 }
 
 function drawPitchedWall(
@@ -143,9 +164,12 @@ function drawSouthFacadeDecor(g: Graphics, b: Building, span: WallSpan, alpha: n
       continue;
     }
 
-    if (cell.windowS || (b.theme === "colonial" && span.floor > 0)) {
+    if (cell.windowS || (b.theme === "colonial" && span.floor > 0) || (b.construction?.walls === "masonry" && span.floor === 0)) {
       const glass = cell.state === "cracked" ? PAL.glass : PAL.glassLit;
-      if (b.theme === "colonial") {
+      if (span.floor > 0) {
+        drawFaceWindow(g, x0, y1, x0 + cs, y1, z0, z0 + STORY_H, .22, .78, .25, .78, PAL.frame, alpha);
+        drawFaceWindow(g, x0, y1, x0 + cs, y1, z0, z0 + STORY_H, .27, .73, .3, .73, glass, alpha);
+      } else if (b.theme === "colonial") {
         drawFaceWindow(g, x0, y1, x0 + cs, y1, z0, z0 + STORY_H, 0.18, 0.46, 0.32, 0.7, glass, alpha);
         drawFaceWindow(g, x0, y1, x0 + cs, y1, z0, z0 + STORY_H, 0.54, 0.82, 0.32, 0.7, glass, alpha);
       } else if (b.theme === "storefront" || b.theme === "corner") {
@@ -227,6 +251,15 @@ export function drawBreachGroup(g: Graphics, b: Building, group: BreachGroup, al
 }
 
 export function drawFallingCell(g: Graphics, b: Building, cell: Cell, alpha: number): void {
+  if (b.construction?.floorSupport === "independent") {
+    const box = cellWorldBox(b, cell);
+    const t = cell.fallT;
+    const h = cell.role === "column" ? FLOOR_Z : FLOOR_Z * .8;
+    drawIsoBox(g, box.x + cell.fallDx * t, box.y + cell.fallDy * t, box.w + t * .5, box.d + t * .35,
+      Math.max(.08, cell.floor * FLOOR_Z * (1 - t)), h * (1 - t * .85),
+      topFaceColor(cell.material, true), wallFaceColor(cell.material, "south", true), wallFaceColor(cell.material, "east", true), alpha);
+    return;
+  }
   const cs = b.cellSize;
   const x = b.x + cell.gx * cs + cell.fallDx * cell.fallT * 0.85;
   const y = b.y + cell.gy * cs + cell.fallDy * cell.fallT * 0.85;

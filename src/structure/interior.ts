@@ -1,3 +1,8 @@
+import { FLOOR_Z } from "../game/constants";
+import { independentFloors, roomAt } from "./construction";
+import { roofCoverage } from "./roof";
+import { getAsset } from "../world/catalog";
+import { contentFinish } from "../world/contents";
 import { debrisKind, type ParticlePool } from "../fx/particles";
 import type {
   Building,
@@ -12,52 +17,18 @@ import type {
 import { cellPresent } from "./types";
 
 export function hasFurnishedInterior(building: Building): boolean {
-  return building.archetypeId === "ranch";
+  return !!building.construction?.rooms.length;
 }
 
-export function ranchRoomAt(building: Building, gx: number, _gy: number): RoomKind {
-  if (gx <= 1) return "kitchen";
-  if (gx >= building.w - 1) return "bathroom";
-  return "living";
+export function interiorRoomAt(building: Building, gx: number, gy: number, floor = 0): RoomKind {
+  return roomAt(building, gx, gy, floor)?.kind ?? "living";
 }
-
 export type FixtureFinish = "wood" | "ceramic" | "metal";
-
-interface FixtureCatalogEntry {
-  material: Material;
-  hp: number;
-  cash: number;
-  finish: FixtureFinish;
+export function fixtureCatalog(kind: FixtureKind) {
+  return { ...getAsset(`interior-${kind}`), finish: contentFinish(kind) };
 }
-
-/** Immutable per-kind stats. Placement and support stay on the building instance. */
-const FIXTURE_CATALOG: Record<FixtureKind, FixtureCatalogEntry> = {
-  cabinet: { material: "wood", hp: 10, cash: 6, finish: "wood" },
-  counter: { material: "wood", hp: 14, cash: 6, finish: "wood" },
-  toilet: { material: "concrete", hp: 8, cash: 6, finish: "ceramic" },
-  sofa: { material: "wood", hp: 12, cash: 6, finish: "wood" },
-  table: { material: "wood", hp: 8, cash: 6, finish: "wood" },
-  radiator: { material: "metal", hp: 16, cash: 10, finish: "metal" },
-};
-
-export function fixtureCatalog(kind: FixtureKind): FixtureCatalogEntry {
-  return FIXTURE_CATALOG[kind];
-}
-
-function ranchFloorFinish(building: Building, gx: number, gy: number): FloorFinish {
-  const room = ranchRoomAt(building, gx, gy);
-  switch (room) {
-    case "kitchen":
-      return "linoleum";
-    case "bathroom":
-      return "tile";
-    case "living":
-      return "plank";
-    default: {
-      const _never: never = room;
-      return _never;
-    }
-  }
+function interiorFloorFinish(building: Building, gx: number, gy: number, floor = 0): FloorFinish {
+  return roomAt(building, gx, gy, floor)?.finish ?? "plank";
 }
 
 function cellsCovered(
@@ -77,7 +48,7 @@ function cellsCovered(
   for (let gx = gx0; gx <= gx1; gx++) {
     for (let gy = gy0; gy <= gy1; gy++) {
       const cell = building.grid[floor]?.[gx]?.[gy];
-      if (cell && cell.state !== "gone") out.push({ gx, gy });
+      if (independentFloors(building) ? building.floorTiles?.some(t => t.floor === floor && t.gx === gx && t.gy === gy) : cell && cell.state !== "gone") out.push({ gx, gy });
     }
   }
   if (out.length === 0) {
@@ -122,40 +93,42 @@ function makeFixture(
 }
 
 export function generateInteriors(building: Building): InteriorFixture[] {
-  if (!hasFurnishedInterior(building)) return [];
-  const cs = building.cellSize;
-  const x = building.x;
-  const y = building.y;
   const fixtures: InteriorFixture[] = [];
-  let id = 1;
-
-  fixtures.push(
-    makeFixture(building, id++, "counter", "kitchen", 0, x + 0.08, y + 0.07, cs * 2 - 0.16, 0.34, 0.4),
-  );
-  fixtures.push(
-    makeFixture(building, id++, "cabinet", "kitchen", 0, x + 0.07, y + cs * 0.95, 0.3, cs * 0.85, 0.82),
-  );
-  fixtures.push(
-    makeFixture(building, id++, "table", "kitchen", 0, x + cs * 1.18, y + cs * 1.12, 0.52, 0.48, 0.36),
-  );
-
-  fixtures.push(
-    makeFixture(building, id++, "sofa", "living", 0, x + cs * 2.08, y + 0.08, cs * 1.78, 0.4, 0.38),
-  );
-  fixtures.push(
-    makeFixture(building, id++, "table", "living", 0, x + cs * 2.42, y + cs * 1.18, 0.68, 0.46, 0.22),
-  );
-  fixtures.push(
-    makeFixture(building, id++, "radiator", "living", 0, x + cs * 3.28, y + cs * 2.78, 0.52, 0.16, 0.3),
-  );
-
-  fixtures.push(
-    makeFixture(building, id++, "toilet", "bathroom", 0, x + cs * 4.32, y + 0.14, 0.36, 0.4, 0.4),
-  );
-  fixtures.push(
-    makeFixture(building, id++, "cabinet", "bathroom", 0, x + cs * 4.72, y + cs * 1.05, 0.28, 0.48, 0.68),
-  );
-
+  const bw = building.w * building.cellSize, bd = building.d * building.cellSize;
+  for (const room of building.construction?.rooms ?? []) {
+    if (room.floor >= building.floors) continue;
+    for (const slot of room.contents) {
+      const x = building.x + (room.x + slot.x * room.w) * bw;
+      const y = building.y + (room.y + slot.y * room.d) * bd;
+      const w = slot.w * room.w * bw, d = slot.d * room.d * bd;
+      // Invalid/overlapping recipes fail closed instead of putting blockers outside the lot.
+      if (w <= 0 || d <= 0 || x < building.x || y < building.y || x + w > building.x + bw + 1e-6 || y + d > building.y + bd + 1e-6) continue;
+      if (fixtures.some(f => f.floor === room.floor && f.x < x + w && f.x + f.w > x && f.y < y + d && f.y + f.d > y)) continue;
+      fixtures.push(makeFixture(building, fixtures.length + 1, slot.kind, room.kind, room.floor, x, y, w, d, slot.h));
+    }
+  }
+  if (building.construction?.partitions) {
+    const rooms = building.construction.rooms.filter(r => r.floor < building.floors);
+    for (let i = 0; i < rooms.length; i++) for (let j = i + 1; j < rooms.length; j++) {
+      const a = rooms[i]!, b = rooms[j]!;
+      if (a.floor !== b.floor) continue;
+      const vertical = Math.abs(a.x + a.w - b.x) < 1e-6 || Math.abs(b.x + b.w - a.x) < 1e-6;
+      const horizontal = Math.abs(a.y + a.d - b.y) < 1e-6 || Math.abs(b.y + b.d - a.y) < 1e-6;
+      if (!vertical && !horizontal) continue;
+      const start = vertical ? Math.max(a.y, b.y) * bd : Math.max(a.x, b.x) * bw;
+      const end = vertical ? Math.min(a.y + a.d, b.y + b.d) * bd : Math.min(a.x + a.w, b.x + b.w) * bw;
+      if (end - start < 1.1) continue;
+      const plane = vertical ? Math.max(a.x, b.x) * bw : Math.max(a.y, b.y) * bd;
+      const mid = (start + end) / 2, doorHalf = .48;
+      for (const [lo, hi] of [[start + .12, mid - doorHalf], [mid + doorHalf, end - .12]]) {
+        if (hi! - lo! < .15) continue;
+        const x = building.x + (vertical ? plane - .05 : lo!);
+        const y = building.y + (vertical ? lo! : plane - .05);
+        fixtures.push(makeFixture(building, fixtures.length + 1, "partition", a.kind, a.floor, x, y,
+          vertical ? .1 : hi! - lo!, vertical ? hi! - lo! : .1, FLOOR_Z * .8));
+      }
+    }
+  }
   return fixtures;
 }
 
@@ -167,7 +140,7 @@ export function cellHasFloor(cell: Cell | undefined): boolean {
   return !!cell && (cellPresent(cell) || cell.state === "breached");
 }
 
-export interface RanchFloorSpan {
+export interface InteriorFloorSpan {
   floor: number;
   gx0: number;
   gx1: number;
@@ -190,7 +163,57 @@ export function inBuildingNeighborOpen(
 
 function exposedFinish(building: Building, gx: number, gy: number, floor: number): FloorFinish | null {
   if (!cellInteriorExposed(building, gx, gy, floor)) return null;
-  return ranchFloorFinish(building, gx, gy);
+  return interiorFloorFinish(building, gx, gy, floor);
+}
+
+/** Envelope cells are the original walls/columns. Interior voids start gone and are not openings. */
+function envelopeOpen(building: Building, gx: number, gy: number, floor: number): boolean {
+  if (gx !== 0 && gy !== 0 && gx !== building.w - 1 && gy !== building.d - 1) return false;
+  const cell = building.grid[floor]?.[gx]?.[gy];
+  return !cell || cell.state === "breached" || !cellPresent(cell);
+}
+
+function markIndependentFloorTiles(
+  building: Building,
+  floor: number,
+  marks: (FloorFinish | null)[],
+  reveal: boolean,
+): void {
+  const w = building.w;
+  const tiles = (building.floorTiles ?? []).filter((t) => t.floor === floor && t.state === "intact");
+  const finishAt = (gx: number, gy: number) => interiorFloorFinish(building, gx, gy, floor);
+  if (reveal) {
+    for (const tile of tiles) marks[tile.gy * w + tile.gx] = finishAt(tile.gx, tile.gy);
+    return;
+  }
+  const have = new Set(tiles.map((t) => `${t.gx},${t.gy}`));
+  const stack: { gx: number; gy: number }[] = [];
+  for (const tile of tiles) {
+    if (!envelopeOpen(building, tile.gx, tile.gy, floor)) continue;
+    marks[tile.gy * w + tile.gx] = finishAt(tile.gx, tile.gy);
+    stack.push(tile);
+  }
+  const dirs = [
+    [1, 0],
+    [-1, 0],
+    [0, 1],
+    [0, -1],
+  ] as const;
+  while (stack.length) {
+    const cur = stack.pop()!;
+    for (const [dx, dy] of dirs) {
+      const gx = cur.gx + dx;
+      const gy = cur.gy + dy;
+      if (!have.has(`${gx},${gy}`) || marks[gy * w + gx]) continue;
+      marks[gy * w + gx] = finishAt(gx, gy);
+      stack.push({ gx, gy });
+    }
+  }
+  if (floor !== building.floors - 1) return;
+  for (const tile of tiles) {
+    if (marks[tile.gy * w + tile.gx] || roofCoversCell(building, tile.gx, tile.gy)) continue;
+    marks[tile.gy * w + tile.gx] = finishAt(tile.gx, tile.gy);
+  }
 }
 
 function floorMarkFinish(marks: (FloorFinish | null)[], w: number, gx: number, gy: number): FloorFinish | null {
@@ -212,19 +235,23 @@ function fillOpeningCorridor(building: Building, floor: number, marks: (FloorFin
       if (cell && cellPresent(cell) && !inBuildingNeighborOpen(building, gx, gy + 1, floor) && gy < building.d - 1) {
         break;
       }
-      marks[idx] = ranchFloorFinish(building, gx, gy);
+      marks[idx] = interiorFloorFinish(building, gx, gy, floor);
     }
   }
 }
 
 /** Exposed floors plus the south-opening corridor, so a hole is not a grass ring. */
-function ranchFloorMarks(building: Building, floor: number): (FloorFinish | null)[] {
+function interiorFloorMarks(building: Building, floor: number, reveal = false): (FloorFinish | null)[] {
   const w = building.w;
   const marks: (FloorFinish | null)[] = new Array(w * building.d).fill(null);
+  if (independentFloors(building)) {
+    markIndependentFloorTiles(building, floor, marks, reveal);
+    return marks;
+  }
   const stack: { gx: number; gy: number }[] = [];
   for (let gy = 0; gy < building.d; gy++) {
     for (let gx = 0; gx < w; gx++) {
-      const finish = exposedFinish(building, gx, gy, floor);
+      const finish = reveal && cellHasFloor(building.grid[floor]?.[gx]?.[gy]) ? interiorFloorFinish(building, gx, gy, floor) : exposedFinish(building, gx, gy, floor);
       if (!finish) continue;
       marks[gy * w + gx] = finish;
       stack.push({ gx, gy });
@@ -248,7 +275,7 @@ function ranchFloorMarks(building: Building, floor: number): (FloorFinish | null
       if (marks[idx]) continue;
       const cell = building.grid[floor]?.[gx]?.[gy];
       if (!cell || (cell.state !== "gone" && cell.state !== "falling")) continue;
-      if (ranchFloorFinish(building, gx, gy) !== finish) continue;
+      if (interiorFloorFinish(building, gx, gy, floor) !== finish) continue;
       marks[idx] = finish;
       stack.push({ gx, gy });
     }
@@ -272,10 +299,11 @@ function markedRowMatches(
   return true;
 }
 
-function ranchFloorSignature(building: Building): string {
+function interiorFloorSignature(building: Building): string {
   const parts: string[] = [`${building.w}:${building.d}:${building.floors}`];
+  for (const tile of building.floorTiles ?? []) parts.push(`f${tile.floor}:${tile.gx}:${tile.gy}:${tile.state}`);
   for (const cell of building.cells) {
-    parts.push(`${cell.gx},${cell.gy},${cell.floor},${cell.state}`);
+    parts.push(`${cell.gx},${cell.gy},${cell.floor},${cell.state},${cell.cladding?.hp ?? -1}`);
   }
   for (const roof of building.roofs) {
     parts.push(`r${roof.id}:${roof.state}`);
@@ -287,10 +315,10 @@ function coverIndex(building: Building, gx: number, gy: number, floor: number): 
   return floor * building.w * building.d + gy * building.w + gx;
 }
 
-function collectRanchFloorSpans(building: Building): RanchFloorSpan[] {
-  const spans: RanchFloorSpan[] = [];
+function collectInteriorFloorSpans(building: Building, reveal = false): InteriorFloorSpan[] {
+  const spans: InteriorFloorSpan[] = [];
   for (let floor = 0; floor < building.floors; floor++) {
-    const marks = ranchFloorMarks(building, floor);
+    const marks = interiorFloorMarks(building, floor, reveal);
     const used = new Array(building.w * building.d).fill(false);
     for (let gy = 0; gy < building.d; gy++) {
       for (let gx = 0; gx < building.w; gx++) {
@@ -316,27 +344,29 @@ function collectRanchFloorSpans(building: Building): RanchFloorSpan[] {
   return spans;
 }
 
-interface RanchFloorCache {
+interface InteriorFloorCache {
   sig: string;
-  spans: RanchFloorSpan[];
+  spans: InteriorFloorSpan[];
   cover: Uint8Array;
 }
 
-const ranchFloorCache = new WeakMap<Building, RanchFloorCache>();
+const interiorFloorCache = new WeakMap<Building, InteriorFloorCache>();
+const inspectionFloorCache = new WeakMap<Building, InteriorFloorCache>();
 
-export interface RanchFloorCoverage {
-  spans: RanchFloorSpan[];
+export interface InteriorFloorCoverage {
+  spans: InteriorFloorSpan[];
   hasFloor: (gx: number, gy: number, floor: number) => boolean;
 }
 
-export function ranchFloorCoverage(building: Building): RanchFloorCoverage {
+export function interiorFloorCoverage(building: Building, reveal = false): InteriorFloorCoverage {
   if (!hasFurnishedInterior(building)) {
     return { spans: [], hasFloor: () => false };
   }
-  const sig = ranchFloorSignature(building);
-  let entry = ranchFloorCache.get(building);
+  const sig = interiorFloorSignature(building);
+  const cache = reveal ? inspectionFloorCache : interiorFloorCache;
+  let entry = cache.get(building);
   if (!entry || entry.sig !== sig) {
-    const spans = collectRanchFloorSpans(building);
+    const spans = collectInteriorFloorSpans(building, reveal);
     const cover = new Uint8Array(building.floors * building.w * building.d);
     for (const span of spans) {
       for (let gy = span.gy0; gy <= span.gy1; gy++) {
@@ -346,7 +376,7 @@ export function ranchFloorCoverage(building: Building): RanchFloorCoverage {
       }
     }
     entry = { sig, spans, cover };
-    ranchFloorCache.set(building, entry);
+    cache.set(building, entry);
   }
   return {
     spans: entry.spans,
@@ -360,15 +390,16 @@ export function ranchFloorCoverage(building: Building): RanchFloorCoverage {
 }
 
 /** Adjacent exposed cells of the same finish become one rectangle so floors share an edge. */
-export function cellDrawsRanchFloor(building: Building, gx: number, gy: number, floor: number): boolean {
-  return ranchFloorCoverage(building).hasFloor(gx, gy, floor);
+export function cellDrawsInteriorFloor(building: Building, gx: number, gy: number, floor: number): boolean {
+  return interiorFloorCoverage(building).hasFloor(gx, gy, floor);
 }
 
-export function ranchFloorSpans(building: Building): RanchFloorSpan[] {
-  return ranchFloorCoverage(building).spans;
+export function interiorFloorSpans(building: Building): InteriorFloorSpan[] {
+  return interiorFloorCoverage(building).spans;
 }
 
 export function fixtureSupported(building: Building, fixture: InteriorFixture): boolean {
+  if (independentFloors(building)) return fixture.support.some(s => building.floorTiles?.some(t => t.floor === fixture.floor && t.gx === s.gx && t.gy === s.gy && t.state === "intact"));
   return fixture.support.some((s) => cellHasFloor(building.grid[fixture.floor]?.[s.gx]?.[s.gy]));
 }
 
@@ -378,7 +409,7 @@ function roofCoversCell(building: Building, gx: number, gy: number): boolean {
     (roof) =>
       roof.state !== "gone" &&
       roof.state !== "falling" &&
-      roof.support.some((s) => s.gx === gx && s.gy === gy) &&
+      roofCoverage(roof).some((s) => s.gx === gx && s.gy === gy) &&
       roof.support.every((s) => {
         const cell = building.grid[top]?.[s.gx]?.[s.gy];
         return cell && cellPresent(cell);
@@ -397,15 +428,22 @@ export function cellInteriorExposed(building: Building, gx: number, gy: number, 
 
 export function fixtureExposed(building: Building, fixture: InteriorFixture): boolean {
   if (fixture.broken && !fixtureSupported(building, fixture)) return false;
+  if (independentFloors(building)) {
+    return fixture.support.some((s) => interiorFloorCoverage(building).hasFloor(s.gx, s.gy, fixture.floor));
+  }
   return fixture.support.some((s) => cellInteriorExposed(building, s.gx, s.gy, fixture.floor));
 }
 
 /** Intact furnishings still block the blade. Broken remnants do not. */
 export function fixtureSolid(building: Building, fixture: InteriorFixture): boolean {
-  return !fixture.broken && fixtureExposed(building, fixture);
+  return fixture.floor === 0 && !fixture.broken && fixtureExposed(building, fixture);
 }
 
 export interface FixtureFrag {
+  elev: number;
+  mass: number;
+  shape: import("./types").DebrisShape;
+  layer: import("./types").DebrisLayer;
   x: number;
   y: number;
   w: number;
@@ -431,33 +469,23 @@ function breakFixture(
   const cx = fixture.x + fixture.w * 0.5;
   const cy = fixture.y + fixture.d * 0.5;
   const cash = fixtureCatalog(fixture.kind).cash;
-  particles.burst(debrisKind(fixture.material), cx, cy, fixture.floor * 2.35 + 0.45, 0.55);
+  particles.burst(debrisKind(fixture.material), cx, cy, fixture.floor * FLOOR_Z + 0.45, 0.55);
   events.push({ kind: "snap", x: cx, y: cy, z: 0.5, mag: 0.35, material: fixture.material, cash });
   const dir = Math.hypot(nx, ny) || 1;
   const fx = nx / dir;
   const fy = ny / dir;
-  const frags: FixtureFrag[] = [
-    {
-      x: cx + fx * 0.12,
-      y: cy + fy * 0.1,
-      w: Math.max(0.16, fixture.w * 0.28),
-      d: Math.max(0.12, fixture.d * 0.32),
-      material: fixture.material,
-      vx: fx * 1.4,
-      vy: fy * 1.4,
-    },
-  ];
-  if (fixture.kind === "sofa" || fixture.kind === "cabinet" || fixture.kind === "counter") {
-    frags.push({
-      x: cx - fx * 0.16,
-      y: cy - fy * 0.08,
-      w: 0.2,
-      d: 0.14,
-      material: fixture.material,
-      vx: -fx * 0.9,
-      vy: -fy * 0.7,
-    });
-  }
+  const def = fixtureCatalog(fixture.kind);
+  const count = def.debris.fragments + def.debris.remnants;
+  const frags: FixtureFrag[] = Array.from({ length: count }, (_, i) => ({
+    x: cx + fx * (i - .5) * .16, y: cy + fy * (i - .5) * .16,
+    w: Math.max(.12, fixture.w * (i === 0 ? def.debris.remnantScale : .22)),
+    d: Math.max(.1, fixture.d * (i === 0 ? def.debris.remnantScale : .22)),
+    material: fixture.material, vx: fx * (1 + i * .2), vy: fy * (1 + i * .2),
+    elev: fixture.floor * FLOOR_Z + .15,
+    mass: def.mass / count,
+    shape: def.debris.shape,
+    layer: i < def.debris.remnants ? "remnant" : "fragment",
+  }));
   return { cash, frags };
 }
 
@@ -491,7 +519,9 @@ export function stepInteriors(
       }
       continue;
     }
-    if (fixtureSupported(building, fixture)) continue;
+    const roofImpact = independentFloors(building) && fixture.floor === building.floors - 1 && building.roofs.some(r => r.state === "gone" && roofCoverage(r).some(c => fixture.support.some(s => s.gx === c.gx && s.gy === c.gy)));
+    const floorImpact = independentFloors(building) && building.floorTiles?.some(t => t.floor === fixture.floor + 1 && t.state === "gone" && fixture.support.some(s => s.gx === t.gx && s.gy === t.gy));
+    if (fixtureSupported(building, fixture) && !roofImpact && !floorImpact) continue;
     const out = breakFixture(building, fixture, particles, events, 0.2, 0.4);
     cash += out.cash;
     frags.push(...out.frags);
