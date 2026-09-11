@@ -194,6 +194,110 @@ export function offsetPoint(x: number, y: number, heading: number, across: numbe
   return { x: x - Math.sin(heading) * across, y: y + Math.cos(heading) * across };
 }
 
+export function polylineLength(points: readonly RoadPoint[]): number {
+  let total = 0;
+  for (let i = 0; i < points.length - 1; i++) {
+    total += len(points[i + 1]!.x - points[i]!.x, points[i + 1]!.y - points[i]!.y);
+  }
+  return total;
+}
+
+function splitPolyline(
+  points: readonly RoadPoint[],
+  t: number,
+): { mid: RoadPoint & { heading: number }; a: RoadPoint[]; b: RoadPoint[] } {
+  const mid = samplePolyline(points, t);
+  const total = Math.max(1e-6, polylineLength(points));
+  const cut = clamp(t, 0, 1) * total;
+  const a: RoadPoint[] = [{ x: points[0]!.x, y: points[0]!.y, elev: points[0]!.elev }];
+  const b: RoadPoint[] = [{ x: mid.x, y: mid.y, elev: mid.elev }];
+  let walked = 0;
+  let passed = false;
+  for (let i = 0; i < points.length - 1; i++) {
+    const p0 = points[i]!;
+    const p1 = points[i + 1]!;
+    const segLen = len(p1.x - p0.x, p1.y - p0.y) || 1e-6;
+    const next = walked + segLen;
+    if (!passed) {
+      if (cut <= next || i === points.length - 2) {
+        if (len(a[a.length - 1]!.x - mid.x, a[a.length - 1]!.y - mid.y) > 1e-4) {
+          a.push({ x: mid.x, y: mid.y, elev: mid.elev });
+        }
+        if (len(mid.x - p1.x, mid.y - p1.y) > 1e-4) b.push({ x: p1.x, y: p1.y, elev: p1.elev });
+        passed = true;
+      } else if (len(a[a.length - 1]!.x - p1.x, a[a.length - 1]!.y - p1.y) > 1e-4) {
+        a.push({ x: p1.x, y: p1.y, elev: p1.elev });
+      }
+    } else if (len(b[b.length - 1]!.x - p1.x, b[b.length - 1]!.y - p1.y) > 1e-4) {
+      b.push({ x: p1.x, y: p1.y, elev: p1.elev });
+    }
+    walked = next;
+  }
+  if (a.length < 2) a.push({ x: mid.x, y: mid.y, elev: mid.elev });
+  if (b.length < 2) {
+    const last = points[points.length - 1]!;
+    b.push({ x: last.x, y: last.y, elev: last.elev });
+  }
+  return { mid, a, b };
+}
+
+function segmentIntersect(
+  a0: { x: number; y: number },
+  a1: { x: number; y: number },
+  b0: { x: number; y: number },
+  b1: { x: number; y: number },
+): { x: number; y: number; ta: number; tb: number } | null {
+  const ax = a1.x - a0.x;
+  const ay = a1.y - a0.y;
+  const bx = b1.x - b0.x;
+  const by = b1.y - b0.y;
+  const den = ax * by - ay * bx;
+  if (Math.abs(den) < 1e-8) return null;
+  const dx = b0.x - a0.x;
+  const dy = b0.y - a0.y;
+  const ta = (dx * by - dy * bx) / den;
+  const tb = (dx * ay - dy * ax) / den;
+  if (ta < -1e-4 || ta > 1 + 1e-4 || tb < -1e-4 || tb > 1 + 1e-4) return null;
+  return { x: a0.x + ax * ta, y: a0.y + ay * ta, ta: clamp(ta, 0, 1), tb: clamp(tb, 0, 1) };
+}
+
+function polylineIntersect(
+  a: readonly RoadPoint[],
+  b: readonly RoadPoint[],
+): { x: number; y: number; elev: number; ta: number; tb: number } | null {
+  const la = Math.max(1e-6, polylineLength(a));
+  const lb = Math.max(1e-6, polylineLength(b));
+  let wa = 0;
+  for (let i = 0; i < a.length - 1; i++) {
+    const a0 = a[i]!;
+    const a1 = a[i + 1]!;
+    const ea = len(a1.x - a0.x, a1.y - a0.y) || 1e-6;
+    let wb = 0;
+    for (let j = 0; j < b.length - 1; j++) {
+      const b0 = b[j]!;
+      const b1 = b[j + 1]!;
+      const eb = len(b1.x - b0.x, b1.y - b0.y) || 1e-6;
+      const hit = segmentIntersect(a0, a1, b0, b1);
+      if (hit) {
+        const ta = (wa + hit.ta * ea) / la;
+        const tb = (wb + hit.tb * eb) / lb;
+        if (ta > 0.02 && ta < 0.98 && tb > 0.02 && tb < 0.98) {
+          return {
+            x: hit.x,
+            y: hit.y,
+            elev: lerp(a0.elev, a1.elev, hit.ta),
+            ta,
+            tb,
+          };
+        }
+      }
+      wb += eb;
+    }
+    wa += ea;
+  }
+  return null;
+}
+
 export function segmentAabb(seg: RoadSegment): { x: number; y: number; w: number; d: number } {
   let minX = Infinity;
   let minY = Infinity;
@@ -218,6 +322,10 @@ export interface RoadIndex {
 }
 
 const indexCache = new WeakMap<RoadNetwork, RoadIndex>();
+
+export function invalidateNetworkIndex(network: RoadNetwork): void {
+  indexCache.delete(network);
+}
 
 export function indexNetwork(network: RoadNetwork): RoadIndex {
   const cached = indexCache.get(network);
@@ -454,12 +562,21 @@ export function validateRoadNetwork(network: RoadNetwork): { ok: boolean; issues
   return { ok: issues.length === 0, issues };
 }
 
-export function roadsConnected(network: RoadNetwork): boolean {
-  if (network.segments.length === 0) return false;
-  const start = network.segments[0]!.id;
-  const seen = new Set<string>([start]);
-  const stack = [start];
+function reachableSegments(
+  network: RoadNetwork,
+  startX: number,
+  startY: number,
+  layer?: number,
+): Set<string> {
   const idx = indexNetwork(network);
+  const surf = roadSurfaceAt(network, startX, startY, layer);
+  const startId = surf.segmentId ?? network.segments[0]?.id;
+  const seen = new Set<string>();
+  if (!startId) return seen;
+  const startSeg = idx.segmentById.get(startId);
+  if (!startSeg) return seen;
+  seen.add(startId);
+  const stack = [startId];
   while (stack.length) {
     const id = stack.pop()!;
     const seg = idx.segmentById.get(id);
@@ -476,8 +593,52 @@ export function roadsConnected(network: RoadNetwork): boolean {
       }
     }
   }
+  return seen;
+}
+
+export function roadsConnected(network: RoadNetwork): boolean {
+  if (network.segments.length === 0) return false;
+  const origin = network.segments[0]!.points[0]!;
+  const seen = reachableSegments(network, origin.x, origin.y, network.segments[0]!.layer);
   const ground = network.segments.filter((s) => s.layer === network.segments[0]!.layer);
   return ground.every((s) => seen.has(s.id));
+}
+
+export function publicStreetsReachable(network: RoadNetwork, startX: number, startY: number): boolean {
+  const seen = reachableSegments(network, startX, startY);
+  const publicSegs = network.segments.filter((s) => s.roadClass !== "driveway" && s.layer === 0);
+  if (publicSegs.length === 0) return network.segments.length === 0;
+  return publicSegs.every((s) => seen.has(s.id));
+}
+
+export function aabbOverlapsRoad(
+  network: RoadNetwork,
+  x: number,
+  y: number,
+  w: number,
+  d: number,
+  ignoreDriveway = false,
+): boolean {
+  const samples = [
+    [x, y],
+    [x + w, y],
+    [x, y + d],
+    [x + w, y + d],
+    [x + w * 0.5, y + d * 0.5],
+    [x + w * 0.5, y],
+    [x + w * 0.5, y + d],
+    [x, y + d * 0.5],
+    [x + w, y + d * 0.5],
+  ];
+  for (const [px, py] of samples) {
+    const hit = roadSurfaceAt(network, px, py);
+    if (!hit.on || !hit.segmentId) continue;
+    const seg = indexNetwork(network).segmentById.get(hit.segmentId);
+    if (ignoreDriveway && seg?.roadClass === "driveway") continue;
+    if (seg?.roadClass === "driveway") continue;
+    return true;
+  }
+  return false;
 }
 
 export function derivedRoadBoxes(network: RoadNetwork): { x: number; y: number; w: number; d: number }[] {
@@ -616,8 +777,13 @@ export class RoadBuilder {
   readonly lanes: Lane[] = [];
   readonly accesses: RoadAccess[] = [];
 
-  node(x: number, y: number, elev = 0, id?: string): RoadNode {
-    const existing = this.nodes.find((n) => len(n.x - x, n.y - y) < 0.35);
+  node(x: number, y: number, elev = 0, id?: string, layer?: number): RoadNode {
+    const existing = this.nodes.find((n) => {
+      if (len(n.x - x, n.y - y) >= 0.35) return false;
+      if (Math.abs(n.elev - elev) > 0.45) return false;
+      if (layer === undefined) return true;
+      return nodeTouchesLayer(this, n, layer);
+    });
     if (existing) {
       existing.elev = (existing.elev + elev) * 0.5;
       return existing;
@@ -684,7 +850,110 @@ export class RoadBuilder {
     return a;
   }
 
-  finish(): RoadNetwork {
+  dropAccessesForLots(keepLotIds: Set<string>): void {
+    for (let i = this.accesses.length - 1; i >= 0; i--) {
+      if (!keepLotIds.has(this.accesses[i]!.lotId)) this.accesses.splice(i, 1);
+    }
+  }
+
+  nodeById(id: string): RoadNode | undefined {
+    return this.nodes.find((n) => n.id === id);
+  }
+
+  /** Snap to an endpoint, or split a same-layer segment whose interior contains the point. */
+  joinAt(x: number, y: number, elev = 0, layer = 0): RoadNode {
+    const nearNode = this.nodes.find((n) => {
+      if (len(n.x - x, n.y - y) >= 0.45) return false;
+      if (Math.abs(n.elev - elev) > 0.45) return false;
+      return nodeTouchesLayer(this, n, layer) || n.segmentIds.length === 0;
+    });
+    if (nearNode) return nearNode;
+
+    let best: { seg: RoadSegment; t: number; dist: number } | null = null;
+    for (const seg of this.segments) {
+      if (seg.layer !== layer) continue;
+      const hit = projectPointToPolyline(seg.points, x, y);
+      const snap = seg.width * 0.5 + seg.shoulder + 0.55;
+      if (hit.dist > snap) continue;
+      if (!best || hit.dist < best.dist) best = { seg, t: hit.t, dist: hit.dist };
+    }
+    if (best) return this.splitSegment(best.seg, best.t).node;
+    return this.node(x, y, elev, undefined, layer);
+  }
+
+  splitSegment(seg: RoadSegment, t: number): { node: RoadNode; oldId?: string; first?: RoadSegment; second?: RoadSegment; cut?: number } {
+    const u = clamp(t, 0, 1);
+    const start = this.nodeById(seg.startId);
+    const end = this.nodeById(seg.endId);
+    if (!start || !end) return { node: this.node(seg.points[0]!.x, seg.points[0]!.y, seg.points[0]!.elev) };
+    if (u <= 0.04) return { node: start };
+    if (u >= 0.96) return { node: end };
+    const split = splitPolyline(seg.points, u);
+    const mid = this.node(split.mid.x, split.mid.y, split.mid.elev, undefined, seg.layer);
+    if (mid.id === start.id || mid.id === end.id) return { node: mid };
+    if (seg.startId === mid.id || seg.endId === mid.id) return { node: mid };
+    if (start.segmentIds.includes(seg.id) && end.segmentIds.includes(seg.id) && mid.segmentIds.includes(seg.id)) {
+      return { node: mid };
+    }
+
+    const opts: BuilderOpts = {
+      roadClass: seg.roadClass,
+      surface: seg.surface,
+      width: seg.width,
+      shoulder: seg.shoulder,
+      layer: seg.layer,
+    };
+    this.detachSegment(seg);
+    const first = this.segment(start, mid, split.a, opts);
+    const second = this.segment(mid, end, split.b, opts);
+    this.remapAccesses(seg.id, first, second, u);
+    return { node: mid, oldId: seg.id, first, second, cut: u };
+  }
+
+  normalizeJunctions(): void {
+    let guard = 0;
+    while (guard++ < 48) {
+      let changed = false;
+      const segs = [...this.segments];
+      for (let i = 0; i < segs.length; i++) {
+        const a = this.segments.find((s) => s.id === segs[i]!.id);
+        if (!a) continue;
+        for (let j = i + 1; j < segs.length; j++) {
+          const b = this.segments.find((s) => s.id === segs[j]!.id);
+          if (!b) continue;
+          if (a.layer !== b.layer) continue;
+          if (sharesEndpoint(a, b)) continue;
+          const hit = polylineIntersect(a.points, b.points);
+          if (!hit) continue;
+          const na = this.splitSegment(a, hit.ta).node;
+          const liveB = this.segments.find((s) => s.id === b.id) ?? this.segmentNear(hit.x, hit.y, b.layer);
+          if (liveB) this.splitSegment(liveB, projectPointToPolyline(liveB.points, hit.x, hit.y).t);
+          const snapped = this.joinAt(hit.x, hit.y, hit.elev, a.layer);
+          if (snapped.id !== na.id) {
+            this.mergeNodes(na, snapped);
+          }
+          changed = true;
+          break;
+        }
+        if (changed) break;
+      }
+      if (!changed) {
+        for (const node of [...this.nodes]) {
+          const touch = this.interiorHit(node);
+          if (!touch) continue;
+          this.splitSegment(touch.seg, touch.t);
+          changed = true;
+          break;
+        }
+      }
+      if (!changed) break;
+    }
+    this.stripDegenerate();
+  }
+
+  finish(opts: { normalize?: boolean } = {}): RoadNetwork {
+    if (opts.normalize !== false) this.normalizeJunctions();
+    for (const lane of this.lanes) lane.next = [];
     this.wireLanes();
     for (const n of this.nodes) n.junction = junctionOf(n.segmentIds.length);
     const network: RoadNetwork = {
@@ -748,6 +1017,98 @@ export class RoadBuilder {
       if (node && node.segmentIds.length === 1) continue;
     }
   }
+
+  private detachSegment(seg: RoadSegment): void {
+    const idx = this.segments.indexOf(seg);
+    if (idx >= 0) this.segments.splice(idx, 1);
+    for (const lid of seg.laneIds) {
+      const li = this.lanes.findIndex((l) => l.id === lid);
+      if (li >= 0) this.lanes.splice(li, 1);
+    }
+    for (const n of this.nodes) {
+      n.segmentIds = n.segmentIds.filter((id) => id !== seg.id);
+    }
+  }
+
+  private remapAccesses(oldId: string, first: RoadSegment, second: RoadSegment, cut: number): void {
+    for (const a of this.accesses) {
+      if (a.segmentId !== oldId) continue;
+      if (a.t <= cut) {
+        a.segmentId = first.id;
+        a.laneId = first.laneIds[0]!;
+        a.t = cut > 1e-4 ? a.t / cut : 0;
+      } else {
+        a.segmentId = second.id;
+        a.laneId = second.laneIds[0]!;
+        a.t = (a.t - cut) / Math.max(1e-4, 1 - cut);
+      }
+    }
+  }
+
+  private segmentNear(x: number, y: number, layer: number): RoadSegment | undefined {
+    let best: RoadSegment | undefined;
+    let bestD = Infinity;
+    for (const seg of this.segments) {
+      if (seg.layer !== layer) continue;
+      const hit = projectPointToPolyline(seg.points, x, y);
+      if (hit.dist < bestD) {
+        bestD = hit.dist;
+        best = seg;
+      }
+    }
+    return best;
+  }
+
+  private interiorHit(node: RoadNode): { seg: RoadSegment; t: number } | null {
+    const layers = new Set<number>();
+    for (const sid of node.segmentIds) {
+      const s = this.segments.find((seg) => seg.id === sid);
+      if (s) layers.add(s.layer);
+    }
+    for (const seg of this.segments) {
+      if (seg.startId === node.id || seg.endId === node.id) continue;
+      if (layers.size && !layers.has(seg.layer)) continue;
+      const hit = projectPointToPolyline(seg.points, node.x, node.y);
+      if (hit.dist <= Math.max(0.4, seg.width * 0.35) && hit.t > 0.04 && hit.t < 0.96) {
+        return { seg, t: hit.t };
+      }
+    }
+    return null;
+  }
+
+  private mergeNodes(keep: RoadNode, drop: RoadNode): void {
+    if (keep.id === drop.id) return;
+    for (const seg of this.segments) {
+      if (seg.startId === drop.id) seg.startId = keep.id;
+      if (seg.endId === drop.id) seg.endId = keep.id;
+    }
+    for (const sid of drop.segmentIds) {
+      if (!keep.segmentIds.includes(sid)) keep.segmentIds.push(sid);
+    }
+    const idx = this.nodes.indexOf(drop);
+    if (idx >= 0) this.nodes.splice(idx, 1);
+  }
+
+  private stripDegenerate(): void {
+    for (let i = this.segments.length - 1; i >= 0; i--) {
+      const seg = this.segments[i]!;
+      if (seg.startId === seg.endId && polylineLength(seg.points) < 0.6) this.detachSegment(seg);
+    }
+    for (let i = this.nodes.length - 1; i >= 0; i--) {
+      const n = this.nodes[i]!;
+      n.segmentIds = n.segmentIds.filter((id) => this.segments.some((s) => s.id === id));
+      if (n.segmentIds.length === 0) this.nodes.splice(i, 1);
+    }
+  }
+}
+
+function nodeTouchesLayer(b: RoadBuilder, node: RoadNode, layer: number): boolean {
+  if (node.segmentIds.length === 0) return true;
+  return node.segmentIds.some((id) => b.segments.find((s) => s.id === id)?.layer === layer);
+}
+
+function sharesEndpoint(a: RoadSegment, b: RoadSegment): boolean {
+  return a.startId === b.startId || a.startId === b.endId || a.endId === b.startId || a.endId === b.endId;
 }
 
 export function pt(p: { x: number; y: number; elev?: number }): RoadPoint {

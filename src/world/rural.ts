@@ -1,21 +1,28 @@
-import { CELL } from "../game/constants";
 import { aabbOverlap, len } from "../game/math";
 import { Rng } from "../game/rng";
 import { DISTRICT_COUNTS, type DistrictId } from "../game/session";
-import { createBuildingFromArchetype } from "../structure/building";
-import type { Building, GroundPatch, Lot, LotIdentity, LotZone, Prop } from "../structure/types";
-import { lotZoneFor, pickArchetype } from "./archetypes";
+import type { Building, GroundPatch, Lot, Prop } from "../structure/types";
 import { getAsset, spawnAsset } from "./catalog";
-import { buildingOccupy, dressLot, fillWorldGround, pickTemplate } from "./dressing";
+import { buildingOccupy, dressLot, fillWorldGround } from "./dressing";
+import {
+  PARCEL,
+  allocateFrontage,
+  attachDriveway,
+  expandStreets,
+  placeBuildingInLot,
+  type NhoodDebug,
+  type NhoodReject,
+} from "./parcels";
 import {
   curvePoints,
   derivedRoadBoxes,
   emptyTerrain,
   linePoints,
   offsetPoint,
+  pointOnRoad,
+  polylineLength,
   pt,
   RoadBuilder,
-  pointOnRoad,
   samplePolyline,
   type RoadNetwork,
   type RoadSegment,
@@ -23,10 +30,12 @@ import {
 } from "./roads";
 import type { Town } from "./town";
 
-export type TopologyFamily = "county" | "crossroads" | "tjunction" | "curve-farm" | "loop" | "frontage";
+export interface LayoutIssue {
+  code: string;
+  detail: string;
+}
 
-const LOT_FRONT = 11.4;
-const LOT_DEPTH = 10.2;
+export type TopologyFamily = "county" | "crossroads" | "tjunction" | "curve-farm" | "loop" | "frontage";
 
 export interface RuralLayout {
   buildings: Building[];
@@ -49,74 +58,120 @@ export interface RuralLayout {
   district: DistrictId;
   seed: number;
   topology: TopologyFamily;
+  diagnostic: { ok: boolean; issues: LayoutIssue[] };
+  nhood: NhoodDebug;
 }
 
 export function pickTopology(rng: Rng, count: number): TopologyFamily {
-  const families: TopologyFamily[] =
-    count >= 80
-      ? ["county", "crossroads", "frontage", "curve-farm"]
-      : ["county", "crossroads", "tjunction", "curve-farm", "loop", "frontage"];
+  const families: TopologyFamily[] = ["county", "crossroads", "tjunction", "curve-farm", "loop", "frontage"];
+  void count;
   return rng.pick(families);
 }
 
-export function generateRuralLayout(id: Exclude<DistrictId, "classic">, seed: number): RuralLayout {
+export function generateRuralLayout(
+  id: Exclude<DistrictId, "classic">,
+  seed: number,
+  topologyOverride?: TopologyFamily,
+): RuralLayout {
   const count = DISTRICT_COUNTS[id];
   const rng = new Rng(seed);
-  const topology = pickTopology(rng, count);
+  const topology = topologyOverride ?? pickTopology(rng, count);
   const b = new RoadBuilder();
   const originX = 4;
   const originY = 4;
+  const issues: LayoutIssue[] = [];
+  const rejected: NhoodReject[] = [];
 
   buildSkeleton(b, topology, count, originX, originY, rng);
-  const network = b.finish();
+  b.normalizeJunctions();
 
-  const lots = placeLots(network, Math.ceil(count * 1.45) + 6, rng);
-  const buildings: Building[] = [];
-  const kept: Lot[] = [];
-  for (let i = 0; i < lots.length && kept.length < count; i++) {
-    const lot = lots[i]!;
-    const zone = lot.zone;
-    const archetype = pickArchetype(zone, rng);
-    const bw = archetype.w * CELL;
-    const bd = archetype.d * CELL;
-    const inset = 1.15;
-    const fx = Math.cos(lot.heading);
-    const fy = Math.sin(lot.heading);
-    const along = Math.abs(fx) * lot.w + Math.abs(fy) * lot.d;
-    const rear = along * 0.2;
-    const cx = lot.x + lot.w * 0.5 + fx * rear;
-    const cy = lot.y + lot.d * 0.5 + fy * rear;
-    let x = cx - bw * 0.5;
-    let y = cy - bd * 0.5;
-    x = Math.max(lot.x + inset, Math.min(x, lot.x + lot.w - bw - inset));
-    y = Math.max(lot.y + inset, Math.min(y, lot.y + lot.d - bd - inset));
-    if (pointOnRoad(network, x + bw * 0.5, y + bd * 0.5)) {
-      x += fx * 1.8;
-      y += fy * 1.8;
-    }
-    if (pointOnRoad(network, x + bw * 0.5, y + bd * 0.5)) continue;
-    if (buildings.some((o) => aabbOverlap(x - 0.4, y - 0.4, bw + 0.8, bd + 0.8, o.x, o.y, o.w * o.cellSize, o.d * o.cellSize))) {
+  for (let pass = 0; pass <= PARCEL.maxExpand; pass++) {
+    const slots = estimateSlots(b.segments, b.nodes);
+    if (slots >= count * 2.4 + 8) break;
+    if (!expandStreets(b, rng, pass)) {
+      if (slots >= count) break;
       continue;
     }
-    const building = createBuildingFromArchetype(archetype.id, `LOT ${kept.length + 1} ${archetype.label}`, x, y);
+    b.normalizeJunctions();
+  }
+
+  const want = Math.ceil(count * 2.1) + 10;
+  const alloc = allocateFrontage(b.segments, b.nodes, want, new Rng(seed ^ 0x51a11), []);
+  const pool = alloc.lots;
+  rejected.push(...alloc.rejected);
+
+  const buildings: Building[] = [];
+  const kept: Lot[] = [];
+  const corridors: { x: number; y: number }[][] = [];
+  const publicSegs = () => b.segments.filter((s) => s.roadClass !== "driveway" && s.roadClass !== "ramp");
+
+  for (const lot of pool) {
+    if (kept.length >= count) break;
+    lot.zone = zoneForIndex(kept.length, count, lot.frontage.segmentId, b.segments);
+    lot.identity = identityForIndex(kept.length, count, lot.frontage.segmentId, b.segments, rng);
+    const building = placeBuildingInLot(lot, rng, buildings, publicSegs(), corridors);
+    if (!building) {
+      rejected.push({ kind: "building", reason: "no-fit", points: lot.boundary });
+      continue;
+    }
+    const drive = attachDriveway(b, lot, building, [...kept, ...pool]);
+    if (!drive || drive.reject) {
+      rejected.push(drive?.reject ?? { kind: "driveway", reason: "failed", points: lot.boundary });
+      continue;
+    }
     buildings.push(building);
     kept.push(lot);
+    corridors.push(drive.corridor);
+  }
+
+  if (kept.length < count) {
+    const extra = allocateFrontage(b.segments, b.nodes, count * 3, new Rng(seed ^ 0x222), kept);
+    rejected.push(...extra.rejected);
+    for (const lot of extra.lots) {
+      if (kept.length >= count) break;
+      if (kept.some((k) => k.id === lot.id)) continue;
+      lot.zone = zoneForIndex(kept.length, count, lot.frontage.segmentId, b.segments);
+      lot.identity = identityForIndex(kept.length, count, lot.frontage.segmentId, b.segments, rng);
+      const building = placeBuildingInLot(lot, rng, buildings, publicSegs(), corridors);
+      if (!building) continue;
+      const drive = attachDriveway(b, lot, building, [...kept, ...extra.lots]);
+      if (!drive || drive.reject) continue;
+      buildings.push(building);
+      kept.push(lot);
+      corridors.push(drive.corridor);
+    }
+  }
+
+  if (kept.length < count) {
+    issues.push({
+      code: "capacity",
+      detail: `placed ${kept.length} of ${count} after bounded expansion (${rejected.length} rejected)`,
+    });
+  }
+
+  b.dropAccessesForLots(new Set(kept.map((l) => l.id)));
+  const network = b.finish({ normalize: false });
+  for (const lot of kept) {
+    const acc = network.accesses.find((a) => a.id === lot.accessId || a.lotId === lot.id);
+    if (acc) {
+      lot.accessId = acc.id;
+      lot.frontage.segmentId = acc.segmentId;
+    }
   }
 
   const occBoxes = buildings.flatMap(buildingOccupy);
   const props: Prop[] = [];
   const ground: GroundPatch[] = [];
-  const lotsKept = kept;
-  const perLot = count >= 80 ? 6 : count >= 25 ? 7 : 7;
-  for (let i = 0; i < lotsKept.length; i++) {
-    const lot = lotsKept[i]!;
-    const dressed = dressLot(lot, buildings[i], rng, { boxes: occBoxes }, perLot);
+  const perLot = count >= 80 ? 6 : 7;
+  for (let i = 0; i < kept.length; i++) {
+    const lot = kept[i]!;
+    const dressed = dressLot(lot, buildings[i], rng, { boxes: occBoxes }, perLot, corridors);
     props.push(...dressed.props);
     ground.push(...dressed.patches);
     for (const p of dressed.props) occBoxes.push({ x: p.x, y: p.y, w: p.w, d: p.d });
   }
 
-  placeRoadside(network, lotsKept, buildings, props, rng, count);
+  placeRoadside(network, kept, buildings, props, rng, count, corridors);
   for (let i = props.length - 1; i >= 0; i--) {
     const p = props[i]!;
     const def = getAsset(p.assetId);
@@ -134,7 +189,7 @@ export function generateRuralLayout(id: Exclude<DistrictId, "classic">, seed: nu
     maxX = Math.max(maxX, n.x + 6);
     maxY = Math.max(maxY, n.y + 6);
   }
-  for (const lot of lotsKept) {
+  for (const lot of kept) {
     minX = Math.min(minX, lot.x - 1);
     minY = Math.min(minY, lot.y - 1);
     maxX = Math.max(maxX, lot.x + lot.w + 1);
@@ -152,7 +207,7 @@ export function generateRuralLayout(id: Exclude<DistrictId, "classic">, seed: nu
   return {
     buildings,
     props,
-    lots: lotsKept,
+    lots: kept,
     ground,
     network,
     terrain,
@@ -170,7 +225,112 @@ export function generateRuralLayout(id: Exclude<DistrictId, "classic">, seed: nu
     district: id,
     seed,
     topology,
+    diagnostic: { ok: issues.length === 0 && kept.length === count, issues },
+    nhood: { rejected },
   };
+}
+
+function addTopologyFlavor(b: RoadBuilder, topology: TopologyFamily, ox: number, oy: number, rng: Rng): void {
+  const host = b.segments.find((s) => s.roadClass === "rural") ?? b.segments[0];
+  if (!host) return;
+  if (topology === "loop") {
+    const p = samplePolyline(host.points, 0.35);
+    const j = b.joinAt(p.x, p.y, p.elev, host.layer);
+    const r = 14;
+    const ring = [0, 1, 2, 3].map((i) => {
+      const a = (i / 4) * Math.PI * 2 + 0.2;
+      return b.node(j.x + 16 + Math.cos(a) * r, j.y + Math.sin(a) * r, p.elev);
+    });
+    for (let i = 0; i < ring.length; i++) {
+      b.segment(ring[i]!, ring[(i + 1) % ring.length]!, linePoints(pt(ring[i]!), pt(ring[(i + 1) % ring.length]!)), {
+        roadClass: "residential",
+      });
+    }
+    b.segment(j, ring[0]!, linePoints(pt(j), pt(ring[0]!)), { roadClass: "residential" });
+    b.segment(ring[0]!, ring[2]!, linePoints(pt(ring[0]!), pt(ring[2]!)), { roadClass: "residential" });
+  } else if (topology === "curve-farm") {
+    const p = samplePolyline(host.points, 0.6);
+    const j = b.joinAt(p.x, p.y, p.elev, host.layer);
+    const end = b.node(p.x + 22, p.y + 18, p.elev + 0.3);
+    b.segment(j, end, curvePoints(pt(j), { x: p.x + 8, y: p.y + 16, elev: p.elev + 0.15 }, pt(end)), { roadClass: "rural" });
+  } else if (topology === "tjunction" || topology === "frontage") {
+    const p = samplePolyline(host.points, 0.45);
+    const j = b.joinAt(p.x, p.y, p.elev, host.layer);
+    const dead = b.node(p.x + rng.range(10, 16), p.y + (topology === "tjunction" ? 20 : -14), p.elev);
+    b.segment(j, dead, linePoints(pt(j), pt(dead)), { roadClass: topology === "frontage" ? "service" : "residential" });
+  }
+  void ox;
+  void oy;
+}
+
+function buildBlockGrid(b: RoadBuilder, count: number, ox: number, oy: number, rng: Rng): void {
+  const ew = Math.max(3, Math.ceil(count / 14));
+  const ns = Math.max(3, Math.ceil(count / 18));
+  const blockW = 40;
+  const blockD = 36;
+  const rows: ReturnType<RoadBuilder["node"]>[][] = [];
+  for (let r = 0; r < ew; r++) {
+    const y = oy + 12 + r * blockD + rng.range(-0.3, 0.3);
+    const row = [];
+    for (let c = 0; c <= ns; c++) {
+      row.push(b.node(ox + 2 + c * blockW, y, r * 0.02));
+    }
+    for (let c = 0; c < ns; c++) {
+      b.segment(row[c]!, row[c + 1]!, linePoints(pt(row[c]!), pt(row[c + 1]!)), {
+        roadClass: r === 0 ? "rural" : "residential",
+      });
+    }
+    rows.push(row);
+  }
+  for (let c = 0; c <= ns; c++) {
+    for (let r = 0; r < ew - 1; r++) {
+      b.segment(rows[r]![c]!, rows[r + 1]![c]!, linePoints(pt(rows[r]![c]!), pt(rows[r + 1]![c]!)), {
+        roadClass: c === 0 || c === ns ? "rural" : "residential",
+      });
+    }
+  }
+  const dead = rows[0]![0]!;
+  const spur = b.node(dead.x - 18, dead.y + rng.range(-1, 1), dead.elev);
+  b.segment(dead, spur, linePoints(pt(dead), pt(spur)), { roadClass: "service" });
+}
+
+function estimateSlots(segments: readonly RoadSegment[], nodes: readonly { id: string; segmentIds: string[] }[]): number {
+  const publicSegs = segments.filter((s) => s.roadClass !== "driveway" && s.roadClass !== "ramp");
+  const publicIds = new Set(publicSegs.map((s) => s.id));
+  let n = 0;
+  for (const seg of publicSegs) {
+    const path = polylineLength(seg.points);
+    const start = (nodes.find((x) => x.id === seg.startId)?.segmentIds.filter((id) => publicIds.has(id)).length ?? 1) >= 3 ? 3.6 : 1.4;
+    const end = (nodes.find((x) => x.id === seg.endId)?.segmentIds.filter((id) => publicIds.has(id)).length ?? 1) >= 3 ? 3.6 : 1.4;
+    n += Math.max(0, Math.floor((path - start - end) / 9)) * 2;
+  }
+  return n;
+}
+
+function zoneForIndex(i: number, count: number, segmentId: string, segs: readonly RoadSegment[]): Lot["zone"] {
+  const seg = segs.find((s) => s.id === segmentId);
+  const roadClass = seg?.roadClass ?? "residential";
+  if (roadClass === "service" || roadClass === "commercial") return i % 3 === 0 ? "industrial" : "commercial";
+  if (i === 0) return "commercial";
+  if (i >= count - 2) return "industrial";
+  return i % 6 === 0 ? "commercial" : "residential";
+}
+
+function identityForIndex(
+  i: number,
+  count: number,
+  segmentId: string,
+  segs: readonly RoadSegment[],
+  rng: Rng,
+): Lot["identity"] {
+  const seg = segs.find((s) => s.id === segmentId);
+  const roadClass = seg?.roadClass ?? "residential";
+  if (roadClass === "service") return rng.chance(0.5) ? "utility" : "contractor";
+  if (i === 0 || (roadClass === "rural" && i % 11 === 0)) return "shop";
+  if (i % 9 === 3) return "service";
+  if (i % 5 === 2 || (roadClass === "rural" && i % 4 === 1)) return "farm";
+  if (i === count - 1) return "utility";
+  return "residence";
 }
 
 function buildSkeleton(
@@ -181,29 +341,39 @@ function buildSkeleton(
   oy: number,
   rng: Rng,
 ): RoadSegment[] {
-  const pairPitch = LOT_DEPTH * 2 + 6.4;
-  const collectors = Math.max(1, Math.ceil(count / 24));
-  const slotsPerSide = Math.ceil(count / (collectors * 2)) + 2;
-  const spineLen = Math.max(56, slotsPerSide * LOT_FRONT + 10);
-  const branch = Math.max(pairPitch * 0.55, 18 + count * 0.12);
+  const pairPitch = 14.2 * 2 + 9.5;
+  const collectors = Math.max(2, Math.ceil(count / 14));
+  const slotsPerSide = Math.ceil(count / (collectors * 2)) + 4;
+  const spineLen = Math.max(80, slotsPerSide * 12.8 + 18);
+  const branch = Math.max(pairPitch * 0.6, 20 + count * 0.14);
+
+  if (count >= 8) {
+    buildBlockGrid(b, count, ox, oy, rng);
+    addTopologyFlavor(b, topology, ox, oy, rng);
+    return b.segments.filter((s) => s.roadClass !== "driveway");
+  }
 
   if (topology === "county") {
+    const spines: RoadSegment[] = [];
     for (let r = 0; r < collectors; r++) {
-      const y = oy + 14 + r * pairPitch + rng.range(-1.2, 1.2);
+      const y = oy + 16 + r * pairPitch + rng.range(-1.0, 1.0);
       const elev = r * 0.08;
       const a = b.node(ox, y, elev);
-      const m = b.node(ox + spineLen * 0.5, y + rng.range(-2.2, 2.2), elev + 0.1);
-      const c = b.node(ox + spineLen, y + rng.range(-1.4, 1.4), elev + 0.2);
-      b.segment(a, c, linePoints(pt(a), pt(m)).concat(linePoints(pt(m), pt(c)).slice(1)), { roadClass: "rural" });
+      const m = b.node(ox + spineLen * 0.5, y + rng.range(-1.6, 1.6), elev + 0.1);
+      const c = b.node(ox + spineLen, y + rng.range(-1.0, 1.0), elev + 0.2);
+      b.segment(a, m, linePoints(pt(a), pt(m)), { roadClass: "rural" });
+      spines.push(b.segment(m, c, linePoints(pt(m), pt(c)), { roadClass: "rural" }));
     }
     const crosses = Math.max(1, collectors + (count >= 30 ? 2 : 0));
     const main = b.segments[0]!;
     for (let i = 0; i < crosses; i++) {
-      const t = 0.16 + (i / Math.max(1, crosses)) * 0.68 + rng.range(-0.02, 0.02);
+      const t = 0.16 + (i / Math.max(1, crosses)) * 0.68 + rng.range(-0.015, 0.015);
       const p = samplePolyline(main.points, Math.min(0.9, t));
+      const at = b.joinAt(p.x, p.y, p.elev, 0);
       const n0 = b.node(p.x, oy + 4, p.elev);
-      const n1 = b.node(p.x + rng.range(-1, 1), oy + 14 + (collectors - 1) * pairPitch + branch * 0.35, p.elev);
-      b.segment(n0, n1, linePoints(pt(n0), pt(n1)), { roadClass: "residential" });
+      const n1 = b.node(p.x + rng.range(-0.8, 0.8), oy + 16 + (collectors - 1) * pairPitch + branch * 0.4, p.elev);
+      b.segment(n0, at, linePoints(pt(n0), pt(at)), { roadClass: "residential" });
+      b.segment(at, n1, linePoints(pt(at), pt(n1)), { roadClass: "residential" });
     }
   } else if (topology === "crossroads") {
     const cx = ox + spineLen * 0.42;
@@ -221,6 +391,12 @@ function buildSkeleton(
       const svc = b.node(cx + 8, cy + 7, 0.1);
       b.segment(c, svc, linePoints(pt(c), pt(svc)), { roadClass: "service" });
     }
+    if (count >= 16) {
+      const mid = samplePolyline(b.segments[0]!.points, 0.55);
+      const j = b.joinAt(mid.x, mid.y, mid.elev, 0);
+      const spur = b.node(mid.x, mid.y + branch * 0.35, mid.elev);
+      b.segment(j, spur, linePoints(pt(j), pt(spur)), { roadClass: "residential" });
+    }
   } else if (topology === "tjunction") {
     const c = b.node(ox + spineLen * 0.4, oy + 16, 0.1);
     const w = b.node(ox, oy + 16, 0);
@@ -229,12 +405,10 @@ function buildSkeleton(
     b.segment(w, c, linePoints(pt(w), pt(c)), { roadClass: "rural" });
     b.segment(c, e, linePoints(pt(c), pt(e)), { roadClass: "rural" });
     b.segment(c, n, linePoints(pt(c), pt(n)), { roadClass: "residential" });
-    if (count >= 20) {
-      const mid = samplePolyline(b.segments[2]!.points, 0.55);
-      const j = b.node(mid.x, mid.y, mid.elev);
-      const side = b.node(mid.x + branch * 0.4, mid.y + rng.range(-2, 2), mid.elev);
-      b.segment(j, side, linePoints(pt(j), pt(side)), { roadClass: "residential" });
-    }
+    const stem = samplePolyline(b.segments[2]!.points, 0.58);
+    const j = b.joinAt(stem.x, stem.y, stem.elev, 0);
+    const dead = b.node(stem.x + branch * 0.42, stem.y + rng.range(-1.2, 1.2), stem.elev);
+    b.segment(j, dead, linePoints(pt(j), pt(dead)), { roadClass: "residential" });
   } else if (topology === "curve-farm") {
     const a = b.node(ox, oy + 10, 0);
     const ctrl = { x: ox + spineLen * 0.45, y: oy + 10 + branch * 0.55, elev: 0.4 };
@@ -246,8 +420,14 @@ function buildSkeleton(
     });
     const spur = b.node(ctrl.x + 6, ctrl.y + branch * 0.35, 0.4);
     b.segment(mid, spur, linePoints(pt(mid), pt(spur)), { roadClass: "service" });
+    if (count >= 20) {
+      const p = samplePolyline(b.segments[0]!.points, 0.48);
+      const j = b.joinAt(p.x, p.y, p.elev, 0);
+      const local = b.node(p.x - 4, p.y + 16, p.elev);
+      b.segment(j, local, linePoints(pt(j), pt(local)), { roadClass: "residential" });
+    }
   } else if (topology === "loop") {
-    const r = Math.max(16, 12 + count * 0.22);
+    const r = Math.max(18, 14 + count * 0.28);
     const cx = ox + r + 8;
     const cy = oy + r + 8;
     const nodes = [0, 1, 2, 3, 4, 5].map((i) => {
@@ -259,8 +439,9 @@ function buildSkeleton(
         roadClass: "residential",
       });
     }
-    const stem = b.node(cx + r + 14, cy, 0);
+    const stem = b.node(cx + r + 16, cy, 0);
     b.segment(nodes[0]!, stem, linePoints(pt(nodes[0]!), pt(stem)), { roadClass: "rural" });
+    b.segment(nodes[2]!, nodes[5]!, linePoints(pt(nodes[2]!), pt(nodes[5]!)), { roadClass: "residential" });
   } else {
     const a = b.node(ox, oy + 20, 0);
     const c = b.node(ox + spineLen, oy + 20, 0.15);
@@ -273,153 +454,25 @@ function buildSkeleton(
       const t = 0.2 + (i / Math.max(1, links - 1)) * 0.6;
       const p = samplePolyline(b.segments[0]!.points, t);
       const q = samplePolyline(b.segments[1]!.points, t);
-      const n0 = b.node(p.x, p.y, p.elev);
-      const n1 = b.node(q.x, q.y, q.elev);
-      b.segment(n0, n1, linePoints(pt(n0), pt(n1)), { roadClass: "driveway", width: 2.2 });
+      const n0 = b.joinAt(p.x, p.y, p.elev, 0);
+      const n1 = b.joinAt(q.x, q.y, q.elev, 0);
+      b.segment(n0, n1, linePoints(pt(n0), pt(n1)), { roadClass: "residential" });
+    }
+  }
+  if (count >= 24) {
+    const extras = Math.ceil(count / 10);
+    for (let i = 0; i < extras; i++) {
+      const host = b.segments.filter((s) => s.roadClass !== "driveway")[i % Math.max(1, b.segments.length)]!;
+      const t = 0.28 + (i * 0.19) % 0.5;
+      const p = samplePolyline(host.points, t);
+      const j = b.joinAt(p.x, p.y, p.elev, host.layer);
+      const heading = p.heading + (i % 2 === 0 ? Math.PI * 0.5 : -Math.PI * 0.5);
+      const reach = 28 + count * 0.08;
+      const end = b.node(j.x + Math.cos(heading) * reach, j.y + Math.sin(heading) * reach, p.elev, undefined, host.layer);
+      b.segment(j, end, linePoints(pt(j), pt(end)), { roadClass: "residential", layer: host.layer });
     }
   }
   return b.segments.filter((s) => s.roadClass !== "driveway");
-}
-
-function placeLots(network: RoadNetwork, count: number, rng: Rng): Lot[] {
-  const lots: Lot[] = [];
-  const eligible = network.segments.filter((s) => s.roadClass !== "driveway" && s.roadClass !== "ramp");
-  const sides: Array<1 | -1> = [1, -1];
-  let n = 0;
-  for (const seg of eligible) {
-    if (n >= count) break;
-    let path = 0;
-    for (let i = 0; i < seg.points.length - 1; i++) {
-      path += len(seg.points[i + 1]!.x - seg.points[i]!.x, seg.points[i + 1]!.y - seg.points[i]!.y);
-    }
-    const slots = Math.max(1, Math.floor(path / LOT_FRONT));
-    for (let i = 0; i < slots && n < count; i++) {
-      const t = (i + 0.55) / (slots + 0.2);
-      if (t < 0.1 || t > 0.92) continue;
-      const p = samplePolyline(seg.points, t);
-      const side = sides[(i + (seg.id.charCodeAt(1) ?? 0)) % 2]!;
-      const across = (seg.width * 0.5 + seg.shoulder + LOT_DEPTH * 0.5 + 1.55) * side;
-      const pos = offsetPoint(p.x, p.y, p.heading, across);
-      const heading = p.heading + (side > 0 ? Math.PI * 0.5 : -Math.PI * 0.5);
-      const box = lotFootprint(pos.x, pos.y, heading);
-      const lot: Lot = {
-        id: `lot${n}`,
-        x: box.x,
-        y: box.y,
-        w: box.w,
-        d: box.d,
-        heading,
-        zone: zoneForLot(n, count, seg.roadClass),
-        identity: identityFor(n, count, seg.roadClass, rng),
-        accessId: "",
-        templateId: "",
-      };
-      if (lots.some((o) => aabbOverlap(lot.x, lot.y, lot.w, lot.d, o.x, o.y, o.w, o.d))) continue;
-      if (overlapsRoadCenter(network, lot)) continue;
-      const acc = network.accesses.find((a) => a.lotId === lot.id);
-      if (!acc) {
-        const access = {
-          id: `aL${n}`,
-          lotId: lot.id,
-          segmentId: seg.id,
-          laneId: seg.laneIds[0]!,
-          t,
-          x: p.x,
-          y: p.y,
-          kind: "driveway" as const,
-        };
-        network.accesses.push(access);
-        lot.accessId = access.id;
-      }
-      lot.templateId = pickTemplate(lot.identity, rng).id;
-      lots.push(lot);
-      n++;
-    }
-  }
-  let guard = 0;
-  while (lots.length < count && eligible.length && guard < count * 12) {
-    guard++;
-    const seg = eligible[lots.length % eligible.length]!;
-    const t = 0.12 + ((lots.length * 0.137) % 0.76);
-    const row = 1 + Math.floor(guard / (eligible.length * 4));
-    const p = samplePolyline(seg.points, t);
-    const side: 1 | -1 = lots.length % 2 === 0 ? 1 : -1;
-    const pos = offsetPoint(
-      p.x,
-      p.y,
-      p.heading,
-      (seg.width * 0.5 + seg.shoulder + LOT_DEPTH * (0.52 + row * 0.95) + 1.55) * side,
-    );
-    const heading = p.heading + (side > 0 ? Math.PI * 0.5 : -Math.PI * 0.5);
-    const box = lotFootprint(pos.x + rng.range(-0.4, 0.4), pos.y + rng.range(-0.4, 0.4), heading);
-    const lot: Lot = {
-      id: `lot${lots.length}`,
-      x: box.x,
-      y: box.y,
-      w: box.w,
-      d: box.d,
-      heading,
-      zone: zoneForLot(lots.length, count, seg.roadClass),
-      identity: identityFor(lots.length, count, seg.roadClass, rng),
-      accessId: "",
-      templateId: "",
-    };
-    if (lots.some((o) => aabbOverlap(lot.x + 0.2, lot.y + 0.2, lot.w - 0.4, lot.d - 0.4, o.x, o.y, o.w, o.d))) continue;
-    const accessId = `aL${lots.length}`;
-    network.accesses.push({
-      id: accessId,
-      lotId: lot.id,
-      segmentId: seg.id,
-      laneId: seg.laneIds[0]!,
-      t,
-      x: p.x,
-      y: p.y,
-      kind: "driveway",
-    });
-    lot.accessId = accessId;
-    lot.templateId = pickTemplate(lot.identity, rng).id;
-    lots.push(lot);
-  }
-  return lots.slice(0, count);
-}
-
-function lotFootprint(cx: number, cy: number, heading: number): { x: number; y: number; w: number; d: number } {
-  const depthAlongX = Math.abs(Math.cos(heading)) > 0.5;
-  const w = depthAlongX ? LOT_DEPTH : LOT_FRONT;
-  const d = depthAlongX ? LOT_FRONT : LOT_DEPTH;
-  return { x: cx - w * 0.5, y: cy - d * 0.5, w, d };
-}
-
-function overlapsRoadCenter(network: RoadNetwork, lot: Lot): boolean {
-  const inset = 1.1;
-  const box = { x: lot.x + inset, y: lot.y + inset, w: lot.w - inset * 2, d: lot.d - inset * 2 };
-  for (const seg of network.segments) {
-    if (seg.roadClass === "driveway") continue;
-    for (let i = 0; i < seg.points.length - 1; i++) {
-      const a = seg.points[i]!;
-      const b = seg.points[i + 1]!;
-      const mx = (a.x + b.x) * 0.5 - seg.width * 0.35;
-      const my = (a.y + b.y) * 0.5 - seg.width * 0.35;
-      if (aabbOverlap(box.x, box.y, box.w, box.d, mx, my, seg.width * 0.7, seg.width * 0.7)) return true;
-    }
-  }
-  return false;
-}
-
-function zoneForLot(i: number, count: number, roadClass: RoadSegment["roadClass"]): LotZone {
-  if (roadClass === "service" || roadClass === "commercial") return i % 3 === 0 ? "industrial" : "commercial";
-  if (i === 0) return "commercial";
-  if (i >= count - 2) return "industrial";
-  return lotZoneFor(Math.floor(i / 4), i % 4, Math.ceil(count / 4), 4);
-}
-
-function identityFor(i: number, count: number, roadClass: RoadSegment["roadClass"], rng: Rng): LotIdentity {
-  if (roadClass === "service") return rng.chance(0.5) ? "utility" : "contractor";
-  if (i === 0 || (roadClass === "rural" && i % 11 === 0)) return "shop";
-  if (i % 9 === 3) return "service";
-  if (i % 5 === 2 || roadClass === "rural" && i % 4 === 1) return "farm";
-  if (i === count - 1) return "utility";
-  return "residence";
 }
 
 function placeRoadside(
@@ -429,6 +482,7 @@ function placeRoadside(
   props: Prop[],
   rng: Rng,
   count: number,
+  corridors: readonly { x: number; y: number }[][],
 ): void {
   const occ = [...buildings.flatMap(buildingOccupy), ...lots.map((l) => ({ x: l.x, y: l.y, w: l.w, d: l.d }))];
   for (const p of props) occ.push({ x: p.x, y: p.y, w: p.w, d: p.d });
@@ -437,7 +491,7 @@ function placeRoadside(
   const cap = Math.min(count + 8, 4 + Math.floor(count * 0.35));
   for (const seg of network.segments) {
     if (seg.roadClass === "driveway") continue;
-    const path = Math.max(8, len(seg.points[seg.points.length - 1]!.x - seg.points[0]!.x, seg.points[seg.points.length - 1]!.y - seg.points[0]!.y));
+    const path = Math.max(8, polylineLength(seg.points));
     const n = path > 30 ? 2 : 1;
     for (let i = 0; i < n && placed < cap; i++) {
       const t = 0.18 + i * 0.38 + rng.range(0, 0.08);
@@ -446,12 +500,29 @@ function placeRoadside(
       const pos = offsetPoint(p.x, p.y, p.heading, (seg.width * 0.5 + 0.55) * side);
       const id = rng.pick(ids);
       const asset = spawnAsset(id, pos.x - 0.15, pos.y - 0.15, p.heading + (side > 0 ? 0 : Math.PI), rng.int(0, 2));
-      if (occ.some((b) => aabbOverlap(asset.x, asset.y, asset.w, asset.d, b.x, b.y, b.w, b.d))) continue;
+      if (occ.some((box) => aabbOverlap(asset.x, asset.y, asset.w, asset.d, box.x, box.y, box.w, box.d))) continue;
+      if (corridors.some((poly) => pointNearPoly(asset.x + asset.w * 0.5, asset.y + asset.d * 0.5, poly))) continue;
       props.push(asset);
       occ.push({ x: asset.x, y: asset.y, w: asset.w, d: asset.d });
       placed++;
     }
   }
+}
+
+function pointNearPoly(x: number, y: number, poly: readonly { x: number; y: number }[]): boolean {
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i]!;
+    const c = poly[(i + 1) % poly.length]!;
+    const abx = c.x - a.x;
+    const aby = c.y - a.y;
+    const t = clamp01(((x - a.x) * abx + (y - a.y) * aby) / (abx * abx + aby * aby + 1e-8));
+    if (len(x - (a.x + abx * t), y - (a.y + aby * t)) < 1.1) return true;
+  }
+  return false;
+}
+
+function clamp01(v: number): number {
+  return v < 0 ? 0 : v > 1 ? 1 : v;
 }
 
 function propTouchesPavement(network: RoadNetwork, p: Prop): boolean {
@@ -466,7 +537,7 @@ function pickSpawn(
   avoid?: { x: number; y: number },
 ): { x: number; y: number; heading: number } {
   const segs = network.segments.filter((s) => s.roadClass === "rural" || s.roadClass === "residential");
-  const pool = segs.length ? segs : network.segments;
+  const pool = segs.length ? segs : network.segments.filter((s) => s.roadClass !== "driveway");
   const tries = [0.2, 0.35, 0.5, 0.65, 0.8];
   for (const seg of pool) {
     for (const t of tries) {

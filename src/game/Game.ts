@@ -10,7 +10,8 @@ import { stepWorld, type Upgrades } from "../sim/worldSim";
 import type { Bird, WorldEvent } from "../structure/types";
 import { createDozer, dozerSpeed, stepDozer } from "../vehicle/dozer";
 import { createRoadVehicle } from "../vehicle/roadVehicle";
-import { worldToScreen } from "../world/iso";
+import { pickVerificationRoute } from "../world/routing";
+import { worldBoundsToScreen, worldToScreen } from "../world/iso";
 import { createTown } from "../world/town";
 import {
   CASH_TARGET,
@@ -98,6 +99,7 @@ export class Game {
     this.detachInput = this.input.attach();
     this.perf.enabled = new URLSearchParams(window.location.search).get("perf") === "1";
     if (this.perf.enabled) this.ensurePerfOverlay();
+    this.renderer.showNhood = new URLSearchParams(window.location.search).get("nhood") === "1";
     this.reset("same");
     (window as unknown as { __pd: Game }).__pd = this;
     this.app.ticker.add((ticker) => {
@@ -205,6 +207,7 @@ export class Game {
     if (this.input.consume("r") || this.input.consume("R")) this.reset("same");
     if (this.input.consume("n") || this.input.consume("N")) this.reset("new");
     if (this.input.consume("v") || this.input.consume("V")) this.spawnRoadVehicle();
+    if (this.input.consume("g") || this.input.consume("G")) this.renderer.showNhood = !this.renderer.showNhood;
     if (this.input.consume("`")) {
       this.perf.enabled = !this.perf.enabled;
       if (this.perf.enabled) this.ensurePerfOverlay();
@@ -377,7 +380,13 @@ export class Game {
   }
 
   spawnRoadVehicle(): void {
-    this.town.roadCar = createRoadVehicle(this.town.roadSpawnX, this.town.roadSpawnY, this.town.roadSpawnHeading);
+    const route = pickVerificationRoute(this.town.network) ?? [];
+    this.town.roadCar = createRoadVehicle(
+      this.town.roadSpawnX,
+      this.town.roadSpawnY,
+      this.town.roadSpawnHeading,
+      route,
+    );
   }
 
   obstructionAt(x: number, y: number, radius = 0.7) {
@@ -388,10 +397,44 @@ export class Game {
     return this.perf.summary();
   }
 
+  private frameNhood(dt: number): void {
+    void dt;
+    const pad = 10;
+    const box = worldBoundsToScreen(
+      this.town.minX - pad,
+      this.town.minY - pad,
+      this.town.maxX - this.town.minX + pad * 2,
+      this.town.maxY - this.town.minY + pad * 2,
+      0,
+      2,
+    );
+    const spanX = Math.max(1, box.maxX - box.minX);
+    const spanY = Math.max(1, box.maxY - box.minY);
+    const viewW = this.app.renderer.width;
+    const viewH = this.app.renderer.height;
+    const zoom = Math.min(0.95, Math.max(0.1, 0.86 * Math.min(viewW / spanX, viewH / spanY)));
+    this.renderer.zoom = zoom;
+    // layout() scales around the world origin, so the camera offset must include zoom.
+    this.renderer.camX = ((box.minX + box.maxX) / 2) * zoom;
+    this.renderer.camY = ((box.minY + box.maxY) / 2) * zoom;
+  }
+
   private draw(dt: number): void {
-    const focus = worldToScreen(this.dozer.x, this.dozer.y, 0.4);
-    this.renderer.camX += (focus.x - this.renderer.camX) * (1 - Math.exp(-6 * dt));
-    this.renderer.camY += (focus.y - this.renderer.camY) * (1 - Math.exp(-6 * dt));
+    if (this.town.roadCar) {
+      const car = this.town.roadCar;
+      const focus = worldToScreen(car.x, car.y, 0.3);
+      const zoom = 0.62;
+      this.renderer.zoom = zoom;
+      const k = 1 - Math.exp(-8 * dt);
+      this.renderer.camX += (focus.x * zoom - this.renderer.camX) * k;
+      this.renderer.camY += (focus.y * zoom - this.renderer.camY) * k;
+    } else if (this.renderer.showNhood) this.frameNhood(dt);
+    else {
+      this.renderer.zoom = 1.15;
+      const focus = worldToScreen(this.dozer.x, this.dozer.y, 0.4);
+      this.renderer.camX += (focus.x - this.renderer.camX) * (1 - Math.exp(-6 * dt));
+      this.renderer.camY += (focus.y - this.renderer.camY) * (1 - Math.exp(-6 * dt));
+    }
     const shake = this.mode === "play" ? this.shake.step(dt) : { x: 0, y: 0 };
     this.renderer.layout(this.app.renderer.width, this.app.renderer.height, shake.x, shake.y);
     this.renderer.draw(this.town, this.dozer, this.particles, this.birds, this.dozer.x, this.dozer.y);

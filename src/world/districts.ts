@@ -3,8 +3,18 @@ import { aabbOverlap, pointInAabb } from "../game/math";
 import type { DistrictId } from "../game/session";
 import type { Building, Prop } from "../structure/types";
 import { getAsset, validateCatalog } from "./catalog";
-import { generateRuralLayout } from "./rural";
-import { pointOnRoad, roadsConnected, validateRoadNetwork } from "./roads";
+import { convexOverlap, parcelHitsRoad } from "./parcels";
+import { generateRuralLayout, type TopologyFamily } from "./rural";
+import {
+  aabbOverlapsRoad,
+  findRoadRoute,
+  indexNetwork,
+  nearestLane,
+  pointOnRoad,
+  publicStreetsReachable,
+  roadsConnected,
+  validateRoadNetwork,
+} from "./roads";
 import type { Town } from "./town";
 
 const FOOTPRINT_GAP = 0.85;
@@ -22,8 +32,9 @@ export interface DistrictReport {
 export function generateDistrictLayout(
   id: Exclude<DistrictId, "classic">,
   seed: number,
+  topology?: TopologyFamily,
 ): Omit<Town, "pile" | "rubble" | "marks" | "roadCar" | "visualRevision" | "collapsedSites" | "siteRevision"> {
-  const rural = generateRuralLayout(id, seed);
+  const rural = generateRuralLayout(id, seed, topology);
   return {
     buildings: rural.buildings,
     props: rural.props,
@@ -44,6 +55,9 @@ export function generateDistrictLayout(
     roadSpawnX: rural.roadSpawnX,
     roadSpawnY: rural.roadSpawnY,
     roadSpawnHeading: rural.roadSpawnHeading,
+    diagnostic: rural.diagnostic,
+    nhood: rural.nhood,
+    topology: rural.topology,
   };
 }
 
@@ -105,8 +119,13 @@ export function validateTown(town: Town): DistrictReport {
       }
     }
     const footprint = { x: a.x, y: a.y, w: a.w * a.cellSize, d: a.d * a.cellSize };
-    if (overlapsPavementCore(town, footprint)) {
+    if (aabbOverlapsRoad(town.network, footprint.x, footprint.y, footprint.w, footprint.d)) {
       issues.push({ code: "road", detail: `${a.name} overlaps a street` });
+    }
+    for (const box of buildingOccupyBoxes(a)) {
+      if (aabbOverlapsRoad(town.network, box.x, box.y, box.w, box.d)) {
+        issues.push({ code: "road", detail: `${a.name} decor overlaps a street` });
+      }
     }
     const aw = a.w * a.cellSize;
     const ad = a.d * a.cellSize;
@@ -163,8 +182,8 @@ export function validateTown(town: Town): DistrictReport {
     );
   if (!onRoad) issues.push({ code: "spawn-road", detail: "dozer spawn is not on a street" });
 
-  if (!roadsConnected(town.network) && !legacyRoadsConnected(town)) {
-    issues.push({ code: "streets", detail: "streets are not connected" });
+  if (!roadsConnected(town.network) || !publicStreetsReachable(town.network, town.roadSpawnX, town.roadSpawnY)) {
+    issues.push({ code: "streets", detail: "public streets are not reachable from the road spawn" });
   }
 
   const net = validateRoadNetwork(town.network);
@@ -173,10 +192,61 @@ export function validateTown(town: Town): DistrictReport {
     issues.push({ code: issue.code, detail: issue.detail });
   }
 
-  for (const lot of town.lots) {
-    if (lot.accessId && !town.network.accesses.some((a) => a.id === lot.accessId || a.lotId === lot.id)) {
-      issues.push({ code: "access", detail: `${lot.id} missing road access` });
+  const lotIds = new Set(town.lots.map((l) => l.id));
+  for (const acc of town.network.accesses) {
+    if (!lotIds.has(acc.lotId)) issues.push({ code: "orphan-access", detail: `${acc.id} has no retained lot` });
+    const seg = town.network.segments.find((s) => s.id === acc.segmentId);
+    if (!seg) issues.push({ code: "dangle-access", detail: acc.id });
+    else if (!seg.laneIds.includes(acc.laneId) && !town.network.lanes.some((l) => l.id === acc.laneId)) {
+      issues.push({ code: "access-lane", detail: acc.id });
     }
+  }
+
+  for (let i = 0; i < town.lots.length; i++) {
+    const lot = town.lots[i]!;
+    if (!lot.frontage?.segmentId) {
+      issues.push({ code: "frontage", detail: `${lot.id} missing frontage` });
+    }
+    if (lot.boundary?.length >= 3 && parcelHitsRoad(lot.boundary, town.network.segments.filter((s) => s.roadClass !== "driveway"))) {
+      issues.push({ code: "parcel-road", detail: `${lot.id} occupies a road corridor` });
+    }
+    for (let j = i + 1; j < town.lots.length; j++) {
+      const other = town.lots[j]!;
+      if (lot.boundary?.length >= 3 && other.boundary?.length >= 3 && convexOverlap(lot.boundary, other.boundary)) {
+        issues.push({ code: "parcel-overlap", detail: `${lot.id} overlaps ${other.id}` });
+      }
+    }
+    const acc = town.network.accesses.find((a) => a.id === lot.accessId || a.lotId === lot.id);
+    if (!acc) issues.push({ code: "access", detail: `${lot.id} missing road access` });
+    if (!lot.drivewayId || !town.network.segments.some((s) => s.id === lot.drivewayId && s.roadClass === "driveway")) {
+      issues.push({ code: "driveway", detail: `${lot.id} missing driveway geometry` });
+    }
+    const building = town.buildings[i];
+    if (building && lot.buildable) {
+      const bw = building.w * building.cellSize;
+      const bd = building.d * building.cellSize;
+      if (
+        building.x < lot.buildable.x - 0.2 ||
+        building.y < lot.buildable.y - 0.2 ||
+        building.x + bw > lot.buildable.x + lot.buildable.w + 0.2 ||
+        building.y + bd > lot.buildable.y + lot.buildable.d + 0.2
+      ) {
+        issues.push({ code: "envelope", detail: `${building.name} leaves ${lot.id} buildable envelope` });
+      }
+    }
+  }
+
+  const start = nearestLane(town.network, town.roadSpawnX, town.roadSpawnY);
+  const drive = town.network.lanes.find((l) => {
+    const seg = indexNetwork(town.network).segmentById.get(l.segmentId);
+    return seg?.roadClass === "driveway" && l.dir === 1;
+  });
+  if (start && drive && !findRoadRoute(town.network, start.id, drive.id)) {
+    issues.push({ code: "driveway-route", detail: "no lane path from the road spawn into a driveway" });
+  }
+
+  for (const issue of town.diagnostic?.issues ?? []) {
+    if (!issues.some((o) => o.code === issue.code && o.detail === issue.detail)) issues.push(issue);
   }
 
   pushPileCoverage(town, issues);
@@ -188,12 +258,6 @@ function districtCount(id: DistrictId): number {
   if (id === "d10") return 10;
   if (id === "d30") return 30;
   return 100;
-}
-
-function overlapsPavementCore(town: Town, box: { x: number; y: number; w: number; d: number }): boolean {
-  const cx = box.x + box.w * 0.5;
-  const cy = box.y + box.d * 0.5;
-  return pointOnRoad(town.network, cx, cy);
 }
 
 function spawnClear(buildings: Building[], props: Prop[], x: number, y: number): boolean {
@@ -218,22 +282,36 @@ function pushPileCoverage(town: Town, issues: DistrictIssue[]): void {
   }
 }
 
-function legacyRoadsConnected(town: Town): boolean {
-  if (town.roads.length === 0) return false;
-  const seen = new Set<number>();
-  const stack = [0];
-  seen.add(0);
-  while (stack.length) {
-    const i = stack.pop()!;
-    const a = town.roads[i]!;
-    for (let j = 0; j < town.roads.length; j++) {
-      if (seen.has(j)) continue;
-      const b = town.roads[j]!;
-      if (aabbOverlap(a.x - 0.05, a.y - 0.05, a.w + 0.1, a.d + 0.1, b.x, b.y, b.w, b.d)) {
-        seen.add(j);
-        stack.push(j);
-      }
-    }
-  }
-  return seen.size === town.roads.length;
+export function makeInvalidDisconnectedTown(base: Town): Town {
+  const extra = {
+    id: "orphan-seg",
+    startId: "ghost-a",
+    endId: "ghost-b",
+    points: [
+      { x: base.maxX + 40, y: base.maxY + 40, elev: 0 },
+      { x: base.maxX + 52, y: base.maxY + 40, elev: 0 },
+    ],
+    roadClass: "residential" as const,
+    surface: "asphalt" as const,
+    width: 3.2,
+    shoulder: 0.3,
+    layer: 0,
+    laneIds: ["orphan-lane"],
+  };
+  return {
+    ...base,
+    network: {
+      ...base.network,
+      nodes: [
+        ...base.network.nodes,
+        { id: "ghost-a", x: extra.points[0]!.x, y: extra.points[0]!.y, elev: 0, segmentIds: [extra.id], junction: "end" },
+        { id: "ghost-b", x: extra.points[1]!.x, y: extra.points[1]!.y, elev: 0, segmentIds: [extra.id], junction: "end" },
+      ],
+      segments: [...base.network.segments, extra],
+      lanes: [
+        ...base.network.lanes,
+        { id: "orphan-lane", segmentId: extra.id, dir: 1 as const, offset: 0, width: 1.2, speedClass: 1, next: [] },
+      ],
+    },
+  };
 }

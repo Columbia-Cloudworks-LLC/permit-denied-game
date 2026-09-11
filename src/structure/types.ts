@@ -307,6 +307,21 @@ export interface Prop {
   omega: number;
 }
 
+export type LotSide = 1 | -1;
+
+export interface LotFrontage {
+  segmentId: string;
+  side: LotSide;
+  t0: number;
+  t1: number;
+}
+
+export interface LotSetbacks {
+  front: number;
+  side: number;
+  rear: number;
+}
+
 export interface Lot {
   id: string;
   x: number;
@@ -318,6 +333,16 @@ export interface Lot {
   identity: LotIdentity;
   accessId: string;
   templateId: string;
+  /** Frontage road, side of the polyline, and interval in segment t. */
+  frontage: LotFrontage;
+  /** Closed parcel ring in world space (first point is not repeated). */
+  boundary: { x: number; y: number }[];
+  /** Axis-aligned buildable envelope after setbacks. */
+  buildable: { x: number; y: number; w: number; d: number };
+  setbacks: LotSetbacks;
+  arrivalX: number;
+  arrivalY: number;
+  drivewayId: string;
 }
 
 export interface GroundPatch {

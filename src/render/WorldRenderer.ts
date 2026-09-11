@@ -1,4 +1,4 @@
-import { Container, Graphics } from "pixi.js";
+import { Container, Graphics, Text } from "pixi.js";
 import { FLOOR_Z } from "../game/constants";
 import { Rng } from "../game/rng";
 import { depthKey, roofPainterDepth, screenAabbVisible, worldBoundsToScreen, worldToScreen } from "../world/iso";
@@ -21,6 +21,7 @@ import {
 } from "./facadeDraw";
 import { roofSlopeLight } from "./lighting";
 import { drawDozer, drawRoadVehicle } from "./vehicles";
+import { drawNhoodOverlay } from "./nhoodOverlay";
 
 interface Cmd {
   depth: number;
@@ -32,8 +33,11 @@ export class WorldRenderer {
   private readonly ground = new Graphics();
   private readonly sites = new Graphics();
   private readonly overlay = new Graphics();
+  private readonly nhood = new Graphics();
+  private readonly nhoodLabels: Text[] = [];
   private readonly world = new Graphics();
   private readonly cmds: Cmd[] = [];
+  showNhood = false;
   camX = 0;
   camY = 0;
   zoom = 1.15;
@@ -45,7 +49,7 @@ export class WorldRenderer {
   stats = { total: 0, visible: 0, surfaceGeometry: 0 };
 
   constructor() {
-    this.root.addChild(this.ground, this.sites, this.overlay, this.world);
+    this.root.addChild(this.ground, this.sites, this.overlay, this.nhood, this.world);
     this.root.sortableChildren = false;
   }
 
@@ -140,6 +144,12 @@ export class WorldRenderer {
       }
       drawPileHints(this.overlay, town, (x, y, w, d) => this.visibleBox(x, y, w, d, 0, 0.4));
       this.overlayKey = oKey;
+    }
+
+    if (this.showNhood) drawNhoodOverlay(this.nhood, this.nhoodLabels, town);
+    else this.nhood.clear();
+    for (const label of this.nhoodLabels) {
+      if (!label.parent) this.nhood.addChild(label);
     }
 
     const surfaceStats = aggregateSurfaceStats(town.buildings);

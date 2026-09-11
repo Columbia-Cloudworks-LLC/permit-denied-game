@@ -208,6 +208,7 @@ function placeSlot(
   occ: Occupancy,
   extras: { x: number; y: number; w: number; d: number }[],
   driveW: number,
+  corridors: readonly { x: number; y: number }[][] = [],
 ): { x: number; y: number } | null {
   const tries = [
     { along, across },
@@ -220,6 +221,7 @@ function placeSlot(
     const y = p.y - d * 0.5;
     if (!insideLotYard(lot, x, y, w, d)) continue;
     if (blocked(x, y, w, d, occ, extras)) continue;
+    if (corridors.some((poly) => yardPointInPoly(x + w * 0.5, y + d * 0.5, poly))) continue;
     if (building && sealsAccess(lot, building, [...extras, { x, y, w, d }], driveW)) continue;
     return { x, y };
   }
@@ -227,6 +229,9 @@ function placeSlot(
 }
 
 function insideLotYard(lot: Lot, x: number, y: number, w: number, d: number): boolean {
+  if (lot.boundary && lot.boundary.length >= 3) {
+    if (yardPointInPoly(x + w * 0.5, y + d * 0.5, lot.boundary)) return true;
+  }
   const size = lotAxisSizes(lot);
   const fx = Math.cos(lot.heading);
   const fy = Math.sin(lot.heading);
@@ -240,6 +245,17 @@ function insideLotYard(lot: Lot, x: number, y: number, w: number, d: number): bo
   const across = px * rx + py * ry;
   const pad = 0.28;
   return Math.abs(along) <= size.along * 0.5 - pad && Math.abs(across) <= size.across * 0.5 - pad;
+}
+
+function yardPointInPoly(x: number, y: number, poly: readonly { x: number; y: number }[]): boolean {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const a = poly[i]!;
+    const b = poly[j]!;
+    const hit = a.y > y !== b.y > y && x < ((b.x - a.x) * (y - a.y)) / (b.y - a.y + 1e-9) + a.x;
+    if (hit) inside = !inside;
+  }
+  return inside;
 }
 
 function blocked(
@@ -265,6 +281,7 @@ export function dressLot(
   rng: Rng,
   occ: Occupancy,
   budget: number,
+  corridors: readonly { x: number; y: number }[][] = [],
 ): { props: Prop[]; patches: GroundPatch[] } {
   const template = DRESS_TEMPLATES.find((t) => t.id === lot.templateId) ?? pickTemplate(lot.identity, rng);
   lot.templateId = template.id;
@@ -290,6 +307,7 @@ export function dressLot(
       occ,
       extras,
       driveW,
+      corridors,
     );
     if (!placed) continue;
     const prop = spawnAsset(slot.assetId, placed.x, placed.y, heading, rng.int(0, def.variants - 1));

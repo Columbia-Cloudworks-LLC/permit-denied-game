@@ -9,6 +9,7 @@ import {
   roadSurfaceAt,
   samplePolyline,
 } from "../world/roads";
+import { pickVerificationRoute } from "../world/routing";
 import type { Town } from "../world/town";
 
 export function createRoadVehicle(
@@ -46,6 +47,13 @@ export function roadSpeed(v: RoadVehicle): number {
 
 export function attachRoadRoute(town: Town, v: RoadVehicle): void {
   if (v.route.length) return;
+  const demo = pickVerificationRoute(town.network);
+  if (demo && demo.length) {
+    v.route = demo;
+    v.routeIndex = 0;
+    v.laneId = demo[0] ?? null;
+    return;
+  }
   const start = nearestLane(town.network, v.x, v.y, v.layer);
   const lanes = town.network.lanes.filter((l) => l.dir === 1);
   let path: string[] | null = start ? [start.id] : null;
