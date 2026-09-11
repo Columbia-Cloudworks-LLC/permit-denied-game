@@ -11,7 +11,7 @@ import { hasFurnishedInterior } from "../structure/interior";
 import { aggregateSurfaceStats, getBuildingSurfaces } from "./buildingSurfaces";
 import { drawCatalogProp } from "./assets";
 import { drawRanchRafters, ranchInteriorCmds, ranchRoofShowsRafters } from "./interiorDraw";
-import { cellColors, drawGroundPoly, drawIsoBox, drawOrientedGround, drawOrientedIsoBox, drawShadow, drawSlopedQuad, PAL, shade } from "./drawIso";
+import { cellColors, drawGroundPoly, drawIsoBox, drawOrientedGround, drawOrientedIsoBox, drawShadow, drawSlopedQuad, drawWorldPoly, PAL, shade } from "./drawIso";
 import {
   drawBreachGroup,
   drawBuildingFootprintShadow,
@@ -22,6 +22,7 @@ import {
 import { roofSlopeLight } from "./lighting";
 import { drawDozer, drawRoadVehicle } from "./vehicles";
 import { drawNhoodOverlay } from "./nhoodOverlay";
+import { wallSpanFadeRuns } from "./occlusion";
 
 interface Cmd {
   depth: number;
@@ -77,14 +78,7 @@ export class WorldRenderer {
     );
   }
 
-  draw(
-    town: Town,
-    dozer: Dozer,
-    particles: ParticlePool,
-    birds: Bird[],
-    occludeX: number,
-    occludeY: number,
-  ): void {
+  draw(town: Town, dozer: Dozer, particles: ParticlePool, birds: Bird[]): void {
     this.world.clear();
     this.cmds.length = 0;
     let total = 0;
@@ -110,11 +104,18 @@ export class WorldRenderer {
       }
       const mesh = town.network.mesh;
       if (mesh.length) {
+        // RoadMeshQuad x/y are world centers; drawOrientedGround uses the same convention.
         for (const q of mesh) {
-          if (q.kind === "mark") {
-            drawOrientedGround(this.ground, q.x, q.y, q.heading, q.w, q.d, q.color, 0.72, q.z);
+          const alpha = q.kind === "mark" ? 0.72 : 1;
+          if (q.poly && q.poly.length >= 3) {
+            drawWorldPoly(
+              this.ground,
+              q.poly.map((p) => ({ x: p.x, y: p.y, z: q.z })),
+              q.color,
+              alpha,
+            );
           } else {
-            drawOrientedGround(this.ground, q.x, q.y, q.heading, q.w, q.d, q.color, 1, q.z);
+            drawOrientedGround(this.ground, q.x, q.y, q.heading, q.w, q.d, q.color, alpha, q.z);
           }
         }
       } else {
@@ -160,28 +161,29 @@ export class WorldRenderer {
       const fall = 1.4;
       total += b.cells.length;
       if (!this.visibleBox(b.x - fall, b.y - fall, bw + fall * 2, bd + fall * 2, -0.4, z1)) continue;
-      const fade = occludes(b, occludeX, occludeY) ? 0.38 : 1;
       const surfaces = getBuildingSurfaces(b);
       const hasSolid = b.cells.some((c) => c.state !== "gone" && c.state !== "falling");
       if (hasSolid) {
         visible++;
         this.cmds.push({
           depth: depthKey(b.x + bw * 0.5, b.y + bd * 0.5, 0),
-          run: (g) => drawBuildingFootprintShadow(g, surfaces.footprint, fade),
+          run: (g) => drawBuildingFootprintShadow(g, surfaces.footprint, 1),
         });
       }
       for (const span of surfaces.walls) {
-        visible++;
-        this.cmds.push({
-          depth: span.depth,
-          run: (g) => drawWallSpan(g, b, span, fade),
-        });
+        for (const run of wallSpanFadeRuns(b, span, dozer)) {
+          visible++;
+          this.cmds.push({
+            depth: run.span.depth,
+            run: (g) => drawWallSpan(g, b, run.span, run.fade),
+          });
+        }
       }
       for (const span of surfaces.tops) {
         visible++;
         this.cmds.push({
           depth: span.depth,
-          run: (g) => drawTopSpan(g, b, span, fade),
+          run: (g) => drawTopSpan(g, b, span, 1),
         });
       }
       for (const breach of surfaces.breaches) {
@@ -189,11 +191,11 @@ export class WorldRenderer {
         visible++;
         this.cmds.push({
           depth: breach.depth,
-          run: (g) => drawBreachGroup(g, b, breach, fade),
+          run: (g) => drawBreachGroup(g, b, breach, 1),
         });
       }
       if (hasFurnishedInterior(b)) {
-        const interiors = ranchInteriorCmds(b, fade);
+        const interiors = ranchInteriorCmds(b, 1);
         visible += interiors.length;
         this.cmds.push(...interiors);
       }
@@ -211,8 +213,8 @@ export class WorldRenderer {
             cell.floor * FLOOR_Z,
           ),
           run: (g) => {
-            drawShadow(g, cx, cy, b.cellSize, b.cellSize, 0.18 * fade);
-            drawFallingCell(g, b, cell, fade);
+            drawShadow(g, cx, cy, b.cellSize, b.cellSize, 0.18);
+            drawFallingCell(g, b, cell, 1);
           },
         });
       }
@@ -227,7 +229,7 @@ export class WorldRenderer {
             visible++;
             this.cmds.push({
               depth: roofPainterDepth(moved),
-              run: (g) => drawRanchRoofBay(g, b, roof, fade),
+              run: (g) => drawRanchRoofBay(g, b, roof, 1),
             });
           }
           if (b.features.chimney) {
@@ -236,7 +238,7 @@ export class WorldRenderer {
               visible++;
               this.cmds.push({
                 depth: depthKey(ch.x, ch.y, ch.z + 0.4),
-                run: (g) => drawChimney(g, ch, fade),
+                run: (g) => drawChimney(g, ch, 1),
               });
             }
           }
@@ -247,7 +249,7 @@ export class WorldRenderer {
             visible += liveRoofs.length;
             this.cmds.push({
               depth: roofPainterDepth(moved),
-              run: (g) => drawBuildingRoofs(g, b, liveRoofs, fade),
+              run: (g) => drawBuildingRoofs(g, b, liveRoofs, 1),
             });
           }
         }
@@ -319,15 +321,6 @@ export class WorldRenderer {
     for (const cmd of this.cmds) cmd.run(this.world);
     this.stats = { total, visible, surfaceGeometry: surfaceStats.geometryCount };
   }
-}
-
-function occludes(b: Building, px: number, py: number): boolean {
-  const cx = b.x + (b.w * b.cellSize) / 2;
-  const cy = b.y + (b.d * b.cellSize) / 2;
-  if (cx + cy <= px + py + 0.4) return false;
-  const dx = Math.abs(cx - px);
-  const dy = Math.abs(cy - py);
-  return dx < b.w * b.cellSize * 0.9 + 2.2 && dy < b.d * b.cellSize * 0.9 + 2.2;
 }
 
 function roofVerts(roof: RoofSection): { x: number; y: number; z: number }[] {

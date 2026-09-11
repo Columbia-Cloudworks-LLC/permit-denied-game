@@ -280,6 +280,24 @@ describe("structural roofs", () => {
     const eaveDrop = eaveIdx.reduce((s, i) => s + (rest[i]!.z - moved[i]!.z), 0) / eaveIdx.length;
     const ridgeDrop = ridgeIdx.reduce((s, i) => s + (rest[i]!.z - moved[i]!.z), 0) / ridgeIdx.length;
     expect(eaveDrop).toBeGreaterThan(ridgeDrop + 0.04);
+    expect(Math.min(...moved.map((v) => v.z))).toBeLessThan(restMinZ - 0.12);
+  });
+
+  it("staggers neighboring ranch bays so they do not fall as one slab", () => {
+    const b = createBuildingFromArchetype("ranch", "STAGGER", 0, 0);
+    const particles = new ParticlePool();
+    for (const gx of [1, 2, 3]) {
+      applyCellDamage(b, b.grid[0]![gx]![b.d - 1]!, 999, 0, 1, particles, []);
+    }
+    const south = [1, 2, 3].map((gx) => b.roofs.find((r) => r.support.some((s) => s.gx === gx && s.gy === b.d - 1))!);
+    let firstFall = -1;
+    for (let i = 0; i < Math.ceil(1.2 / SIM_DT); i++) {
+      stepStructures([b], SIM_DT, particles, []);
+      const falling = south.filter((r) => r.state === "falling" || r.state === "gone").length;
+      if (firstFall < 0 && falling > 0) firstFall = falling;
+    }
+    expect(firstFall).toBeGreaterThan(0);
+    expect(firstFall).toBeLessThan(3);
   });
 
   it("hands a falling bay to debris at the displaced panel pose", () => {

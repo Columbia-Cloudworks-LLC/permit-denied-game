@@ -371,8 +371,12 @@ export function dressLot(
 }
 
 export function drivewayPatch(lot: Lot): { x: number; y: number; w: number; d: number } {
-  const front = lotLocalToWorld(lot, 0.08, 0);
-  return { x: front.x - 0.85, y: front.y - 0.95, w: 1.7, d: 2.1 };
+  const width = 1.7;
+  const depth = 2.1;
+  const size = lotAxisSizes(lot);
+  const along = Math.min(0.28, 0.04 + depth * 0.5 / Math.max(0.8, size.along));
+  const center = lotLocalToWorld(lot, along, 0);
+  return { x: center.x - width * 0.5, y: center.y - depth * 0.5, w: width, d: depth };
 }
 
 function sealsAccess(

@@ -302,7 +302,7 @@ export function spawnCollapseDebris(town: Town, spawn: CollapseSpawn): Rubble[] 
     created.push(body);
   }
 
-  const fragCount = spawn.material === "glass" ? rng.int(1, 3) : roofing ? rng.int(1, 2) : rng.int(3, 7);
+  const fragCount = spawn.material === "glass" ? rng.int(1, 3) : roofing ? rng.int(0, 1) : rng.int(1, 3);
   for (let i = 0; i < fragCount && remaining > 0.04; i++) {
     const mass = Math.min(remaining / Math.max(1, fragCount - i), remaining * 0.55);
     remaining -= mass;
@@ -334,7 +334,7 @@ export function spawnCollapseDebris(town: Town, spawn: CollapseSpawn): Rubble[] 
     remaining = 0;
   }
 
-  const cosmeticN = spawn.material === "glass" ? 10 : roofing ? 3 : 5;
+  const cosmeticN = spawn.material === "glass" ? 10 : roofing ? 2 : 3;
   for (let i = 0; i < cosmeticN; i++) {
     const kind: GroundKind =
       spawn.material === "glass" ? "glass" : spawn.material === "wood" ? "splinter" : i === 0 ? "dust" : "chip";
@@ -360,9 +360,8 @@ function roofRemnantPlan(
   const panelD = spawn.panelD ?? rng.range(0.32, 0.5);
   if (material === "wood") {
     return [
-      { w: panelW, d: panelD, thickness: 0.14, shape: "panel", massShare: 0.46, along: 0, skin: "roofing" },
-      { w: panelW * 0.62, d: panelD * 0.72, thickness: 0.12, shape: "panel", massShare: 0.24, along: 0.16, skin: "roofing" },
-      { w: rng.range(0.7, 1.05), d: 0.1, thickness: 0.1, shape: "beam", massShare: 0.16, along: -0.1, skin: "default" },
+      { w: panelW, d: panelD, thickness: 0.14, shape: "panel", massShare: 0.7, along: 0.28, skin: "roofing" },
+      { w: rng.range(0.7, 1.05), d: 0.1, thickness: 0.1, shape: "beam", massShare: 0.16, along: -0.12, skin: "default" },
     ];
   }
   if (material === "metal") {

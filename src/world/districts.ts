@@ -3,7 +3,7 @@ import { aabbOverlap, pointInAabb } from "../game/math";
 import type { DistrictId } from "../game/session";
 import type { Building, Prop } from "../structure/types";
 import { getAsset, validateCatalog } from "./catalog";
-import { convexOverlap, parcelHitsRoad } from "./parcels";
+import { aabbContainedInBox, aabbContainedInPoly, convexOverlap, parcelHitsRoad } from "./parcels";
 import { generateRuralLayout, type TopologyFamily } from "./rural";
 import {
   aabbOverlapsRoad,
@@ -221,17 +221,18 @@ export function validateTown(town: Town): DistrictReport {
     if (!lot.drivewayId || !town.network.segments.some((s) => s.id === lot.drivewayId && s.roadClass === "driveway")) {
       issues.push({ code: "driveway", detail: `${lot.id} missing driveway geometry` });
     }
+    if (lot.buildable && lot.boundary?.length >= 3 && !aabbContainedInPoly(lot.buildable, lot.boundary)) {
+      issues.push({ code: "envelope", detail: `${lot.id} buildable leaves parcel` });
+    }
     const building = town.buildings[i];
     if (building && lot.buildable) {
-      const bw = building.w * building.cellSize;
-      const bd = building.d * building.cellSize;
-      if (
-        building.x < lot.buildable.x - 0.2 ||
-        building.y < lot.buildable.y - 0.2 ||
-        building.x + bw > lot.buildable.x + lot.buildable.w + 0.2 ||
-        building.y + bd > lot.buildable.y + lot.buildable.d + 0.2
-      ) {
-        issues.push({ code: "envelope", detail: `${building.name} leaves ${lot.id} buildable envelope` });
+      for (const box of buildingOccupyBoxes(building)) {
+        if (!aabbContainedInBox(box, lot.buildable, 0.05)) {
+          issues.push({ code: "envelope", detail: `${building.name} leaves ${lot.id} buildable envelope` });
+        }
+        if (lot.boundary?.length >= 3 && !aabbContainedInPoly(box, lot.boundary)) {
+          issues.push({ code: "parcel-contain", detail: `${building.name} is not inside ${lot.id}` });
+        }
       }
     }
   }

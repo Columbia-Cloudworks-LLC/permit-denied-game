@@ -25,6 +25,7 @@ import {
   RoadBuilder,
   samplePolyline,
   type RoadNetwork,
+  type RoadNode,
   type RoadSegment,
   type TerrainField,
 } from "./roads";
@@ -87,7 +88,7 @@ export function generateRuralLayout(
 
   for (let pass = 0; pass <= PARCEL.maxExpand; pass++) {
     const slots = estimateSlots(b.segments, b.nodes);
-    if (slots >= count * 2.4 + 8) break;
+    if (slots >= count * 1.7) break;
     if (!expandStreets(b, rng, pass)) {
       if (slots >= count) break;
       continue;
@@ -95,9 +96,10 @@ export function generateRuralLayout(
     b.normalizeJunctions();
   }
 
-  const want = Math.ceil(count * 2.1) + 10;
-  const alloc = allocateFrontage(b.segments, b.nodes, want, new Rng(seed ^ 0x51a11), []);
-  const pool = alloc.lots;
+  const clusterRng = new Rng(seed ^ 0x51a11);
+  const developed = selectStreetCluster(b.segments, b.nodes, Math.ceil(count * 1.7) + 6, clusterRng);
+  const alloc = allocateFrontage(developed, b.nodes, count * 3, new Rng(seed ^ 0x51a11), [], b.segments);
+  const pool = selectLotCluster(alloc.lots, count * 2, new Rng(seed ^ 0xc1a55));
   rejected.push(...alloc.rejected);
 
   const buildings: Building[] = [];
@@ -125,7 +127,8 @@ export function generateRuralLayout(
   }
 
   if (kept.length < count) {
-    const extra = allocateFrontage(b.segments, b.nodes, count * 3, new Rng(seed ^ 0x222), kept);
+    const extraSegs = selectStreetCluster(b.segments, b.nodes, Math.ceil(count * 2.1), new Rng(seed ^ 0x222));
+    const extra = allocateFrontage(extraSegs, b.nodes, count * 3, new Rng(seed ^ 0x222), kept, b.segments);
     rejected.push(...extra.rejected);
     for (const lot of extra.lots) {
       if (kept.length >= count) break;
@@ -133,9 +136,15 @@ export function generateRuralLayout(
       lot.zone = zoneForIndex(kept.length, count, lot.frontage.segmentId, b.segments);
       lot.identity = identityForIndex(kept.length, count, lot.frontage.segmentId, b.segments, rng);
       const building = placeBuildingInLot(lot, rng, buildings, publicSegs(), corridors);
-      if (!building) continue;
+      if (!building) {
+        rejected.push({ kind: "building", reason: "no-fit", points: lot.boundary });
+        continue;
+      }
       const drive = attachDriveway(b, lot, building, [...kept, ...extra.lots]);
-      if (!drive || drive.reject) continue;
+      if (!drive || drive.reject) {
+        rejected.push(drive?.reject ?? { kind: "driveway", reason: "failed", points: lot.boundary });
+        continue;
+      }
       buildings.push(building);
       kept.push(lot);
       corridors.push(drive.corridor);
@@ -263,9 +272,117 @@ function addTopologyFlavor(b: RoadBuilder, topology: TopologyFamily, ox: number,
   void oy;
 }
 
+function gridDims(count: number): { ew: number; ns: number } {
+  const minSlots = count <= 12 ? count * 2.2 : count <= 36 ? count * 2.0 : count * 2.15;
+  const target = count <= 12 ? count * 2.6 : count * 2.3;
+  let best = { ew: 2, ns: 2 };
+  let bestScore = Infinity;
+  for (let ew = 2; ew <= 7; ew++) {
+    for (let ns = 2; ns <= 7; ns++) {
+      const segs = ew * ns + (ns + 1) * (ew - 1);
+      const slots = segs * 6;
+      if (slots < minSlots) continue;
+      const score = Math.abs(slots - target) + Math.abs(ew - ns) * 3 + ew * ns * 0.15;
+      if (score < bestScore) {
+        best = { ew, ns };
+        bestScore = score;
+      }
+    }
+  }
+  return best;
+}
+
+function selectStreetCluster(
+  segments: readonly RoadSegment[],
+  nodes: readonly RoadNode[],
+  needSlots: number,
+  rng: Rng,
+): RoadSegment[] {
+  const publicSegs = segments.filter((s) => s.roadClass !== "driveway" && s.roadClass !== "ramp");
+  if (!publicSegs.length) return [];
+  const byId = new Map(publicSegs.map((s) => [s.id, s]));
+  const start = publicSegs[rng.int(0, publicSegs.length - 1)]!;
+  const selected = new Set<string>([start.id]);
+  const selectedList = () => publicSegs.filter((s) => selected.has(s.id));
+
+  const neighborsOf = (id: string): RoadSegment[] => {
+    const seg = byId.get(id);
+    if (!seg) return [];
+    const out: RoadSegment[] = [];
+    for (const nid of [seg.startId, seg.endId]) {
+      const node = nodes.find((n) => n.id === nid);
+      if (!node) continue;
+      for (const sid of node.segmentIds) {
+        if (selected.has(sid)) continue;
+        const other = byId.get(sid);
+        if (other) out.push(other);
+      }
+    }
+    return out;
+  };
+
+  while (estimateSlots(selectedList(), nodes) < needSlots) {
+    const frontier: RoadSegment[] = [];
+    for (const id of selected) frontier.push(...neighborsOf(id));
+    if (!frontier.length) {
+      const leftover = publicSegs.find((s) => !selected.has(s.id));
+      if (!leftover) break;
+      selected.add(leftover.id);
+      continue;
+    }
+    let cx = 0;
+    let cy = 0;
+    let n = 0;
+    for (const s of selectedList()) {
+      const a = s.points[0]!;
+      const b = s.points[s.points.length - 1]!;
+      cx += a.x + b.x;
+      cy += a.y + b.y;
+      n += 2;
+    }
+    cx /= Math.max(1, n);
+    cy /= Math.max(1, n);
+    let best = frontier[0]!;
+    let bestD = Infinity;
+    for (const s of frontier) {
+      const mid = samplePolyline(s.points, 0.5);
+      const d = (mid.x - cx) * (mid.x - cx) + (mid.y - cy) * (mid.y - cy);
+      if (d < bestD) {
+        bestD = d;
+        best = s;
+      }
+    }
+    selected.add(best.id);
+  }
+  return selectedList();
+}
+
+function selectLotCluster(lots: readonly Lot[], want: number, rng: Rng): Lot[] {
+  if (lots.length <= want) return [...lots];
+  const origin = lots[rng.int(0, lots.length - 1)]!;
+  const picked: Lot[] = [origin];
+  const remaining = lots.filter((l) => l.id !== origin.id);
+  while (picked.length < want && remaining.length) {
+    const cx = picked.reduce((s, l) => s + l.x + l.w * 0.5, 0) / picked.length;
+    const cy = picked.reduce((s, l) => s + l.y + l.d * 0.5, 0) / picked.length;
+    let bi = 0;
+    let best = Infinity;
+    for (let i = 0; i < remaining.length; i++) {
+      const l = remaining[i]!;
+      let score = (l.x + l.w * 0.5 - cx) ** 2 + (l.y + l.d * 0.5 - cy) ** 2;
+      if (picked.some((p) => p.frontage.segmentId === l.frontage.segmentId)) score *= 0.4;
+      if (score < best) {
+        best = score;
+        bi = i;
+      }
+    }
+    picked.push(remaining.splice(bi, 1)[0]!);
+  }
+  return picked;
+}
+
 function buildBlockGrid(b: RoadBuilder, count: number, ox: number, oy: number, rng: Rng): void {
-  const ew = Math.max(3, Math.ceil(count / 14));
-  const ns = Math.max(3, Math.ceil(count / 18));
+  const { ew, ns } = gridDims(count);
   const blockW = 40;
   const blockD = 36;
   const rows: ReturnType<RoadBuilder["node"]>[][] = [];

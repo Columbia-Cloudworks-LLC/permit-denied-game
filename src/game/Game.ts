@@ -437,7 +437,7 @@ export class Game {
     }
     const shake = this.mode === "play" ? this.shake.step(dt) : { x: 0, y: 0 };
     this.renderer.layout(this.app.renderer.width, this.app.renderer.height, shake.x, shake.y);
-    this.renderer.draw(this.town, this.dozer, this.particles, this.birds, this.dozer.x, this.dozer.y);
+    this.renderer.draw(this.town, this.dozer, this.particles, this.birds);
     this.hud.render({
       cash: this.cash,
       score: this.score,
