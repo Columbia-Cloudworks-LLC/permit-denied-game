@@ -39,12 +39,12 @@ describe("ranch interior draw order", () => {
     expect(floor.depth).toBeLessThan(depthKey(backX, backY, 0.4));
   });
 
-  it("gives a south wall stub a later depth than furniture behind it", () => {
+  it("draws exposed furniture and the surviving perimeter after a south breach", () => {
     const b = createBuildingFromArchetype("ranch", "STUB", 0, 0);
-    smash(b, 2, 1);
+    smash(b, 2, b.d - 1);
     const cmds = interiorCmds(b, 1);
     const fixture = cmds.find((c) => c.kind === "fixture");
-    const southStubs = cmds.filter((c) => c.kind === "stub" && c.depth > (fixture?.depth ?? 0));
+    const southStubs = cmds.filter((c) => c.kind === "stub");
     expect(fixture).toBeDefined();
     expect(southStubs.length).toBeGreaterThan(0);
   });

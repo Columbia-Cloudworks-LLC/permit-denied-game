@@ -1,23 +1,14 @@
+import { hitObject, objectFragments } from './objectBehavior';
 import { EXPLODE } from "../game/constants";
 import { len, norm } from "../game/math";
 import { ParticlePool, debrisKind } from "../fx/particles";
 import type { Prop, WorldEvent } from "../structure/types";
 import { getAsset, type AssetDef } from "../world/catalog";
 import type { Town } from "../world/town";
-import { addDebrisBody, spawnPropDebris } from "./debris";
+import { addDebrisBody } from "./debris";
 
 export function applyAssetHit(prop: Prop, amount: number, nx: number, ny: number): void {
-  const def = getAsset(prop.assetId);
-  prop.hp -= amount * def.bladeMul;
-  const dir = len(nx, ny) || 1;
-  if (def.destruction === "bend-snap" || def.destruction === "topple") {
-    prop.pose.lean = Math.min(1, prop.pose.lean + amount * 0.08);
-    prop.pose.leanX = nx / dir;
-    prop.pose.leanY = ny / dir;
-  }
-  if (def.destruction === "crush") {
-    prop.pose.crush = Math.min(0.7, prop.pose.crush + amount * 0.05);
-  }
+  hitObject(prop, getAsset(prop.assetId), amount, nx, ny);
 }
 
 export function destroyProp(
@@ -57,49 +48,9 @@ export function destroyProp(
 }
 
 function spawnFromRecipe(town: Town, prop: Prop, def: AssetDef, nx: number, ny: number): void {
-  const cx = prop.x + prop.w * 0.5;
-  const cy = prop.y + prop.d * 0.5;
-  if (def.destruction === "crush" && def.debris.pileMass > 0.2) {
-    town.pile.addMass(cx, cy, def.debris.pileMass, def.material);
-  }
-  if (def.destruction === "brittle" && def.debris.remnants === 0) {
-    spawnPropDebris(town, prop.x, prop.y, Math.max(0.25, prop.w * 0.5), Math.max(0.2, prop.d * 0.5), def.material);
-    return;
-  }
-  const remnantW =
-    def.destruction === "topple" || def.destruction === "panel-collapse"
-      ? Math.max(0.55, def.footprint.h * def.debris.remnantScale * 0.55)
-      : Math.max(0.28, prop.w * def.debris.remnantScale * 0.7);
-  const remnantD =
-    def.destruction === "topple" ? Math.max(0.28, prop.d * 0.7) : Math.max(0.2, prop.d * def.debris.remnantScale * 0.65);
-  for (let i = 0; i < def.debris.remnants; i++) {
-    const along = def.destruction === "topple" ? 0.6 + i * 0.35 : (i - 0.3) * 0.2;
-    addDebrisBody(town, {
-      x: cx + nx * along,
-      y: cy + ny * along,
-      w: remnantW,
-      d: remnantD,
-      material: def.material,
-      layer: "remnant",
-      heading: Math.atan2(ny, nx) + (def.destruction === "panel-collapse" ? 0.2 : 0),
-      vx: nx * (def.destruction === "roll" ? 2.4 : 0.8),
-      vy: ny * (def.destruction === "roll" ? 2.4 : 0.8),
-      mass: Math.max(0.25, def.mass * 0.45),
-      shape: def.debris.shape,
-    });
-  }
-  for (let i = 0; i < def.debris.fragments; i++) {
-    addDebrisBody(town, {
-      x: cx + (i % 2 === 0 ? 0.15 : -0.15),
-      y: cy + (i > 0 ? 0.12 : -0.1),
-      w: 0.2,
-      d: 0.14,
-      material: def.material,
-      layer: "fragment",
-      vx: nx * 1.2 + (i - 0.5),
-      vy: ny * 1.2,
-      mass: 0.18,
-    });
+  if (def.destruction === 'crush' && def.debris.pileMass > 0) town.pile.addMass(prop.x + prop.w / 2, prop.y + prop.d / 2, def.debris.pileMass, def.material);
+  for (const fragment of objectFragments(def, { ...prop, h: def.footprint.h }, nx, ny)) {
+    addDebrisBody(town, { ...fragment, heading: Math.atan2(ny, nx) });
   }
 }
 

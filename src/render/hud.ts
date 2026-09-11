@@ -189,6 +189,7 @@ export class Hud {
   }
 
   render(s: HudState): void {
+    this.root.querySelector<HTMLElement>('[data-district="classic"]')!.textContent = s.session === "sandbox" ? "TEST YARD" : DISTRICT_LABELS.classic;
     const job = this.root.querySelector<HTMLElement>("#hud-job")!;
     job.hidden = !s.job;
     if (s.job) job.textContent = s.job.paid

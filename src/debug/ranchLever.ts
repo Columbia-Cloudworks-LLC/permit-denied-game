@@ -17,7 +17,6 @@ import { roofShowsFrame } from "../render/interiorDraw";
 import { applyCellDamage } from "../structure/building";
 import {
   fixtureExposed,
-  hasFurnishedInterior,
   interiorFloorSpans,
   type InteriorFloorSpan,
 } from "../structure/interior";
@@ -78,7 +77,7 @@ export interface LeverReport {
 
 function ranchOf(town: ReturnType<typeof createTown>): Building {
   const ranch = town.buildings.find((b) => b.archetypeId === "ranch");
-  if (!ranch || !hasFurnishedInterior(ranch)) throw new Error("d10 town has no ranch");
+  if (!ranch) throw new Error("d10 town has no ranch");
   return ranch;
 }
 

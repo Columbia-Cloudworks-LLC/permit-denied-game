@@ -1,3 +1,4 @@
+import { retireStructures } from './retirement';
 import { DOZER } from "../game/constants";
 import { clamp, len } from "../game/math";
 import { ParticlePool } from "../fx/particles";
@@ -8,7 +9,7 @@ import {
   stepStructures,
   type StructureStepStats,
 } from "../structure/building";
-import { applyFixtureDamage, fixtureSolid, fixtureWorldBox, type FixtureFrag } from "../structure/interior";
+import { applyFixtureDamage, fixtureSolid, fixtureWorldBox, interiorFloorCoverage, type FixtureFrag } from "../structure/interior";
 import { cellPresent, cellWorldBox, type Building, type Cell, type InteriorFixture, type Prop, type WorldEvent } from "../structure/types";
 import { bladePoints, clampDozer, dozerSpeed, resolveCircleSolid, type Dozer } from "../vehicle/dozer";
 import { clampRoadVehicle, resolveRoadSolid, stepRoadVehicle } from "../vehicle/roadVehicle";
@@ -62,6 +63,14 @@ let hashValid = false;
 let propsBrokenStamp = -1;
 let buildingHashTown: Town | null = null;
 
+/** Editing changes membership as well as damage; invalidate both broad phases. */
+export function invalidateWorldCollision(): void {
+  hashValid = false;
+  buildingHashTown = null;
+  nearby.length = 0;
+  nearbyBuildings.length = 0;
+}
+
 function collisionNeedsRebuild(town: Town): boolean {
   if (hashedTown !== town || !hashValid) return true;
   if (town.buildings.some((b) => b.collisionDirty)) return true;
@@ -74,6 +83,7 @@ function rebuildHash(town: Town): boolean {
   if (!collisionNeedsRebuild(town)) return false;
   hash.clear();
   for (const b of town.buildings) {
+    if (b.retired) { b.collisionDirty = false; continue; }
     for (let gx = 0; gx < b.w; gx++) {
       for (let gy = 0; gy < b.d; gy++) {
         if (!footprintSolid(b, gx, gy)) continue;
@@ -83,8 +93,9 @@ function rebuildHash(town: Town): boolean {
         hash.insert(box.x, box.y, box.w, box.d, ref);
       }
     }
+    const coverage = b.fixtures.some(f => f.floor === 0 && !f.broken) ? interiorFloorCoverage(b) : undefined;
     for (const fixture of b.fixtures) {
-      if (!fixtureSolid(b, fixture)) continue;
+      if (!fixtureSolid(b, fixture, coverage)) continue;
       const box = fixtureWorldBox(fixture);
       hash.insert(box.x, box.y, box.w, box.d, { kind: "fixture", building: b, fixture, ...box });
     }
@@ -105,8 +116,9 @@ function rebuildHash(town: Town): boolean {
   return true;
 }
 
-function spawnFixtureFrags(town: Town, frags: FixtureFrag[]): void {
+export function spawnFixtureFrags(town: Town, frags: FixtureFrag[]): void {
   for (const frag of frags) {
+    if (frag.pileMass) town.pile.addMass(frag.x, frag.y, frag.pileMass, frag.material);
     addDebrisBody(town, {
       x: frag.x,
       y: frag.y,
@@ -127,6 +139,7 @@ function ensureBuildingHash(town: Town): void {
   if (buildingHashTown === town) return;
   buildingHash.clear();
   for (const b of town.buildings) {
+    if (b.retired) continue;
     buildingHash.insert(b.x, b.y, b.w * b.cellSize, b.d * b.cellSize, b);
   }
   buildingHashTown = town;
@@ -322,6 +335,8 @@ export function stepWorld(
       cash: bonus,
     });
   }
+
+  if (retireStructures(town, dozer, dt) > 0) buildingHashTown = null;
 
   const overSite = siteContaining(town, dozer.x, dozer.y);
   if (overSite) {

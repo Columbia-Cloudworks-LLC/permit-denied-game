@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ASSET_CATALOG, NEW_ASSET_IDS, assetsByFamily, spawnAsset, validateCatalog } from "./catalog";
+import { ASSET_CATALOG, ASSET_IDS, assetsByFamily, spawnAsset, validateCatalog } from "./catalog";
 
 describe("destructible asset catalog", () => {
   it("has unique ids and valid definitions", () => {
@@ -11,7 +11,7 @@ describe("destructible asset catalog", () => {
   });
 
   it("covers all five new families with at least 16 assets", () => {
-    expect(NEW_ASSET_IDS.length).toBeGreaterThanOrEqual(16);
+    expect(ASSET_IDS.length).toBeGreaterThanOrEqual(16);
     expect(assetsByFamily("residential").length).toBeGreaterThanOrEqual(1);
     expect(assetsByFamily("agricultural").length).toBeGreaterThanOrEqual(1);
     expect(assetsByFamily("commercial").length).toBeGreaterThanOrEqual(1);
@@ -19,7 +19,7 @@ describe("destructible asset catalog", () => {
     expect(assetsByFamily("vegetation").length).toBeGreaterThanOrEqual(1);
   });
 
-  it("keeps legacy camera and pole entries for existing gags", () => {
+  it("defines camera and pole behavior through catalog capabilities", () => {
     expect(ASSET_CATALOG.some((a) => a.id === "camera" && a.birdGag)).toBe(true);
     expect(ASSET_CATALOG.some((a) => a.id === "light" && a.trackHazard > 0)).toBe(true);
   });

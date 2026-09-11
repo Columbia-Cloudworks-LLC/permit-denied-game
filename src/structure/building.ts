@@ -1,7 +1,7 @@
 import { CELL, FLOOR_Z } from "../game/constants";
-import { independentFloors, validateConstruction, type ConstructionDef } from "./construction";
+import { validateConstruction, validateLayout, roomAt, type LayoutDef, type OpeningDef, type ConstructionDef } from "./construction";
 import { debrisKind, ParticlePool } from "../fx/particles";
-import { archetypeById, fullMask, occupiedMask, type ArchetypeId } from "../world/archetypes";
+import { archetypeById, fullMask, occupiedMask, validateBuildingDefinition, type ArchetypeId, type Archetype } from "../world/archetypes";
 import type {
   Building,
   BuildingFeatureSpec,
@@ -23,6 +23,7 @@ let nextId = 1;
 function makeCell(gx: number, gy: number, floor: number, material: Material, isSupport: boolean): Cell {
   const hp = materialHp(material);
   return {
+    exterior: { north: false, south: false, east: false, west: false },
     gx,
     gy,
     floor,
@@ -49,7 +50,9 @@ function makeCell(gx: number, gy: number, floor: number, material: Material, isS
 }
 
 export interface BuildingSpec {
-  construction?: ConstructionDef;
+  construction: ConstructionDef;
+  layout: LayoutDef;
+  openings: OpeningDef[];
   kind: BuildingKind;
   name: string;
   x: number;
@@ -57,18 +60,14 @@ export interface BuildingSpec {
   w: number;
   d: number;
   floors: number;
-  material: Material;
   roof: RoofStyle;
   cellSize?: number;
   archetypeId?: string;
-  secondary?: Material;
   theme?: FacadeTheme;
   roofAxis?: RoofAxis;
   mask?: boolean[][][];
   features?: Partial<BuildingFeatureSpec>;
   windowStride?: number;
-  door?: "center-s" | "offset-s";
-  loading?: boolean;
 }
 
 function defaultTheme(kind: BuildingKind): FacadeTheme {
@@ -120,20 +119,14 @@ function applyFacade(
 }
 
 function placeOpenings(spec: BuildingSpec, grid: Cell[][][], occupied: boolean[][][]): void {
-  const south: number[] = [];
-  for (let gx = 0; gx < spec.w; gx++) {
-    if (occupied[0]?.[gx]?.[spec.d - 1]) south.push(gx);
-  }
-  if (south.length === 0) return;
-  const doorGx =
-    spec.door === "offset-s" ? south[0]! : south[Math.floor(south.length / 2)]!;
-  const doorCell = grid[0]![doorGx]![spec.d - 1]!;
-  if (spec.loading || spec.kind === "industrial") doorCell.loadingS = true;
-  else doorCell.doorS = true;
-  if (spec.loading || spec.kind === "industrial") {
-    for (const gx of south) {
-      if (Math.abs(gx - doorGx) === 1) grid[0]![gx]![spec.d - 1]!.loadingS = true;
-    }
+  for (const opening of spec.openings) {
+    const south = Array.from({ length: spec.w }, (_, gx) => gx).filter(gx => occupied[opening.floor]?.[gx]?.[spec.d - 1]);
+    const gx = south[Math.min(south.length - 1, Math.floor(opening.at * south.length))];
+    if (gx === undefined) throw new Error('Entrance has no occupied frontage');
+    const cell = grid[opening.floor]![gx]![spec.d - 1]!;
+    if (opening.kind === 'loading') {
+      for (const x of south) if (Math.abs(x - gx) <= 1) grid[opening.floor]![x]![spec.d - 1]!.loadingS = true;
+    } else cell.doorS = true;
   }
 }
 
@@ -180,15 +173,15 @@ function makeDecor(spec: BuildingSpec, cellSize: number, features: BuildingFeatu
   return boxes;
 }
 
-export function createBuilding(spec: BuildingSpec): Building {
+export function createBuilding(spec: BuildingSpec, definition?: Archetype): Building {
   const cellSize = spec.cellSize ?? CELL;
-  const archetype = spec.archetypeId ? archetypeById(spec.archetypeId) : undefined;
-  const construction = spec.construction ?? archetype?.construction;
-  if (construction) {
+  if (![spec.w, spec.d, spec.floors].every(n => Number.isInteger(n) && n > 0 && n <= 64) || ![spec.x, spec.y, cellSize].every(Number.isFinite) || cellSize <= 0) throw new Error('Invalid building dimensions or placement');
+  const archetype = definition ?? (spec.archetypeId ? archetypeById(spec.archetypeId) : undefined);
+  const construction = spec.construction;
+  {
     const issues = validateConstruction(construction);
     if (issues.length) throw new Error(`Invalid construction ${construction.id}: ${issues.join("; ")}`);
   }
-  const shell = construction?.floorSupport === "independent";
   const features: BuildingFeatureSpec = {
     porch: spec.features?.porch ?? archetype?.features.porch ?? false,
     awning: spec.features?.awning ?? archetype?.features.awning ?? false,
@@ -197,12 +190,16 @@ export function createBuilding(spec: BuildingSpec): Building {
     garage: spec.features?.garage ?? archetype?.features.garage ?? false,
   };
   const mask = spec.mask ?? (archetype ? occupiedMask(archetype, spec.w, spec.d, spec.floors) : fullMask(spec.floors, spec.w, spec.d));
+  if (mask.length !== spec.floors || mask.some(layer => layer.length !== spec.w || layer.some(col => col.length !== spec.d || col.some(v => typeof v !== 'boolean')))) throw new Error('Invalid footprint dimensions');
+  for (const opening of spec.openings) {
+    if (opening.side !== 'south' || !['door', 'loading'].includes(opening.kind) || !Number.isInteger(opening.floor) || opening.floor < 0 || opening.floor >= spec.floors || !Number.isFinite(opening.at) || opening.at < 0 || opening.at > 1) throw new Error('Invalid entrance');
+  }
   const theme = spec.theme ?? archetype?.theme ?? defaultTheme(spec.kind);
   const roofAxis: RoofAxis = spec.roofAxis ?? archetype?.roofAxis ?? (spec.w >= spec.d ? "x" : "y");
   const windowStride = spec.windowStride ?? archetype?.windowStride ?? 2;
-  const door = spec.door ?? archetype?.door ?? "center-s";
-  const loading = spec.loading ?? archetype?.loading ?? spec.kind === "industrial";
-  const filled: BuildingSpec = { ...spec, theme, windowStride, door, loading };
+  const filled: BuildingSpec = { ...spec, theme, windowStride };
+  const layoutIssues = validateLayout(spec.layout, spec.w, spec.d, spec.floors, mask);
+  if (layoutIssues.length) throw new Error(`Invalid layout: ${layoutIssues.join("; ")}`);
   const grid: Cell[][][] = [];
   const cells: Cell[] = [];
 
@@ -214,27 +211,18 @@ export function createBuilding(spec: BuildingSpec): Building {
         const occupied = mask[floor]?.[gx]?.[gy] === true;
         const occN = (x: number, y: number) => mask[floor]?.[x]?.[y] === true;
         const edge = !occN(gx - 1, gy) || !occN(gx + 1, gy) || !occN(gx, gy - 1) || !occN(gx, gy + 1);
-        const corner = (!occN(gx - 1, gy) || !occN(gx + 1, gy)) && (!occN(gx, gy - 1) || !occN(gx, gy + 1));
-        const live = occupied && (!shell || edge);
-        let isSupport = live && (corner || (floor === 0 && edge && (gx + gy) % 2 === 0));
-        if (spec.kind === "industrial" && floor === 0 && gx === Math.floor(spec.w / 2) && gy === Math.floor(spec.d / 2)) {
-          isSupport = live;
-        }
-        let mat = construction?.structure ?? spec.material;
-        if (!construction && spec.kind === "house" && floor === spec.floors - 1) mat = "wood";
-        if (!construction && spec.kind === "industrial" && floor === 0 && gy === spec.d - 1) mat = spec.secondary ?? "metal";
-        const cell = makeCell(gx, gy, floor, mat, isSupport);
-        if (shell) {
+        const live = occupied && edge;
+        const mat = construction.structure;
+        const cell = makeCell(gx, gy, floor, mat, live);
+        cell.exterior = { north: !occN(gx, gy - 1), south: !occN(gx, gy + 1), west: !occN(gx - 1, gy), east: !occN(gx + 1, gy) };
+        {
           cell.role = construction.walls === "frame" && (gy === 0 || gy === spec.d - 1) && gx % 2 === 0 ? "column" : "wall";
-          cell.isSupport = construction.walls === "masonry" || cell.role === "column";
+          cell.isSupport = construction.walls !== "frame" || cell.role === "column";
           cell.facadeMaterial = construction.skin;
           if (cell.role === "column") cell.cladding = { material: construction.skin, hp: 12, maxHp: 12, shed: false };
           if (construction.walls === "frame" && cell.role === "wall") {
             cell.hp = cell.maxHp = materialHp(mat) * .35;
           }
-        }
-        if (spec.secondary && floor === 0 && gy === spec.d - 1 && live && spec.kind !== "industrial") {
-          cell.facadeMaterial = spec.secondary;
         }
         if (!live) {
           cell.state = "gone";
@@ -253,17 +241,22 @@ export function createBuilding(spec: BuildingSpec): Building {
   placeOpenings(filled, grid, mask);
 
   const building: Building = {
+    visualRevision: 1,
+    retired: false,
+    settledAwayTime: 0,
     construction,
-    floorTiles: shell ? Array.from({ length: spec.floors }, (_, floor) =>
+    layout: spec.layout,
+    lotId: null,
+    floorTiles: Array.from({ length: spec.floors }, (_, floor) =>
       Array.from({ length: spec.w }, (_, gx) => Array.from({ length: spec.d }, (_, gy) => ({
-        gx, gy, floor, state: "intact" as const, fallT: 0,
+        gx, gy, floor, roomId: "", state: "intact" as const, fallT: 0,
         support: cells.filter(c => c.floor === floor - 1 && c.isSupport && Math.abs(c.gx - gx) <= 1)
           .map(c => ({ gx: c.gx, gy: c.gy })),
-      })).filter(t => mask[floor]?.[gx]?.[t.gy])).flat()).flat() : undefined,
+      })).filter(t => mask[floor]?.[gx]?.[t.gy])).flat()).flat(),
     id: nextId++,
     kind: spec.kind,
     name: spec.name,
-    archetypeId: spec.archetypeId ?? (spec.kind === "house" ? "cottage" : spec.kind === "shop" ? "storefront" : "warehouse"),
+    archetypeId: spec.archetypeId ?? construction.id,
     theme,
     x: spec.x,
     y: spec.y,
@@ -274,7 +267,6 @@ export function createBuilding(spec: BuildingSpec): Building {
     cellSize,
     roof: spec.roof,
     roofAxis,
-    secondary: spec.secondary ?? archetype?.secondary ?? spec.material,
     windowStride,
     features,
     decorBoxes: makeDecor(spec, cellSize, features),
@@ -290,6 +282,7 @@ export function createBuilding(spec: BuildingSpec): Building {
     collisionDirty: true,
     roofDirty: false,
   };
+  for (const tile of building.floorTiles) tile.roomId = roomAt(building, tile.gx, tile.gy, tile.floor)!.id;
   building.roofs = generateRoofs(building);
   building.fixtures = generateInteriors(building);
   return building;
@@ -300,10 +293,16 @@ export function createBuildingFromArchetype(
   name: string,
   x: number,
   y: number,
-  overrides: Partial<Pick<BuildingSpec, "w" | "d" | "floors" | "material" | "roof" | "roofAxis">> = {},
+  overrides: Partial<Pick<BuildingSpec, "w" | "d" | "floors" | "roof" | "roofAxis">> = {},
 ): Building {
-  const a = archetypeById(archetypeId);
+  return createBuildingFromDefinition(archetypeById(archetypeId), name, x, y, overrides);
+}
+
+export function createBuildingFromDefinition(a: Archetype, name: string, x: number, y: number, overrides: Partial<Pick<BuildingSpec, "w" | "d" | "floors" | "roof" | "roofAxis">> = {}): Building {
+  const issues = validateBuildingDefinition(a);
+  if (issues.length) throw new Error(`Invalid building ${a.id}: ${issues.join("; ")}`);
   return createBuilding({
+    construction: a.construction, layout: a.layout, openings: a.openings,
     kind: a.kind,
     name,
     x,
@@ -311,20 +310,17 @@ export function createBuildingFromArchetype(
     w: overrides.w ?? a.w,
     d: overrides.d ?? a.d,
     floors: overrides.floors ?? a.floors,
-    material: overrides.material ?? a.material,
     roof: overrides.roof ?? a.roof,
     archetypeId: a.id,
-    secondary: a.secondary,
     theme: a.theme,
     roofAxis: overrides.roofAxis ?? a.roofAxis,
     features: a.features,
     windowStride: a.windowStride,
-    door: a.door,
-    loading: a.loading,
-  });
+  }, a);
 }
 
 function markBuildingChanged(building: Building, collision = true): void {
+  building.visualRevision++;
   building.structureDirty = true;
   building.roofDirty = true;
   if (collision) building.collisionDirty = true;
@@ -335,6 +331,7 @@ function buildingNeedsStructureStep(building: Building): boolean {
   if (building.structureDirty || building.roofDirty) return true;
   if (roofsNeedStep(building)) return true;
   for (const cell of building.cells) {
+    if (cell.state === "gone") continue;
     if (cell.state === "breached" || cell.state === "falling") return true;
     if (cell.sag > 1e-4 || cell.unsupportedTime > 1e-4) return true;
   }
@@ -367,6 +364,7 @@ export function applyCellDamage(
   if (cell.cladding && cell.cladding.hp > 0) {
     const beforeSkin = cell.cladding.hp;
     cell.cladding.hp = Math.max(0, beforeSkin - amount);
+    building.visualRevision++;
     amount = Math.max(0, amount - beforeSkin);
     if (cell.cladding.hp === 0) {
       markBuildingChanged(building);
@@ -560,6 +558,7 @@ export function stepStructures(
       continue;
     }
     stepped++;
+    building.visualRevision++;
     scratch.length = building.w * building.d * building.floors;
     markSupported(building, scratch);
     const idx = (floor: number, gx: number, gy: number) =>
@@ -574,7 +573,7 @@ export function stepStructures(
       }
       if (cell.state === "gone") continue;
       if (cell.state === "falling") {
-        cell.fallT += dt / (building.construction?.fallDuration ?? .42);
+        cell.fallT += dt / (building.construction.fallDuration);
         if (cell.fallT >= 1) {
           cell.state = "gone";
           cell.fallT = 1;
@@ -626,7 +625,7 @@ export function stepStructures(
       if (cell.unsupportedTime > 0.38) {
         result.cash += applyCellDamage(building, cell, 26 * dt, cell.lastHitNx, cell.lastHitNy, particles, events);
       }
-      if (cell.unsupportedTime > (building.construction?.failureDelay ?? .52)) {
+      if (cell.unsupportedTime > (building.construction.failureDelay)) {
         result.cash += startFall(building, cell, particles, events);
       }
     }
@@ -638,7 +637,7 @@ export function stepStructures(
     result.fixtureFrags.push(...interiors.frags);
     const cellsDown = building.cells.every((c) => c.state === "gone");
     const roofsDown = building.roofs.every((r) => r.state === "gone");
-    const floorsDown = !building.floorTiles?.some(t => t.floor > 0 && t.state !== "gone");
+    const floorsDown = !building.floorTiles.some(t => t.floor > 0 && t.state !== "gone");
     if (cellsDown && roofsDown && floorsDown) building.fullyDown = true;
     building.structureDirty = buildingStillUnsettled(building);
     building.roofDirty = roofsNeedStep(building);
@@ -655,8 +654,9 @@ export function stepStructures(
 
 function buildingStillUnsettled(building: Building): boolean {
   if (building.fullyDown) return false;
-  if (building.floorTiles?.some(t => t.state === "falling")) return true;
+  if (building.floorTiles.some(t => t.state === "falling")) return true;
   for (const cell of building.cells) {
+    if (cell.state === "gone") continue;
     if (cell.state === "breached" || cell.state === "falling") return true;
     if (cell.sag > 1e-4 || cell.unsupportedTime > 1e-4) return true;
   }
@@ -665,8 +665,7 @@ function buildingStillUnsettled(building: Building): boolean {
 
 /** Ground slabs persist. Upper slabs fall only when their authored bearing line is lost. */
 function stepFloorTiles(building: Building, dt: number, result: StructureStepResult): void {
-  if (!independentFloors(building)) return;
-  for (const tile of building.floorTiles ?? []) {
+  for (const tile of building.floorTiles) {
     if (tile.floor === 0 || tile.state === "gone") continue;
     const supported = tile.support.some(s => {
       const cell = building.grid[tile.floor - 1]?.[s.gx]?.[s.gy];
@@ -682,7 +681,7 @@ function stepFloorTiles(building: Building, dt: number, result: StructureStepRes
     result.rubbleSpawns.push({
       x: building.x + (tile.gx + .5) * building.cellSize,
       y: building.y + (tile.gy + .5) * building.cellSize,
-      dx: .2, dy: 1, material: building.construction!.floor,
+      dx: .2, dy: 1, material: building.construction.floor,
       floor: tile.floor, cellSize: building.cellSize,
     });
   }
@@ -701,6 +700,7 @@ export function hitCellsAt(
   onlySolid = false,
 ): Cell[] {
   const hits: Cell[] = [];
+  if (building.retired) return hits;
   if (x < building.x || y < building.y) return hits;
   const gx = Math.floor((x - building.x) / building.cellSize);
   const gy = Math.floor((y - building.y) / building.cellSize);

@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { ParticlePool } from "../fx/particles";
 import { SIM_DT } from "../game/constants";
 import { applyCellDamage, createBuilding, createBuildingFromArchetype, stepStructures } from "./building";
-import { BRICK_MIXED_USE, validateConstruction } from "./construction";
+import { archetypeById, ARCHETYPES } from "../world/archetypes";
+const brick = archetypeById("rivertown");
 import { fixtureExposed, fixtureSolid, fixtureSupported, interiorFloorCoverage } from "./interior";
 import { displacedRoofVerts, roofCoverage, neighborRoofBayOpen } from "./roof";
 import { cellWorldBox, type Building } from "./types";
@@ -19,14 +20,13 @@ function smash(b: Building, floor: number, gx: number, gy: number): void {
 
 describe("shared building construction", () => {
   it("rejects invalid content recipes before generation", () => {
-    const invalid = { ...BRICK_MIXED_USE, rooms: [{ ...BRICK_MIXED_USE.rooms[0]!, x: .95 }] };
-    expect(validateConstruction(invalid)).toContain("Invalid retail room bounds");
+    const invalid = { ...brick.layout, rooms: [{ ...brick.layout.rooms[0]!, x: .95 }] };
     expect(() => createBuilding({ kind: "shop", name: "BAD", x: 0, y: 0, w: 5, d: 4, floors: 2,
-      material: "brick", roof: "flat", construction: invalid })).toThrow("Invalid construction");
+      roof: "flat", construction: brick.construction, openings: brick.openings, layout: invalid })).toThrow("Invalid layout");
   });
   it("selects the complete interior and roof system through a definition, without an asset-id branch", () => {
     const b = createBuilding({ kind: "shop", name: "CUSTOM", x: 0, y: 0, w: 5, d: 4, floors: 2,
-      material: "brick", roof: "flat", construction: { ...BRICK_MIXED_USE, id: "another-town" } });
+      roof: "flat", construction: { ...brick.construction, id: "another-town" }, layout: brick.layout, openings: brick.openings });
     expect(b.roofs.length).toBeGreaterThan(1);
     expect(b.fixtures.some(f => f.floor === 0 && f.room === "retail")).toBe(true);
     expect(b.fixtures.some(f => f.floor === 1 && f.room === "bedroom")).toBe(true);
@@ -96,6 +96,17 @@ describe("shared building construction", () => {
     expect(interiorFloorCoverage(b).hasFloor(tile.gx, tile.gy, tile.floor)).toBe(false);
   });
 
+  it("stops stepping a settled partial demolition despite old damage timers", () => {
+    const b = createBuildingFromArchetype("ranch", "SETTLED", 0, 0);
+    for (const c of b.cells.filter(c => c.gy === b.d - 1)) smash(b, c.floor, c.gx, c.gy);
+    settle(b, 8);
+    expect(b.fullyDown).toBe(false);
+    expect(b.cells.some(c => c.state === "gone" && c.unsupportedTime > 0)).toBe(true);
+    const stats = { stepped: 0, skipped: 0 };
+    stepStructures([b], SIM_DT, particles(), [], stats);
+    expect(stats).toEqual({ stepped: 0, skipped: 1 });
+  });
+
   it("never adds upstairs furniture to ground-level vehicle collision", () => {
     const b = createBuildingFromArchetype("rivertown", "UPSTAIRS", 0, 0);
     for (const c of b.cells.filter(c => c.floor === 1 && c.gy === b.d - 1)) smash(b, 1, c.gx, c.gy);
@@ -133,7 +144,7 @@ describe("shared building construction", () => {
     expect(neighborRoofBayOpen(b, next, -1)).toBe(true);
   });
 
-  it.each(["ranch", "rivertown", "steel-warehouse"])("settles complete %s demolition without floating contents or repeating spawns", id => {
+  it.each(ARCHETYPES.map(a => a.id))("settles complete %s demolition without floating contents or repeating spawns", id => {
     const b = createBuildingFromArchetype(id, "DOWN", 0, 0);
     for (const c of b.cells) smash(b, c.floor, c.gx, c.gy);
     settle(b, 4);

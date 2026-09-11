@@ -28,6 +28,7 @@ export interface ExtractedPile {
   height: number;
   compact: number;
   composition: number[];
+  owners?: Record<string, number>;
 }
 
 export function pileResistance(height: number, compact: number, pileMass: number, bodyMass = 0): number {
@@ -39,6 +40,47 @@ export function pileBlocked(height: number, resistance: number, bodyMass: number
 }
 
 export class PileField {
+  ownerAt?: (x: number, y: number) => string | undefined;
+  private owners = new Map<string, Map<number, number>>();
+  private ownerMaterials = new Map<string, Map<number, number[]>>();
+  grow(w: number, d: number): PileField {
+    const next = new PileField(this.ox, this.oy, w, d, this.cell);
+    next.ownerAt = this.ownerAt;
+    for (let iy = 0; iy < this.rows; iy++) for (let ix = 0; ix < this.cols; ix++) {
+      const i = iy * this.cols + ix, j = iy * next.cols + ix;
+      next.mass[j] = this.mass[i]!; next.height[j] = this.height[i]!; next.compact[j] = this.compact[i]!;
+      for (let m = 0; m < this.mats.length; m++) next.mats[m]![j] = this.mats[m]![i]!;
+    }
+    for (const [key, cells] of this.owners) next.owners.set(key, new Map([...cells].map(([i, mass]) => [Math.floor(i / this.cols) * next.cols + i % this.cols, mass])));
+    for (const [key, cells] of this.ownerMaterials) next.ownerMaterials.set(key, new Map([...cells].map(([i, composition]) => [Math.floor(i / this.cols) * next.cols + i % this.cols, [...composition]])));
+    next.revision = this.revision + 1;
+    return next;
+  }
+  clearArea(x: number, y: number, w: number, d: number): void {
+    for (let iy = Math.max(0, Math.floor((y - this.oy) / this.cell)); iy < Math.min(this.rows, Math.ceil((y + d - this.oy) / this.cell)); iy++) {
+      for (let ix = Math.max(0, Math.floor((x - this.ox) / this.cell)); ix < Math.min(this.cols, Math.ceil((x + w - this.ox) / this.cell)); ix++) {
+        const i = iy * this.cols + ix;
+        this.mass[i] = 0; this.height[i] = 0; this.compact[i] = 0;
+        for (const mat of this.mats) mat[i] = 0;
+        for (const [key, cells] of this.owners) { cells.delete(i); if (!cells.size) this.owners.delete(key); }
+        for (const [key, cells] of this.ownerMaterials) { cells.delete(i); if (!cells.size) this.ownerMaterials.delete(key); }
+      }
+    }
+    this.revision++;
+  }
+  removeOwner(owner: string): void {
+    const cells = this.owners.get(owner);
+    if (!cells) return;
+    for (const [i, amount] of cells) {
+      const ratio = Math.max(0, 1 - amount / Math.max(1e-9, this.mass[i]!));
+      this.mass[i] *= ratio; this.height[i] *= ratio;
+      if (this.mass[i]! < 1e-6) { this.mass[i] = 0; this.height[i] = 0; this.compact[i] = 0; }
+      const composition = this.ownerMaterials.get(owner)?.get(i);
+      for (let m = 0; m < this.mats.length; m++) this.mats[m]![i] = Math.max(0, this.mats[m]![i]! - (composition?.[m] ?? 0));
+    }
+    this.owners.delete(owner); this.ownerMaterials.delete(owner); this.revision++;
+  }
+
   readonly cell: number;
   readonly ox: number;
   readonly oy: number;
@@ -75,7 +117,7 @@ export class PileField {
     };
   }
 
-  addMass(x: number, y: number, mass: number, material: Material = "concrete"): void {
+  addMass(x: number, y: number, mass: number, material: Material = "concrete", ownership?: string | Record<string, number>): void {
     if (mass <= 1e-6) return;
     const { ix, iy } = this.cellOf(x, y);
     const weights = [0.06, 0.12, 0.06, 0.12, 0.28, 0.12, 0.06, 0.12, 0.06];
@@ -92,10 +134,22 @@ export class PileField {
       }
     }
     if (wsum <= 0) return;
+    const owner = ownership ?? this.ownerAt?.(x, y);
+    const weightsByOwner = typeof owner === "string" ? { [owner]: 1 } : owner;
     const mi = materialIndex(material);
     for (const hit of hits) {
       const w = hit.w / wsum;
       const add = mass * w;
+      if (weightsByOwner) for (const [key, fraction] of Object.entries(weightsByOwner)) {
+        let cells = this.owners.get(key);
+        if (!cells) { cells = new Map(); this.owners.set(key, cells); }
+        cells.set(hit.i, (cells.get(hit.i) ?? 0) + add * fraction);
+        let materials = this.ownerMaterials.get(key);
+        if (!materials) { materials = new Map(); this.ownerMaterials.set(key, materials); }
+        let composition = materials.get(hit.i);
+        if (!composition) { composition = [0, 0, 0, 0, 0]; materials.set(hit.i, composition); }
+        composition[mi] += add * fraction;
+      }
       this.mass[hit.i] += add;
       this.mats[mi]![hit.i] += add;
       const compact = this.compact[hit.i]!;
@@ -152,6 +206,7 @@ export class PileField {
     if (available <= 1e-6) return empty;
     const take = Math.min(maxMass, available);
     const composition = [0, 0, 0, 0, 0];
+    const owners: Record<string, number> = {};
     let extracted = 0;
     let height = 0;
     let compact = 0;
@@ -159,6 +214,19 @@ export class PileField {
       const share = (hit.mass / available) * take;
       if (share <= 1e-8) continue;
       const ratio = share / hit.mass;
+      for (const [key, cells] of this.owners) {
+        const owned = cells.get(hit.i) ?? 0;
+        if (!owned) continue;
+        owners[key] = (owners[key] ?? 0) + owned * ratio / take;
+        const remaining = owned * (1 - ratio);
+        const materials = this.ownerMaterials.get(key);
+        const composition = materials?.get(hit.i);
+        if (remaining < 1e-8) materials?.delete(hit.i);
+        else if (composition) for (let m = 0; m < composition.length; m++) composition[m] *= 1 - ratio;
+        if (materials && !materials.size) this.ownerMaterials.delete(key);
+        if (remaining < 1e-8) cells.delete(hit.i); else cells.set(hit.i, remaining);
+        if (!cells.size) this.owners.delete(key);
+      }
       this.mass[hit.i] = Math.max(0, this.mass[hit.i]! - share);
       this.height[hit.i] = Math.max(0, this.height[hit.i]! * (1 - ratio));
       for (let mi = 0; mi < this.mats.length; mi++) {
@@ -172,6 +240,7 @@ export class PileField {
     }
     this.revision++;
     return {
+      owners,
       mass: extracted,
       material: dominantMaterial(composition),
       height,
@@ -218,9 +287,14 @@ export class PileField {
     return { dx, dy };
   }
 
+  private massRevision = -1;
+  private cachedMass = 0;
   totalMass(): number {
+    if (this.massRevision === this.revision) return this.cachedMass;
     let sum = 0;
     for (let i = 0; i < this.mass.length; i++) sum += this.mass[i]!;
+    this.massRevision = this.revision;
+    this.cachedMass = sum;
     return sum;
   }
 

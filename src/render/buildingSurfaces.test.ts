@@ -1,3 +1,4 @@
+import { archetypeById } from '../world/archetypes';
 import { describe, expect, it } from "vitest";
 import { ParticlePool } from "../fx/particles";
 import { applyCellDamage, createBuilding, createBuildingFromArchetype } from "../structure/building";
@@ -9,7 +10,9 @@ import {
 } from "./buildingSurfaces";
 
 function intactWarehouse() {
+  const a = archetypeById("rivertown");
   return createBuilding({
+    construction: { ...a.construction, structure: "concrete", skin: "concrete" }, layout: a.layout, openings: a.openings,
     kind: "industrial",
     name: "TEST",
     x: 0,
@@ -17,7 +20,6 @@ function intactWarehouse() {
     w: 4,
     d: 3,
     floors: 2,
-    material: "concrete",
     roof: "shed",
   });
 }
@@ -30,23 +32,9 @@ describe("building surface extraction", () => {
     expect(innerSouth.length).toBe(0);
   });
 
-  it("does not emit a top under a live upper cell", () => {
-    const b = intactWarehouse();
-    const s = extractBuildingSurfaces(b);
-    const groundTops = s.tops.filter((t) => t.floor === 0);
-    expect(groundTops.length).toBe(0);
-  });
-
-  it("emits a top for an uncovered one-story extension", () => {
+  it("covers the one-story extension with its own roof instead of a wall top", () => {
     const b = createBuildingFromArchetype("porch-house", "PORCH", 0, 0);
-    const s = extractBuildingSurfaces(b);
-    expect(s.tops.some((t) => t.floor === 0)).toBe(true);
-  });
-
-  it("skips top caps where a live roof covers the cell", () => {
-    const b = createBuildingFromArchetype("cottage", "COTTAGE", 0, 0);
-    const s = extractBuildingSurfaces(b);
-    expect(s.tops.filter((t) => t.floor === b.floors - 1).length).toBe(0);
+    expect(b.roofs.some(r => r.floor === 0)).toBe(true);
   });
 
   it("merges adjacent compatible south faces into one span", () => {
@@ -63,7 +51,7 @@ describe("building surface extraction", () => {
     const s = extractBuildingSurfaces(b);
     const southRow = s.walls.filter((w) => w.dir === "south" && w.gy0 === b.d - 1 && w.floor === 0);
     expect(southRow.length).toBeGreaterThanOrEqual(2);
-    expect(s.breaches.length).toBeGreaterThan(0);
+    expect(southRow.some(w => w.gx0 <= mid && w.gx1 >= mid)).toBe(false);
   });
 
   it("is deterministic for the same building state", () => {

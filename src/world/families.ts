@@ -18,7 +18,7 @@ export const BUILDING_FAMILIES: readonly BuildingFamily[] = ARCHETYPES.map((a) =
   w: a.w,
   d: a.d,
   floors: a.floors,
-  material: a.material,
+  material: a.construction.structure,
   roof: a.roof,
   archetypeId: a.id,
 }));

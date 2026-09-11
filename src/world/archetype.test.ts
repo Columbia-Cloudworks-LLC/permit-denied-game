@@ -20,7 +20,7 @@ describe("building archetypes", () => {
     const ids = ARCHETYPES.map((a) => `${a.id}:${a.w}x${a.d}:${a.floors}:${a.roof}:${a.theme}`);
     expect(new Set(ids).size).toBe(ARCHETYPES.length);
     expect(ARCHETYPES.some((a) => a.id === "ranch" && a.floors === 1 && a.w >= 5)).toBe(true);
-    expect(ARCHETYPES.some((a) => a.id === "warehouse" && a.roof === "shed" && a.loading)).toBe(true);
+    expect(ARCHETYPES.some((a) => a.id === "warehouse" && a.roof === "shed" && a.openings.some(o => o.kind === "loading"))).toBe(true);
     expect(ARCHETYPES.some((a) => a.id === "storefront" && a.features.awning && a.roof === "flat")).toBe(true);
   });
 

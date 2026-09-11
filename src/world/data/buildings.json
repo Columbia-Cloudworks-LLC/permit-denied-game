@@ -1,0 +1,1770 @@
+{
+  "version": 1,
+  "constructions": {
+    "timber-house": {
+      "id": "timber-house",
+      "walls": "bearing",
+      "structure": "wood",
+      "skin": "brick",
+      "floor": "wood",
+      "roof": "wood",
+      "fallDuration": 0.42,
+      "failureDelay": 0.52
+    },
+    "brick-mixed-use": {
+      "id": "brick-mixed-use",
+      "walls": "masonry",
+      "structure": "brick",
+      "skin": "brick",
+      "floor": "wood",
+      "roof": "wood",
+      "fallDuration": 0.5,
+      "failureDelay": 0.38
+    },
+    "steel-hall": {
+      "id": "steel-hall",
+      "walls": "frame",
+      "structure": "metal",
+      "skin": "metal",
+      "floor": "concrete",
+      "roof": "metal",
+      "fallDuration": 0.65,
+      "failureDelay": 0.7
+    },
+    "concrete-bearing": {
+      "id": "concrete-bearing",
+      "walls": "masonry",
+      "structure": "concrete",
+      "skin": "concrete",
+      "floor": "concrete",
+      "roof": "metal",
+      "fallDuration": 0.5,
+      "failureDelay": 0.38
+    }
+  },
+  "layouts": {
+    "rivertown": {
+      "rooms": [
+        {
+          "kind": "retail",
+          "floor": 0,
+          "x": 0,
+          "y": 0,
+          "w": 0.7,
+          "d": 1,
+          "finish": "tile",
+          "contents": [
+            {
+              "kind": "shelf",
+              "x": 0.08,
+              "y": 0.15,
+              "w": 0.2,
+              "d": 0.5,
+              "h": 1.15,
+              "id": "shelf-1",
+              "rotation": 0
+            },
+            {
+              "kind": "shelf",
+              "x": 0.64,
+              "y": 0.15,
+              "w": 0.2,
+              "d": 0.5,
+              "h": 1.15,
+              "id": "shelf-2",
+              "rotation": 0
+            },
+            {
+              "kind": "counter",
+              "x": 0.04,
+              "y": 0.78,
+              "w": 0.27,
+              "d": 0.13,
+              "h": 0.65,
+              "id": "counter-3",
+              "rotation": 0
+            }
+          ],
+          "id": "0-retail"
+        },
+        {
+          "kind": "storage",
+          "floor": 0,
+          "x": 0.7,
+          "y": 0,
+          "w": 0.3,
+          "d": 1,
+          "finish": "concrete",
+          "contents": [
+            {
+              "kind": "pallet",
+              "x": 0.13,
+              "y": 0.12,
+              "w": 0.72,
+              "d": 0.23,
+              "h": 0.6,
+              "id": "pallet-1",
+              "rotation": 0
+            },
+            {
+              "kind": "fridge",
+              "x": 0.18,
+              "y": 0.52,
+              "w": 0.64,
+              "d": 0.2,
+              "h": 1.25,
+              "id": "fridge-2",
+              "rotation": 0
+            }
+          ],
+          "id": "0-storage"
+        },
+        {
+          "kind": "kitchen",
+          "floor": 1,
+          "x": 0,
+          "y": 0,
+          "w": 0.4,
+          "d": 0.55,
+          "finish": "linoleum",
+          "contents": [
+            {
+              "kind": "counter",
+              "x": 0.04,
+              "y": 0.03,
+              "w": 0.92,
+              "d": 0.14,
+              "h": 0.4,
+              "id": "counter-1",
+              "rotation": 0
+            },
+            {
+              "kind": "cabinet",
+              "x": 0.03,
+              "y": 0.32,
+              "w": 0.15,
+              "d": 0.28,
+              "h": 0.82,
+              "id": "cabinet-2",
+              "rotation": 0
+            },
+            {
+              "kind": "table",
+              "x": 0.59,
+              "y": 0.38,
+              "w": 0.26,
+              "d": 0.2,
+              "h": 0.36,
+              "id": "table-3",
+              "rotation": 0
+            }
+          ],
+          "id": "1-kitchen"
+        },
+        {
+          "kind": "living",
+          "floor": 1,
+          "x": 0,
+          "y": 0.55,
+          "w": 0.6,
+          "d": 0.45,
+          "finish": "plank",
+          "contents": [
+            {
+              "kind": "sofa",
+              "x": 0.04,
+              "y": 0.03,
+              "w": 0.89,
+              "d": 0.17,
+              "h": 0.38,
+              "id": "sofa-1",
+              "rotation": 0
+            },
+            {
+              "kind": "table",
+              "x": 0.21,
+              "y": 0.4,
+              "w": 0.34,
+              "d": 0.2,
+              "h": 0.22,
+              "id": "table-2",
+              "rotation": 0
+            },
+            {
+              "kind": "radiator",
+              "x": 0.64,
+              "y": 0.92,
+              "w": 0.26,
+              "d": 0.06,
+              "h": 0.3,
+              "id": "radiator-3",
+              "rotation": 0
+            }
+          ],
+          "id": "1-living"
+        },
+        {
+          "kind": "bedroom",
+          "floor": 1,
+          "x": 0.4,
+          "y": 0,
+          "w": 0.6,
+          "d": 0.55,
+          "finish": "plank",
+          "contents": [
+            {
+              "kind": "bed",
+              "x": 0.14,
+              "y": 0.12,
+              "w": 0.58,
+              "d": 0.66,
+              "h": 0.48,
+              "id": "bed-1",
+              "rotation": 0
+            }
+          ],
+          "id": "1-bedroom"
+        },
+        {
+          "kind": "bathroom",
+          "floor": 1,
+          "x": 0.6,
+          "y": 0.55,
+          "w": 0.4,
+          "d": 0.45,
+          "finish": "tile",
+          "contents": [
+            {
+              "kind": "toilet",
+              "x": 0.32,
+              "y": 0.05,
+              "w": 0.36,
+              "d": 0.17,
+              "h": 0.4,
+              "id": "toilet-1",
+              "rotation": 0
+            },
+            {
+              "kind": "cabinet",
+              "x": 0.7,
+              "y": 0.35,
+              "w": 0.28,
+              "d": 0.2,
+              "h": 0.68,
+              "id": "cabinet-2",
+              "rotation": 0
+            }
+          ],
+          "id": "1-bathroom"
+        }
+      ],
+      "partitions": true,
+      "connections": [
+        {
+          "a": "0-retail",
+          "b": "0-storage",
+          "at": 0.5,
+          "width": 0.4
+        },
+        {
+          "a": "1-kitchen",
+          "b": "1-living",
+          "at": 0.5,
+          "width": 0.4
+        },
+        {
+          "a": "1-kitchen",
+          "b": "1-bedroom",
+          "at": 0.5,
+          "width": 0.4
+        },
+        {
+          "a": "1-living",
+          "b": "1-bedroom",
+          "at": 0.5,
+          "width": 0.4
+        },
+        {
+          "a": "1-living",
+          "b": "1-bathroom",
+          "at": 0.5,
+          "width": 0.4
+        },
+        {
+          "a": "1-bedroom",
+          "b": "1-bathroom",
+          "at": 0.5,
+          "width": 0.4
+        }
+      ]
+    },
+    "steel-warehouse": {
+      "rooms": [
+        {
+          "kind": "storage",
+          "floor": 0,
+          "x": 0,
+          "y": 0,
+          "w": 0.65,
+          "d": 1,
+          "finish": "concrete",
+          "contents": [
+            {
+              "kind": "rack",
+              "x": 0.1,
+              "y": 0.12,
+              "w": 0.17,
+              "d": 0.55,
+              "h": 1.75,
+              "id": "rack-1",
+              "rotation": 0
+            },
+            {
+              "kind": "rack",
+              "x": 0.66,
+              "y": 0.12,
+              "w": 0.17,
+              "d": 0.55,
+              "h": 1.75,
+              "id": "rack-2",
+              "rotation": 0
+            },
+            {
+              "kind": "pallet",
+              "x": 0.08,
+              "y": 0.8,
+              "w": 0.2,
+              "d": 0.13,
+              "h": 0.55,
+              "id": "pallet-3",
+              "rotation": 0
+            },
+            {
+              "kind": "pallet",
+              "x": 0.67,
+              "y": 0.8,
+              "w": 0.2,
+              "d": 0.13,
+              "h": 0.55,
+              "id": "pallet-4",
+              "rotation": 0
+            }
+          ],
+          "id": "0-storage"
+        },
+        {
+          "kind": "production",
+          "floor": 0,
+          "x": 0.65,
+          "y": 0,
+          "w": 0.35,
+          "d": 1,
+          "finish": "concrete",
+          "contents": [
+            {
+              "kind": "machine",
+              "x": 0.12,
+              "y": 0.12,
+              "w": 0.68,
+              "d": 0.28,
+              "h": 1.1,
+              "id": "machine-1",
+              "rotation": 0
+            },
+            {
+              "kind": "counter",
+              "x": 0.12,
+              "y": 0.57,
+              "w": 0.68,
+              "d": 0.12,
+              "h": 0.7,
+              "id": "counter-2",
+              "rotation": 0
+            }
+          ],
+          "id": "0-production"
+        }
+      ],
+      "partitions": false,
+      "connections": [
+        {
+          "a": "0-storage",
+          "b": "0-production",
+          "at": 0.5,
+          "width": 0.4
+        }
+      ]
+    },
+    "ranch": {
+      "rooms": [
+        {
+          "kind": "kitchen",
+          "floor": 0,
+          "x": 0,
+          "y": 0,
+          "w": 0.4,
+          "d": 1,
+          "finish": "linoleum",
+          "contents": [
+            {
+              "kind": "counter",
+              "x": 0.04,
+              "y": 0.03,
+              "w": 0.92,
+              "d": 0.14,
+              "h": 0.4,
+              "id": "counter-1",
+              "rotation": 0
+            },
+            {
+              "kind": "cabinet",
+              "x": 0.03,
+              "y": 0.32,
+              "w": 0.15,
+              "d": 0.28,
+              "h": 0.82,
+              "id": "cabinet-2",
+              "rotation": 0
+            },
+            {
+              "kind": "table",
+              "x": 0.59,
+              "y": 0.38,
+              "w": 0.26,
+              "d": 0.2,
+              "h": 0.36,
+              "id": "table-3",
+              "rotation": 0
+            }
+          ],
+          "id": "0-kitchen"
+        },
+        {
+          "kind": "living",
+          "floor": 0,
+          "x": 0.4,
+          "y": 0,
+          "w": 0.4,
+          "d": 1,
+          "finish": "plank",
+          "contents": [
+            {
+              "kind": "sofa",
+              "x": 0.04,
+              "y": 0.03,
+              "w": 0.89,
+              "d": 0.17,
+              "h": 0.38,
+              "id": "sofa-1",
+              "rotation": 0
+            },
+            {
+              "kind": "table",
+              "x": 0.21,
+              "y": 0.4,
+              "w": 0.34,
+              "d": 0.2,
+              "h": 0.22,
+              "id": "table-2",
+              "rotation": 0
+            },
+            {
+              "kind": "radiator",
+              "x": 0.64,
+              "y": 0.92,
+              "w": 0.26,
+              "d": 0.06,
+              "h": 0.3,
+              "id": "radiator-3",
+              "rotation": 0
+            }
+          ],
+          "id": "0-living"
+        },
+        {
+          "kind": "bathroom",
+          "floor": 0,
+          "x": 0.8,
+          "y": 0,
+          "w": 0.2,
+          "d": 1,
+          "finish": "tile",
+          "contents": [
+            {
+              "kind": "toilet",
+              "x": 0.32,
+              "y": 0.05,
+              "w": 0.36,
+              "d": 0.17,
+              "h": 0.4,
+              "id": "toilet-1",
+              "rotation": 0
+            },
+            {
+              "kind": "cabinet",
+              "x": 0.7,
+              "y": 0.35,
+              "w": 0.28,
+              "d": 0.2,
+              "h": 0.68,
+              "id": "cabinet-2",
+              "rotation": 0
+            }
+          ],
+          "id": "0-bathroom"
+        }
+      ],
+      "partitions": true,
+      "connections": [
+        {
+          "a": "0-kitchen",
+          "b": "0-living",
+          "at": 0.5,
+          "width": 0.4
+        },
+        {
+          "a": "0-living",
+          "b": "0-bathroom",
+          "at": 0.5,
+          "width": 0.4
+        }
+      ]
+    },
+    "cottage": {
+      "rooms": [
+        {
+          "kind": "kitchen",
+          "floor": 0,
+          "x": 0,
+          "y": 0,
+          "w": 0.4,
+          "d": 1,
+          "finish": "linoleum",
+          "contents": [
+            {
+              "kind": "counter",
+              "x": 0.04,
+              "y": 0.03,
+              "w": 0.92,
+              "d": 0.14,
+              "h": 0.4,
+              "id": "counter-1",
+              "rotation": 0
+            },
+            {
+              "kind": "cabinet",
+              "x": 0.03,
+              "y": 0.32,
+              "w": 0.15,
+              "d": 0.28,
+              "h": 0.82,
+              "id": "cabinet-2",
+              "rotation": 0
+            },
+            {
+              "kind": "table",
+              "x": 0.59,
+              "y": 0.38,
+              "w": 0.26,
+              "d": 0.2,
+              "h": 0.36,
+              "id": "table-3",
+              "rotation": 0
+            }
+          ],
+          "id": "0-kitchen"
+        },
+        {
+          "kind": "living",
+          "floor": 0,
+          "x": 0.4,
+          "y": 0,
+          "w": 0.4,
+          "d": 1,
+          "finish": "plank",
+          "contents": [
+            {
+              "kind": "sofa",
+              "x": 0.04,
+              "y": 0.03,
+              "w": 0.89,
+              "d": 0.17,
+              "h": 0.38,
+              "id": "sofa-1",
+              "rotation": 0
+            },
+            {
+              "kind": "table",
+              "x": 0.21,
+              "y": 0.4,
+              "w": 0.34,
+              "d": 0.2,
+              "h": 0.22,
+              "id": "table-2",
+              "rotation": 0
+            },
+            {
+              "kind": "radiator",
+              "x": 0.64,
+              "y": 0.92,
+              "w": 0.26,
+              "d": 0.06,
+              "h": 0.3,
+              "id": "radiator-3",
+              "rotation": 0
+            }
+          ],
+          "id": "0-living"
+        },
+        {
+          "kind": "bathroom",
+          "floor": 0,
+          "x": 0.8,
+          "y": 0,
+          "w": 0.2,
+          "d": 1,
+          "finish": "tile",
+          "contents": [
+            {
+              "kind": "toilet",
+              "x": 0.32,
+              "y": 0.05,
+              "w": 0.36,
+              "d": 0.17,
+              "h": 0.4,
+              "id": "toilet-1",
+              "rotation": 0
+            },
+            {
+              "kind": "cabinet",
+              "x": 0.7,
+              "y": 0.35,
+              "w": 0.28,
+              "d": 0.2,
+              "h": 0.68,
+              "id": "cabinet-2",
+              "rotation": 0
+            }
+          ],
+          "id": "0-bathroom"
+        },
+        {
+          "kind": "bedroom",
+          "floor": 1,
+          "x": 0,
+          "y": 0,
+          "w": 0.4,
+          "d": 1,
+          "finish": "plank",
+          "contents": [
+            {
+              "kind": "bed",
+              "x": 0.14,
+              "y": 0.12,
+              "w": 0.58,
+              "d": 0.66,
+              "h": 0.48,
+              "id": "bed-1",
+              "rotation": 0
+            }
+          ],
+          "id": "1-bedroom-west"
+        },
+        {
+          "kind": "bedroom",
+          "floor": 1,
+          "x": 0.4,
+          "y": 0,
+          "w": 0.4,
+          "d": 1,
+          "finish": "plank",
+          "contents": [
+            {
+              "kind": "bed",
+              "x": 0.14,
+              "y": 0.12,
+              "w": 0.58,
+              "d": 0.66,
+              "h": 0.48,
+              "id": "bed-1",
+              "rotation": 0
+            }
+          ],
+          "id": "1-bedroom-east"
+        },
+        {
+          "kind": "bathroom",
+          "floor": 1,
+          "x": 0.8,
+          "y": 0,
+          "w": 0.2,
+          "d": 1,
+          "finish": "tile",
+          "contents": [
+            {
+              "kind": "toilet",
+              "x": 0.32,
+              "y": 0.05,
+              "w": 0.36,
+              "d": 0.17,
+              "h": 0.4,
+              "id": "toilet-1",
+              "rotation": 0
+            },
+            {
+              "kind": "cabinet",
+              "x": 0.7,
+              "y": 0.35,
+              "w": 0.28,
+              "d": 0.2,
+              "h": 0.68,
+              "id": "cabinet-2",
+              "rotation": 0
+            }
+          ],
+          "id": "1-bathroom"
+        }
+      ],
+      "partitions": true,
+      "connections": [
+        {
+          "a": "0-kitchen",
+          "b": "0-living",
+          "at": 0.5,
+          "width": 0.4
+        },
+        {
+          "a": "0-living",
+          "b": "0-bathroom",
+          "at": 0.5,
+          "width": 0.4
+        },
+        {
+          "a": "1-bedroom-west",
+          "b": "1-bedroom-east",
+          "at": 0.5,
+          "width": 0.4
+        },
+        {
+          "a": "1-bedroom-east",
+          "b": "1-bathroom",
+          "at": 0.5,
+          "width": 0.4
+        }
+      ]
+    },
+    "porch-house": {
+      "rooms": [
+        {
+          "kind": "kitchen",
+          "floor": 0,
+          "x": 0,
+          "y": 0,
+          "w": 0.4,
+          "d": 1,
+          "finish": "linoleum",
+          "contents": [
+            {
+              "kind": "counter",
+              "x": 0.04,
+              "y": 0.03,
+              "w": 0.92,
+              "d": 0.14,
+              "h": 0.4,
+              "id": "counter-1",
+              "rotation": 0
+            },
+            {
+              "kind": "cabinet",
+              "x": 0.03,
+              "y": 0.32,
+              "w": 0.15,
+              "d": 0.28,
+              "h": 0.82,
+              "id": "cabinet-2",
+              "rotation": 0
+            },
+            {
+              "kind": "table",
+              "x": 0.59,
+              "y": 0.38,
+              "w": 0.26,
+              "d": 0.2,
+              "h": 0.36,
+              "id": "table-3",
+              "rotation": 0
+            }
+          ],
+          "id": "0-kitchen"
+        },
+        {
+          "kind": "living",
+          "floor": 0,
+          "x": 0.4,
+          "y": 0,
+          "w": 0.4,
+          "d": 1,
+          "finish": "plank",
+          "contents": [
+            {
+              "kind": "sofa",
+              "x": 0.04,
+              "y": 0.03,
+              "w": 0.89,
+              "d": 0.17,
+              "h": 0.38,
+              "id": "sofa-1",
+              "rotation": 0
+            },
+            {
+              "kind": "table",
+              "x": 0.21,
+              "y": 0.4,
+              "w": 0.34,
+              "d": 0.2,
+              "h": 0.22,
+              "id": "table-2",
+              "rotation": 0
+            },
+            {
+              "kind": "radiator",
+              "x": 0.64,
+              "y": 0.92,
+              "w": 0.26,
+              "d": 0.06,
+              "h": 0.3,
+              "id": "radiator-3",
+              "rotation": 0
+            }
+          ],
+          "id": "0-living"
+        },
+        {
+          "kind": "bathroom",
+          "floor": 0,
+          "x": 0.8,
+          "y": 0,
+          "w": 0.2,
+          "d": 1,
+          "finish": "tile",
+          "contents": [
+            {
+              "kind": "toilet",
+              "x": 0.32,
+              "y": 0.05,
+              "w": 0.36,
+              "d": 0.17,
+              "h": 0.4,
+              "id": "toilet-1",
+              "rotation": 0
+            },
+            {
+              "kind": "cabinet",
+              "x": 0.7,
+              "y": 0.35,
+              "w": 0.28,
+              "d": 0.2,
+              "h": 0.68,
+              "id": "cabinet-2",
+              "rotation": 0
+            }
+          ],
+          "id": "0-bathroom"
+        },
+        {
+          "kind": "bedroom",
+          "floor": 1,
+          "x": 0,
+          "y": 0,
+          "w": 0.30000000000000004,
+          "d": 1,
+          "finish": "plank",
+          "contents": [
+            {
+              "kind": "bed",
+              "x": 0.14,
+              "y": 0.12,
+              "w": 0.58,
+              "d": 0.66,
+              "h": 0.48,
+              "id": "bed-1",
+              "rotation": 0
+            }
+          ],
+          "id": "1-bedroom-west"
+        },
+        {
+          "kind": "bedroom",
+          "floor": 1,
+          "x": 0.30000000000000004,
+          "y": 0,
+          "w": 0.30000000000000004,
+          "d": 1,
+          "finish": "plank",
+          "contents": [
+            {
+              "kind": "bed",
+              "x": 0.14,
+              "y": 0.12,
+              "w": 0.58,
+              "d": 0.66,
+              "h": 0.48,
+              "id": "bed-1",
+              "rotation": 0
+            }
+          ],
+          "id": "1-bedroom-east"
+        },
+        {
+          "kind": "bathroom",
+          "floor": 1,
+          "x": 0.6000000000000001,
+          "y": 0,
+          "w": 0.15000000000000002,
+          "d": 1,
+          "finish": "tile",
+          "contents": [
+            {
+              "kind": "toilet",
+              "x": 0.32,
+              "y": 0.05,
+              "w": 0.36,
+              "d": 0.17,
+              "h": 0.4,
+              "id": "toilet-1",
+              "rotation": 0
+            },
+            {
+              "kind": "cabinet",
+              "x": 0.7,
+              "y": 0.35,
+              "w": 0.28,
+              "d": 0.2,
+              "h": 0.68,
+              "id": "cabinet-2",
+              "rotation": 0
+            }
+          ],
+          "id": "1-bathroom"
+        }
+      ],
+      "partitions": true,
+      "connections": [
+        {
+          "a": "0-kitchen",
+          "b": "0-living",
+          "at": 0.5,
+          "width": 0.4
+        },
+        {
+          "a": "0-living",
+          "b": "0-bathroom",
+          "at": 0.5,
+          "width": 0.4
+        },
+        {
+          "a": "1-bedroom-west",
+          "b": "1-bedroom-east",
+          "at": 0.5,
+          "width": 0.4
+        },
+        {
+          "a": "1-bedroom-east",
+          "b": "1-bathroom",
+          "at": 0.5,
+          "width": 0.4
+        }
+      ]
+    },
+    "civic": {
+      "rooms": [
+        {
+          "kind": "storage",
+          "floor": 0,
+          "x": 0,
+          "y": 0,
+          "w": 0.65,
+          "d": 1,
+          "finish": "concrete",
+          "contents": [
+            {
+              "kind": "rack",
+              "x": 0.1,
+              "y": 0.12,
+              "w": 0.17,
+              "d": 0.55,
+              "h": 1.75,
+              "id": "rack-1",
+              "rotation": 0
+            },
+            {
+              "kind": "rack",
+              "x": 0.66,
+              "y": 0.12,
+              "w": 0.17,
+              "d": 0.55,
+              "h": 1.75,
+              "id": "rack-2",
+              "rotation": 0
+            },
+            {
+              "kind": "pallet",
+              "x": 0.08,
+              "y": 0.8,
+              "w": 0.2,
+              "d": 0.13,
+              "h": 0.55,
+              "id": "pallet-3",
+              "rotation": 0
+            },
+            {
+              "kind": "pallet",
+              "x": 0.67,
+              "y": 0.8,
+              "w": 0.2,
+              "d": 0.13,
+              "h": 0.55,
+              "id": "pallet-4",
+              "rotation": 0
+            }
+          ],
+          "id": "0-storage"
+        },
+        {
+          "kind": "production",
+          "floor": 0,
+          "x": 0.65,
+          "y": 0,
+          "w": 0.35,
+          "d": 1,
+          "finish": "concrete",
+          "contents": [
+            {
+              "kind": "machine",
+              "x": 0.12,
+              "y": 0.12,
+              "w": 0.68,
+              "d": 0.28,
+              "h": 1.1,
+              "id": "machine-1",
+              "rotation": 0
+            },
+            {
+              "kind": "counter",
+              "x": 0.12,
+              "y": 0.57,
+              "w": 0.68,
+              "d": 0.12,
+              "h": 0.7,
+              "id": "counter-2",
+              "rotation": 0
+            }
+          ],
+          "id": "0-production"
+        },
+        {
+          "kind": "storage",
+          "floor": 1,
+          "x": 0,
+          "y": 0,
+          "w": 0.65,
+          "d": 1,
+          "finish": "concrete",
+          "contents": [
+            {
+              "kind": "rack",
+              "x": 0.1,
+              "y": 0.12,
+              "w": 0.17,
+              "d": 0.55,
+              "h": 1.75,
+              "id": "rack-1",
+              "rotation": 0
+            },
+            {
+              "kind": "rack",
+              "x": 0.66,
+              "y": 0.12,
+              "w": 0.17,
+              "d": 0.55,
+              "h": 1.75,
+              "id": "rack-2",
+              "rotation": 0
+            },
+            {
+              "kind": "pallet",
+              "x": 0.08,
+              "y": 0.8,
+              "w": 0.2,
+              "d": 0.13,
+              "h": 0.55,
+              "id": "pallet-3",
+              "rotation": 0
+            },
+            {
+              "kind": "pallet",
+              "x": 0.67,
+              "y": 0.8,
+              "w": 0.2,
+              "d": 0.13,
+              "h": 0.55,
+              "id": "pallet-4",
+              "rotation": 0
+            }
+          ],
+          "id": "1-storage"
+        },
+        {
+          "kind": "production",
+          "floor": 1,
+          "x": 0.65,
+          "y": 0,
+          "w": 0.35,
+          "d": 1,
+          "finish": "concrete",
+          "contents": [
+            {
+              "kind": "machine",
+              "x": 0.12,
+              "y": 0.12,
+              "w": 0.68,
+              "d": 0.28,
+              "h": 1.1,
+              "id": "machine-1",
+              "rotation": 0
+            },
+            {
+              "kind": "counter",
+              "x": 0.12,
+              "y": 0.57,
+              "w": 0.68,
+              "d": 0.12,
+              "h": 0.7,
+              "id": "counter-2",
+              "rotation": 0
+            }
+          ],
+          "id": "1-production"
+        },
+        {
+          "kind": "storage",
+          "floor": 2,
+          "x": 0,
+          "y": 0,
+          "w": 0.65,
+          "d": 1,
+          "finish": "concrete",
+          "contents": [
+            {
+              "kind": "rack",
+              "x": 0.1,
+              "y": 0.12,
+              "w": 0.17,
+              "d": 0.55,
+              "h": 1.75,
+              "id": "rack-1",
+              "rotation": 0
+            },
+            {
+              "kind": "rack",
+              "x": 0.66,
+              "y": 0.12,
+              "w": 0.17,
+              "d": 0.55,
+              "h": 1.75,
+              "id": "rack-2",
+              "rotation": 0
+            },
+            {
+              "kind": "pallet",
+              "x": 0.08,
+              "y": 0.8,
+              "w": 0.2,
+              "d": 0.13,
+              "h": 0.55,
+              "id": "pallet-3",
+              "rotation": 0
+            },
+            {
+              "kind": "pallet",
+              "x": 0.67,
+              "y": 0.8,
+              "w": 0.2,
+              "d": 0.13,
+              "h": 0.55,
+              "id": "pallet-4",
+              "rotation": 0
+            }
+          ],
+          "id": "2-storage"
+        },
+        {
+          "kind": "production",
+          "floor": 2,
+          "x": 0.65,
+          "y": 0,
+          "w": 0.35,
+          "d": 1,
+          "finish": "concrete",
+          "contents": [
+            {
+              "kind": "machine",
+              "x": 0.12,
+              "y": 0.12,
+              "w": 0.68,
+              "d": 0.28,
+              "h": 1.1,
+              "id": "machine-1",
+              "rotation": 0
+            },
+            {
+              "kind": "counter",
+              "x": 0.12,
+              "y": 0.57,
+              "w": 0.68,
+              "d": 0.12,
+              "h": 0.7,
+              "id": "counter-2",
+              "rotation": 0
+            }
+          ],
+          "id": "2-production"
+        }
+      ],
+      "partitions": false,
+      "connections": [
+        {
+          "a": "0-storage",
+          "b": "0-production",
+          "at": 0.5,
+          "width": 0.4
+        },
+        {
+          "a": "1-storage",
+          "b": "1-production",
+          "at": 0.5,
+          "width": 0.4
+        },
+        {
+          "a": "2-storage",
+          "b": "2-production",
+          "at": 0.5,
+          "width": 0.4
+        }
+      ]
+    }
+  },
+  "buildings": [
+    {
+      "id": "rivertown",
+      "kind": "shop",
+      "label": "RIVER MERCANTILE",
+      "w": 5,
+      "d": 4,
+      "floors": 2,
+      "roof": "flat",
+      "roofAxis": "x",
+      "theme": "storefront",
+      "windowStride": 1,
+      "features": {
+        "porch": false,
+        "awning": true,
+        "parapet": true,
+        "chimney": false,
+        "garage": false
+      },
+      "zones": {
+        "residential": 0,
+        "commercial": 4,
+        "industrial": 0
+      },
+      "construction": "brick-mixed-use",
+      "layout": "rivertown",
+      "footprint": [
+        [
+          "#####",
+          "#####",
+          "#####",
+          "#####"
+        ],
+        [
+          "#####",
+          "#####",
+          "#####",
+          "#####"
+        ]
+      ],
+      "openings": [
+        {
+          "floor": 0,
+          "side": "south",
+          "at": 0.5,
+          "kind": "door"
+        }
+      ]
+    },
+    {
+      "id": "steel-warehouse",
+      "kind": "industrial",
+      "label": "STEEL WORKSHOP",
+      "w": 6,
+      "d": 5,
+      "floors": 1,
+      "roof": "shed",
+      "roofAxis": "y",
+      "theme": "warehouse",
+      "windowStride": 3,
+      "features": {
+        "porch": false,
+        "awning": false,
+        "parapet": false,
+        "chimney": false,
+        "garage": false
+      },
+      "zones": {
+        "residential": 0,
+        "commercial": 0,
+        "industrial": 5
+      },
+      "construction": "steel-hall",
+      "layout": "steel-warehouse",
+      "footprint": [
+        [
+          "######",
+          "######",
+          "######",
+          "######",
+          "######"
+        ]
+      ],
+      "openings": [
+        {
+          "floor": 0,
+          "side": "south",
+          "at": 0.5,
+          "kind": "loading"
+        }
+      ]
+    },
+    {
+      "id": "ranch",
+      "kind": "house",
+      "label": "RANCH",
+      "w": 5,
+      "d": 3,
+      "floors": 1,
+      "roof": "gable",
+      "roofAxis": "x",
+      "theme": "ranch",
+      "windowStride": 2,
+      "features": {
+        "porch": false,
+        "awning": false,
+        "parapet": false,
+        "chimney": true,
+        "garage": false
+      },
+      "zones": {
+        "residential": 8,
+        "commercial": 1,
+        "industrial": 0
+      },
+      "construction": "timber-house",
+      "layout": "ranch",
+      "footprint": [
+        [
+          "#####",
+          "#####",
+          "#####"
+        ]
+      ],
+      "openings": [
+        {
+          "floor": 0,
+          "side": "south",
+          "at": 0.5,
+          "kind": "door"
+        }
+      ]
+    },
+    {
+      "id": "cottage",
+      "kind": "house",
+      "label": "COTTAGE",
+      "w": 3,
+      "d": 3,
+      "floors": 2,
+      "roof": "gable",
+      "theme": "cottage",
+      "windowStride": 1,
+      "features": {
+        "porch": false,
+        "awning": false,
+        "parapet": false,
+        "chimney": true,
+        "garage": false
+      },
+      "zones": {
+        "residential": 7,
+        "commercial": 1,
+        "industrial": 0
+      },
+      "construction": "timber-house",
+      "layout": "cottage",
+      "footprint": [
+        [
+          "###",
+          "###",
+          "###"
+        ],
+        [
+          "###",
+          "###",
+          "###"
+        ]
+      ],
+      "openings": [
+        {
+          "floor": 0,
+          "side": "south",
+          "at": 0.5,
+          "kind": "door"
+        }
+      ]
+    },
+    {
+      "id": "colonial",
+      "kind": "house",
+      "label": "COLONIAL",
+      "w": 4,
+      "d": 3,
+      "floors": 2,
+      "roof": "gable",
+      "roofAxis": "x",
+      "theme": "colonial",
+      "windowStride": 1,
+      "features": {
+        "porch": false,
+        "awning": false,
+        "parapet": false,
+        "chimney": true,
+        "garage": false
+      },
+      "zones": {
+        "residential": 6,
+        "commercial": 1,
+        "industrial": 0
+      },
+      "construction": "brick-mixed-use",
+      "layout": "cottage",
+      "footprint": [
+        [
+          "####",
+          "####",
+          "####"
+        ],
+        [
+          "####",
+          "####",
+          "####"
+        ]
+      ],
+      "openings": [
+        {
+          "floor": 0,
+          "side": "south",
+          "at": 0.5,
+          "kind": "door"
+        }
+      ]
+    },
+    {
+      "id": "walkup",
+      "kind": "house",
+      "label": "WALK-UP",
+      "w": 2,
+      "d": 3,
+      "floors": 2,
+      "roof": "gable",
+      "roofAxis": "y",
+      "theme": "walkup",
+      "windowStride": 1,
+      "features": {
+        "porch": false,
+        "awning": false,
+        "parapet": false,
+        "chimney": false,
+        "garage": false
+      },
+      "zones": {
+        "residential": 5,
+        "commercial": 2,
+        "industrial": 0
+      },
+      "construction": "timber-house",
+      "layout": "cottage",
+      "footprint": [
+        [
+          "##",
+          "##",
+          "##"
+        ],
+        [
+          "##",
+          "##",
+          "##"
+        ]
+      ],
+      "openings": [
+        {
+          "floor": 0,
+          "side": "south",
+          "at": 0,
+          "kind": "door"
+        }
+      ]
+    },
+    {
+      "id": "porch-house",
+      "kind": "house",
+      "label": "PORCH",
+      "w": 4,
+      "d": 3,
+      "floors": 2,
+      "roof": "gable",
+      "theme": "porch",
+      "windowStride": 2,
+      "features": {
+        "porch": true,
+        "awning": false,
+        "parapet": false,
+        "chimney": true,
+        "garage": true
+      },
+      "zones": {
+        "residential": 5,
+        "commercial": 0,
+        "industrial": 0
+      },
+      "construction": "timber-house",
+      "layout": "porch-house",
+      "footprint": [
+        [
+          "####",
+          "####",
+          "####"
+        ],
+        [
+          "###.",
+          "###.",
+          "###."
+        ]
+      ],
+      "openings": [
+        {
+          "floor": 0,
+          "side": "south",
+          "at": 0.5,
+          "kind": "door"
+        }
+      ]
+    },
+    {
+      "id": "storefront",
+      "kind": "shop",
+      "label": "MART",
+      "w": 4,
+      "d": 3,
+      "floors": 2,
+      "roof": "flat",
+      "theme": "storefront",
+      "windowStride": 1,
+      "features": {
+        "porch": false,
+        "awning": true,
+        "parapet": true,
+        "chimney": false,
+        "garage": false
+      },
+      "zones": {
+        "residential": 1,
+        "commercial": 8,
+        "industrial": 1
+      },
+      "construction": "brick-mixed-use",
+      "layout": "rivertown",
+      "footprint": [
+        [
+          "####",
+          "####",
+          "####"
+        ],
+        [
+          "####",
+          "####",
+          "####"
+        ]
+      ],
+      "openings": [
+        {
+          "floor": 0,
+          "side": "south",
+          "at": 0.5,
+          "kind": "door"
+        }
+      ]
+    },
+    {
+      "id": "corner-shop",
+      "kind": "shop",
+      "label": "LEDGER",
+      "w": 4,
+      "d": 3,
+      "floors": 2,
+      "roof": "flat",
+      "theme": "corner",
+      "windowStride": 1,
+      "features": {
+        "porch": false,
+        "awning": true,
+        "parapet": true,
+        "chimney": false,
+        "garage": false
+      },
+      "zones": {
+        "residential": 1,
+        "commercial": 7,
+        "industrial": 1
+      },
+      "construction": "brick-mixed-use",
+      "layout": "rivertown",
+      "footprint": [
+        [
+          "####",
+          "####",
+          "####"
+        ],
+        [
+          "####",
+          "####",
+          "####"
+        ]
+      ],
+      "openings": [
+        {
+          "floor": 0,
+          "side": "south",
+          "at": 0,
+          "kind": "door"
+        }
+      ]
+    },
+    {
+      "id": "civic",
+      "kind": "industrial",
+      "label": "ANNEX",
+      "w": 4,
+      "d": 4,
+      "floors": 3,
+      "roof": "flat",
+      "theme": "civic",
+      "windowStride": 2,
+      "features": {
+        "porch": false,
+        "awning": false,
+        "parapet": true,
+        "chimney": false,
+        "garage": false
+      },
+      "zones": {
+        "residential": 0,
+        "commercial": 3,
+        "industrial": 4
+      },
+      "construction": "concrete-bearing",
+      "layout": "civic",
+      "footprint": [
+        [
+          "####",
+          "####",
+          "####",
+          "####"
+        ],
+        [
+          "####",
+          "####",
+          "####",
+          "####"
+        ],
+        [
+          "####",
+          "####",
+          "####",
+          "####"
+        ]
+      ],
+      "openings": [
+        {
+          "floor": 0,
+          "side": "south",
+          "at": 0.5,
+          "kind": "door"
+        }
+      ]
+    },
+    {
+      "id": "warehouse",
+      "kind": "industrial",
+      "label": "WORKS",
+      "w": 5,
+      "d": 4,
+      "floors": 3,
+      "roof": "shed",
+      "roofAxis": "y",
+      "theme": "warehouse",
+      "windowStride": 2,
+      "features": {
+        "porch": false,
+        "awning": false,
+        "parapet": false,
+        "chimney": false,
+        "garage": false
+      },
+      "zones": {
+        "residential": 0,
+        "commercial": 2,
+        "industrial": 8
+      },
+      "construction": "concrete-bearing",
+      "layout": "civic",
+      "footprint": [
+        [
+          "#####",
+          "#####",
+          "#####",
+          "#####"
+        ],
+        [
+          "#####",
+          "#####",
+          "#####",
+          "#####"
+        ],
+        [
+          "#####",
+          "#####",
+          "#####",
+          "#####"
+        ]
+      ],
+      "openings": [
+        {
+          "floor": 0,
+          "side": "south",
+          "at": 0.5,
+          "kind": "loading"
+        }
+      ]
+    }
+  ]
+}

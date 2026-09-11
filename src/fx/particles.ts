@@ -3,6 +3,7 @@ import { Rng } from "../game/rng";
 import type { Particle, ParticleKind } from "../structure/types";
 
 export class ParticlePool {
+  ownerAt?: (x: number, y: number) => string | undefined;
   readonly items: Particle[] = [];
   private readonly rng = new Rng(0x51f00d);
 
@@ -44,6 +45,7 @@ export class ParticlePool {
     count: number,
     speed: number,
     up = 3.2,
+    owner?: string,
   ): void {
     let n = 0;
     for (const p of this.items) {
@@ -51,6 +53,7 @@ export class ParticlePool {
       if (p.alive && !p.settled) continue;
       const ang = this.rng.range(0, Math.PI * 2);
       const sp = this.rng.range(0.2, 1) * speed;
+      p.yardOwner = owner ?? this.ownerAt?.(x, y);
       p.alive = true;
       p.kind = kind;
       p.x = x + this.rng.range(-0.15, 0.15);
@@ -69,11 +72,11 @@ export class ParticlePool {
     }
   }
 
-  burst(kind: ParticleKind, x: number, y: number, z: number, mag: number): void {
+  burst(kind: ParticleKind, x: number, y: number, z: number, mag: number, owner?: string): void {
     const chunks = kind === "dust" ? 0 : Math.min(18, 4 + Math.floor(mag * 3));
     const dust = Math.min(22, 6 + Math.floor(mag * 4));
-    if (chunks) this.spawn(kind, x, y, z, chunks, 2.4 + mag, 4 + mag);
-    this.spawn("dust", x, y, z, dust, 1.6 + mag * 0.6, 1.8);
+    if (chunks) this.spawn(kind, x, y, z, chunks, 2.4 + mag, 4 + mag, owner);
+    this.spawn("dust", x, y, z, dust, 1.6 + mag * 0.6, 1.8, owner);
   }
 
   collapseCloud(x: number, y: number, z: number, dx: number, dy: number): void {

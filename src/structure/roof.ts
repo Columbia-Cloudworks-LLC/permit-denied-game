@@ -3,7 +3,6 @@ import type { ParticlePool } from "../fx/particles";
 import { debrisKind } from "../fx/particles";
 import type { Building, Material, RoofAxis, RoofSection, RoofStyle, WorldEvent } from "./types";
 import { cellPresent } from "./types";
-import { independentFloors } from "./construction";
 
 export interface RoofDebrisSpawn {
   x: number;
@@ -25,16 +24,7 @@ function wallTopZ(floors: number): number {
 }
 
 function occupiedTop(building: Building): { gx: number; gy: number }[] {
-  const top = building.floors - 1;
-  if (independentFloors(building)) return building.floorTiles!.filter(t => t.floor === top).map(t => ({ gx: t.gx, gy: t.gy }));
-  const out: { gx: number; gy: number }[] = [];
-  for (let gx = 0; gx < building.w; gx++) {
-    for (let gy = 0; gy < building.d; gy++) {
-      const cell = building.grid[top]?.[gx]?.[gy];
-      if (cell && cellPresent(cell)) out.push({ gx, gy });
-    }
-  }
-  return out;
+  return building.floorTiles.filter(t => t.floor === building.floors - 1).map(t => ({ gx: t.gx, gy: t.gy }));
 }
 
 function bbox(cells: { gx: number; gy: number }[]): { minX: number; maxX: number; minY: number; maxY: number } {
@@ -97,12 +87,7 @@ function connected(cells: { gx: number; gy: number }[]): { gx: number; gy: numbe
   return comps;
 }
 
-function roofMaterial(building: Building): Material {
-  if (building.construction) return building.construction.roof;
-  if (building.kind === "house") return "wood";
-  if (building.roof === "shed") return "metal";
-  return building.secondary === "metal" ? "metal" : "wood";
-}
+function roofMaterial(building: Building): Material { return building.construction.roof; }
 
 function chooseAxis(building: Building, cells: { gx: number; gy: number }[]): RoofAxis {
   if (building.roofAxis) return building.roofAxis;
@@ -130,6 +115,7 @@ function makeSection(
   const c = vertsCenter(verts);
   return {
     id,
+    floor: 0,
     style,
     support,
     verts,
@@ -452,6 +438,17 @@ function stripFallback(
 }
 
 export function generateRoofs(building: Building): RoofSection[] {
+  const roofs: RoofSection[] = [];
+  for (let floor = 0; floor < building.floors; floor++) {
+    const exposed = building.floorTiles.filter(t => t.floor === floor && !building.floorTiles.some(above => above.floor === floor + 1 && above.gx === t.gx && above.gy === t.gy));
+    if (!exposed.length) continue;
+    const layer = { ...building, floors: floor + 1, floorTiles: exposed };
+    for (const roof of generateRoofLayer(layer)) roofs.push({ ...roof, floor, id: roofs.length + 1 });
+  }
+  return roofs;
+}
+
+function generateRoofLayer(building: Building): RoofSection[] {
   const cells = occupiedTop(building);
   if (cells.length === 0) return [];
   const sections: RoofSection[] = [];
@@ -461,12 +458,8 @@ export function generateRoofs(building: Building): RoofSection[] {
     if (solidRect(comp)) {
       if (building.roof === "flat") sections.push(flatPlane(building, comp, nextId++));
       else if (building.roof === "shed") sections.push(shedPlane(building, comp, axis, nextId++));
-      else if (building.construction?.bays) {
+      else {
         const planes = gableBays(building, comp, axis, nextId);
-        nextId += planes.length;
-        sections.push(...planes);
-      } else {
-        const planes = gablePlanes(building, comp, axis, nextId);
         nextId += planes.length;
         sections.push(...planes);
       }
@@ -476,7 +469,7 @@ export function generateRoofs(building: Building): RoofSection[] {
       sections.push(...extra);
     }
   }
-  return independentFloors(building) ? splitStructuralBays(building, sections) : sections;
+  return splitStructuralBays(building, sections);
 }
 
 /** Slice existing planes so shed pitch and flat deck elevation remain continuous across bays. */
@@ -485,6 +478,12 @@ function splitStructuralBays(building: Building, sections: RoofSection[]): RoofS
   const cs = building.cellSize;
   for (const section of sections) {
     const covered = section.support;
+    if (section.style === 'gable') {
+      const support = building.cells.filter(c => c.floor === building.floors - 1 && c.isSupport && covered.some(t => t.gx === c.gx && t.gy === c.gy))
+        .map(c => ({ gx: c.gx, gy: c.gy }));
+      out.push({ ...section, id: out.length + 1, support, coverage: covered });
+      continue;
+    }
     const bounds = bbox(covered);
     for (let gx = bounds.minX; gx <= bounds.maxX; gx += 2) {
       const end = Math.min(bounds.maxX, gx + 1);
@@ -521,14 +520,12 @@ export function roofCoverage(roof: RoofSection): { gx: number; gy: number }[] {
 }
 
 export function roofCoversOnlyOccupied(building: Building): boolean {
-  const top = building.floors - 1;
-  const occupied = new Set(
-    occupiedTop(building).map((c) => `${c.gx},${c.gy}`),
-  );
   for (const roof of building.roofs) {
+    const occupied = new Set(building.floorTiles.filter(t => t.floor === roof.floor).map(t => `${t.gx},${t.gy}`));
+    if (roofCoverage(roof).some(s => !occupied.has(`${s.gx},${s.gy}`))) return false;
     for (const s of roof.support) {
       if (!occupied.has(`${s.gx},${s.gy}`)) return false;
-      const cell = building.grid[top]?.[s.gx]?.[s.gy];
+      const cell = building.grid[roof.floor]?.[s.gx]?.[s.gy];
       if (!cell || !cellPresent(cell)) return false;
     }
   }
@@ -645,7 +642,7 @@ function neighborRoofBay(building: Building, roof: RoofSection, dgx: number): Ro
     const center = vertsCenter(r.verts);
     return Math.sign(alongY ? center.x - r.ridge.ax : center.y - r.ridge.ay);
   };
-  return building.roofs.find(other => other.id !== roof.id && other.style === roof.style && side(other) === side(roof)
+  return building.roofs.find(other => other.id !== roof.id && other.floor === roof.floor && other.style === roof.style && side(other) === side(roof)
     && roofCoverage(other).some(s => coord(s) === edge + dgx));
 }
 
@@ -892,9 +889,9 @@ export function gableWallVerts(
 }
 
 /** Viewer-facing gable outline from the story top up to the ridge. */
-export function gableEndCaps(building: Building): GableEndCap[] {
+export function gableEndCaps(building: Building, floor = building.floors - 1): GableEndCap[] {
   const live = building.roofs.filter(
-    (r) => r.style === "gable" && (r.state === "intact" || r.state === "sagging") && r.ridge,
+    (r) => r.floor === floor && r.style === "gable" && (r.state === "intact" || r.state === "sagging") && r.ridge,
   );
   if (live.length === 0) return [];
   const ridge = live[0]!.ridge!;
@@ -951,7 +948,7 @@ export function gablePlanesSloped(roofs: RoofSection[]): boolean {
 }
 
 function supportFraction(building: Building, roof: RoofSection): { have: number; total: number } {
-  const top = building.floors - 1;
+  const top = roof.floor;
   let have = 0;
   for (const s of roof.support) {
     const cell = building.grid[top]?.[s.gx]?.[s.gy];
@@ -997,7 +994,7 @@ function supportWorld(
 
 function updateRoofHinge(building: Building, roof: RoofSection): void {
   if (roof.state === "falling" || roof.state === "gone") return;
-  const top = building.floors - 1;
+  const top = roof.floor;
   let hx = 0;
   let hy = 0;
   let have = 0;
@@ -1107,6 +1104,7 @@ function startRoofFall(building: Building, roof: RoofSection, particles: Particl
 
 export function roofsNeedStep(building: Building): boolean {
   for (const roof of building.roofs) {
+    if (roof.state === "gone") continue;
     if (roof.state === "sagging" || roof.state === "falling") return true;
     if (roof.sag > 1e-4 || roof.unsupportedTime > 1e-4) return true;
   }
@@ -1121,6 +1119,7 @@ export function stepRoofs(
   rubbleSpawns: RoofDebrisSpawn[],
 ): void {
   if (building.roofs.length === 0) return;
+  building.visualRevision++;
   let present = 0;
   let total = 0;
   for (const roof of building.roofs) {
@@ -1141,7 +1140,7 @@ export function stepRoofs(
           dx: roof.fallDx,
           dy: roof.fallDy,
           material: roof.material,
-          floor: building.floors,
+          floor: roof.floor + 1,
           cellSize: building.cellSize,
           source: "roof",
           heading: pose.heading,
@@ -1164,7 +1163,7 @@ export function stepRoofs(
     roof.sag = Math.min(1, roof.unsupportedTime / 0.26);
     if (roof.unsupportedTime > 0.1) roof.state = "sagging";
     building.roofDirty = true;
-    if (frac.have === 0 || roof.unsupportedTime > 0.36 + roofNeighborFallDelay(building, roof)) {
+    if (roof.unsupportedTime > (frac.have === 0 ? .08 : .36) + roofNeighborFallDelay(building, roof)) {
       startRoofFall(building, roof, particles, events);
     }
   }

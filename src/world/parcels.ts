@@ -473,6 +473,7 @@ export function placeBuildingInLot(
       continue;
     }
     if (occupy.some((ob) => boxHitsPublicRoad(ob, publicSegs))) continue;
+    building.lotId = lot.id;
     return building;
   }
   return null;

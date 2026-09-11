@@ -1,21 +1,17 @@
-import { independentFloors } from "../structure/construction";
 import { Graphics } from "pixi.js";
 import { FLOOR_Z } from "../game/constants";
 import {
   fixtureCatalog,
   fixtureExposed,
-  fixtureSupported,
-  hasFurnishedInterior,
   interiorFloorCoverage,
-  type FixtureFinish,
   type InteriorFloorSpan,
 } from "../structure/interior";
 import { neighborRoofBayOpen, roofFrameBeams } from "../structure/roof";
 import type { Building, Cell, InteriorFixture, RoofSection } from "../structure/types";
 import { cellPresent, cellWorldBox } from "../structure/types";
 import { depthKey } from "../world/iso";
-import { drawFaceWindow, drawIsoBox, drawShadow, drawSlopedQuad, drawTopCap, shade } from "./drawIso";
-import { brokenEdgeColor, floorFinishColor, plasterColor, topFaceColor, wallFaceColor } from "./lighting";
+import { drawFaceWindow, drawIsoBox, drawOrientedIsoBox, drawSlopedQuad, drawTopCap, shade } from "./drawIso";
+import { brokenEdgeColor, floorFinishColor, topFaceColor, wallFaceColor } from "./lighting";
 import { PAL } from "./palette";
 
 const WALL_THICK = 0.16;
@@ -23,18 +19,12 @@ const FLOOR_H = 0.18;
 /** Overlap into the south/east neighbor so iso seams do not open a gutter. */
 const FLOOR_SEAM = 0.03;
 
-function neighbor(b: Building, gx: number, gy: number, floor: number): Cell | undefined {
-  if (gx < 0 || gy < 0 || gx >= b.w || gy >= b.d) return undefined;
-  return b.grid[floor]?.[gx]?.[gy];
-}
-
 function jag(gx: number, gy: number, k: number): number {
   return (((gx * 13 + gy * 7 + k * 5) % 7) - 3) * 0.018;
 }
 
 /** Framing is drawn behind covering, so it only reads at openings or undersides. */
 export function roofShowsFrame(b: Building, roof: RoofSection): boolean {
-  if (!b.construction?.bays) return false;
   if (roof.state === "gone") return false;
   if (roof.state === "sagging" || roof.state === "falling") return true;
   return neighborRoofBayOpen(b, roof, -1) || neighborRoofBayOpen(b, roof, 1);
@@ -125,125 +115,9 @@ function interiorFloorPainterDepth(b: Building, span: InteriorFloorSpan): number
   return best;
 }
 
-type WallStubDir = "north" | "south" | "east" | "west";
-
-function wallStubDepth(b: Building, gx: number, gy: number, floor: number, dir: WallStubDir): number {
-  const cs = b.cellSize;
-  const x = b.x + gx * cs;
-  const y = b.y + gy * cs;
-  const z = floor * FLOOR_Z + FLOOR_Z * 0.45;
-  switch (dir) {
-    case "north":
-      return depthKey(x + cs * 0.5, y + WALL_THICK * 0.5, z);
-    case "south":
-      return depthKey(x + cs * 0.5, y + cs - WALL_THICK * 0.5, z);
-    case "west":
-      return depthKey(x + WALL_THICK * 0.5, y + cs * 0.5, z);
-    case "east":
-      return depthKey(x + cs - WALL_THICK * 0.5, y + cs * 0.5, z);
-    default: {
-      const _never: never = dir;
-      return _never;
-    }
-  }
-}
-
-function drawInteriorWallStub(
-  g: Graphics,
-  b: Building,
-  gx: number,
-  gy: number,
-  floor: number,
-  dir: WallStubDir,
-  alpha: number,
-): void {
-  const cell = neighbor(b, gx, gy, floor);
-  if (!cell || cell.state !== "breached") return;
-  const cs = b.cellSize;
-  const x = b.x + gx * cs;
-  const y = b.y + gy * cs;
-  const z0 = floor * FLOOR_Z;
-  const h = FLOOR_Z * 0.9;
-  const plaster = plasterColor();
-  const shadow = plasterColor(true);
-  switch (dir) {
-    case "north": {
-      const north = neighbor(b, gx, gy - 1, floor);
-      if (!north || !cellPresent(north)) return;
-      drawIsoBox(g, x + 0.04, y, cs - 0.08, WALL_THICK, z0, h, plaster, shadow, wallFaceColor(north.material, "south", true), alpha);
-      drawIsoBox(g, x + 0.04, y, cs - 0.08, 0.05, z0, 0.1, shadow, shadow, shadow, alpha * 0.5);
-      return;
-    }
-    case "west": {
-      const west = neighbor(b, gx - 1, gy, floor);
-      if (!west || !cellPresent(west)) return;
-      drawIsoBox(g, x, y + 0.04, WALL_THICK, cs - 0.08, z0, h, plaster, wallFaceColor(west.material, "east", true), shadow, alpha);
-      drawIsoBox(g, x, y + 0.04, 0.05, cs - 0.08, z0, 0.1, shadow, shadow, shadow, alpha * 0.45);
-      return;
-    }
-    case "south": {
-      const south = neighbor(b, gx, gy + 1, floor);
-      if (!south || !cellPresent(south)) return;
-      const mat = south.material;
-      drawIsoBox(
-        g,
-        x + 0.03,
-        y + cs - WALL_THICK,
-        cs - 0.06,
-        WALL_THICK,
-        z0,
-        h * 0.92,
-        topFaceColor(mat, true),
-        wallFaceColor(mat, "south", true),
-        brokenEdgeColor(mat),
-        alpha,
-      );
-      return;
-    }
-    case "east": {
-      const east = neighbor(b, gx + 1, gy, floor);
-      if (!east || !cellPresent(east)) return;
-      const mat = east.material;
-      drawIsoBox(
-        g,
-        x + cs - WALL_THICK,
-        y + 0.03,
-        WALL_THICK,
-        cs - 0.06,
-        z0,
-        h * 0.92,
-        topFaceColor(mat, true),
-        brokenEdgeColor(mat),
-        wallFaceColor(mat, "east", true),
-        alpha,
-      );
-      return;
-    }
-    default: {
-      const _never: never = dir;
-      return _never;
-    }
-  }
-}
-
-function wallStubDirs(b: Building, gx: number, gy: number, floor: number): WallStubDir[] {
-  const cell = neighbor(b, gx, gy, floor);
-  if (!cell || cell.state !== "breached") return [];
-  const dirs: WallStubDir[] = [];
-  const north = neighbor(b, gx, gy - 1, floor);
-  const west = neighbor(b, gx - 1, gy, floor);
-  const south = neighbor(b, gx, gy + 1, floor);
-  const east = neighbor(b, gx + 1, gy, floor);
-  if (north && cellPresent(north)) dirs.push("north");
-  if (west && cellPresent(west)) dirs.push("west");
-  if (south && cellPresent(south)) dirs.push("south");
-  if (east && cellPresent(east)) dirs.push("east");
-  return dirs;
-}
-
 export function drawThickBrokenWall(
   g: Graphics,
-  b: Building,
+  _b: Building,
   dir: "south" | "east",
   x0: number,
   y0: number,
@@ -252,7 +126,6 @@ export function drawThickBrokenWall(
   mat: Cell["material"],
   alpha: number,
 ): void {
-  if (!hasFurnishedInterior(b)) return;
   const h = FLOOR_Z * 0.88;
   if (dir === "south") {
     drawIsoBox(
@@ -292,82 +165,22 @@ function drawFixtureSolid(
   alpha: number,
 ): void {
   const def = fixtureCatalog(fixture.kind);
+  const swapped = Math.abs(Math.sin(fixture.heading)) > .5;
+  const w = swapped ? fixture.d : fixture.w, d = swapped ? fixture.w : fixture.d;
+  const cos = Math.cos(fixture.heading), sin = Math.sin(fixture.heading);
   for (const box of def.boxes) {
-    drawIsoBox(g,
-      fixture.x + (box.along + .5 - box.len / 2) * fixture.w,
-      fixture.y + (box.across + .5 - box.wid / 2) * fixture.d,
-      box.len * fixture.w, box.wid * fixture.d, z0 + box.z * fixture.h, box.h * fixture.h,
+    drawOrientedIsoBox(g,
+      fixture.x + fixture.w / 2 + cos * box.along * w - sin * box.across * d,
+      fixture.y + fixture.d / 2 + sin * box.along * w + cos * box.across * d,
+      fixture.heading, box.len * w, box.wid * d, z0 + box.z * fixture.h, box.h * fixture.h * (1 - fixture.pose.crush * .4),
       box.top, box.left, box.right, alpha);
   }
 }
 
-function finishColors(finish: FixtureFinish): { top: number; dark: number; side: number } {
-  switch (finish) {
-    case "wood":
-      return { top: PAL.woodTop, dark: PAL.woodDark, side: PAL.wood };
-    case "ceramic":
-      return { top: PAL.ceramic, dark: PAL.ceramicDark, side: PAL.ceramic };
-    case "metal":
-      return { top: PAL.metalTop, dark: PAL.metalDark, side: PAL.metal };
-    default: {
-      const _never: never = finish;
-      return _never;
-    }
-  }
-}
-
-function drawBrokenFixture(g: Graphics, fixture: InteriorFixture, z0: number, alpha: number): void {
-  const finish = fixtureCatalog(fixture.kind).finish;
-  const c = finishColors(finish);
-  const x = fixture.x;
-  const y = fixture.y;
-  const w = fixture.w;
-  const d = fixture.d;
-  drawShadow(g, x, y, w, d, 0.12 * alpha);
-  switch (finish) {
-    case "ceramic": {
-      drawIsoBox(g, x + w * 0.1, y + d * 0.12, w * 0.62, d * 0.48, z0, Math.max(0.07, fixture.h * 0.22), c.top, c.dark, c.side, alpha);
-      drawIsoBox(g, x + w * 0.48, y + d * 0.38, w * 0.32, d * 0.28, z0, 0.09, shade(c.top, 0.92), c.dark, c.side, alpha);
-      return;
-    }
-    case "metal": {
-      drawIsoBox(g, x + 0.02, y + 0.02, w * 0.78, d * 0.7, z0, Math.max(0.05, fixture.h * 0.16), c.top, c.dark, c.side, alpha);
-      drawIsoBox(g, x + w * 0.18, y - 0.01, w * 0.22, d + 0.04, z0 + 0.02, fixture.h * 0.42, c.side, c.dark, c.top, alpha);
-      drawIsoBox(g, x + w * 0.5, y + 0.01, w * 0.2, d * 0.85, z0 + 0.01, fixture.h * 0.34, c.top, c.dark, c.side, alpha);
-      return;
-    }
-    case "wood": {
-      drawIsoBox(
-        g,
-        x + 0.04,
-        y + 0.04,
-        w * 0.7,
-        d * 0.55,
-        z0,
-        Math.max(0.06, fixture.h * 0.18),
-        shade(c.top, 0.75),
-        c.dark,
-        c.side,
-        alpha,
-      );
-      drawIsoBox(g, x + w * 0.45, y + d * 0.2, w * 0.28, d * 0.22, z0, 0.08, c.dark, c.dark, PAL.plankDark, alpha);
-      return;
-    }
-    default: {
-      const _never: never = finish;
-      return _never;
-    }
-  }
-}
-
 function drawInteriorFixture(g: Graphics, b: Building, fixture: InteriorFixture, alpha: number, reveal = false): void {
-  if (!reveal && !fixtureExposed(b, fixture) && !(fixture.broken && fixtureSupported(b, fixture))) return;
-  if (fixture.broken && !fixtureSupported(b, fixture)) return;
+  if (fixture.broken || (!reveal && !fixtureExposed(b, fixture))) return;
   const z0 = fixture.floor * FLOOR_Z + FLOOR_H;
-  if (fixture.broken) {
-    drawBrokenFixture(g, fixture, z0, alpha);
-    return;
-  }
+
   drawFixtureSolid(g, fixture, z0, alpha);
 }
 
@@ -422,19 +235,18 @@ export function interiorCmds(
   options: { reveal?: boolean; maxFloor?: number;
     fadeBox?: (key: string, x: number, y: number, w: number, d: number, z: number, top: number) => number } = {},
 ): { depth: number; kind: InteriorDrawKind; run: (g: Graphics) => void }[] {
-  if (!hasFurnishedInterior(b)) return [];
   const cmds: { depth: number; kind: InteriorDrawKind; run: (g: Graphics) => void }[] = [];
   const interiorFade = fade;
   const localFade = (key: string, x: number, y: number, w: number, d: number, z: number, top: number) =>
     interiorFade * (options.fadeBox?.(key, x, y, w, d, z, top) ?? 1);
   const maxFloor = options.maxFloor ?? Infinity;
   const coverage = interiorFloorCoverage(b, options.reveal);
-  if (independentFloors(b)) {
-    for (const tile of b.floorTiles ?? []) {
+  {
+    for (const tile of b.floorTiles) {
       if (tile.state !== "falling" || tile.floor > maxFloor) continue;
       const cs = b.cellSize, x = b.x + tile.gx * cs, y = b.y + tile.gy * cs;
       const z = tile.floor * FLOOR_Z * (1 - tile.fallT);
-      const mat = b.construction!.floor;
+      const mat = b.construction.floor;
       cmds.push({ kind: "floor", depth: depthKey(x + cs / 2, y + cs / 2, z), run: g =>
         drawIsoBox(g, x, y, cs, cs, z, FLOOR_H, topFaceColor(mat), wallFaceColor(mat, "south"), wallFaceColor(mat, "east"), fade) });
     }
@@ -448,15 +260,15 @@ export function interiorCmds(
           drawIsoBox(g, box.x, box.y, box.w, box.d, cell.floor * FLOOR_Z, FLOOR_Z, PAL.metalTop, PAL.metalDark, PAL.metal, alpha) });
         continue;
       }
-      if (cell.gy !== 0 && cell.gx !== 0) continue;
+      if (!cell.exterior.north && !cell.exterior.west) continue;
       const cs = b.cellSize, x = b.x + cell.gx * cs, y = b.y + cell.gy * cs;
       const alpha = localFade(`stub:${cell.floor}:${cell.gx}:${cell.gy}`, x, y,
-        cell.gy === 0 ? cs : WALL_THICK, cell.gy === 0 ? WALL_THICK : cs,
+        cell.exterior.north ? cs : WALL_THICK, cell.exterior.north ? WALL_THICK : cs,
         cell.floor * FLOOR_Z, (cell.floor + 1) * FLOOR_Z);
-      cmds.push({ kind: "stub", depth: depthKey(x + (cell.gy === 0 ? cs / 2 : WALL_THICK / 2),
-        y + (cell.gy === 0 ? WALL_THICK / 2 : cs / 2), cell.floor * FLOOR_Z), run: g => {
-        const north = cell.gy === 0;
-        const mat = b.construction!.structure;
+      cmds.push({ kind: "stub", depth: depthKey(x + (cell.exterior.north ? cs / 2 : WALL_THICK / 2),
+        y + (cell.exterior.north ? WALL_THICK / 2 : cs / 2), cell.floor * FLOOR_Z), run: g => {
+        const north = cell.exterior.north;
+        const mat = b.construction.structure;
         drawIsoBox(g, x, y, north ? cs : WALL_THICK, north ? WALL_THICK : cs, cell.floor * FLOOR_Z, FLOOR_Z,
           topFaceColor(mat), wallFaceColor(mat, "south"), wallFaceColor(mat, "east"), alpha);
       }});
@@ -478,25 +290,11 @@ export function interiorCmds(
       depth: interiorFloorPainterDepth(b, span),
       run: (g) => drawInteriorFloorSpan(g, b, span, alpha, coverage.hasFloor),
     });
-    for (let gy = span.gy0; gy <= span.gy1; gy++) {
-      for (let gx = span.gx0; gx <= span.gx1; gx++) {
-        for (const dir of independentFloors(b) ? [] : wallStubDirs(b, gx, gy, span.floor)) {
-          cmds.push({
-            kind: "stub",
-            depth: wallStubDepth(b, gx, gy, span.floor, dir),
-            run: (g) => drawInteriorWallStub(g, b, gx, gy, span.floor, dir, interiorFade),
-          });
-        }
-      }
-    }
   }
   for (const fixture of b.fixtures) {
-    if (fixture.floor > maxFloor) continue;
-    const exposed = independentFloors(b)
-      ? fixture.support.some(s => coverage.hasFloor(s.gx, s.gy, fixture.floor))
-      : fixtureExposed(b, fixture);
-    if (!options.reveal && !exposed && !(fixture.broken && fixtureSupported(b, fixture))) continue;
-    if (fixture.broken && !fixtureSupported(b, fixture)) continue;
+    if (fixture.broken || fixture.floor > maxFloor) continue;
+    const exposed = fixture.support.some(s => coverage.hasFloor(s.gx, s.gy, fixture.floor));
+    if (!options.reveal && !exposed) continue;
     const alpha = localFade(`fixture:${fixture.id}`, fixture.x, fixture.y, fixture.w, fixture.d,
       fixture.floor * FLOOR_Z, fixture.floor * FLOOR_Z + fixture.h);
     cmds.push({

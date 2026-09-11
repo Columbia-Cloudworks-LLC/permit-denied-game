@@ -1,3 +1,7 @@
+import { applyFixtureDamage } from '../structure/interior';
+import { YardPanel } from '../render/yardPanel';
+import { applyCellDamage } from '../structure/building';
+import { destroyProp } from '../sim/assets';
 import { defaultDebugView } from "../debug/view";
 import { cameraFocus } from "./camera";
 import { DemolitionJob } from "./job";
@@ -11,7 +15,7 @@ import { ParticlePool } from "../fx/particles";
 import { Hud } from "../render/hud";
 import { WorldRenderer } from "../render/WorldRenderer";
 import { lastDebrisStats, obstructionAt } from "../sim/debris";
-import { stepWorld, type Upgrades } from "../sim/worldSim";
+import { spawnFixtureFrags, stepWorld, type Upgrades } from "../sim/worldSim";
 import type { Bird, WorldEvent } from "../structure/types";
 import { createDozer, dozerSpeed, stepDozer } from "../vehicle/dozer";
 import { createRoadVehicle } from "../vehicle/roadVehicle";
@@ -53,12 +57,14 @@ export class Game {
   private readonly renderer = new WorldRenderer();
   private readonly perf = new PerfCollector();
   private hud!: Hud;
+  private yardPanel?: YardPanel;
+  private followRoadCamera = true;
   private perfEl: HTMLElement | null = null;
   private perfExportAt = 0;
   private rules: SessionRules = parseSessionFromSearch(
     typeof window === "undefined" ? "" : window.location.search,
   );
-  private town = createTown({ district: this.rules.district, seed: this.rules.seed, showcase: !!this.rules.demo });
+  private town = createTown({ district: this.rules.district, seed: this.rules.seed, showcase: !!this.rules.demo, yard: this.rules.kind === "sandbox" && this.rules.district === "classic" && !this.rules.demo && !this.rules.ranchFocus });
   private dozer = createDozer(this.town.spawnX, this.town.spawnY, this.town.spawnHeading);
   private birds: Bird[] = [];
   private cash = 0;
@@ -113,6 +119,23 @@ export class Game {
     this.hud.onDebugFloor = floor => { this.renderer.debug.maxFloor = floor; this.syncDebug(); };
     this.hud.onDebugReset = () => { Object.assign(this.renderer.debug, defaultDebugView()); this.syncDebug(); };
     this.hud.onDebugStep = () => { if (this.renderer.debug.freeze && this.mode === "play") this.step(SIM_DT); };
+    this.yardPanel = new YardPanel(hudRoot, {
+      town: () => this.town, particles: this.particles, dozer: () => this.dozer,
+      jump: (x, y) => { this.followRoadCamera = false; this.dozer = createDozer(x, y, -Math.PI / 2); this.renderer.showNhood = false; },
+      followRoad: () => { this.followRoadCamera = true; },
+      releaseInput: () => { this.input.down.clear(); this.input.flush(); },
+      preview: (bays, valid) => { this.renderer.yardPreview = bays; this.renderer.yardPreviewValid = valid; },
+      changed: () => this.renderer.invalidate(),
+      destroy: bay => {
+        if (bay.prop && !bay.prop.broken) destroyProp(this.town, bay.prop, this.particles, [], bay.prop.x - 1, bay.prop.y);
+        if (bay.building && bay.asset.fixture) {
+          for (const f of bay.building.fixtures) {
+            const hit = applyFixtureDamage(bay.building, f, 10000, 1, 0, this.particles, []);
+            spawnFixtureFrags(this.town, hit.frags);
+          }
+        } else if (bay.building) for (const cell of bay.building.cells) applyCellDamage(bay.building, cell, 10000, 1, 0, this.particles, []);
+      },
+    });
     this.detachInput = this.input.attach();
     this.perf.enabled = new URLSearchParams(window.location.search).get("perf") === "1";
     if (this.perf.enabled) this.ensurePerfOverlay();
@@ -181,8 +204,9 @@ export class Game {
 
   reset(kind: "same" | "new" = "same"): void {
     this.input.down.clear();
+    this.followRoadCamera = true;
     if (kind === "new") this.rules.seed = nextSeed(this.rules.seed);
-    this.town = createTown({ district: this.rules.district, seed: this.rules.seed, showcase: !!this.rules.demo });
+    this.town = createTown({ district: this.rules.district, seed: this.rules.seed, showcase: !!this.rules.demo, yard: this.rules.kind === "sandbox" && this.rules.district === "classic" && !this.rules.demo && !this.rules.ranchFocus });
     const ranch = this.rules.demo || this.rules.ranchFocus
       ? this.town.buildings.find((b) => b.archetypeId === (this.rules.demo ?? "ranch"))
       : undefined;
@@ -194,6 +218,8 @@ export class Game {
         )
       : createDozer(this.town.spawnX, this.town.spawnY, this.town.spawnHeading);
     this.particles.reseed(this.rules.seed ^ 0x51f00d);
+    this.particles.ownerAt = this.town.debrisOwnerAt;
+    this.yardPanel?.reset();
     this.shake.reset();
     this.renderer.invalidate();
     this.birds = [];
@@ -310,6 +336,12 @@ export class Game {
       renderTotal: this.renderer.stats.total,
       bodyMass: debris.bodyMass,
       pileMass: debris.pileMass,
+      heapMB: (performance as Performance & { memory?: { usedJSHeapSize: number } }).memory?.usedJSHeapSize !== undefined
+        ? (performance as Performance & { memory: { usedJSHeapSize: number } }).memory.usedJSHeapSize / 1048576 : null,
+      runtimeObjects: this.perf.enabled ? this.town.buildings.reduce((n, b) => n + b.cells.length + b.fixtures.length + b.floorTiles.length + b.roofs.length, this.town.rubble.length + this.town.props.length) : 0,
+      retiredBuildings: this.town.buildings.filter(b => b.retired).length,
+      drawCached: this.renderer.stats.cached,
+      drawRebuilt: this.renderer.stats.rebuilt,
     });
     this.paintPerf();
   }
@@ -434,6 +466,7 @@ export class Game {
 
   spawnRoadVehicle(): void {
     if (this.rules.kind !== "sandbox") return;
+    this.followRoadCamera = true;
     const route = pickVerificationRoute(this.town.network) ?? [];
     this.town.roadCar = createRoadVehicle(
       this.town.roadSpawnX,
@@ -474,7 +507,7 @@ export class Game {
   }
 
   private draw(dt: number): void {
-    if (this.town.roadCar) {
+    if (this.town.roadCar && this.followRoadCamera) {
       const car = this.town.roadCar;
       const focus = worldToScreen(car.x, car.y, 0.3);
       const zoom = 0.62;
@@ -492,6 +525,7 @@ export class Game {
     const shake = this.mode === "play" ? this.shake.step(dt) : { x: 0, y: 0 };
     this.renderer.layout(this.app.renderer.width, this.app.renderer.height, shake.x, shake.y);
     this.renderer.draw(this.town, this.dozer, this.particles, this.birds, dt);
+    this.yardPanel?.tick(dt);
     this.hud.render({
       job: this.job ? { ...this.job.status(), paid: this.job.paid, payout: this.job.payout } : undefined,
       cash: this.cash,
