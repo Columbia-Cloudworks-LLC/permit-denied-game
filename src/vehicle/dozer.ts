@@ -90,8 +90,8 @@ export function stepDozer(d: Dozer, input: DriveInput, dt: number): void {
   d.heading += input.steer * DOZER.steer * steerScale * dt;
 
   let target = 0;
-  if (input.throttle > 0) target = DOZER.maxSpeed * input.engineMul;
-  if (input.throttle < 0) target = -DOZER.maxReverse;
+  if (input.throttle > 0) target = DOZER.maxSpeed * input.engineMul * Math.min(1, input.throttle);
+  if (input.throttle < 0) target = DOZER.maxReverse * Math.max(-1, input.throttle);
   const acc = input.throttle >= 0 ? DOZER.accel * input.engineMul : DOZER.reverseAccel;
   let nextAlong = approach(along, target, acc * dt);
   if (input.throttle === 0) nextAlong = approach(along, 0, DOZER.coast * dt);
