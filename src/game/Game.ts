@@ -5,6 +5,7 @@ import { applyCellDamage } from '../structure/building';
 import { destroyProp } from '../sim/assets';
 import { defaultDebugView } from "../debug/view";
 import { cameraFocus } from "./camera";
+import { TouchControls } from '../render/touchControls';
 import { DemolitionJob } from "./job";
 import { advanceSimulation } from "./fixedStep";
 import { canPickUpgrade } from "./session";
@@ -52,6 +53,12 @@ export type GameMode = PlayMode;
 export class Game {
   private app!: Application;
   private readonly input = new Input();
+  private touch?: TouchControls;
+
+  private releaseControls(): void {
+    this.input.reset();
+    this.touch?.reset();
+  }
   private readonly audio = new AudioBus();
   private readonly particles = new ParticlePool();
   private readonly shake = new CameraShake();
@@ -136,8 +143,7 @@ export class Game {
     };
     this.hud.onDemo = (id) => this.setDemo(id);
     this.hud.onJob = () => this.startJob();
-    this.hud.onDrive = (key, down) => { if (down) this.input.down.add(key); else this.input.down.delete(key); };
-    this.hud.onDebugOpen = () => { this.input.down.clear(); this.input.flush(); };
+    this.hud.onDebugOpen = () => this.releaseControls();
     this.hud.onDebugToggle = (key, value) => { this.renderer.debug[key] = value; this.syncDebug(); };
     this.hud.onDebugFloor = floor => { this.renderer.debug.maxFloor = floor; this.syncDebug(); };
     this.hud.onDebugReset = () => { Object.assign(this.renderer.debug, defaultDebugView()); this.syncDebug(); };
@@ -147,7 +153,7 @@ export class Game {
       jump: (x, y) => { this.yardFocus = undefined; this.followRoadCamera = false; this.dozer = createDozer(x, y, -Math.PI / 2); this.renderer.showNhood = false; },
       frame: bay => { this.yardFocus = bay; this.followRoadCamera = false; this.renderer.showNhood = false; },
       followRoad: () => { this.followRoadCamera = true; },
-      releaseInput: () => { this.input.down.clear(); this.input.flush(); },
+      releaseInput: () => this.releaseControls(),
       preview: (bays, valid) => { this.renderer.yardPreview = bays; this.renderer.yardPreviewValid = valid; },
       changed: () => this.renderer.invalidate(),
       destroy: bay => {
@@ -161,6 +167,13 @@ export class Game {
       },
     });
     this.detachInput = this.input.attach();
+    this.touch = new TouchControls(hudRoot, {
+      change: state => this.input.setTouch(state),
+      release: () => this.input.reset(),
+      interact: () => { void this.audio.unlock(); },
+      restart: () => this.reset('same'),
+      resize: () => this.app.resize(),
+    });
     this.perf.enabled = new URLSearchParams(window.location.search).get("perf") === "1";
     if (this.perf.enabled) this.ensurePerfOverlay();
     this.renderer.showNhood = new URLSearchParams(window.location.search).get("nhood") === "1";
@@ -231,7 +244,7 @@ export class Game {
   reset(kind: "same" | "new" = "same"): void {
     this.towerOverview = true;
     if (this.rules.towerTest) { this.renderer.debug.maxFloor = 99; this.renderer.debug.reveal = false; this.syncDebug(); }
-    this.input.down.clear();
+    this.releaseControls();
     this.followRoadCamera = true;
     if (kind === "new") this.rules.seed = nextSeed(this.rules.seed);
     this.town = createTown({ towerTest: this.rules.towerTest, district: this.rules.district, seed: this.rules.seed, showcase: !!this.rules.demo, yard: this.rules.kind === "sandbox" && this.rules.district === "classic" && !this.rules.demo && !this.rules.ranchFocus });
@@ -304,6 +317,8 @@ export class Game {
   }
 
   private frame(realDt: number): void {
+    this.touch?.setBlocked(this.mode !== 'play' || this.renderer.debug.freeze);
+    if (this.touch?.menuOpen) this.input.reset();
     const now = performance.now();
     const frameMs = this.perf.markFrameStart(now);
     if (this.input.consume("m") || this.input.consume("M")) {
@@ -322,13 +337,15 @@ export class Game {
     if (this.input.consume("2")) this.pickUpgrade("engine");
     if (this.input.consume("3")) this.pickUpgrade("push");
     if (this.input.consume("Escape")) {
-      if (this.mode === "play") this.mode = "pause";
+      if (this.touch?.enabled && this.mode === 'play') this.touch.toggleMenu();
+      else if (this.mode === "play") this.mode = "pause";
       else if (this.mode === "pause") this.mode = "play";
     }
     if (this.input.down.size > 0) void this.audio.unlock();
 
     let simCpuMs = 0;
-    if (this.mode === "play" && !this.renderer.debug.freeze) {
+    this.touch?.setBlocked(this.mode !== 'play' || this.renderer.debug.freeze);
+    if (this.mode === "play" && !this.renderer.debug.freeze && !this.touch?.menuOpen) {
       this.acc += realDt;
       const simStart = performance.now();
       const advanced = advanceSimulation(this.acc, SIM_DT, SIM_MAX_STEPS,
@@ -343,6 +360,7 @@ export class Game {
     }
 
     const prepStart = performance.now();
+    this.touch?.setBlocked(this.mode !== 'play' || this.renderer.debug.freeze);
     this.draw(realDt);
     const renderPrepMs = performance.now() - prepStart;
     const debris = lastDebrisStats();
@@ -617,6 +635,7 @@ export class Game {
   }
 
   destroy(): void {
+    this.touch?.destroy();
     this.detachInput?.();
     this.app.destroy();
   }

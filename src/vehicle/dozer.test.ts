@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SIM_DT } from "../game/constants";
+import { SIM_DT, DOZER } from "../game/constants";
 import { createDozer, dozerForward, stepDozer } from "./dozer";
 
 function drive(throttle: number, seconds: number) {
@@ -15,6 +15,12 @@ function drive(throttle: number, seconds: number) {
 }
 
 describe("dozer reverse", () => {
+  it('scales forward and reverse target speed without changing full throttle', () => {
+    expect(drive(1, 5).vx).toBeCloseTo(DOZER.maxSpeed);
+    expect(drive(-1, 5).vx).toBeCloseTo(-DOZER.maxReverse);
+    expect(drive(.5, 5).vx).toBeCloseTo(DOZER.maxSpeed * .5);
+    expect(drive(-.5, 5).vx).toBeCloseTo(-DOZER.maxReverse * .5);
+  });
   it("S/reverse moves opposite the heading", () => {
     const fwd = drive(1, 0.6);
     const rev = drive(-1, 0.6);

@@ -193,9 +193,6 @@ body {
   font-size: 12px;
 }
 #debug-toggle { float: right; }
-#drive-pad { position: absolute; bottom: 18px; left: 25%; display: flex; gap: 4px; pointer-events: auto; }
-#drive-pad[hidden] { display: none; }
-#drive-pad button[aria-pressed="true"] { background: #786323; border-color: #ffe49c; }
 #hud-root .job { position: absolute; top: 98px; left: 14px; max-width: 470px;
   padding: 10px 14px; border-left: 3px solid #d5b568; background: #181711df;
   color: #efe4c5; white-space: pre-line; font: 12px/1.65 "Courier New", monospace; }
@@ -243,3 +240,56 @@ body {
 #hud-root .tower-test p { line-height: 1.4; }
 #hud-root .tower-test button { margin: 3px; font-size: 11px; }
 #hud-root .tower-test span { display: block; margin-top: 8px; color: #edd18a; }
+
+/* Touch layouts share the same inputs but reserve play space only in portrait. */
+#touch-controls[hidden], #touch-menu[hidden], #hud-root .tower-test[hidden] { display: none; }
+#touch-controls { position: absolute; inset: 0; }
+#touch-menu { display: none; }
+.touch-ui { --deck-height: 0px; --stick-size: 144px; --blade-size: 88px; }
+.touch-ui.touch-portrait { --deck-height: calc(180px + env(safe-area-inset-bottom)); --stick-size: 128px; --blade-size: 80px; }
+.touch-ui #game-root { bottom: var(--deck-height); }
+.touch-ui #hud-root { height: 100dvh; box-sizing: border-box; }
+.touch-deck { position: absolute; inset: auto 0 0; height: calc(180px + env(safe-area-inset-bottom)); display: flex; align-items: center; justify-content: space-between; padding: 0 max(20px, env(safe-area-inset-right)) env(safe-area-inset-bottom) max(20px, env(safe-area-inset-left)); box-sizing: border-box; }
+.touch-portrait .touch-deck { background: linear-gradient(#27271e, #191b14); border-top: 2px solid #8a7a48; }
+.touch-drive, .touch-action { display: flex; align-items: center; flex-direction: column; gap: 7px; font-size: 10px; letter-spacing: .04em; }
+.touch-stick { width: var(--stick-size); height: var(--stick-size); border-radius: 50%; border: 2px solid #b8a36a; box-sizing: border-box; background: #211f18dd; position: relative; display: grid; place-items: center; touch-action: none; user-select: none; pointer-events: auto; }
+.stick-guide { text-align: center; font-size: 20px; line-height: 1.6; color: #c0aa70; opacity: .65; pointer-events: none; }
+.stick-knob { width: 44px; height: 44px; background: #d1b66d; border: 2px solid #f4e4ab; box-sizing: border-box; border-radius: 50%; position: absolute; box-shadow: 0 3px 7px #0008; pointer-events: none; }
+#hud-root .touch-blade { width: var(--blade-size); height: var(--blade-size); border-radius: 50%; border: 2px solid #e7c471; background: #6c4b20ed; font-weight: bold; line-height: 1.4; touch-action: none; user-select: none; }
+#hud-root .touch-blade.active { background: #bc7d24; box-shadow: 0 0 18px #e2ad5370; }
+.blocked .touch-deck { opacity: .45; }
+.touch-top-actions { position: absolute; top: max(8px, env(safe-area-inset-top)); right: max(10px, env(safe-area-inset-right)); display: flex; gap: 6px; }
+.touch-ui #hud-root .touch-top-actions .debug-menu { position: static; }
+.touch-ui #hud-root .touch-top-actions #debug-toggle { float: none; }
+.touch-ui #hud-root .touch-top-actions #debug-panel { position: fixed; top: calc(62px + env(safe-area-inset-top)); right: max(8px, env(safe-area-inset-right)); width: min(350px, calc(100vw - 16px)); max-height: calc(100dvh - 74px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); box-sizing: border-box; z-index: 25; }
+.touch-ui #hud-root .touch-top-actions .debug-menu:has(#debug-panel:not([hidden])) { z-index: 25; }
+.touch-ui #debug-panel label { min-height: 48px; }
+.touch-ui #hud-root button, .touch-ui #hud-root summary, .touch-ui #hud-root select, .touch-ui #hud-root input:not([type=checkbox]) { min-height: 48px; box-sizing: border-box; }
+.touch-ui #hud-root summary { cursor: pointer; padding: 12px 8px; }
+.touch-ui #hud-root .top { padding: calc(60px + env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) 10px max(10px, env(safe-area-inset-left)); gap: 8px; font-size: 11px; }
+.touch-ui #hud-root .top > div:first-child { position: absolute; top: calc(23px + env(safe-area-inset-top)); left: max(10px, env(safe-area-inset-left)); font-size: 11px; }
+.touch-ui #hud-root .tag { display: none; }
+.touch-ui #hud-root .stat { text-align: left; }
+.touch-ui #hud-root .heat { top: calc(86px + env(safe-area-inset-top)); width: 120px; }
+.touch-ui #hud-root .hint { display: none; }
+.touch-ui #hud-root .blade { bottom: calc(184px + env(safe-area-inset-bottom)); right: max(10px, env(safe-area-inset-right)); margin: 0; padding: 5px 8px; font-size: 10px; letter-spacing: .02em; line-height: 1.4; }
+.touch-ui #hud-root .job { top: calc(101px + env(safe-area-inset-top)); left: 10px; right: 10px; max-width: 470px; font-size: 10px; padding: 6px 8px; line-height: 1.4; }
+.touch-ui #touch-menu:not([hidden]) { display: flex; flex-direction: column; gap: 12px; position: absolute; inset: calc(62px + env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left)); z-index: 20; overflow-y: auto; overscroll-behavior: contain; pointer-events: auto; padding: 12px; background: #1e2119fa; border: 1px solid #baa064; }
+.touch-ui #touch-menu > * { flex-shrink: 0; }
+.touch-ui #hud-root #touch-menu .session, .touch-ui #hud-root #touch-menu .debug-menu, .touch-ui #hud-root #touch-menu .yard-panel, .touch-ui #hud-root #touch-menu .tower-test { position: static; width: auto; max-width: none; margin: 0; }
+.touch-ui #hud-root #touch-menu .session { display: flex; }
+.touch-ui #hud-root #touch-menu .session button { flex: 1 1 90px; }
+.touch-ui #touch-menu #debug-panel { width: auto; top: 0; max-height: none; }
+.touch-ui #touch-menu .yard-body { max-height: none; }
+.touch-ui #touch-menu .debug-menu label { min-height: 48px; }
+.touch-ui #hud-root .overlay { z-index: 30; padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); box-sizing: border-box; }
+.touch-ui #hud-root .panel { box-sizing: border-box; min-width: 0; width: 100%; max-height: 100%; overflow-y: auto; padding: 18px; }
+.touch-ui #hud-root .choices { flex-direction: column; }
+.touch-ui #hud-root .choices button { flex: none; width: 100%; }
+@media (max-height: 499px) {
+  .touch-ui { --stick-size: 128px; --blade-size: 80px; }
+  .touch-ui:not(.touch-portrait) #hud-root .top { padding-top: max(12px, env(safe-area-inset-top)); padding-left: 170px; padding-right: 160px; }
+  .touch-ui:not(.touch-portrait) #hud-root .heat { top: 42px; }
+  .touch-ui:not(.touch-portrait) #hud-root .blade { bottom: 12px; left: 50%; right: auto; transform: translateX(-50%); }
+  .touch-ui:not(.touch-portrait) #hud-root .job { top: 60px; left: 170px; right: 170px; }
+}

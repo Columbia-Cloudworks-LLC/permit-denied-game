@@ -40,6 +40,10 @@ IONOS is only the registrar. Nameservers are Vercel (`ns1.vercel-dns.com`, `ns2.
 
 ## Controls
 
+Touch controls appear automatically on coarse-pointer devices; use `?controls=1` to preview them on desktop. The left stick drives forward/reverse and steers relative to the dozer, with a 15% dead zone and proportional speed. Hold the right POWER BLADE button to power the blade while driving. Releasing the stick coasts; releasing the blade lets an already-started powered push finish.
+
+Portrait screens reserve a bottom control deck and render the game above it. Landscape screens put the controls at the lower corners. MENU (or Escape) pauses play and offers Resume, Restart, session, lot, upgrade, and audio controls. DEBUG opens the inspector directly from the HUD; its freeze and single-step tools remain available. Rotation, backgrounding, menus, and gameplay overlays release held controls, so touch again to resume driving. Keyboard controls remain available alongside touch.
+
 | Key | Action |
 | --- | --- |
 | W / ↑ | Forward |

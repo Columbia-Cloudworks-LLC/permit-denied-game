@@ -2,6 +2,17 @@ export class Input {
   readonly down = new Set<string>();
   readonly pressed = new Set<string>();
   muteChord = false;
+  private touch = { throttle: 0, steer: 0, blade: false };
+
+  setTouch(state: { throttle: number; steer: number; blade: boolean }): void {
+    this.touch = { ...state };
+  }
+
+  reset(): void {
+    this.down.clear();
+    this.pressed.clear();
+    this.touch = { throttle: 0, steer: 0, blade: false };
+  }
 
   attach(target: Window = window): () => void {
     const onDown = (e: KeyboardEvent) => {
@@ -19,8 +30,7 @@ export class Input {
       this.down.delete(k);
     };
     const onBlur = () => {
-      this.down.clear();
-      this.pressed.clear();
+      this.reset();
     };
     target.addEventListener("keydown", onDown);
     target.addEventListener("keyup", onUp);
@@ -51,10 +61,18 @@ export class Input {
     if (this.down.has("s") || this.down.has("ArrowDown")) throttle -= 1;
     if (this.down.has("a") || this.down.has("ArrowLeft")) steer -= 1;
     if (this.down.has("d") || this.down.has("ArrowRight")) steer += 1;
-    return { throttle, steer };
+    const hasThrottle = ["w", "s", "ArrowUp", "ArrowDown"].some(k => this.down.has(k));
+    const hasSteer = ["a", "d", "ArrowLeft", "ArrowRight"].some(k => this.down.has(k));
+    return { throttle: hasThrottle ? throttle : this.touch.throttle, steer: hasSteer ? steer : this.touch.steer };
   }
 
   blade(): boolean {
-    return this.down.has(" ");
+    return this.down.has(" ") || this.touch.blade;
   }
+}
+
+/** Independent axis dead zones let the driver steer in place without creeping. */
+export function stickAxes(x: number, y: number): { throttle: number; steer: number } {
+  const axis = (value: number) => Math.abs(value) <= 0.15 ? 0 : Math.sign(value) * Math.min(1, (Math.abs(value) - 0.15) / 0.85);
+  return { throttle: axis(-y), steer: axis(x) };
 }
