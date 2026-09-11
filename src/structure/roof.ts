@@ -502,8 +502,29 @@ function roofFallEase(t: number): number {
   return u * u * (1.12 - 0.12 * u);
 }
 
+/** After the hinge swing, flatten and lower onto a debris landing pose. */
+const ROOF_SWING_PEAK = 0.58;
+const ROOF_SWING_TILT = 0.95;
+const ROOF_LANDING_TILT = 0.06;
+const ROOF_LANDING_Z = 0.16;
+const ROOF_FALL_DURATION = 0.64;
+
+function roofSettle(t: number): number {
+  if (t <= ROOF_SWING_PEAK) return 0;
+  const u = Math.max(0, Math.min(1, (t - ROOF_SWING_PEAK) / (0.92 - ROOF_SWING_PEAK)));
+  return u * u * (3 - 2 * u);
+}
+
 export function roofTiltAngle(roof: RoofSection): number {
-  return roof.sag * 0.3 + roofFallEase(roof.fallT) * 0.98;
+  const sagTilt = roof.sag * 0.3;
+  const t = Math.max(0, Math.min(1, roof.fallT));
+  if (t <= 0) return sagTilt;
+  if (t <= ROOF_SWING_PEAK) {
+    const u = t / ROOF_SWING_PEAK;
+    return sagTilt * (1 - u) + roofFallEase(u) * ROOF_SWING_TILT;
+  }
+  const settle = roofSettle(t);
+  return ROOF_SWING_TILT * (1 - settle) + ROOF_LANDING_TILT * settle;
 }
 
 function rotateAroundHinge(
@@ -534,9 +555,11 @@ function rotateAroundHinge(
 
 export function displacedRoofVerts(roof: RoofSection): { x: number; y: number; z: number }[] {
   const angle = roofTiltAngle(roof);
-  const slide = roofFallEase(roof.fallT);
+  const t = Math.max(0, Math.min(1, roof.fallT));
+  const slide = roofFallEase(t);
+  const settle = roofSettle(t);
   const drop = slide * 1.05;
-  return roof.verts.map((v) => {
+  const swung = roof.verts.map((v) => {
     const r = angle === 0 ? { x: v.x, y: v.y, z: v.z } : rotateAroundHinge(v, roof, angle);
     return {
       x: r.x + roof.fallDx * slide * 0.55,
@@ -544,6 +567,12 @@ export function displacedRoofVerts(roof: RoofSection): { x: number; y: number; z
       z: r.z - drop,
     };
   });
+  if (settle <= 0) return swung;
+  return swung.map((v) => ({
+    x: v.x,
+    y: v.y,
+    z: v.z * (1 - settle) + ROOF_LANDING_Z * settle,
+  }));
 }
 
 type RoofEdge = "minX" | "maxX" | "minY" | "maxY";
@@ -556,27 +585,31 @@ function sameBaySide(a: RoofSection, b: RoofSection): boolean {
   return aMax >= bMin && bMax >= aMin;
 }
 
-function neighborBayGone(building: Building, roof: RoofSection, dgx: number): boolean {
-  const gxs = roof.support.map((s) => s.gx);
-  const mine = gxs[0];
-  if (mine == null) return false;
+/** Adjacent ranch/gable bay in the same row, if one exists. */
+function neighborRoofBay(building: Building, roof: RoofSection, dgx: number): RoofSection | undefined {
+  const mine = roof.support[0]?.gx;
+  if (mine == null) return undefined;
   const want = mine + dgx;
-  const partner = building.roofs.find(
+  return building.roofs.find(
     (other) =>
       other.id !== roof.id &&
       other.style === roof.style &&
       other.support.some((s) => s.gx === want) &&
       sameBaySide(roof, other),
   );
-  if (!partner) return false;
-  return partner.state === "gone" || partner.state === "falling";
+}
+
+/** True when the neighboring bay has already dropped or is falling away. */
+export function neighborRoofBayOpen(building: Building, roof: RoofSection, dgx: number): boolean {
+  const partner = neighborRoofBay(building, roof, dgx);
+  return !!partner && (partner.state === "gone" || partner.state === "falling");
 }
 
 function exposedRoofEdges(building: Building, roof: RoofSection): RoofEdge[] {
   const edges: RoofEdge[] = [];
   if (roof.state === "gone") return edges;
-  if (neighborBayGone(building, roof, -1)) edges.push("minX");
-  if (neighborBayGone(building, roof, 1)) edges.push("maxX");
+  if (neighborRoofBayOpen(building, roof, -1)) edges.push("minX");
+  if (neighborRoofBayOpen(building, roof, 1)) edges.push("maxX");
   if (roof.state === "sagging" || roof.state === "falling") {
     if (roof.fallDy > 0.2) edges.push("maxY");
     else if (roof.fallDy < -0.2) edges.push("minY");
@@ -977,8 +1010,8 @@ export function roofHandoffPose(roof: RoofSection): {
     y: c.y,
     z: c.z,
     heading,
-    panelW: Math.max(0.55, Math.min(spanX, spanY) + 0.12),
-    panelD: Math.max(0.34, alongSlope * 0.42),
+    panelW: Math.max(0.7, Math.min(spanX, spanY)),
+    panelD: Math.max(0.42, alongSlope * 0.82),
   };
 }
 
@@ -1034,7 +1067,7 @@ export function stepRoofs(
     present += frac.have;
     total += frac.total;
     if (roof.state === "falling") {
-      roof.fallT += dt / 0.52;
+      roof.fallT += dt / ROOF_FALL_DURATION;
       if (roof.fallT >= 1) {
         roof.fallT = 1;
         const pose = roofHandoffPose(roof);
@@ -1050,7 +1083,7 @@ export function stepRoofs(
           cellSize: building.cellSize,
           source: "roof",
           heading: pose.heading,
-          elev: Math.max(0.06, Math.min(0.86, pose.z - 0.06)),
+          elev: Math.max(0.05, pose.z - 0.06),
           panelW: pose.panelW,
           panelD: pose.panelD,
         });

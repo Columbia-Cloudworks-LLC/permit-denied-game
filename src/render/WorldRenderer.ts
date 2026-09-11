@@ -388,10 +388,11 @@ function drawBuildingRoofs(g: Graphics, b: Building, roofs: RoofSection[], alpha
 
 function drawRanchRoofBay(g: Graphics, b: Building, roof: RoofSection, alpha: number): void {
   const drawn = new Set<string>();
-  drawRoofSection(g, b, roof, alpha, drawn);
-  if (ranchRoofShowsRafters(b, roof)) {
-    drawRanchRafters(g, b, roof, alpha * 0.92);
-  }
+  drawRoofSection(g, b, roof, alpha, drawn, () => {
+    if (ranchRoofShowsRafters(b, roof)) {
+      drawRanchRafters(g, b, roof, alpha * 0.92);
+    }
+  });
 }
 
 function drawRoofSection(
@@ -400,6 +401,7 @@ function drawRoofSection(
   roof: RoofSection,
   alpha: number,
   drawnRidges: Set<string>,
+  beforeCover?: () => void,
 ): void {
   const raw = roofVerts(roof);
   const verts = b.archetypeId === "ranch" ? applyBrokenRoofEdge(b, roof, raw) : raw;
@@ -420,6 +422,7 @@ function drawRoofSection(
       );
     }
   }
+  beforeCover?.();
   drawSlopedQuad(g, verts, cols.top, cols.edge, faded);
   if (roof.ridge && roof.state !== "falling" && sectionOwnsRidge(b, roof)) {
     const key = ridgeKey(roof.ridge);
@@ -649,32 +652,37 @@ function drawDebris(g: Graphics, r: Rubble): void {
   drawOrientedIsoBox(g, r.x, r.y, r.heading, r.w * 1.08, r.d * 1.08, 0, 0.02, PAL.shadow, PAL.shadow, PAL.shadow, 0.26);
 
   if (r.skin === "roofing") {
-    drawOrientedIsoBox(g, r.x, r.y, r.heading, r.w, r.d, z0, h, PAL.roofShingle, PAL.wood, PAL.roofShingleDark, 1);
+    const metal = r.material === "metal";
+    const top = metal ? PAL.roofMetal : PAL.roofShingle;
+    const edge = metal ? PAL.metalDark : PAL.roofShingleDark;
+    const under = metal ? PAL.metalDark : PAL.wood;
+    const underDark = metal ? PAL.metal : PAL.woodDark;
+    drawOrientedIsoBox(g, r.x, r.y, r.heading, r.w, r.d, z0, Math.max(0.04, h * 0.45), under, underDark, under, 0.95);
     drawOrientedIsoBox(
       g,
       r.x,
       r.y,
       r.heading,
-      r.w * 0.92,
-      r.d * 0.88,
-      z0,
-      Math.max(0.04, h * 0.35),
-      PAL.wood,
-      PAL.woodDark,
-      PAL.wood,
-      0.95,
+      r.w * 0.9,
+      r.d * 0.86,
+      z0 + h * 0.28,
+      Math.max(0.05, h * 0.72),
+      top,
+      edge,
+      edge,
+      1,
     );
-    if (rng.next() > 0.45) {
-      const fold = rng.range(-0.2, 0.2);
+    if (!metal && rng.next() > 0.55) {
+      const fold = rng.range(-0.18, 0.18);
       drawOrientedIsoBox(
         g,
-        r.x + Math.cos(r.heading) * r.w * 0.12,
-        r.y + Math.sin(r.heading) * r.w * 0.12,
+        r.x + Math.cos(r.heading) * r.w * 0.28,
+        r.y + Math.sin(r.heading) * r.w * 0.28,
         r.heading + fold,
-        r.w * 0.42,
-        r.d * 0.55,
-        z0 + h * 0.2,
-        h * 0.55,
+        r.w * 0.26,
+        r.d * 0.2,
+        z0 + h * 0.55,
+        h * 0.28,
         PAL.roofShingleDark,
         PAL.woodDark,
         PAL.roofShingle,

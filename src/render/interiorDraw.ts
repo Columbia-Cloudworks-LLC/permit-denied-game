@@ -9,7 +9,7 @@ import {
   type FixtureFinish,
   type RanchFloorSpan,
 } from "../structure/interior";
-import { ranchRafterBeams } from "../structure/roof";
+import { neighborRoofBayOpen, ranchRafterBeams } from "../structure/roof";
 import type { Building, Cell, InteriorFixture, RoofSection } from "../structure/types";
 import { cellPresent } from "../structure/types";
 import { depthKey } from "../world/iso";
@@ -31,26 +31,12 @@ function jag(gx: number, gy: number, k: number): number {
   return (((gx * 13 + gy * 7 + k * 5) % 7) - 3) * 0.018;
 }
 
-function neighborBayMissing(b: Building, roof: RoofSection, dgx: number): boolean {
-  const gx = roof.support[0]?.gx;
-  if (gx == null) return false;
-  const want = gx + dgx;
-  const minGy = Math.min(...roof.support.map((s) => s.gy));
-  const maxGy = Math.max(...roof.support.map((s) => s.gy));
-  const partner = b.roofs.find(
-    (other) =>
-      other.id !== roof.id &&
-      other.support.some((s) => s.gx === want && s.gy >= minGy && s.gy <= maxGy),
-  );
-  return !!partner && (partner.state === "gone" || partner.state === "falling");
-}
-
-/** Framing is visible when this bay is failing, or a neighbor bay has already dropped. */
+/** Framing is drawn behind covering, so it only reads at openings or undersides. */
 export function ranchRoofShowsRafters(b: Building, roof: RoofSection): boolean {
   if (!hasFurnishedInterior(b)) return false;
   if (roof.state === "gone") return false;
   if (roof.state === "sagging" || roof.state === "falling") return true;
-  return neighborBayMissing(b, roof, -1) || neighborBayMissing(b, roof, 1);
+  return neighborRoofBayOpen(b, roof, -1) || neighborRoofBayOpen(b, roof, 1);
 }
 
 function floorOpen(

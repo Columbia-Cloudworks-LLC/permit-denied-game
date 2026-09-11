@@ -367,7 +367,7 @@ function roofRemnantPlan(
   }
   if (material === "metal") {
     return [
-      { w: panelW, d: panelD * 0.85, thickness: 0.1, shape: "panel", massShare: 0.48, along: 0, skin: "roofing" },
+      { w: panelW, d: panelD * 0.85, thickness: 0.1, shape: "panel", massShare: 0.48, along: 0, skin: "default" },
       { w: rng.range(0.7, 1.1), d: 0.09, thickness: 0.08, shape: "beam", massShare: 0.22, along: 0.12, skin: "default" },
     ];
   }
