@@ -2,6 +2,8 @@
 
 Simulation stays in world coordinates. Isometric drawing is render-only.
 
+The introductory [brick demolition job](brick-job.md) uses the showcase town and a separate contract controller. It owns its one-time reward and earned choice; world simulation retains ownership of the existing building bonus. Camera offsets are scaled screen pixels. Local visibility fades and painter-order corrections never alter structural state.
+
 ## Archetypes
 
 Buildings can select a shared construction and room recipe. The ranch, brick mixed-use building, and steel warehouse exercise this path. See [construction authoring](construction-authoring.md) for the definition contract, support rules, and remaining limits.

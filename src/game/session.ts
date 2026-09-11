@@ -25,6 +25,7 @@ export const DISTRICT_LABELS: Record<DistrictId, string> = {
 };
 
 export interface SessionRules {
+  job?: boolean;
   demo?: DemoAsset;
   kind: SessionKind;
   district: DistrictId;
@@ -70,6 +71,12 @@ export function parseSessionFromSearch(search: string): SessionRules {
     const seed = Number(rawSeed);
     if (Number.isFinite(seed) && seed >= 0) rules.seed = seed >>> 0;
   }
+  if (params.get("job") === "brick") {
+    rules.job = true;
+    rules.demo = "rivertown";
+    rules.kind = "challenge";
+    rules.district = "classic";
+  }
   return rules;
 }
 
@@ -78,11 +85,15 @@ export function nextSeed(seed: number): number {
 }
 
 export function sessionFailsOn(rules: SessionRules): { heat: boolean; track: boolean; clock: boolean } {
-  if (rules.kind === "sandbox") return { heat: false, track: false, clock: false };
+  if (rules.kind === "sandbox" || rules.job) return { heat: false, track: false, clock: false };
   return { heat: true, track: true, clock: true };
 }
 
 export function sessionForcesUpgrade(rules: SessionRules): boolean {
-  return rules.kind === "challenge";
+  return rules.kind === "challenge" && !rules.job;
+}
+
+export function canPickUpgrade(rules: SessionRules, mode: PlayMode, earned: boolean): boolean {
+  return rules.kind === "sandbox" || (mode === "upgrade" && earned);
 }
 

@@ -1,0 +1,43 @@
+{
+  "samples": 3585,
+  "frameMs": {
+    "p50": 16.699999928474426,
+    "p90": 17.100000023841858,
+    "p99": 19.5,
+    "max": 117.89999997615814,
+    "mean": 16.69263598327025
+  },
+  "simCpuMs": {
+    "p50": 0.5,
+    "p90": 0.7000000476837158,
+    "p99": 1.5,
+    "max": 12.100000023841858,
+    "mean": 0.5560111577208239
+  },
+  "renderPrepMs": {
+    "p50": 2.1999999284744263,
+    "p90": 3.799999952316284,
+    "p99": 5.700000047683716,
+    "max": 46.299999952316284,
+    "mean": 2.5430404469225363
+  },
+  "last": {
+    "frameMs": 16.5,
+    "simCpuMs": 0.5,
+    "renderPrepMs": 2.600000023841858,
+    "droppedSimSec": 0,
+    "budgetConversions": 0,
+    "distanceCleanups": 0,
+    "emergencyCleanups": 0,
+    "debrisActive": 0,
+    "debrisSleeping": 0,
+    "contactPairs": 0,
+    "buildingsStepped": 0,
+    "buildingsSkipped": 100,
+    "collisionRebuilds": 0,
+    "renderVisible": 93,
+    "renderTotal": 2400,
+    "bodyMass": 0,
+    "pileMass": 0
+  }
+}

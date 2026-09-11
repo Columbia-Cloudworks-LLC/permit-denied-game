@@ -19,7 +19,7 @@ import { brokenEdgeColor, floorFinishColor, plasterColor, topFaceColor, wallFace
 import { PAL } from "./palette";
 
 const WALL_THICK = 0.16;
-const FLOOR_H = 0.11;
+const FLOOR_H = 0.18;
 /** Overlap into the south/east neighbor so iso seams do not open a gutter. */
 const FLOOR_SEAM = 0.03;
 
@@ -419,11 +419,14 @@ type InteriorDrawKind = "floor" | "stub" | "fixture" | "partition";
 export function interiorCmds(
   b: Building,
   fade: number,
-  options: { reveal?: boolean; maxFloor?: number } = {},
+  options: { reveal?: boolean; maxFloor?: number;
+    fadeBox?: (key: string, x: number, y: number, w: number, d: number, z: number, top: number) => number } = {},
 ): { depth: number; kind: InteriorDrawKind; run: (g: Graphics) => void }[] {
   if (!hasFurnishedInterior(b)) return [];
   const cmds: { depth: number; kind: InteriorDrawKind; run: (g: Graphics) => void }[] = [];
-  const interiorFade = Math.max(fade, 0.78);
+  const interiorFade = fade;
+  const localFade = (key: string, x: number, y: number, w: number, d: number, z: number, top: number) =>
+    interiorFade * (options.fadeBox?.(key, x, y, w, d, z, top) ?? 1);
   const maxFloor = options.maxFloor ?? Infinity;
   const coverage = interiorFloorCoverage(b, options.reveal);
   if (independentFloors(b)) {
@@ -433,32 +436,47 @@ export function interiorCmds(
       const z = tile.floor * FLOOR_Z * (1 - tile.fallT);
       const mat = b.construction!.floor;
       cmds.push({ kind: "floor", depth: depthKey(x + cs / 2, y + cs / 2, z), run: g =>
-        drawIsoBox(g, x, y, cs, cs, z, .12, topFaceColor(mat), wallFaceColor(mat, "south"), wallFaceColor(mat, "east"), fade) });
+        drawIsoBox(g, x, y, cs, cs, z, FLOOR_H, topFaceColor(mat), wallFaceColor(mat, "south"), wallFaceColor(mat, "east"), fade) });
     }
     for (const cell of b.cells) {
       if (!cellPresent(cell) || cell.floor > maxFloor) continue;
       if (cell.cladding?.hp === 0) {
         const box = cellWorldBox(b, cell);
+        const alpha = localFade(`column:${cell.floor}:${cell.gx}:${cell.gy}`, box.x, box.y, box.w, box.d,
+          cell.floor * FLOOR_Z, (cell.floor + 1) * FLOOR_Z);
         cmds.push({ kind: "stub", depth: depthKey(box.x + box.w / 2, box.y + box.d / 2, cell.floor * FLOOR_Z), run: g =>
-          drawIsoBox(g, box.x, box.y, box.w, box.d, cell.floor * FLOOR_Z, FLOOR_Z, PAL.metalTop, PAL.metalDark, PAL.metal, fade) });
+          drawIsoBox(g, box.x, box.y, box.w, box.d, cell.floor * FLOOR_Z, FLOOR_Z, PAL.metalTop, PAL.metalDark, PAL.metal, alpha) });
         continue;
       }
       if (cell.gy !== 0 && cell.gx !== 0) continue;
       const cs = b.cellSize, x = b.x + cell.gx * cs, y = b.y + cell.gy * cs;
-      cmds.push({ kind: "stub", depth: depthKey(x + cs / 2, y + cs / 2, cell.floor * FLOOR_Z), run: g => {
+      const alpha = localFade(`stub:${cell.floor}:${cell.gx}:${cell.gy}`, x, y,
+        cell.gy === 0 ? cs : WALL_THICK, cell.gy === 0 ? WALL_THICK : cs,
+        cell.floor * FLOOR_Z, (cell.floor + 1) * FLOOR_Z);
+      cmds.push({ kind: "stub", depth: depthKey(x + (cell.gy === 0 ? cs / 2 : WALL_THICK / 2),
+        y + (cell.gy === 0 ? WALL_THICK / 2 : cs / 2), cell.floor * FLOOR_Z), run: g => {
         const north = cell.gy === 0;
         const mat = b.construction!.structure;
         drawIsoBox(g, x, y, north ? cs : WALL_THICK, north ? WALL_THICK : cs, cell.floor * FLOOR_Z, FLOOR_Z,
-          topFaceColor(mat), wallFaceColor(mat, "south"), wallFaceColor(mat, "east"), fade);
+          topFaceColor(mat), wallFaceColor(mat, "south"), wallFaceColor(mat, "east"), alpha);
       }});
     }
   }
-  for (const span of coverage.spans) {
+  // Upper floors must sort locally: a room-sized polygon sorts behind near ground objects.
+  const spans = coverage.spans.flatMap(span => span.floor === 0 ? [span] :
+    Array.from({ length: span.gy1 - span.gy0 + 1 }, (_, iy) =>
+      Array.from({ length: span.gx1 - span.gx0 + 1 }, (_, ix) => ({ ...span,
+        gx0: span.gx0 + ix, gx1: span.gx0 + ix, gy0: span.gy0 + iy, gy1: span.gy0 + iy }))).flat());
+  for (const span of spans) {
     if (span.floor > maxFloor) continue;
+    const cs = b.cellSize;
+    const alpha = localFade(`floor:${span.floor}:${span.gx0}:${span.gy0}`, b.x + span.gx0 * cs,
+      b.y + span.gy0 * cs, (span.gx1 - span.gx0 + 1) * cs, (span.gy1 - span.gy0 + 1) * cs,
+      span.floor * FLOOR_Z, span.floor * FLOOR_Z + FLOOR_H);
     cmds.push({
       kind: "floor",
       depth: interiorFloorPainterDepth(b, span),
-      run: (g) => drawInteriorFloorSpan(g, b, span, interiorFade, coverage.hasFloor),
+      run: (g) => drawInteriorFloorSpan(g, b, span, alpha, coverage.hasFloor),
     });
     for (let gy = span.gy0; gy <= span.gy1; gy++) {
       for (let gx = span.gx0; gx <= span.gx1; gx++) {
@@ -474,12 +492,17 @@ export function interiorCmds(
   }
   for (const fixture of b.fixtures) {
     if (fixture.floor > maxFloor) continue;
-    if (!options.reveal && !fixtureExposed(b, fixture) && !(fixture.broken && fixtureSupported(b, fixture))) continue;
+    const exposed = independentFloors(b)
+      ? fixture.support.some(s => coverage.hasFloor(s.gx, s.gy, fixture.floor))
+      : fixtureExposed(b, fixture);
+    if (!options.reveal && !exposed && !(fixture.broken && fixtureSupported(b, fixture))) continue;
     if (fixture.broken && !fixtureSupported(b, fixture)) continue;
+    const alpha = localFade(`fixture:${fixture.id}`, fixture.x, fixture.y, fixture.w, fixture.d,
+      fixture.floor * FLOOR_Z, fixture.floor * FLOOR_Z + fixture.h);
     cmds.push({
       kind: fixture.kind === "partition" ? "partition" : "fixture",
       depth: fixtureDepth(fixture),
-      run: (g) => drawInteriorFixture(g, b, fixture, interiorFade, options.reveal),
+      run: (g) => drawInteriorFixture(g, b, fixture, alpha, true),
     });
   }
   return cmds;

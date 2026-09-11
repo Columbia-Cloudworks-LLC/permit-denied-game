@@ -1,7 +1,7 @@
 import { defaultDebugView } from "../debug/view";
 import { drawDebugOverlay } from "./debugOverlay";
 import { Container, Graphics, Text } from "pixi.js";
-import { FLOOR_Z } from "../game/constants";
+import { DOZER, FLOOR_Z } from "../game/constants";
 import { Rng } from "../game/rng";
 import { depthKey, roofPainterDepth, screenAabbVisible, worldBoundsToScreen, worldToScreen } from "../world/iso";
 import type { ParticlePool } from "../fx/particles";
@@ -10,7 +10,7 @@ import type { Bird, Building, CollapsedSite, CoverKind, GroundMark, GroundPatch,
 import type { Dozer } from "../vehicle/dozer";
 import type { Town } from "../world/town";
 import { hasFurnishedInterior } from "../structure/interior";
-import { aggregateSurfaceStats, getBuildingSurfaces } from "./buildingSurfaces";
+import { getBuildingSurfaces } from "./buildingSurfaces";
 import { drawCatalogProp } from "./assets";
 import { drawRoofFrame, interiorCmds, roofShowsFrame } from "./interiorDraw";
 import { cellColors, drawGroundPoly, drawIsoBox, drawOrientedGround, drawOrientedIsoBox, drawShadow, drawSlopedQuad, drawWorldPoly, PAL, shade } from "./drawIso";
@@ -24,7 +24,7 @@ import {
 import { roofSlopeLight } from "./lighting";
 import { drawDozer, drawRoadVehicle } from "./vehicles";
 import { drawNhoodOverlay } from "./nhoodOverlay";
-import { wallSpanFadeRuns } from "./occlusion";
+import { objectOcclusionFade, VisibilityFades, wallSpanFadeRuns } from "./occlusion";
 
 interface Cmd {
   depth: number;
@@ -41,6 +41,8 @@ export class WorldRenderer {
   private readonly world = new Graphics();
   private readonly cmds: Cmd[] = [];
   readonly debug = defaultDebugView();
+  jobTarget?: Building;
+  private readonly fades = new VisibilityFades();
   private readonly debugOverlay = new Graphics();
   get showNhood(): boolean { return this.debug.overview; }
   set showNhood(value: boolean) { this.debug.overview = value; }
@@ -83,7 +85,8 @@ export class WorldRenderer {
     );
   }
 
-  draw(town: Town, dozer: Dozer, particles: ParticlePool, birds: Bird[]): void {
+  draw(town: Town, dozer: Dozer, particles: ParticlePool, birds: Bird[], dt = 1 / 60): void {
+    this.fades.begin();
     const view = this.debug;
     this.sites.visible = view.sites;
     this.nhood.visible = this.showNhood;
@@ -91,6 +94,7 @@ export class WorldRenderer {
     this.cmds.length = 0;
     let total = 0;
     let visible = 0;
+    let occluded = false;
 
     const gKey = `${view.terrain}:${view.roads}:${town.district}:${town.seed}:${town.lots.length}:${town.network.mesh.length}:${town.ground.length}`;
     if (gKey !== this.groundKey) {
@@ -161,7 +165,7 @@ export class WorldRenderer {
       if (!label.parent) this.nhood.addChild(label);
     }
 
-    const surfaceStats = aggregateSurfaceStats(town.buildings);
+    let surfaceGeometry = 0;
     for (const b of town.buildings) {
       const bw = b.w * b.cellSize;
       const bd = b.d * b.cellSize;
@@ -170,6 +174,20 @@ export class WorldRenderer {
       total += b.cells.length;
       if (!this.visibleBox(b.x - fall, b.y - fall, bw + fall * 2, bd + fall * 2, -0.4, z1)) continue;
       const surfaces = getBuildingSurfaces(b);
+      surfaceGeometry += surfaces.geometryCount;
+      const fadeBox = (key: string, x: number, y: number, w: number, d: number, z: number, top: number) => {
+        const alpha = this.fades.sample(`${b.id}:${key}`, objectOcclusionFade(dozer, x, y, w, d, z, top), dt);
+        if (alpha < .6) occluded = true;
+        return alpha;
+      };
+      if (this.jobTarget === b) {
+        const inset = .3;
+        for (const [x, y, w, d] of [[b.x - inset, b.y - inset, bw + inset * 2, .07],
+          [b.x - inset, b.y + bd + inset, bw + inset * 2, .07],
+          [b.x - inset, b.y - inset, .07, bd + inset * 2], [b.x + bw + inset, b.y - inset, .07, bd + inset * 2]]) {
+          drawGroundPoly(this.world, x!, y!, w!, d!, 0xd5b568, .65);
+        }
+      }
       const hasSolid = b.cells.some((c) => c.state !== "gone" && c.state !== "falling");
       if (hasSolid && view.walls) {
         visible++;
@@ -178,13 +196,29 @@ export class WorldRenderer {
           run: (g) => drawBuildingFootprintShadow(g, surfaces.footprint, 1),
         });
       }
-      for (const span of view.walls ? surfaces.walls : []) {
+      const near = dozer.x > b.x - 6 && dozer.x < b.x + bw + 6 && dozer.y > b.y - 6 && dozer.y < b.y + bd + 6;
+      const walls = near ? surfaces.walls.flatMap(s => {
+        const count = s.dir === "south" ? s.gx1 - s.gx0 + 1 : s.gy1 - s.gy0 + 1;
+        return Array.from({ length: count }, (_, i) => ({ ...s,
+          gx0: s.gx0 + (s.dir === "south" ? i : 0), gx1: s.gx0 + (s.dir === "south" ? i : 0),
+          gy0: s.gy0 + (s.dir === "east" ? i : 0), gy1: s.gy0 + (s.dir === "east" ? i : 0) }));
+      }) : surfaces.walls;
+      for (const span of view.walls ? walls : []) {
         if (span.floor > view.maxFloor) continue;
         for (const run of wallSpanFadeRuns(b, span, dozer)) {
+          const s = run.span, cs = b.cellSize;
+          const alpha = this.fades.sample(`${b.id}:wall:${s.dir}:${s.floor}:${s.gx0}:${s.gy0}`,
+            Math.min(run.fade, objectOcclusionFade(dozer,
+              b.x + (s.dir === "east" ? s.gx0 + 1 : s.gx0) * cs,
+              b.y + (s.dir === "south" ? s.gy0 + 1 : s.gy0) * cs,
+              s.dir === "east" ? .08 : (s.gx1 - s.gx0 + 1) * cs,
+              s.dir === "south" ? .08 : (s.gy1 - s.gy0 + 1) * cs,
+              s.floor * FLOOR_Z, (s.floor + 1) * FLOOR_Z)), dt);
+          if (alpha < .6) occluded = true;
           visible++;
           this.cmds.push({
             depth: run.span.depth,
-            run: (g) => drawWallSpan(g, b, run.span, run.fade),
+            run: (g) => drawWallSpan(g, b, run.span, alpha),
           });
         }
       }
@@ -206,7 +240,7 @@ export class WorldRenderer {
         });
       }
       if (hasFurnishedInterior(b)) {
-        const interiors = interiorCmds(b, 1, { reveal: view.reveal || !view.roofs || !view.walls || view.maxFloor < b.floors - 1, maxFloor: view.maxFloor })
+        const interiors = interiorCmds(b, 1, { fadeBox, reveal: view.reveal || !view.roofs || !view.walls || view.maxFloor < b.floors - 1, maxFloor: view.maxFloor })
           .filter(c => c.kind === "floor" ? view.floors : c.kind === "fixture" ? view.contents : view.walls);
         visible += interiors.length;
         this.cmds.push(...interiors);
@@ -237,11 +271,14 @@ export class WorldRenderer {
           for (const roof of liveRoofs) {
             const moved = roofVerts(roof);
             const c = roofCenter(moved);
+            const xs = moved.map(v => v.x), ys = moved.map(v => v.y), zs = moved.map(v => v.z);
+            const alpha = fadeBox(`roof:${roof.id}`, Math.min(...xs), Math.min(...ys),
+              Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys), Math.min(...zs), Math.max(...zs) + .2);
             if (!this.visibleBox(c.x - 2, c.y - 2, 4, 4, c.z - 1, c.z + 1.4)) continue;
             visible++;
             this.cmds.push({
               depth: roofPainterDepth(moved),
-              run: (g) => drawRoofBay(g, b, roof, 1),
+              run: (g) => drawRoofBay(g, b, roof, alpha),
             });
           }
           if (b.features.chimney) {
@@ -257,11 +294,12 @@ export class WorldRenderer {
         } else {
           const moved = liveRoofs.flatMap((roof) => roofVerts(roof));
           const c = roofCenter(moved);
+          const alpha = fadeBox("roof", b.x, b.y, bw, bd, b.floors * FLOOR_Z, b.floors * FLOOR_Z + .8);
           if (this.visibleBox(c.x - 2, c.y - 2, 4, 4, c.z - 1, c.z + 1.4)) {
             visible += liveRoofs.length;
             this.cmds.push({
               depth: roofPainterDepth(moved),
-              run: (g) => drawBuildingRoofs(g, b, liveRoofs, 1),
+              run: (g) => drawBuildingRoofs(g, b, liveRoofs, alpha),
             });
           }
         }
@@ -331,8 +369,21 @@ export class WorldRenderer {
 
     this.cmds.sort((a, b) => a.depth - b.depth);
     for (const cmd of this.cmds) cmd.run(this.world);
+    if (occluded && !view.overview) {
+      const fx = Math.cos(dozer.heading), fy = Math.sin(dozer.heading);
+      const point = (along: number, across: number) => {
+        const p = worldToScreen(dozer.x + fx * along - fy * across, dozer.y + fy * along + fx * across, .5);
+        return [p.x, p.y];
+      };
+      // Open chevron and blade edge, never an opaque vehicle drawn through the building.
+      this.world.poly([...point(-.4, -.4), ...point(.5, 0), ...point(-.4, .4)], false);
+      this.world.stroke({ color: 0xffe39a, width: 1.5, alpha: .75 });
+      this.world.poly([...point(DOZER.bladeReach, -DOZER.bladeHalf), ...point(DOZER.bladeReach, DOZER.bladeHalf)], false);
+      this.world.stroke({ color: 0xffe39a, width: 1.5, alpha: .75 });
+    }
     drawDebugOverlay(this.debugOverlay, town, dozer, view);
-    this.stats = { total, visible, surfaceGeometry: surfaceStats.geometryCount };
+    this.fades.end();
+    this.stats = { total, visible, surfaceGeometry };
   }
 }
 
