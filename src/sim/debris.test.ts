@@ -91,6 +91,27 @@ describe("debris spawn and mass", () => {
     expect(created.filter((r) => r.layer === "fragment").length).toBeLessThanOrEqual(2);
   });
 
+  it("keeps metal roof remnants on the metal finish instead of ranch shingles", () => {
+    const town = createTown();
+    const created = spawnCollapseDebris(town, {
+      x: 16,
+      y: 12,
+      dx: 0.2,
+      dy: 0.7,
+      material: "metal",
+      floor: 1,
+      cellSize: 1.15,
+      source: "roof",
+      heading: 0.4,
+      elev: 0.2,
+      panelW: 1.1,
+      panelD: 0.7,
+    });
+    expect(created.length).toBeGreaterThan(0);
+    expect(created.every((r) => r.skin !== "roofing")).toBe(true);
+    expect(created.some((r) => r.shape === "panel" && r.material === "metal")).toBe(true);
+  });
+
   it("keeps ranch roof collapse inside debris caps", () => {
     const town = createTown();
     const ranch = createBuildingFromArchetype("ranch", "BOUND", 20, 8);

@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { applyCellDamage, createBuildingFromArchetype } from "../structure/building";
-import { fixtureCatalog } from "../structure/interior";
-import { depthKey } from "../world/iso";
+import { SIM_DT } from "../game/constants";
 import { ParticlePool } from "../fx/particles";
+import { applyCellDamage, createBuildingFromArchetype, stepStructures } from "../structure/building";
+import { fixtureCatalog } from "../structure/interior";
+import { neighborRoofBayOpen, ranchRafterBeams } from "../structure/roof";
+import { depthKey } from "../world/iso";
 import { ranchInteriorCmds, ranchRoofShowsRafters } from "./interiorDraw";
-import { ranchRafterBeams } from "../structure/roof";
 import { PAL } from "./palette";
 
 function smash(b: ReturnType<typeof createBuildingFromArchetype>, gx: number, gy: number): void {
@@ -75,6 +76,22 @@ describe("ranch roof framing", () => {
     expect(north.state).toBe("intact");
     expect(ranchRoofShowsRafters(b, south)).toBe(false);
     expect(ranchRoofShowsRafters(b, north)).toBe(false);
+  });
+
+  it("exposes framing on an intact bay only after the neighbor opening appears", () => {
+    const b = createBuildingFromArchetype("ranch", "OPENING", 0, 0);
+    const left = b.roofs.find((r) => r.support.some((s) => s.gx === 1 && s.gy === b.d - 1))!;
+    const mid = b.roofs.find((r) => r.support.some((s) => s.gx === 2 && s.gy === b.d - 1))!;
+    expect(ranchRoofShowsRafters(b, mid)).toBe(false);
+    expect(neighborRoofBayOpen(b, mid, -1)).toBe(false);
+    for (const cell of b.cells) {
+      if (cell.gx === 1) smash(b, cell.gx, cell.gy);
+    }
+    for (let i = 0; i < Math.ceil(1.2 / SIM_DT); i++) stepStructures([b], SIM_DT, new ParticlePool(), []);
+    expect(left.state === "gone" || left.state === "falling").toBe(true);
+    expect(mid.state).toBe("intact");
+    expect(neighborRoofBayOpen(b, mid, -1)).toBe(true);
+    expect(ranchRoofShowsRafters(b, mid)).toBe(true);
   });
 
   it("draws rafters along the roof slope instead of a flat ladder", () => {

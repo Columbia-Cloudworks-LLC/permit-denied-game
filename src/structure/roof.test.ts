@@ -287,18 +287,23 @@ describe("structural roofs", () => {
     const particles = new ParticlePool();
     const south = b.roofs.find((r) => r.support.some((s) => s.gx === 0 && s.gy === b.d - 1))!;
     applyCellDamage(b, b.grid[0]![0]![b.d - 1]!, 999, 0, 1, particles, []);
-    let spawn: { x: number; y: number; source?: string; elev?: number } | undefined;
-    let lastPose = roofHandoffPose(south);
-    for (let i = 0; i < Math.ceil(1.4 / SIM_DT); i++) {
+    let spawn: { x: number; y: number; source?: string; elev?: number; panelW?: number; panelD?: number } | undefined;
+    for (let i = 0; i < Math.ceil(1.6 / SIM_DT); i++) {
       const out = stepStructures([b], SIM_DT, particles, []);
-      if (south.state === "falling") lastPose = roofHandoffPose(south);
       const roofSpawn = out.rubbleSpawns.find((s) => s.source === "roof");
       if (roofSpawn) spawn = roofSpawn;
     }
     expect(south.state).toBe("gone");
+    expect(south.fallT).toBe(1);
     expect(spawn).toBeDefined();
-    expect(Math.hypot(spawn!.x - lastPose.x, spawn!.y - lastPose.y)).toBeLessThan(0.35);
-    expect(spawn!.elev).toBeGreaterThan(0.05);
+    const land = roofHandoffPose(south);
+    expect(roofTiltAngle(south)).toBeLessThan(0.1);
+    expect(land.z).toBeLessThan(0.35);
+    expect(Math.hypot(spawn!.x - land.x, spawn!.y - land.y)).toBeLessThan(0.35);
+    expect(Math.abs((spawn!.elev ?? 0) - Math.max(0.05, land.z - 0.06))).toBeLessThan(0.08);
+    expect(spawn!.panelW).toBeGreaterThan(0.7);
+    expect(Math.abs((spawn!.panelW ?? 0) - land.panelW)).toBeLessThan(0.2);
+    expect(Math.abs((spawn!.panelD ?? 0) - land.panelD)).toBeLessThan(0.2);
   });
 
   it("keeps sloped rafters attached to a ranch bay and jags only exposed edges", () => {
