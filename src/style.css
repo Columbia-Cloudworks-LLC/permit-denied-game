@@ -193,6 +193,15 @@ body {
   font-size: 12px;
 }
 #debug-toggle { float: right; }
+#drive-pad { position: absolute; bottom: 18px; left: 25%; display: flex; gap: 4px; pointer-events: auto; }
+#drive-pad[hidden] { display: none; }
+#drive-pad button[aria-pressed="true"] { background: #786323; border-color: #ffe49c; }
+#hud-root .job { position: absolute; top: 98px; left: 14px; max-width: 470px;
+  padding: 10px 14px; border-left: 3px solid #d5b568; background: #181711df;
+  color: #efe4c5; white-space: pre-line; font: 12px/1.65 "Courier New", monospace; }
+#hud-root .job[hidden], #hud-root button[hidden] { display: none; }
+#hud-root .blade { white-space: pre-line; line-height: 1.6; background: #181711d9; padding: 8px 12px; }
+#hud-root .hint { background: #181711d9; padding: 8px 12px; line-height: 1.6; }
 #debug-panel {
   clear: both;
   position: relative;

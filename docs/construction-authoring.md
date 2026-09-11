@@ -2,6 +2,8 @@
 
 Try the three demonstration buildings using the **RANCH**, **BRICK**, and **STEEL** buttons. Each starts a fresh sandbox with the dozer facing the selected building. Direct links are `?demo=ranch`, `?demo=rivertown`, and `?demo=steel-warehouse`. The brick and steel archetypes also participate in commercial and industrial district generation.
 
+These developer presets appear in **SANDBOX**. **BRICK JOB** (or `?job=brick`) launches the introductory contract with an earned upgrade and one-time payout; see [job and verification notes](brick-job.md).
+
 ## Definition path
 
 `src/structure/construction.ts` defines reusable construction and room recipes. An entry in `src/world/archetypes.ts` selects a `ConstructionDef`; simulation and rendering do not dispatch on its archetype ID.

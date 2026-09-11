@@ -1,4 +1,8 @@
 import { defaultDebugView } from "../debug/view";
+import { cameraFocus } from "./camera";
+import { DemolitionJob } from "./job";
+import { advanceSimulation } from "./fixedStep";
+import { canPickUpgrade } from "./session";
 import { Application } from "pixi.js";
 import { AudioBus } from "../audio/synth";
 import { emptyPerfSnapshot, formatPerfOverlay, PerfCollector } from "../debug/perf";
@@ -50,6 +54,7 @@ export class Game {
   private readonly perf = new PerfCollector();
   private hud!: Hud;
   private perfEl: HTMLElement | null = null;
+  private perfExportAt = 0;
   private rules: SessionRules = parseSessionFromSearch(
     typeof window === "undefined" ? "" : window.location.search,
   );
@@ -65,6 +70,8 @@ export class Game {
   private death: string | null = null;
   private upgrades: Upgrades = { blade: 0, engine: 0, push: 0 };
   private nextUpgrade = 0;
+  private earnedChoice = false;
+  private job: DemolitionJob | undefined;
   private acc = 0;
   private grindAud = 0;
   private scrapeCd = 0;
@@ -99,6 +106,8 @@ export class Game {
     this.hud.onSession = (kind) => this.setSession(kind);
     this.hud.onDistrict = (id) => this.setDistrict(id);
     this.hud.onDemo = (id) => this.setDemo(id);
+    this.hud.onJob = () => this.startJob();
+    this.hud.onDrive = (key, down) => { if (down) this.input.down.add(key); else this.input.down.delete(key); };
     this.hud.onDebugOpen = () => { this.input.down.clear(); this.input.flush(); };
     this.hud.onDebugToggle = (key, value) => { this.renderer.debug[key] = value; this.syncDebug(); };
     this.hud.onDebugFloor = floor => { this.renderer.debug.maxFloor = floor; this.syncDebug(); };
@@ -156,11 +165,14 @@ export class Game {
   }
 
   setSession(kind: SessionKind): void {
+    this.rules.job = false;
+    this.rules.demo = undefined;
     this.rules.kind = kind;
     this.reset("same");
   }
 
   setDistrict(district: DistrictId): void {
+    this.rules.job = false;
     this.rules.demo = undefined;
     this.rules.district = district;
     this.rules.seed = DEFAULT_DISTRICT_SEEDS[district];
@@ -168,6 +180,7 @@ export class Game {
   }
 
   reset(kind: "same" | "new" = "same"): void {
+    this.input.down.clear();
     if (kind === "new") this.rules.seed = nextSeed(this.rules.seed);
     this.town = createTown({ district: this.rules.district, seed: this.rules.seed, showcase: !!this.rules.demo });
     const ranch = this.rules.demo || this.rules.ranchFocus
@@ -193,21 +206,31 @@ export class Game {
     this.death = null;
     this.upgrades = { blade: 0, engine: 0, push: 0 };
     this.nextUpgrade = 0;
+    this.earnedChoice = false;
+    this.job = this.rules.job && ranch ? new DemolitionJob(ranch) : undefined;
+    this.renderer.jobTarget = this.job?.target;
     this.acc = 0;
     this.grindAud = 0;
     this.scrapeCd = 0;
     this.droppedSimSec = 0;
     this.perf.reset();
-    const spawn = worldToScreen(this.dozer.x, this.dozer.y, 0);
+    const spawn = cameraFocus(this.dozer.x, this.dozer.y, 0.4, this.renderer.zoom);
     this.renderer.camX = spawn.x;
     this.renderer.camY = spawn.y;
   }
 
   setDemo(demo: DemoAsset): void {
+    this.rules.job = false;
     this.rules.demo = demo;
     this.rules.kind = "sandbox";
     this.rules.district = "classic";
     this.rules.ranchFocus = false;
+    this.reset("same");
+  }
+
+  startJob(): void {
+    this.rules = { kind: "challenge", district: "classic", seed: DEFAULT_DISTRICT_SEEDS.classic,
+      ranchFocus: false, demo: "rivertown", job: true };
     this.reset("same");
   }
 
@@ -218,6 +241,9 @@ export class Game {
   }
 
   private pickUpgrade(id: "blade" | "engine" | "push"): void {
+    if (!canPickUpgrade(this.rules, this.mode, this.earnedChoice)) return;
+    if (this.job && !this.job.takeChoice()) return;
+    this.earnedChoice = false;
     this.upgrades[id] += 1;
     if (this.mode === "upgrade") this.mode = "play";
   }
@@ -249,18 +275,12 @@ export class Game {
     let simCpuMs = 0;
     if (this.mode === "play" && !this.renderer.debug.freeze) {
       this.acc += realDt;
-      let steps = 0;
       const simStart = performance.now();
-      while (this.acc >= SIM_DT && steps < SIM_MAX_STEPS) {
-        this.step(SIM_DT);
-        this.acc -= SIM_DT;
-        steps++;
-      }
+      const advanced = advanceSimulation(this.acc, SIM_DT, SIM_MAX_STEPS,
+        () => this.mode === "play", () => this.step(SIM_DT));
+      this.acc = advanced.acc;
+      this.droppedSimSec += advanced.dropped;
       simCpuMs = performance.now() - simStart;
-      if (steps === SIM_MAX_STEPS) {
-        this.droppedSimSec += this.acc;
-        this.acc = 0;
-      }
     } else {
       this.acc = 0;
       this.input.flush();
@@ -351,12 +371,21 @@ export class Game {
     this.audio.engineLevel(dozerSpeed(this.dozer), this.dozer.heat);
     this.audio.grindLevel(this.dozer.bladeDown ? 0.08 + this.grindAud : 0);
 
+    const payout = this.job?.settle() ?? 0;
+    if (payout) {
+      this.cash += payout;
+      this.audio.cash();
+      this.earnedChoice = true;
+      this.mode = "upgrade";
+      return;
+    }
     if (
       sessionForcesUpgrade(this.rules) &&
       this.nextUpgrade < UPGRADE_MILESTONES.length &&
       this.cash >= UPGRADE_MILESTONES[this.nextUpgrade]!
     ) {
       this.nextUpgrade += 1;
+      this.earnedChoice = true;
       this.mode = "upgrade";
       return;
     }
@@ -404,6 +433,7 @@ export class Game {
   }
 
   spawnRoadVehicle(): void {
+    if (this.rules.kind !== "sandbox") return;
     const route = pickVerificationRoute(this.town.network) ?? [];
     this.town.roadCar = createRoadVehicle(
       this.town.roadSpawnX,
@@ -455,14 +485,15 @@ export class Game {
     } else if (this.renderer.showNhood) this.frameNhood(dt);
     else {
       this.renderer.zoom = 1.15;
-      const focus = worldToScreen(this.dozer.x, this.dozer.y, 0.4);
+      const focus = cameraFocus(this.dozer.x, this.dozer.y, 0.4, this.renderer.zoom);
       this.renderer.camX += (focus.x - this.renderer.camX) * (1 - Math.exp(-6 * dt));
       this.renderer.camY += (focus.y - this.renderer.camY) * (1 - Math.exp(-6 * dt));
     }
     const shake = this.mode === "play" ? this.shake.step(dt) : { x: 0, y: 0 };
     this.renderer.layout(this.app.renderer.width, this.app.renderer.height, shake.x, shake.y);
-    this.renderer.draw(this.town, this.dozer, this.particles, this.birds);
+    this.renderer.draw(this.town, this.dozer, this.particles, this.birds, dt);
     this.hud.render({
+      job: this.job ? { ...this.job.status(), paid: this.job.paid, payout: this.job.payout } : undefined,
       cash: this.cash,
       score: this.score,
       timeLeft: this.timeLeft,
@@ -473,7 +504,7 @@ export class Game {
       muted: this.audio.muted,
       heat: this.dozer.heat,
       track: this.dozer.track,
-      hintAlpha: this.mode === "play" ? Math.min(1, this.hint + 0.15) : 1,
+      hintAlpha: 1,
       overlay: this.mode === "play" ? "none" : this.mode,
       death: this.death,
       won: this.mode === "results" && this.cash >= CASH_TARGET && !this.death,
@@ -499,6 +530,11 @@ export class Game {
     if (!this.perf.enabled || !this.perfEl) return;
     const fps = this.perf.last.frameMs > 0 ? 1000 / this.perf.last.frameMs : 0;
     this.perfEl.textContent = formatPerfOverlay(this.perf.last, fps);
+    // Read-only browser inspection bridge; export at 1 Hz, never scan/sort history every frame.
+    if (performance.now() - this.perfExportAt > 1000) {
+      this.perfEl.dataset.summary = JSON.stringify(this.perf.summary());
+      this.perfExportAt = performance.now();
+    }
   }
 
   destroy(): void {

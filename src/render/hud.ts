@@ -5,6 +5,7 @@ import { DISTRICT_LABELS, type DistrictId, type SessionKind, type DemoAsset } fr
 export type OverlayMode = "none" | "pause" | "upgrade" | "results";
 
 export interface HudState {
+  job?: { progress: number; remaining: number; instruction: string; paid: boolean; payout: number };
   cash: number;
   score: number;
   timeLeft: number;
@@ -43,6 +44,8 @@ export class Hud {
   onSession?: (kind: SessionKind) => void;
   onDistrict?: (id: DistrictId) => void;
   onDemo?: (id: DemoAsset) => void;
+  onJob?: () => void;
+  onDrive?: (key: string, down: boolean) => void;
   onDebugToggle?: (key: DebugToggle, value: boolean) => void;
   onDebugFloor?: (floor: number) => void;
   onDebugReset?: () => void;
@@ -63,6 +66,7 @@ export class Hud {
         <button type="button" id="hud-mute">MUTE</button>
       </div>
       <div class="session" id="hud-session"></div>
+      <div id="hud-job" class="job" hidden></div>
       <div class="debug-menu">
         <button type="button" id="debug-toggle" aria-expanded="false" aria-controls="debug-panel">DEBUG</button>
         <section id="debug-panel" aria-label="Game debug options" hidden>
@@ -81,6 +85,11 @@ export class Hud {
       <div class="heat" id="hud-heat"><span></span></div>
       <div class="hint" id="hud-hint"></div>
       <div class="blade" id="hud-blade"></div>
+      <div id="drive-pad" aria-label="Driving controls" hidden>
+        <button data-drive="w">FORWARD</button><button data-drive="s">REVERSE</button>
+        <button data-drive="a">LEFT</button><button data-drive="d">RIGHT</button>
+        <button data-drive=" ">POWER BLADE</button><button data-drive="stop">STOP</button>
+      </div>
       <div class="overlay" id="hud-overlay"><div class="panel" id="hud-panel"></div></div>
     `;
     this.cashEl = root.querySelector("#hud-cash")!;
@@ -94,9 +103,22 @@ export class Hud {
     this.panel = root.querySelector("#hud-panel")!;
 
     root.querySelector("#hud-mute")!.addEventListener("click", () => this.onMute?.());
-    this.hintEl.innerHTML = `W/S drive &nbsp; A/D steer<br>SPACE powered blade &nbsp; R same lot<br>N new seed &nbsp; 1/2/3 upgrades<br>ESC pause &nbsp; M mute &nbsp; V test car`;
+    this.hintEl.innerHTML = `W/S drive &nbsp; A/D steer<br>Hold SPACE: powered blade<br>ESC pause &nbsp; R replay &nbsp; M mute`;
     this.bindSessionBar();
     this.bindDebugMenu();
+    const pad = root.querySelector<HTMLElement>("#drive-pad")!;
+    pad.hidden = new URLSearchParams(window.location.search).get("controls") !== "1";
+    pad.querySelectorAll<HTMLButtonElement>("button").forEach(btn => btn.addEventListener("click", () => {
+      const key = btn.dataset.drive!;
+      if (key === "stop") {
+        pad.querySelectorAll<HTMLButtonElement>("[data-drive]").forEach(b => {
+          b.setAttribute("aria-pressed", "false"); this.onDrive?.(b.dataset.drive!, false);
+        });
+      } else {
+        const down = btn.getAttribute("aria-pressed") !== "true";
+        btn.setAttribute("aria-pressed", String(down)); this.onDrive?.(key, down);
+      }
+    }));
   }
 
   private bindDebugMenu(): void {
@@ -136,6 +158,7 @@ export class Hud {
     bar.innerHTML = `
       <button type="button" data-session="challenge">CLOCK</button>
       <button type="button" data-session="sandbox">SANDBOX</button>
+      <button type="button" data-act="job">BRICK JOB</button>
       <button type="button" data-district="classic">${DISTRICT_LABELS.classic}</button>
       <button type="button" data-district="d10">${DISTRICT_LABELS.d10}</button>
       <button type="button" data-district="d30">${DISTRICT_LABELS.d30}</button>
@@ -159,22 +182,31 @@ export class Hud {
         if (district) this.onDistrict?.(district);
         if (demo) this.onDemo?.(demo);
         if (act === "newseed") this.onNewSeed?.();
+        if (act === "job") this.onJob?.();
         if (up) this.onChoice?.(up);
       });
     });
   }
 
   render(s: HudState): void {
+    const job = this.root.querySelector<HTMLElement>("#hud-job")!;
+    job.hidden = !s.job;
+    if (s.job) job.textContent = s.job.paid
+      ? `JOB ACCEPTED · +$${s.job.payout} paid · R replay or continue clearing the site`
+      : `BRICK / DEMOLITION ORDER · ${Math.floor(s.job.progress * 100)}%\n${s.job.instruction}\nRemove 90% of the structure. Loose rubble may stay.`;
+    this.root.querySelectorAll<HTMLButtonElement>("[data-demo], #hud-session [data-up]").forEach(el => {
+      el.hidden = s.session !== "sandbox";
+    });
     this.cashEl.textContent =
-      s.session === "sandbox" ? `CASH $${Math.floor(s.cash)}` : `CASH $${Math.floor(s.cash)} / $${CASH_TARGET}`;
-    if (s.session === "sandbox") {
+      s.session === "sandbox" || s.job ? `CASH $${Math.floor(s.cash)}` : `CASH $${Math.floor(s.cash)} / $${CASH_TARGET}`;
+    if (s.session === "sandbox" || s.job) {
       this.timeEl.textContent = `LOT ${formatTime(s.elapsed)}`;
     } else {
       this.timeEl.textContent = formatTime(Math.max(0, s.timeLeft));
     }
     this.paintSessionBar(s.session, s.district);
     this.scoreEl.textContent = `SCORE ${Math.floor(s.score)}`;
-    this.bladeEl.textContent = s.bladeDown ? COPY.bladeDown : COPY.bladeUp;
+    this.bladeEl.textContent = `${s.bladeDown ? COPY.bladeDown : COPY.bladeUp}\nHEAT ${Math.round(s.heat)}%${s.heat > 65 ? " · RELEASE BLADE" : ""}\nTRACKS ${Math.round(s.track)}%${s.track > 65 ? " · BACK OFF RUBBLE" : ""}`;
     this.hintEl.style.opacity = String(s.hintAlpha);
     const stress = Math.max(s.heat, s.track);
     this.heatEl.style.opacity = stress > 18 ? "1" : "0";
@@ -213,12 +245,12 @@ export class Hud {
         </div>`;
     } else if (s.overlay === "upgrade") {
       this.panel.innerHTML = `
-        <h2>COUNTY SURPLUS</h2>
-        <p>Cash milestone. Pick one. Action is paused.</p>
+        <h2>${s.job ? "DEMOLITION ACCEPTED" : "COUNTY SURPLUS"}</h2>
+        <p>${s.job ? `Contract paid: +$${s.job.payout}. One earned upgrade. Choose, then continue at the site.` : "Cash milestone. Pick one. Action is paused."}</p>
         <div class="choices">
-          <button type="button" data-up="blade">STRONGER BLADE</button>
-          <button type="button" data-up="engine">MORE ENGINE</button>
-          <button type="button" data-up="push">FASTER PUSH</button>
+          <button type="button" data-up="blade">1 · BLADE +42%<br>Break masonry faster</button>
+          <button type="button" data-up="engine">2 · ENGINE +28%<br>More speed and acceleration</button>
+          <button type="button" data-up="push">3 · PUSH +35%<br>Longer powered shove</button>
         </div>`;
     } else {
       const headline = s.won ? "PERMIT DENIED" : (s.death ?? "COUNTY CLOCK");

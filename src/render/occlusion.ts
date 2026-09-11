@@ -18,6 +18,31 @@ export interface OccludeDozer {
   heading: number;
 }
 
+/** Local projected overlap, shared by roofs, slabs, partitions and tall contents. Pure rendering query. */
+export function objectOcclusionFade(d: OccludeDozer, x: number, y: number, w: number, h: number, z: number, top: number): number {
+  if (top < .65) return 1;
+  const dx = Math.max(x - d.x, 0, d.x - x - w);
+  const dy = Math.max(y - d.y, 0, d.y - y - h);
+  if (dx * dx + dy * dy > 25) return 1;
+  if (z < .7 && x + w + y + h < d.x + d.y) return 1;
+  return aabbOverlap(worldBoundsToScreen(x, y, w, h, z, top), dozerScreenAabb(d), 12) ? .14 : 1;
+}
+
+/** Only touched visible objects remain cached. No simulation state is stored or mutated. */
+export class VisibilityFades {
+  private values = new Map<string, number>();
+  private touched = new Set<string>();
+  begin(): void { this.touched.clear(); }
+  sample(key: string, target: number, dt: number): number {
+    this.touched.add(key);
+    const old = this.values.get(key) ?? 1;
+    const value = old + (target - old) * (1 - Math.exp(-12 * Math.min(.1, dt)));
+    this.values.set(key, value);
+    return value;
+  }
+  end(): void { for (const key of this.values.keys()) if (!this.touched.has(key)) this.values.delete(key); }
+}
+
 function aabbOverlap(a: ScreenAabb, b: ScreenAabb, pad: number): boolean {
   return a.minX <= b.maxX + pad && a.maxX >= b.minX - pad && a.minY <= b.maxY + pad && a.maxY >= b.minY - pad;
 }
@@ -131,8 +156,8 @@ export function wallSpanFadeRuns(
     const gy0 = span.dir === "south" ? span.gy0 : run0;
     const gy1 = span.dir === "south" ? span.gy0 : i - 1;
     const depth = depthKey(
-      b.x + ((gx0 + gx1 + 1) * 0.5) * cs,
-      b.y + ((gy0 + gy1 + 1) * 0.5) * cs,
+      b.x + (span.dir === "east" ? gx0 + 1 : (gx0 + gx1 + 1) * 0.5) * cs,
+      b.y + (span.dir === "south" ? gy0 + 1 : (gy0 + gy1 + 1) * 0.5) * cs,
       span.floor * FLOOR_Z,
     );
     runs.push({ span: sliceWallSpan(span, run0, i - 1, depth), fade: runFade });
