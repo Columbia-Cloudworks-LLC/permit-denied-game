@@ -1,3 +1,4 @@
+import { independentFloors } from "../structure/construction";
 import { Graphics } from "pixi.js";
 import { FLOOR_Z } from "../game/constants";
 import {
@@ -5,13 +6,13 @@ import {
   fixtureExposed,
   fixtureSupported,
   hasFurnishedInterior,
-  ranchFloorCoverage,
+  interiorFloorCoverage,
   type FixtureFinish,
-  type RanchFloorSpan,
+  type InteriorFloorSpan,
 } from "../structure/interior";
-import { neighborRoofBayOpen, ranchRafterBeams } from "../structure/roof";
+import { neighborRoofBayOpen, roofFrameBeams } from "../structure/roof";
 import type { Building, Cell, InteriorFixture, RoofSection } from "../structure/types";
-import { cellPresent } from "../structure/types";
+import { cellPresent, cellWorldBox } from "../structure/types";
 import { depthKey } from "../world/iso";
 import { drawFaceWindow, drawIsoBox, drawShadow, drawSlopedQuad, drawTopCap, shade } from "./drawIso";
 import { brokenEdgeColor, floorFinishColor, plasterColor, topFaceColor, wallFaceColor } from "./lighting";
@@ -32,8 +33,8 @@ function jag(gx: number, gy: number, k: number): number {
 }
 
 /** Framing is drawn behind covering, so it only reads at openings or undersides. */
-export function ranchRoofShowsRafters(b: Building, roof: RoofSection): boolean {
-  if (!hasFurnishedInterior(b)) return false;
+export function roofShowsFrame(b: Building, roof: RoofSection): boolean {
+  if (!b.construction?.bays) return false;
   if (roof.state === "gone") return false;
   if (roof.state === "sagging" || roof.state === "falling") return true;
   return neighborRoofBayOpen(b, roof, -1) || neighborRoofBayOpen(b, roof, 1);
@@ -80,10 +81,10 @@ function drawBrokenFloorEdge(
   }
 }
 
-function drawRanchFloorSpan(
+function drawInteriorFloorSpan(
   g: Graphics,
   b: Building,
-  span: RanchFloorSpan,
+  span: InteriorFloorSpan,
   alpha: number,
   hasFloor: (gx: number, gy: number, floor: number) => boolean,
 ): void {
@@ -104,7 +105,7 @@ function drawRanchFloorSpan(
 }
 
 /** Farthest-from-camera corner so the slab paints before objects standing on it. */
-function ranchFloorPainterDepth(b: Building, span: RanchFloorSpan): number {
+function interiorFloorPainterDepth(b: Building, span: InteriorFloorSpan): number {
   const cs = b.cellSize;
   const x0 = b.x + span.gx0 * cs;
   const y0 = b.y + span.gy0 * cs;
@@ -147,7 +148,7 @@ function wallStubDepth(b: Building, gx: number, gy: number, floor: number, dir: 
   }
 }
 
-function drawRanchWallStub(
+function drawInteriorWallStub(
   g: Graphics,
   b: Building,
   gx: number,
@@ -240,7 +241,7 @@ function wallStubDirs(b: Building, gx: number, gy: number, floor: number): WallS
   return dirs;
 }
 
-export function drawRanchThickBrokenWall(
+export function drawThickBrokenWall(
   g: Graphics,
   b: Building,
   dir: "south" | "east",
@@ -290,55 +291,13 @@ function drawFixtureSolid(
   z0: number,
   alpha: number,
 ): void {
-  const x = fixture.x;
-  const y = fixture.y;
-  const w = fixture.w;
-  const d = fixture.d;
-  const h = fixture.h;
-  drawShadow(g, x, y, w, d, 0.18 * alpha);
-  switch (fixture.kind) {
-    case "cabinet": {
-      drawIsoBox(g, x, y, w, d, z0, h, PAL.woodTop, PAL.woodDark, PAL.wood, alpha);
-      drawIsoBox(g, x + w * 0.12, y + d * 0.15, w * 0.76, d * 0.2, z0 + h * 0.12, h * 0.7, PAL.wood, PAL.woodDark, PAL.woodDark, alpha);
-      return;
-    }
-    case "counter": {
-      drawIsoBox(g, x, y, w, d, z0, h * 0.72, PAL.wood, PAL.woodDark, PAL.wood, alpha);
-      drawIsoBox(g, x - 0.02, y - 0.02, w + 0.04, d + 0.04, z0 + h * 0.7, h * 0.28, PAL.plank, PAL.plankDark, PAL.plank, alpha);
-      return;
-    }
-    case "toilet": {
-      drawIsoBox(g, x + w * 0.12, y, w * 0.76, d * 0.38, z0 + h * 0.28, h * 0.7, PAL.ceramic, PAL.ceramicDark, PAL.ceramic, alpha);
-      drawIsoBox(g, x + w * 0.08, y + d * 0.28, w * 0.84, d * 0.7, z0, h * 0.42, PAL.ceramic, PAL.ceramicDark, PAL.ceramic, alpha);
-      return;
-    }
-    case "sofa": {
-      drawIsoBox(g, x, y, w, d, z0, h * 0.45, PAL.sofa, PAL.sofaDark, PAL.sofa, alpha);
-      drawIsoBox(g, x, y, w, d * 0.32, z0 + h * 0.4, h * 0.58, PAL.sofa, PAL.sofaDark, shade(PAL.sofa, 1.08), alpha);
-      drawIsoBox(g, x + w * 0.06, y + d * 0.36, w * 0.4, d * 0.5, z0 + h * 0.42, h * 0.22, shade(PAL.sofa, 1.1), PAL.sofaDark, PAL.sofa, alpha);
-      drawIsoBox(g, x + w * 0.52, y + d * 0.36, w * 0.4, d * 0.5, z0 + h * 0.42, h * 0.22, shade(PAL.sofa, 1.1), PAL.sofaDark, PAL.sofa, alpha);
-      return;
-    }
-    case "table": {
-      const topH = Math.min(0.08, h * 0.28);
-      drawIsoBox(g, x + w * 0.08, y + d * 0.08, w * 0.18, d * 0.18, z0, h - topH, PAL.woodDark, PAL.woodDark, PAL.wood, alpha);
-      drawIsoBox(g, x + w * 0.74, y + d * 0.08, w * 0.18, d * 0.18, z0, h - topH, PAL.woodDark, PAL.woodDark, PAL.wood, alpha);
-      drawIsoBox(g, x + w * 0.08, y + d * 0.74, w * 0.18, d * 0.18, z0, h - topH, PAL.woodDark, PAL.woodDark, PAL.wood, alpha);
-      drawIsoBox(g, x + w * 0.74, y + d * 0.74, w * 0.18, d * 0.18, z0, h - topH, PAL.woodDark, PAL.woodDark, PAL.wood, alpha);
-      drawIsoBox(g, x, y, w, d, z0 + h - topH, topH, PAL.plank, PAL.plankDark, PAL.woodTop, alpha);
-      return;
-    }
-    case "radiator": {
-      drawIsoBox(g, x, y, w, d, z0, h, PAL.metalTop, PAL.metalDark, PAL.metal, alpha);
-      for (let i = 0; i < 3; i++) {
-        drawIsoBox(g, x + 0.04 + i * (w * 0.3), y - 0.02, w * 0.18, d + 0.04, z0 + 0.04, h * 0.82, PAL.metal, PAL.metalDark, PAL.metalTop, alpha);
-      }
-      return;
-    }
-    default: {
-      const _never: never = fixture.kind;
-      return _never;
-    }
+  const def = fixtureCatalog(fixture.kind);
+  for (const box of def.boxes) {
+    drawIsoBox(g,
+      fixture.x + (box.along + .5 - box.len / 2) * fixture.w,
+      fixture.y + (box.across + .5 - box.wid / 2) * fixture.d,
+      box.len * fixture.w, box.wid * fixture.d, z0 + box.z * fixture.h, box.h * fixture.h,
+      box.top, box.left, box.right, alpha);
   }
 }
 
@@ -401,8 +360,8 @@ function drawBrokenFixture(g: Graphics, fixture: InteriorFixture, z0: number, al
   }
 }
 
-function drawRanchFixture(g: Graphics, b: Building, fixture: InteriorFixture, alpha: number): void {
-  if (!fixtureExposed(b, fixture) && !(fixture.broken && fixtureSupported(b, fixture))) return;
+function drawInteriorFixture(g: Graphics, b: Building, fixture: InteriorFixture, alpha: number, reveal = false): void {
+  if (!reveal && !fixtureExposed(b, fixture) && !(fixture.broken && fixtureSupported(b, fixture))) return;
   if (fixture.broken && !fixtureSupported(b, fixture)) return;
   const z0 = fixture.floor * FLOOR_Z + FLOOR_H;
   if (fixture.broken) {
@@ -444,8 +403,8 @@ function drawSlopedBeam(
   drawSlopedQuad(g, topQuad, top, side, alpha);
 }
 
-export function drawRanchRafters(g: Graphics, _b: Building, roof: RoofSection, alpha: number): void {
-  const beams = ranchRafterBeams(roof);
+export function drawRoofFrame(g: Graphics, _b: Building, roof: RoofSection, alpha: number): void {
+  const beams = roofFrameBeams(roof);
   if (beams.length === 0) return;
   const top = PAL.woodTop;
   const side = PAL.woodDark;
@@ -455,41 +414,72 @@ export function drawRanchRafters(g: Graphics, _b: Building, roof: RoofSection, a
   }
 }
 
-type RanchInteriorKind = "floor" | "stub" | "fixture";
+type InteriorDrawKind = "floor" | "stub" | "fixture" | "partition";
 
-export function ranchInteriorCmds(
+export function interiorCmds(
   b: Building,
   fade: number,
-): { depth: number; kind: RanchInteriorKind; run: (g: Graphics) => void }[] {
+  options: { reveal?: boolean; maxFloor?: number } = {},
+): { depth: number; kind: InteriorDrawKind; run: (g: Graphics) => void }[] {
   if (!hasFurnishedInterior(b)) return [];
-  const cmds: { depth: number; kind: RanchInteriorKind; run: (g: Graphics) => void }[] = [];
+  const cmds: { depth: number; kind: InteriorDrawKind; run: (g: Graphics) => void }[] = [];
   const interiorFade = Math.max(fade, 0.78);
-  const coverage = ranchFloorCoverage(b);
+  const maxFloor = options.maxFloor ?? Infinity;
+  const coverage = interiorFloorCoverage(b, options.reveal);
+  if (independentFloors(b)) {
+    for (const tile of b.floorTiles ?? []) {
+      if (tile.state !== "falling" || tile.floor > maxFloor) continue;
+      const cs = b.cellSize, x = b.x + tile.gx * cs, y = b.y + tile.gy * cs;
+      const z = tile.floor * FLOOR_Z * (1 - tile.fallT);
+      const mat = b.construction!.floor;
+      cmds.push({ kind: "floor", depth: depthKey(x + cs / 2, y + cs / 2, z), run: g =>
+        drawIsoBox(g, x, y, cs, cs, z, .12, topFaceColor(mat), wallFaceColor(mat, "south"), wallFaceColor(mat, "east"), fade) });
+    }
+    for (const cell of b.cells) {
+      if (!cellPresent(cell) || cell.floor > maxFloor) continue;
+      if (cell.cladding?.hp === 0) {
+        const box = cellWorldBox(b, cell);
+        cmds.push({ kind: "stub", depth: depthKey(box.x + box.w / 2, box.y + box.d / 2, cell.floor * FLOOR_Z), run: g =>
+          drawIsoBox(g, box.x, box.y, box.w, box.d, cell.floor * FLOOR_Z, FLOOR_Z, PAL.metalTop, PAL.metalDark, PAL.metal, fade) });
+        continue;
+      }
+      if (cell.gy !== 0 && cell.gx !== 0) continue;
+      const cs = b.cellSize, x = b.x + cell.gx * cs, y = b.y + cell.gy * cs;
+      cmds.push({ kind: "stub", depth: depthKey(x + cs / 2, y + cs / 2, cell.floor * FLOOR_Z), run: g => {
+        const north = cell.gy === 0;
+        const mat = b.construction!.structure;
+        drawIsoBox(g, x, y, north ? cs : WALL_THICK, north ? WALL_THICK : cs, cell.floor * FLOOR_Z, FLOOR_Z,
+          topFaceColor(mat), wallFaceColor(mat, "south"), wallFaceColor(mat, "east"), fade);
+      }});
+    }
+  }
   for (const span of coverage.spans) {
+    if (span.floor > maxFloor) continue;
     cmds.push({
       kind: "floor",
-      depth: ranchFloorPainterDepth(b, span),
-      run: (g) => drawRanchFloorSpan(g, b, span, interiorFade, coverage.hasFloor),
+      depth: interiorFloorPainterDepth(b, span),
+      run: (g) => drawInteriorFloorSpan(g, b, span, interiorFade, coverage.hasFloor),
     });
     for (let gy = span.gy0; gy <= span.gy1; gy++) {
       for (let gx = span.gx0; gx <= span.gx1; gx++) {
-        for (const dir of wallStubDirs(b, gx, gy, span.floor)) {
+        for (const dir of independentFloors(b) ? [] : wallStubDirs(b, gx, gy, span.floor)) {
           cmds.push({
             kind: "stub",
             depth: wallStubDepth(b, gx, gy, span.floor, dir),
-            run: (g) => drawRanchWallStub(g, b, gx, gy, span.floor, dir, interiorFade),
+            run: (g) => drawInteriorWallStub(g, b, gx, gy, span.floor, dir, interiorFade),
           });
         }
       }
     }
   }
   for (const fixture of b.fixtures) {
-    if (!fixtureExposed(b, fixture) && !(fixture.broken && fixtureSupported(b, fixture))) continue;
+    if (fixture.floor > maxFloor) continue;
+    if (!options.reveal && !fixtureExposed(b, fixture) && !(fixture.broken && fixtureSupported(b, fixture))) continue;
     if (fixture.broken && !fixtureSupported(b, fixture)) continue;
     cmds.push({
-      kind: "fixture",
+      kind: fixture.kind === "partition" ? "partition" : "fixture",
       depth: fixtureDepth(fixture),
-      run: (g) => drawRanchFixture(g, b, fixture, interiorFade),
+      run: (g) => drawInteriorFixture(g, b, fixture, interiorFade, options.reveal),
     });
   }
   return cmds;

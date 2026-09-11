@@ -1,5 +1,6 @@
 import { COPY, CASH_TARGET, MATCH_SECONDS, TITLE, TAGLINE } from "../game/constants";
-import { DISTRICT_LABELS, type DistrictId, type SessionKind } from "../game/session";
+import { DEBUG_GROUPS, type DebugView, type DebugToggle } from "../debug/view";
+import { DISTRICT_LABELS, type DistrictId, type SessionKind, type DemoAsset } from "../game/session";
 
 export type OverlayMode = "none" | "pause" | "upgrade" | "results";
 
@@ -41,6 +42,12 @@ export class Hud {
   onNewSeed?: () => void;
   onSession?: (kind: SessionKind) => void;
   onDistrict?: (id: DistrictId) => void;
+  onDemo?: (id: DemoAsset) => void;
+  onDebugToggle?: (key: DebugToggle, value: boolean) => void;
+  onDebugFloor?: (floor: number) => void;
+  onDebugReset?: () => void;
+  onDebugStep?: () => void;
+  onDebugOpen?: () => void;
 
   constructor(root: HTMLElement) {
     this.root = root;
@@ -56,6 +63,21 @@ export class Hud {
         <button type="button" id="hud-mute">MUTE</button>
       </div>
       <div class="session" id="hud-session"></div>
+      <div class="debug-menu">
+        <button type="button" id="debug-toggle" aria-expanded="false" aria-controls="debug-panel">DEBUG</button>
+        <section id="debug-panel" aria-label="Game debug options" hidden>
+          <div class="debug-heading"><strong>SCENE INSPECTOR</strong><button type="button" id="debug-close" aria-label="Close debug menu">×</button></div>
+          <p>Visibility only: hidden objects still collide and simulate. Options stay set when you restart a lot.</p>
+          <label class="debug-floor">Show floors <select id="debug-floor" aria-label="Show floors">
+            <option value="99">All floors</option><option value="0">Ground floor only</option>
+            <option value="1">Through second floor</option><option value="2">Through third floor</option>
+          </select></label>
+          ${DEBUG_GROUPS.map(group => `<fieldset><legend>${group.label}</legend>${group.options.map(([key, label, checked]) =>
+            `<label><input type="checkbox" data-debug="${key}" ${checked ? "checked" : ""}> ${label}</label>`).join("")}</fieldset>`).join("")}
+          <div class="debug-actions"><button type="button" id="debug-step" disabled>STEP 1 FRAME</button><button type="button" id="debug-reset">RESET OPTIONS</button></div>
+          <p class="debug-legend">Paths: blue · route: yellow · lots: green · buildable: purple · rooms: gold<br>Collision: pink walls, orange props/contents, white dozer · supports: green live / pink failing</p>
+        </section>
+      </div>
       <div class="heat" id="hud-heat"><span></span></div>
       <div class="hint" id="hud-hint"></div>
       <div class="blade" id="hud-blade"></div>
@@ -74,6 +96,39 @@ export class Hud {
     root.querySelector("#hud-mute")!.addEventListener("click", () => this.onMute?.());
     this.hintEl.innerHTML = `W/S drive &nbsp; A/D steer<br>SPACE powered blade &nbsp; R same lot<br>N new seed &nbsp; 1/2/3 upgrades<br>ESC pause &nbsp; M mute &nbsp; V test car`;
     this.bindSessionBar();
+    this.bindDebugMenu();
+  }
+
+  private bindDebugMenu(): void {
+    const panel = this.root.querySelector<HTMLElement>("#debug-panel")!;
+    const toggle = this.root.querySelector<HTMLButtonElement>("#debug-toggle")!;
+    const show = (open: boolean) => {
+      panel.hidden = !open;
+      toggle.setAttribute("aria-expanded", String(open));
+      if (open) this.onDebugOpen?.();
+    };
+    toggle.addEventListener("click", () => show(panel.hidden));
+    this.root.querySelector("#debug-close")!.addEventListener("click", () => { show(false); toggle.focus(); });
+    this.root.querySelector(".debug-menu")!.addEventListener("keydown", event => {
+      if ((event as KeyboardEvent).key === "Escape" && !panel.hidden) { event.stopPropagation(); show(false); toggle.focus(); }
+    });
+    panel.querySelectorAll<HTMLInputElement>("[data-debug]").forEach(input => {
+      input.addEventListener("change", () => this.onDebugToggle?.(input.dataset.debug as DebugToggle, input.checked));
+    });
+    this.root.querySelector<HTMLSelectElement>("#debug-floor")!.addEventListener("change", event => {
+      this.onDebugFloor?.(Number((event.target as HTMLSelectElement).value));
+    });
+    this.root.querySelector("#debug-reset")!.addEventListener("click", () => this.onDebugReset?.());
+    this.root.querySelector("#debug-step")!.addEventListener("click", () => this.onDebugStep?.());
+  }
+
+  syncDebug(view: DebugView): void {
+    this.root.querySelectorAll<HTMLInputElement>("[data-debug]").forEach(input => {
+      input.checked = view[input.dataset.debug as DebugToggle];
+    });
+    this.root.querySelector<HTMLSelectElement>("#debug-floor")!.value = String(view.maxFloor);
+    this.root.querySelector<HTMLButtonElement>("#debug-step")!.disabled = !view.freeze;
+    this.root.querySelector<HTMLButtonElement>("#debug-toggle")!.textContent = view.freeze ? "DEBUG · FROZEN" : "DEBUG";
   }
 
   private bindSessionBar(): void {
@@ -86,6 +141,9 @@ export class Hud {
       <button type="button" data-district="d30">${DISTRICT_LABELS.d30}</button>
       <button type="button" data-district="d100">${DISTRICT_LABELS.d100}</button>
       <button type="button" data-act="newseed">NEW LOT</button>
+      <button type="button" data-demo="ranch">RANCH</button>
+      <button type="button" data-demo="rivertown">BRICK</button>
+      <button type="button" data-demo="steel-warehouse">STEEL</button>
       <button type="button" data-up="blade">BLADE+</button>
       <button type="button" data-up="engine">ENGINE+</button>
       <button type="button" data-up="push">PUSH+</button>
@@ -95,9 +153,11 @@ export class Hud {
         const session = (btn as HTMLButtonElement).dataset.session as SessionKind | undefined;
         const district = (btn as HTMLButtonElement).dataset.district as DistrictId | undefined;
         const act = (btn as HTMLButtonElement).dataset.act;
+        const demo = (btn as HTMLButtonElement).dataset.demo as DemoAsset | undefined;
         const up = (btn as HTMLButtonElement).dataset.up as "blade" | "engine" | "push" | undefined;
         if (session) this.onSession?.(session);
         if (district) this.onDistrict?.(district);
+        if (demo) this.onDemo?.(demo);
         if (act === "newseed") this.onNewSeed?.();
         if (up) this.onChoice?.(up);
       });

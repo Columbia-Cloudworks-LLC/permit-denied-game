@@ -2,10 +2,10 @@ import { describe, expect, it } from "vitest";
 import { SIM_DT } from "../game/constants";
 import { ParticlePool } from "../fx/particles";
 import { extractBuildingSurfaces } from "../render/buildingSurfaces";
-import { ranchRoofShowsRafters } from "../render/interiorDraw";
+import { roofShowsFrame } from "../render/interiorDraw";
 import { applyCellDamage, createBuildingFromArchetype, stepStructures } from "./building";
 import {
-  cellDrawsRanchFloor,
+  cellDrawsInteriorFloor,
   cellHasFloor,
   cellInteriorExposed,
   fixtureCatalog,
@@ -13,9 +13,9 @@ import {
   fixtureSupported,
   generateInteriors,
   hasFurnishedInterior,
-  ranchFloorCoverage,
-  ranchFloorSpans,
-  ranchRoomAt,
+  interiorFloorCoverage,
+  interiorFloorSpans,
+  interiorRoomAt,
   stepInteriors,
 } from "./interior";
 
@@ -41,9 +41,9 @@ describe("ranch interiors", () => {
     expect(kinds.has("sofa")).toBe(true);
     expect(kinds.has("table")).toBe(true);
     expect(kinds.has("radiator")).toBe(true);
-    expect(ranchRoomAt(ranch, 0, 0)).toBe("kitchen");
-    expect(ranchRoomAt(ranch, 2, 1)).toBe("living");
-    expect(ranchRoomAt(ranch, 4, 2)).toBe("bathroom");
+    expect(interiorRoomAt(ranch, 0, 0)).toBe("kitchen");
+    expect(interiorRoomAt(ranch, 2, 1)).toBe("living");
+    expect(interiorRoomAt(ranch, 4, 2)).toBe("bathroom");
   });
 
   it("places the same fixtures for the same ranch footprint", () => {
@@ -119,7 +119,7 @@ describe("ranch floor spans", () => {
     const b = createBuildingFromArchetype("ranch", "SLAB", 0, 0);
     smashCell(b, 2, 2);
     smashCell(b, 3, 2);
-    const living = ranchFloorSpans(b).find((s) => s.finish === "plank");
+    const living = interiorFloorSpans(b).find((s) => s.finish === "plank");
     expect(living).toBeDefined();
     expect(living!.gx0).toBe(2);
     expect(living!.gx1).toBe(3);
@@ -140,7 +140,7 @@ describe("ranch floor spans", () => {
       cell.state = "breached";
       cell.hp = 0;
     }
-    const living = ranchFloorSpans(b).filter((s) => s.finish === "plank");
+    const living = interiorFloorSpans(b).filter((s) => s.finish === "plank");
     expect(living).toHaveLength(1);
     const slab = living[0]!;
     expect(slab.gx0).toBe(2);
@@ -164,8 +164,8 @@ describe("ranch floor spans", () => {
     const b = createBuildingFromArchetype("ranch", "ROOMS", 0, 0);
     smashCell(b, 1, 2);
     smashCell(b, 2, 2);
-    const kitchen = ranchFloorSpans(b).find((s) => s.finish === "linoleum");
-    const living = ranchFloorSpans(b).find((s) => s.finish === "plank");
+    const kitchen = interiorFloorSpans(b).find((s) => s.finish === "linoleum");
+    const living = interiorFloorSpans(b).find((s) => s.finish === "plank");
     expect(kitchen?.gx1).toBe(1);
     expect(living?.gx0).toBe(2);
     expect(kitchen?.gy1).toBe(2);
@@ -176,16 +176,16 @@ describe("ranch floor spans", () => {
   it("reuses one coverage pass for spans and neighbor floor queries", () => {
     const b = createBuildingFromArchetype("ranch", "CACHE", 0, 0);
     smashCell(b, 2, 2);
-    const first = ranchFloorCoverage(b);
-    const second = ranchFloorCoverage(b);
+    const first = interiorFloorCoverage(b);
+    const second = interiorFloorCoverage(b);
     expect(second.spans).toBe(first.spans);
-    expect(cellDrawsRanchFloor(b, 2, 2, 0)).toBe(true);
+    expect(cellDrawsInteriorFloor(b, 2, 2, 0)).toBe(true);
     expect(first.hasFloor(2, 2, 0)).toBe(true);
     smashCell(b, 3, 2);
-    const after = ranchFloorCoverage(b);
+    const after = interiorFloorCoverage(b);
     expect(after.spans).not.toBe(first.spans);
     expect(after.hasFloor(3, 2, 0)).toBe(true);
-    expect(cellDrawsRanchFloor(b, 3, 2, 0)).toBe(true);
+    expect(cellDrawsInteriorFloor(b, 3, 2, 0)).toBe(true);
   });
 
   it("does not treat a surviving neighbor as a broken floor edge", () => {
@@ -215,7 +215,7 @@ describe("ranch roof bays", () => {
       cell.hp = 0;
     }
     expect(cellInteriorExposed(b, 2, 1, 0)).toBe(true);
-    const living = ranchFloorSpans(b).find((s) => s.finish === "plank");
+    const living = interiorFloorSpans(b).find((s) => s.finish === "plank");
     expect(living).toBeDefined();
     expect(living!.gx0).toBeLessThanOrEqual(2);
     expect(living!.gx1).toBeGreaterThanOrEqual(2);
@@ -226,8 +226,8 @@ describe("ranch roof bays", () => {
     const northBay = b.roofs.find((r) => r.support.some((s) => s.gx === 2 && s.gy === 0))!;
     expect(southBay.state).toBe("intact");
     expect(northBay.state).toBe("intact");
-    expect(ranchRoofShowsRafters(b, southBay)).toBe(false);
-    expect(ranchRoofShowsRafters(b, northBay)).toBe(false);
+    expect(roofShowsFrame(b, southBay)).toBe(false);
+    expect(roofShowsFrame(b, northBay)).toBe(false);
     expect(living!.gx0).toBeLessThanOrEqual(2);
     expect(living!.gx1).toBeGreaterThanOrEqual(2);
   });

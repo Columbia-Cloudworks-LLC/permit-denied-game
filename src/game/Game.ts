@@ -1,3 +1,4 @@
+import { defaultDebugView } from "../debug/view";
 import { Application } from "pixi.js";
 import { AudioBus } from "../audio/synth";
 import { emptyPerfSnapshot, formatPerfOverlay, PerfCollector } from "../debug/perf";
@@ -31,6 +32,7 @@ import {
   sessionFailsOn,
   sessionForcesUpgrade,
   type DistrictId,
+  type DemoAsset,
   type PlayMode,
   type SessionKind,
   type SessionRules,
@@ -51,7 +53,7 @@ export class Game {
   private rules: SessionRules = parseSessionFromSearch(
     typeof window === "undefined" ? "" : window.location.search,
   );
-  private town = createTown({ district: this.rules.district, seed: this.rules.seed });
+  private town = createTown({ district: this.rules.district, seed: this.rules.seed, showcase: !!this.rules.demo });
   private dozer = createDozer(this.town.spawnX, this.town.spawnY, this.town.spawnHeading);
   private birds: Bird[] = [];
   private cash = 0;
@@ -96,10 +98,18 @@ export class Game {
     this.hud.onNewSeed = () => this.reset("new");
     this.hud.onSession = (kind) => this.setSession(kind);
     this.hud.onDistrict = (id) => this.setDistrict(id);
+    this.hud.onDemo = (id) => this.setDemo(id);
+    this.hud.onDebugOpen = () => { this.input.down.clear(); this.input.flush(); };
+    this.hud.onDebugToggle = (key, value) => { this.renderer.debug[key] = value; this.syncDebug(); };
+    this.hud.onDebugFloor = floor => { this.renderer.debug.maxFloor = floor; this.syncDebug(); };
+    this.hud.onDebugReset = () => { Object.assign(this.renderer.debug, defaultDebugView()); this.syncDebug(); };
+    this.hud.onDebugStep = () => { if (this.renderer.debug.freeze && this.mode === "play") this.step(SIM_DT); };
     this.detachInput = this.input.attach();
     this.perf.enabled = new URLSearchParams(window.location.search).get("perf") === "1";
     if (this.perf.enabled) this.ensurePerfOverlay();
     this.renderer.showNhood = new URLSearchParams(window.location.search).get("nhood") === "1";
+    this.renderer.debug.perf = this.perf.enabled;
+    this.syncDebug();
     this.reset("same");
     (window as unknown as { __pd: Game }).__pd = this;
     this.app.ticker.add((ticker) => {
@@ -151,6 +161,7 @@ export class Game {
   }
 
   setDistrict(district: DistrictId): void {
+    this.rules.demo = undefined;
     this.rules.district = district;
     this.rules.seed = DEFAULT_DISTRICT_SEEDS[district];
     this.reset("same");
@@ -158,9 +169,9 @@ export class Game {
 
   reset(kind: "same" | "new" = "same"): void {
     if (kind === "new") this.rules.seed = nextSeed(this.rules.seed);
-    this.town = createTown({ district: this.rules.district, seed: this.rules.seed });
-    const ranch = this.rules.ranchFocus
-      ? this.town.buildings.find((b) => b.archetypeId === "ranch")
+    this.town = createTown({ district: this.rules.district, seed: this.rules.seed, showcase: !!this.rules.demo });
+    const ranch = this.rules.demo || this.rules.ranchFocus
+      ? this.town.buildings.find((b) => b.archetypeId === (this.rules.demo ?? "ranch"))
       : undefined;
     this.dozer = ranch
       ? createDozer(
@@ -192,6 +203,20 @@ export class Game {
     this.renderer.camY = spawn.y;
   }
 
+  setDemo(demo: DemoAsset): void {
+    this.rules.demo = demo;
+    this.rules.kind = "sandbox";
+    this.rules.district = "classic";
+    this.rules.ranchFocus = false;
+    this.reset("same");
+  }
+
+  private syncDebug(): void {
+    this.perf.enabled = this.renderer.debug.perf;
+    if (this.perf.enabled) this.ensurePerfOverlay(); else this.hidePerfOverlay();
+    this.hud.syncDebug(this.renderer.debug);
+  }
+
   private pickUpgrade(id: "blade" | "engine" | "push"): void {
     this.upgrades[id] += 1;
     if (this.mode === "upgrade") this.mode = "play";
@@ -207,11 +232,10 @@ export class Game {
     if (this.input.consume("r") || this.input.consume("R")) this.reset("same");
     if (this.input.consume("n") || this.input.consume("N")) this.reset("new");
     if (this.input.consume("v") || this.input.consume("V")) this.spawnRoadVehicle();
-    if (this.input.consume("g") || this.input.consume("G")) this.renderer.showNhood = !this.renderer.showNhood;
+    if (this.input.consume("g") || this.input.consume("G")) { this.renderer.showNhood = !this.renderer.showNhood; this.syncDebug(); }
     if (this.input.consume("`")) {
-      this.perf.enabled = !this.perf.enabled;
-      if (this.perf.enabled) this.ensurePerfOverlay();
-      else this.hidePerfOverlay();
+      this.renderer.debug.perf = !this.renderer.debug.perf;
+      this.syncDebug();
     }
     if (this.input.consume("1")) this.pickUpgrade("blade");
     if (this.input.consume("2")) this.pickUpgrade("engine");
@@ -223,7 +247,7 @@ export class Game {
     if (this.input.down.size > 0) void this.audio.unlock();
 
     let simCpuMs = 0;
-    if (this.mode === "play") {
+    if (this.mode === "play" && !this.renderer.debug.freeze) {
       this.acc += realDt;
       let steps = 0;
       const simStart = performance.now();

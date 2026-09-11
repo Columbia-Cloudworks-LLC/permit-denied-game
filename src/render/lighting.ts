@@ -35,6 +35,8 @@ export function plasterColor(occluded = false): number {
 
 export function floorFinishColor(finish: FloorFinish, edge = false): number {
   switch (finish) {
+    case "concrete":
+      return edge ? PAL.concreteDark : PAL.concrete;
     case "plank":
       return edge ? PAL.plankDark : PAL.plank;
     case "tile":
