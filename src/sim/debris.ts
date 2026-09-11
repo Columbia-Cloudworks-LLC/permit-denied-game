@@ -82,7 +82,7 @@ export function resetDebrisSim(seed = 0xdeb415): void {
   stepStats = emptyDebrisStats();
 }
 
-function rubbleAabb(r: Rubble): { x: number; y: number; w: number; d: number } {
+export function rubbleAabb(r: Rubble): { x: number; y: number; w: number; d: number } {
   const ext = 0.5 * Math.hypot(r.w, r.d) + 0.06;
   return { x: r.x - ext, y: r.y - ext, w: ext * 2, d: ext * 2 };
 }

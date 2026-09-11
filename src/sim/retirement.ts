@@ -4,7 +4,8 @@ import type { Town } from '../world/town';
 import type { Dozer } from '../vehicle/dozer';
 
 /** Debris owns broken objects; the site owns the aftermath of a retired structure. */
-export function retireStructures(town: Town, dozer: Dozer, dt: number): void {
+export function retireStructures(town: Town, dozer: Dozer, dt: number): number {
+  let retired = 0;
   for (const b of town.buildings) {
     if (b.retired) continue;
     if (b.fixtures.some(f => f.broken)) {
@@ -24,7 +25,9 @@ export function retireStructures(town: Town, dozer: Dozer, dt: number): void {
     b.cells = []; b.grid = []; b.roofs = []; b.floorTiles = []; b.fixtures = []; b.decorBoxes = [];
     releaseInteriorCache(b);
     b.retired = true;
+    retired++;
     b.visualRevision++;
     b.collisionDirty = true;
   }
+  return retired;
 }

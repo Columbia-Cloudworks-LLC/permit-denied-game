@@ -83,6 +83,7 @@ function rebuildHash(town: Town): boolean {
   if (!collisionNeedsRebuild(town)) return false;
   hash.clear();
   for (const b of town.buildings) {
+    if (b.retired) { b.collisionDirty = false; continue; }
     for (let gx = 0; gx < b.w; gx++) {
       for (let gy = 0; gy < b.d; gy++) {
         if (!footprintSolid(b, gx, gy)) continue;
@@ -115,7 +116,7 @@ function rebuildHash(town: Town): boolean {
   return true;
 }
 
-function spawnFixtureFrags(town: Town, frags: FixtureFrag[]): void {
+export function spawnFixtureFrags(town: Town, frags: FixtureFrag[]): void {
   for (const frag of frags) {
     if (frag.pileMass) town.pile.addMass(frag.x, frag.y, frag.pileMass, frag.material);
     addDebrisBody(town, {
@@ -138,6 +139,7 @@ function ensureBuildingHash(town: Town): void {
   if (buildingHashTown === town) return;
   buildingHash.clear();
   for (const b of town.buildings) {
+    if (b.retired) continue;
     buildingHash.insert(b.x, b.y, b.w * b.cellSize, b.d * b.cellSize, b);
   }
   buildingHashTown = town;
@@ -334,7 +336,7 @@ export function stepWorld(
     });
   }
 
-  retireStructures(town, dozer, dt);
+  if (retireStructures(town, dozer, dt) > 0) buildingHashTown = null;
 
   const overSite = siteContaining(town, dozer.x, dozer.y);
   if (overSite) {

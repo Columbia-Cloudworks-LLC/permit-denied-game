@@ -44,6 +44,7 @@ export class WorldRenderer {
   private readonly nhood = new Graphics();
   private readonly nhoodLabels: Text[] = [];
   private readonly world = new Graphics();
+  private readonly groundOverlays = new Graphics();
   private readonly drawing = new DrawCache();
   private readonly cmds: Cmd[] = [];
   readonly debug = defaultDebugView();
@@ -63,7 +64,7 @@ export class WorldRenderer {
   stats = { total: 0, visible: 0, surfaceGeometry: 0, cached: 0, rebuilt: 0 };
 
   constructor() {
-    this.root.addChild(this.ground, this.sites, this.overlay, this.drawing.root, this.world, this.nhood, this.debugOverlay);
+    this.root.addChild(this.ground, this.sites, this.overlay, this.groundOverlays, this.drawing.root, this.world, this.nhood, this.debugOverlay);
     this.root.sortableChildren = false;
   }
 
@@ -98,6 +99,7 @@ export class WorldRenderer {
     this.sites.visible = view.sites;
     this.nhood.visible = this.showNhood;
     this.world.clear();
+    this.groundOverlays.clear();
     const yardKey = town.yard ? `${town.seed}:${town.yard.bays.map(b => b.key).join(',')}` : '';
     if (yardKey !== this.yardLabelKey) {
       for (const label of this.yardLabels) label.destroy();
@@ -108,7 +110,7 @@ export class WorldRenderer {
       }
       this.yardLabelKey = yardKey;
     }
-    for (const b of this.yardPreview) drawOrientedGround(this.world, b.x + b.w / 2, b.y + b.d / 2, 0, b.w, b.d, this.yardPreviewValid ? 0x55ff99 : 0xff5555, .3, .03);
+    for (const b of this.yardPreview) drawOrientedGround(this.groundOverlays, b.x + b.w / 2, b.y + b.d / 2, 0, b.w, b.d, this.yardPreviewValid ? 0x55ff99 : 0xff5555, .3, .03);
 
     this.cmds.length = 0;
     let total = 0;
@@ -208,7 +210,7 @@ export class WorldRenderer {
         for (const [x, y, w, d] of [[b.x - inset, b.y - inset, bw + inset * 2, .07],
           [b.x - inset, b.y + bd + inset, bw + inset * 2, .07],
           [b.x - inset, b.y - inset, .07, bd + inset * 2], [b.x + bw + inset, b.y - inset, .07, bd + inset * 2]]) {
-          drawGroundPoly(this.world, x!, y!, w!, d!, 0xd5b568, .65);
+          drawGroundPoly(this.groundOverlays, x!, y!, w!, d!, 0xd5b568, .65);
         }
       }
       const hasSolid = b.cells.some((c) => c.state !== "gone" && c.state !== "falling");
@@ -256,8 +258,6 @@ export class WorldRenderer {
         if (!view.walls || cell.floor > view.maxFloor || cell.state !== "falling") continue;
         const cx = b.x + cell.gx * b.cellSize + cell.fallDx * cell.fallT * 0.85;
         const cy = b.y + cell.gy * b.cellSize + cell.fallDy * cell.fallT * 0.85;
-        const z0 = cell.floor * FLOOR_Z - cell.sag * 0.55 - cell.fallT * 1.6;
-        if (!this.visibleBox(cx, cy, b.cellSize, b.cellSize, z0, z0 + FLOOR_Z)) continue;
         visible++;
         this.cmds.push({
           depth: depthKey(
@@ -277,11 +277,9 @@ export class WorldRenderer {
         {
           for (const roof of liveRoofs) {
             const moved = roofVerts(roof);
-            const c = roofCenter(moved);
             const xs = moved.map(v => v.x), ys = moved.map(v => v.y), zs = moved.map(v => v.z);
             const alpha = fadeBox(`roof:${roof.id}`, Math.min(...xs), Math.min(...ys),
               Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys), Math.min(...zs), Math.max(...zs) + .2);
-            if (!this.visibleBox(c.x - 2, c.y - 2, 4, 4, c.z - 1, c.z + 1.4)) continue;
             visible++;
             this.cmds.push({
               depth: roofPainterDepth(moved),
@@ -300,7 +298,8 @@ export class WorldRenderer {
           }
         }
       }
-      const version = [b.visualRevision, this.camX, this.camY, this.zoom, this.viewW, this.viewH, near ? dozer.x : 0, near ? dozer.y : 0, fadeValues.join(","), JSON.stringify(view)].join(':');
+      // Whole-building culling keeps command identities stable while the camera moves.
+      const version = [b.visualRevision, near ? dozer.x : 0, near ? dozer.y : 0, fadeValues.join(","), JSON.stringify(view)].join(':');
       for (let j = commandStart; j < this.cmds.length; j++) {
         this.cmds[j]!.key = 'building:' + b.id + ':' + (j - commandStart);
         this.cmds[j]!.version = version;
@@ -416,19 +415,6 @@ function chimneyWorld(b: Building): { x: number; y: number; z: number } | null {
 
 function drawChimney(g: Graphics, ch: { x: number; y: number; z: number }, alpha: number): void {
   drawIsoBox(g, ch.x, ch.y, 0.32, 0.32, ch.z, 0.85, PAL.brick, PAL.brickDark, PAL.brick, alpha);
-}
-
-function roofCenter(verts: { x: number; y: number; z: number }[]): { x: number; y: number; z: number } {
-  let x = 0;
-  let y = 0;
-  let z = 0;
-  for (const v of verts) {
-    x += v.x;
-    y += v.y;
-    z += v.z;
-  }
-  const n = Math.max(1, verts.length);
-  return { x: x / n, y: y / n, z: z / n };
 }
 
 function roofColors(b: Building, roof: RoofSection, verts: { x: number; y: number; z: number }[]): { top: number; edge: number } {

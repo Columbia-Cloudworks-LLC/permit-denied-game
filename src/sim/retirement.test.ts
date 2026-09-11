@@ -33,5 +33,7 @@ it('releases a distant demolished building runtime while retaining its site and 
   expect(b.floorTiles).toHaveLength(0);
   expect(b.roofs).toHaveLength(0);
   expect(town.rubble).toHaveLength(0);
-  expect(stepWorld(town, dozer, particles, { blade: 0, engine: 0, push: 0 }, 1/60).cash).toBe(0);
+  const frame = stepWorld(town, dozer, particles, { blade: 0, engine: 0, push: 0 }, 1/60);
+  expect(frame.cash).toBe(0);
+  expect(frame.metrics.collisionRebuilds).toBe(0);
 });

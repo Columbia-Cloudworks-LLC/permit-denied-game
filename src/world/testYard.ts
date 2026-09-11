@@ -1,4 +1,5 @@
 import { PileField } from '../sim/pile';
+import { rubbleAabb } from '../sim/debris';
 import { invalidateWorldCollision } from '../sim/worldSim';
 import type { ParticlePool } from '../fx/particles';
 import { createRoadVehicle } from '../vehicle/roadVehicle';
@@ -69,7 +70,7 @@ export function placementError(town: Town, plan: YardBay[], dozer?: { x: number;
         if (pile.mass[y * pile.cols + x]! > 1e-5) return 'Pile material obstructs this area. Clear it first.';
       }
     }
-    if (town.rubble.some(r => overlap(b, r))) return 'Debris obstructs this area. Clear it first.';
+    if (town.rubble.some(r => overlap(b, rubbleAabb(r)))) return 'Debris obstructs this area. Clear it first.';
     if (b.variant < 0 || b.variant >= b.asset.variants || !Number.isInteger(b.variant)) return 'Variant is out of range.';
   }
   return undefined;

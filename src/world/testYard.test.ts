@@ -6,17 +6,45 @@ import { CONTENT_ASSETS } from './contents';
 import { discoverYardAssets, layoutYard, instantiateBay, overlap } from './yardCatalog';
 import { clearBayDebris, clearTestArea, planBatch, placementError, removeBay, restoreBay, spawnBatch } from './testYard';
 import { destroyProp } from '../sim/assets';
-import { crushBody } from '../sim/debris';
+import { addDebrisBody, totalDebrisMass, crushBody } from '../sim/debris';
 import { ParticlePool } from '../fx/particles';
 import { createDozer } from '../vehicle/dozer';
-import { stepWorld } from '../sim/worldSim';
+import { spawnFixtureFrags, stepWorld } from '../sim/worldSim';
 import { applyCellDamage } from '../structure/building';
-import { fixtureSolid } from '../structure/interior';
+import { applyFixtureDamage, fixtureSolid } from '../structure/interior';
 import { PileField } from '../sim/pile';
 
 const yard = () => createTown({ yard: true });
 const sum = (values: Float32Array) => values.reduce((a, b) => a + b, 0);
 describe('generated asset test yard', () => {
+  it('preserves crushed fixture mass and ownership through yard destruction and restoration', () => {
+    const t = yard(), pool = new ParticlePool();
+    pool.ownerAt = t.debrisOwnerAt;
+    const bay = t.yard!.bays.find(b => b.asset.id === 'fixture:interior-sofa')!;
+    const b = bay.building!;
+    for (const fixture of b.fixtures) {
+      spawnFixtureFrags(t, applyFixtureDamage(b, fixture, 10000, 1, 0, pool, []).frags);
+    }
+    expect(t.pile.totalMass()).toBeGreaterThan(0);
+    expect(totalDebrisMass(t)).toBeCloseTo(CONTENT_ASSETS.find(a => a.id === 'interior-sofa')!.mass * 2, 5);
+    expect(t.rubble.every(r => r.yardOwner === bay.key)).toBe(true);
+    restoreBay(t, bay, pool);
+    expect(totalDebrisMass(t)).toBeCloseTo(0, 5);
+  });
+  it.each(['east', 'south'])('rejects debris extending into a bay from the %s', side => {
+    const t = yard();
+    const plan = planBatch([t.yard!.assets[0]!], 1, false, 8, t.yard!.baselineEnd);
+    const bay = plan[0]!;
+    const r = addDebrisBody(t, { x: bay.x + bay.w / 2, y: bay.y + bay.d / 2,
+      w: 1, d: .3, mass: 1, material: 'wood', layer: 'remnant' });
+    r.heading = Math.PI / 4;
+    if (side === 'east') r.x = bay.x + bay.w + .2;
+    else r.y = bay.y + bay.d + .2;
+    expect(placementError(t, plan)).toMatch(/Debris/);
+    if (side === 'east') r.x += 2;
+    else r.y += 2;
+    expect(placementError(t, plan)).toBeUndefined();
+  });
   it('covers every catalog and archetype, plus both floors of every fixture', () => {
     const t = yard();
     expect(t.yard!.issues).toEqual([]);

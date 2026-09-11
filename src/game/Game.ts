@@ -1,5 +1,4 @@
 import { applyFixtureDamage } from '../structure/interior';
-import { addDebrisBody } from '../sim/debris';
 import { YardPanel } from '../render/yardPanel';
 import { applyCellDamage } from '../structure/building';
 import { destroyProp } from '../sim/assets';
@@ -16,7 +15,7 @@ import { ParticlePool } from "../fx/particles";
 import { Hud } from "../render/hud";
 import { WorldRenderer } from "../render/WorldRenderer";
 import { lastDebrisStats, obstructionAt } from "../sim/debris";
-import { stepWorld, type Upgrades } from "../sim/worldSim";
+import { spawnFixtureFrags, stepWorld, type Upgrades } from "../sim/worldSim";
 import type { Bird, WorldEvent } from "../structure/types";
 import { createDozer, dozerSpeed, stepDozer } from "../vehicle/dozer";
 import { createRoadVehicle } from "../vehicle/roadVehicle";
@@ -132,7 +131,7 @@ export class Game {
         if (bay.building && bay.asset.fixture) {
           for (const f of bay.building.fixtures) {
             const hit = applyFixtureDamage(bay.building, f, 10000, 1, 0, this.particles, []);
-            for (const frag of hit.frags) addDebrisBody(this.town, frag);
+            spawnFixtureFrags(this.town, hit.frags);
           }
         } else if (bay.building) for (const cell of bay.building.cells) applyCellDamage(bay.building, cell, 10000, 1, 0, this.particles, []);
       },
