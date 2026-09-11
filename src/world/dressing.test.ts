@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { createTown } from "./town";
-import { DRESS_TEMPLATES, lotLocalToWorld, pickTemplate } from "./dressing";
+import { DRESS_TEMPLATES, drivewayPatch, lotLocalToWorld, pickTemplate } from "./dressing";
 import { Rng } from "../game/rng";
 import { validateTown } from "./districts";
 import { completeLot } from "./parcels";
-import type { Lot } from "../structure/types";
+import { meshQuadPolygon, projectPointToPolyline } from "./roads";
+import type { GroundPatch, Lot } from "../structure/types";
 
 function dressingSig(town: ReturnType<typeof createTown>): string {
   return town.props
@@ -84,6 +85,50 @@ describe("lot dressing", () => {
     expect(field.length).toBeGreaterThan(8);
     const area = field.reduce((sum, g) => sum + g.w * g.d, 0);
     expect(area).toBeGreaterThan((town.maxX - town.minX) * (town.maxY - town.minY) * 0.45);
+  });
+
+  it("keeps lot-front gravel off public pavement", () => {
+    const patchPoly = (g: GroundPatch) =>
+      meshQuadPolygon({
+        x: g.x + g.w * 0.5,
+        y: g.y + g.d * 0.5,
+        w: g.w,
+        d: g.d,
+        z: 0,
+        heading: g.heading,
+        color: 0,
+        kind: "pavement",
+      });
+    for (const seed of [334353, 0x51a11, 19]) {
+      const town = createTown({ district: "d10", seed });
+      const publics = town.network.segments.filter((s) => s.roadClass !== "driveway");
+      const patches = town.ground.filter((g) => g.cover === "driveway");
+      expect(patches.length).toBeGreaterThan(0);
+      for (const g of patches) {
+        for (const p of patchPoly(g)) {
+          for (const seg of publics) {
+            const hit = projectPointToPolyline(seg.points, p.x, p.y);
+            expect(hit.dist).toBeGreaterThan(seg.width * 0.5 - 0.08);
+          }
+        }
+      }
+    }
+    const lot = completeLot({
+      id: "front",
+      x: 10,
+      y: 10,
+      w: 11.4,
+      d: 10.2,
+      heading: Math.PI / 2,
+      zone: "residential",
+      identity: "residence",
+      accessId: "",
+      templateId: "family-yard",
+    });
+    const drive = drivewayPatch(lot);
+    const center = { x: drive.x + drive.w * 0.5, y: drive.y + drive.d * 0.5 };
+    const front = lotLocalToWorld(lot, 0, 0);
+    expect(center.y).toBeGreaterThan(front.y);
   });
 
   it("dresses classic yards and covers the fixture with grass", () => {

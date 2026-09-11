@@ -84,7 +84,7 @@ describe("debris spawn and mass", () => {
       panelD: 0.48,
     });
     const panels = created.filter((r) => r.skin === "roofing");
-    expect(panels.length).toBeGreaterThanOrEqual(1);
+    expect(panels.length).toBe(1);
     expect(panels[0]!.shape).toBe("panel");
     expect(panels[0]!.thickness).toBeGreaterThan(0.1);
     expect(Math.hypot(panels[0]!.x - 14.2, panels[0]!.y - 18.4)).toBeLessThan(0.55);

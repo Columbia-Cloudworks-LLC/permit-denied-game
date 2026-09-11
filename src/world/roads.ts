@@ -79,6 +79,8 @@ export interface RoadMeshQuad {
   heading: number;
   color: number;
   kind: "pavement" | "shoulder" | "mark" | "deck";
+  /** Clipped world polygon when the ribbon is not a rectangle (driveway/host). */
+  poly?: { x: number; y: number }[];
 }
 
 export interface RoadNetwork {
@@ -687,75 +689,431 @@ const SHOULDER: Record<RoadClass, number> = {
   ramp: 0x6a6558,
 };
 
-export function buildRoadMesh(network: RoadNetwork): RoadMeshQuad[] {
-  const mesh: RoadMeshQuad[] = [];
-  for (const node of network.nodes) {
-    if (node.segmentIds.length < 2) continue;
-    const segs = node.segmentIds
-      .map((id) => network.segments.find((s) => s.id === id))
-      .filter((s): s is RoadSegment => !!s && s.roadClass !== "driveway");
-    if (segs.length < 2) continue;
-    const r = Math.max(...segs.map((s) => s.width * 0.62));
-    mesh.push({
-      x: node.x - r,
-      y: node.y - r,
-      w: r * 2,
-      d: r * 2,
-      z: node.elev,
-      heading: 0,
-      color: PAVEMENT[segs[0]!.roadClass],
-      kind: segs[0]!.layer > 0 ? "deck" : "pavement",
+/** World polygon for a mesh quad. `x`/`y` are centers, matching `drawOrientedGround`. */
+export function meshQuadPolygon(q: RoadMeshQuad): { x: number; y: number }[] {
+  if (q.poly && q.poly.length >= 3) return q.poly;
+  const fx = Math.cos(q.heading);
+  const fy = Math.sin(q.heading);
+  const hl = q.w * 0.5;
+  const hw = q.d * 0.5;
+  return [
+    { x: q.x + fx * hl - fy * hw, y: q.y + fy * hl + fx * hw },
+    { x: q.x + fx * hl + fy * hw, y: q.y + fy * hl - fx * hw },
+    { x: q.x - fx * hl + fy * hw, y: q.y - fy * hl - fx * hw },
+    { x: q.x - fx * hl - fy * hw, y: q.y - fy * hl + fx * hw },
+  ];
+}
+
+interface HalfPlane {
+  ox: number;
+  oy: number;
+  nx: number;
+  ny: number;
+}
+
+function remainCut(cut: number, consumed: number): number {
+  return Math.max(0, cut - consumed);
+}
+
+function approachSin(along: number, other: number): number {
+  return Math.max(0.25, Math.abs(Math.sin(wrapAngle(other - along))));
+}
+
+function clipPolyHalfPlane(
+  poly: readonly { x: number; y: number }[],
+  plane: HalfPlane,
+  eps = 1e-7,
+): { x: number; y: number }[] {
+  const out: { x: number; y: number }[] = [];
+  const n = poly.length;
+  if (n === 0) return out;
+  for (let i = 0; i < n; i++) {
+    const cur = poly[i]!;
+    const prev = poly[(i + n - 1) % n]!;
+    const c = (cur.x - plane.ox) * plane.nx + (cur.y - plane.oy) * plane.ny;
+    const p = (prev.x - plane.ox) * plane.nx + (prev.y - plane.oy) * plane.ny;
+    const cIn = c >= -eps;
+    const pIn = p >= -eps;
+    if (cIn !== pIn) {
+      const t = p / (p - c);
+      out.push({ x: prev.x + (cur.x - prev.x) * t, y: prev.y + (cur.y - prev.y) * t });
+    }
+    if (cIn) out.push(cur);
+  }
+  return out;
+}
+
+function clipPolyPlanes(
+  poly: readonly { x: number; y: number }[],
+  planes: readonly HalfPlane[],
+): { x: number; y: number }[] {
+  let cur = poly.slice();
+  for (const plane of planes) {
+    cur = clipPolyHalfPlane(cur, plane);
+    if (cur.length < 3) return [];
+  }
+  return cur;
+}
+
+function polyArea(poly: readonly { x: number; y: number }[]): number {
+  let a = 0;
+  for (let i = 0; i < poly.length; i++) {
+    const p = poly[i]!;
+    const q = poly[(i + 1) % poly.length]!;
+    a += p.x * q.y - q.x * p.y;
+  }
+  return a * 0.5;
+}
+
+function convexPolysHit(a: readonly { x: number; y: number }[], b: readonly { x: number; y: number }[]): boolean {
+  const sep = (p: readonly { x: number; y: number }[], q: readonly { x: number; y: number }[]) => {
+    for (let i = 0; i < p.length; i++) {
+      const u = p[i]!;
+      const v = p[(i + 1) % p.length]!;
+      const nx = u.y - v.y;
+      const ny = v.x - u.x;
+      let minP = Infinity;
+      let maxP = -Infinity;
+      let minQ = Infinity;
+      let maxQ = -Infinity;
+      for (const t of p) {
+        const d = t.x * nx + t.y * ny;
+        if (d < minP) minP = d;
+        if (d > maxP) maxP = d;
+      }
+      for (const t of q) {
+        const d = t.x * nx + t.y * ny;
+        if (d < minQ) minQ = d;
+        if (d > maxQ) maxQ = d;
+      }
+      if (maxP < minQ - 1e-4 || maxQ < minP - 1e-4) return true;
+    }
+    return false;
+  };
+  return !sep(a, b) && !sep(b, a);
+}
+
+function outwardPlanes(poly: readonly { x: number; y: number }[]): HalfPlane[] {
+  const ccw = polyArea(poly) > 0;
+  const planes: HalfPlane[] = [];
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i]!;
+    const b = poly[(i + 1) % poly.length]!;
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const nx = ccw ? dy : -dy;
+    const ny = ccw ? -dx : dx;
+    const n = len(nx, ny) || 1;
+    planes.push({ ox: a.x, oy: a.y, nx: nx / n, ny: ny / n });
+  }
+  return planes;
+}
+
+function subtractConvex(
+  poly: readonly { x: number; y: number }[],
+  hole: readonly { x: number; y: number }[],
+): { x: number; y: number }[][] {
+  if (poly.length < 3 || hole.length < 3 || !convexPolysHit(poly, hole)) return [poly.slice()];
+  const out: { x: number; y: number }[][] = [];
+  for (const plane of outwardPlanes(hole)) {
+    const piece = clipPolyHalfPlane(poly, plane);
+    if (piece.length >= 3) out.push(piece);
+  }
+  return out;
+}
+
+function openShouldersAtDriveways(mesh: RoadMeshQuad[]): void {
+  const holes = mesh.filter((q) => q.kind === "pavement" && q.color === PAVEMENT.driveway).map(meshQuadPolygon);
+  if (holes.length === 0) return;
+  const next: RoadMeshQuad[] = [];
+  for (const q of mesh) {
+    if (q.kind !== "shoulder") {
+      next.push(q);
+      continue;
+    }
+    let pieces: { x: number; y: number }[][] = [meshQuadPolygon(q)];
+    for (const hole of holes) {
+      const grown: { x: number; y: number }[][] = [];
+      for (const piece of pieces) grown.push(...subtractConvex(piece, hole));
+      pieces = grown;
+    }
+    for (const poly of pieces) {
+      if (poly.length < 3) continue;
+      next.push({ ...q, poly });
+    }
+  }
+  mesh.length = 0;
+  mesh.push(...next);
+}
+
+function drivewayKeepPlanes(network: RoadNetwork, seg: RoadSegment, node: RoadNode | undefined): HalfPlane[] {
+  if (!node || seg.roadClass !== "driveway") return [];
+  const driveOut = outgoingHeading(seg, node);
+  const publics = segsAt(network, node, (s) => s.roadClass !== "driveway" && s.layer === seg.layer);
+  const planes: HalfPlane[] = [];
+  for (const host of publics) {
+    const hostAlong = alongHeading(host, host.startId === node.id);
+    const side = sideOf(hostAlong, driveOut);
+    if (side === 0) continue;
+    const edge = offsetPoint(node.x, node.y, hostAlong, side * (host.width * 0.5));
+    planes.push({
+      ox: edge.x,
+      oy: edge.y,
+      nx: -Math.sin(hostAlong) * side,
+      ny: Math.cos(hostAlong) * side,
     });
   }
+  return planes;
+}
+
+function segsAt(
+  network: RoadNetwork,
+  node: RoadNode,
+  pred: (s: RoadSegment) => boolean,
+): RoadSegment[] {
+  const out: RoadSegment[] = [];
+  for (const id of node.segmentIds) {
+    const s = network.segments.find((x) => x.id === id);
+    if (s && pred(s)) out.push(s);
+  }
+  return out;
+}
+
+function outgoingHeading(seg: RoadSegment, node: RoadNode): number {
+  if (seg.startId === node.id) {
+    const a = seg.points[0]!;
+    const b = seg.points[1] ?? a;
+    return Math.atan2(b.y - a.y, b.x - a.x);
+  }
+  const a = seg.points[seg.points.length - 1]!;
+  const b = seg.points[seg.points.length - 2] ?? a;
+  return Math.atan2(b.y - a.y, b.x - a.x);
+}
+
+function alongHeading(seg: RoadSegment, fromStart: boolean): number {
+  if (fromStart) {
+    const a = seg.points[0]!;
+    const b = seg.points[1] ?? a;
+    return Math.atan2(b.y - a.y, b.x - a.x);
+  }
+  const a = seg.points[seg.points.length - 2] ?? seg.points[0]!;
+  const b = seg.points[seg.points.length - 1]!;
+  return Math.atan2(b.y - a.y, b.x - a.x);
+}
+
+function nearlyStraightPair(a: RoadSegment, b: RoadSegment, node: RoadNode): boolean {
+  const ha = outgoingHeading(a, node);
+  const hb = outgoingHeading(b, node);
+  return Math.abs(Math.abs(wrapAngle(ha - hb)) - Math.PI) < 0.38;
+}
+
+function isPublicJunction(publics: readonly RoadSegment[], node: RoadNode): boolean {
+  if (publics.length >= 3) return true;
+  if (publics.length === 2) return !nearlyStraightPair(publics[0]!, publics[1]!, node);
+  return false;
+}
+
+function junctionHalf(publics: readonly RoadSegment[]): number {
+  return Math.max(...publics.map((s) => s.width * 0.5), 0.8);
+}
+
+function sideOf(along: number, otherOut: number): 1 | -1 | 0 {
+  const c = -Math.sin(along) * Math.cos(otherOut) + Math.cos(along) * Math.sin(otherOut);
+  if (Math.abs(c) < 0.22) return 0;
+  return c > 0 ? 1 : -1;
+}
+
+function endCuts(
+  network: RoadNetwork,
+  seg: RoadSegment,
+  node: RoadNode | undefined,
+  fromStart: boolean,
+): { pavement: number; shoulder: { 1: number; [-1]: number } } {
+  const shoulder = { 1: 0, [-1]: 0 };
+  if (!node) return { pavement: 0, shoulder };
+  const publics = segsAt(network, node, (s) => s.roadClass !== "driveway" && s.layer === seg.layer);
+  const drives = segsAt(network, node, (s) => s.roadClass === "driveway" && s.layer === seg.layer);
+  const along = alongHeading(seg, fromStart);
+
+  if (seg.roadClass === "driveway") {
+    const host = publics.find((s) => s.id !== seg.id) ?? publics[0];
+    if (!host) return { pavement: 0, shoulder };
+    const hostAlong = alongHeading(host, host.startId === node.id);
+    return { pavement: (host.width * 0.5) / approachSin(hostAlong, along), shoulder };
+  }
+
+  const junction = isPublicJunction(publics, node);
+  const half = junction ? junctionHalf(publics) : 0;
+  if (junction) {
+    for (const o of publics) {
+      if (o.id === seg.id) continue;
+      const side = sideOf(along, outgoingHeading(o, node));
+      if (side !== 0) shoulder[side] = Math.max(shoulder[side], half + o.shoulder);
+    }
+  }
+  for (const d of drives) {
+    const outgoing = outgoingHeading(d, node);
+    const side = sideOf(along, outgoing);
+    if (side === 0) continue;
+    const ang = wrapAngle(outgoing - along);
+    const s = approachSin(along, outgoing);
+    const lean = Math.cos(ang);
+    const centerOff = (seg.width * 0.5) * (Math.abs(lean) / s) * Math.sign(lean);
+    shoulder[side] = Math.max(shoulder[side], Math.max(0.25, centerOff + d.width * 0.5 / s + 0.22));
+  }
+  return { pavement: half, shoulder };
+}
+
+function shortenEdge(
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+  cutA: number,
+  cutB: number,
+  minKeep = 0.08,
+): { ax: number; ay: number; bx: number; by: number } | null {
+  const dx = bx - ax;
+  const dy = by - ay;
+  const dist = len(dx, dy);
+  if (dist < cutA + cutB + minKeep) return null;
+  const ux = dx / dist;
+  const uy = dy / dist;
+  return { ax: ax + ux * cutA, ay: ay + uy * cutA, bx: bx - ux * cutB, by: by - uy * cutB };
+}
+
+function makeRibbon(
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+  width: number,
+  z: number,
+  color: number,
+  kind: RoadMeshQuad["kind"],
+  seam = 0.06,
+): RoadMeshQuad | null {
+  const heading = Math.atan2(by - ay, bx - ax);
+  const length = len(bx - ax, by - ay);
+  if (length < 0.05) return null;
+  return {
+    x: (ax + bx) * 0.5,
+    y: (ay + by) * 0.5,
+    w: length + seam,
+    d: width,
+    z,
+    heading,
+    color,
+    kind,
+  };
+}
+
+function emitRibbon(
+  mesh: RoadMeshQuad[],
+  quad: RoadMeshQuad | null,
+  planes: readonly HalfPlane[] = [],
+): void {
+  if (!quad) return;
+  if (planes.length === 0) {
+    mesh.push(quad);
+    return;
+  }
+  const clipped = clipPolyPlanes(meshQuadPolygon(quad), planes);
+  if (clipped.length < 3) return;
+  quad.poly = clipped;
+  mesh.push(quad);
+}
+
+export function buildRoadMesh(network: RoadNetwork): RoadMeshQuad[] {
+  const mesh: RoadMeshQuad[] = [];
+  const nodeById = new Map(network.nodes.map((n) => [n.id, n]));
+
+  for (const node of network.nodes) {
+    const byLayer = new Map<number, RoadSegment[]>();
+    for (const s of segsAt(network, node, (x) => x.roadClass !== "driveway")) {
+      const list = byLayer.get(s.layer) ?? [];
+      list.push(s);
+      byLayer.set(s.layer, list);
+    }
+    for (const [, publics] of byLayer) {
+      if (!isPublicJunction(publics, node)) continue;
+      const r = junctionHalf(publics) + 0.05;
+      mesh.push({
+        x: node.x,
+        y: node.y,
+        w: r * 2,
+        d: r * 2,
+        z: node.elev,
+        heading: 0,
+        color: PAVEMENT[publics[0]!.roadClass],
+        kind: publics[0]!.layer > 0 ? "deck" : "pavement",
+      });
+    }
+  }
+
   for (const seg of network.segments) {
+    const start = nodeById.get(seg.startId);
+    const end = nodeById.get(seg.endId);
+    const head = endCuts(network, seg, start, true);
+    const tail = endCuts(network, seg, end, false);
+    const last = seg.points.length - 2;
+    const junctionStart = head.pavement > 0.05;
+    const junctionEnd = tail.pavement > 0.05;
+    const totalLen = polylineLength(seg.points);
+    const drivePlanes = [...drivewayKeepPlanes(network, seg, start), ...drivewayKeepPlanes(network, seg, end)];
+    let walked = 0;
     for (let i = 0; i < seg.points.length - 1; i++) {
       const a = seg.points[i]!;
       const b = seg.points[i + 1]!;
       const heading = Math.atan2(b.y - a.y, b.x - a.x);
-      const midX = (a.x + b.x) * 0.5;
-      const midY = (a.y + b.y) * 0.5;
-      const length = len(b.x - a.x, b.y - a.y) + 0.16;
       const z = (a.elev + b.elev) * 0.5;
+      const edgeLen = len(b.x - a.x, b.y - a.y);
+      const cutA = remainCut(head.pavement, walked);
+      const cutB = remainCut(tail.pavement, totalLen - walked - edgeLen);
       if (seg.shoulder > 0.05 && seg.roadClass !== "driveway") {
-        mesh.push({
-          x: midX,
-          y: midY,
-          w: length,
-          d: seg.width + seg.shoulder * 2,
-          z,
-          heading,
-          color: SHOULDER[seg.roadClass],
-          kind: "shoulder",
-        });
+        for (const side of [1, -1] as const) {
+          const sCut = remainCut(head.shoulder[side], walked);
+          const eCut = remainCut(tail.shoulder[side], totalLen - walked - edgeLen);
+          const trimmed = shortenEdge(a.x, a.y, b.x, b.y, sCut, eCut, 0.16);
+          if (!trimmed) continue;
+          const o0 = offsetPoint(trimmed.ax, trimmed.ay, heading, side * (seg.width * 0.5 + seg.shoulder * 0.5));
+          const o1 = offsetPoint(trimmed.bx, trimmed.by, heading, side * (seg.width * 0.5 + seg.shoulder * 0.5));
+          emitRibbon(
+            mesh,
+            makeRibbon(o0.x, o0.y, o1.x, o1.y, seg.shoulder, z, SHOULDER[seg.roadClass], "shoulder", 0.04),
+          );
+        }
       }
-      mesh.push({
-        x: midX,
-        y: midY,
-        w: length,
-        d: seg.width,
-        z,
-        heading,
-        color: PAVEMENT[seg.roadClass],
-        kind: seg.layer > 0 ? "deck" : "pavement",
-      });
-      const nearEnd = i <= 0 || i >= seg.points.length - 2;
-      const junction = network.nodes.some(
-        (n) => (n.id === seg.startId || n.id === seg.endId) && n.segmentIds.length >= 3,
-      );
-      if (seg.roadClass !== "driveway" && seg.roadClass !== "service" && !(junction && nearEnd)) {
-        mesh.push({
-          x: midX,
-          y: midY,
-          w: Math.max(0.4, length * 0.45),
-          d: 0.1,
-          z: z + 0.01,
-          heading,
-          color: 0xd4c56a,
-          kind: "mark",
-        });
+      const paved = shortenEdge(a.x, a.y, b.x, b.y, cutA, cutB, seg.roadClass === "driveway" ? 0.05 : 0.1);
+      if (paved) {
+        const seam = seg.roadClass === "driveway" ? 0.04 : 0.06;
+        emitRibbon(
+          mesh,
+          makeRibbon(
+            paved.ax,
+            paved.ay,
+            paved.bx,
+            paved.by,
+            seg.width,
+            z,
+            PAVEMENT[seg.roadClass],
+            seg.layer > 0 ? "deck" : "pavement",
+            seam,
+          ),
+          seg.roadClass === "driveway" ? drivePlanes : [],
+        );
       }
+      const nearEnd = i <= 0 || i >= last;
+      if (seg.roadClass !== "driveway" && seg.roadClass !== "service" && !(nearEnd && (junctionStart || junctionEnd))) {
+        const mark = shortenEdge(a.x, a.y, b.x, b.y, cutA + 0.4, cutB + 0.4, 0.35);
+        if (mark) {
+          emitRibbon(mesh, makeRibbon(mark.ax, mark.ay, mark.bx, mark.by, 0.1, z + 0.01, 0xd4c56a, "mark", 0));
+        }
+      }
+      walked += edgeLen;
     }
   }
+  openShouldersAtDriveways(mesh);
   return mesh;
 }
 

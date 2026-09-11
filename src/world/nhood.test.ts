@@ -62,6 +62,28 @@ describe("neighborhood generation", () => {
     }
   });
 
+  it("develops a connected neighborhood instead of a one-street strip", () => {
+    const town = createTown({ district: "d10", seed: 0x51a11 });
+    const lots = town.lots;
+    const seen = new Set([0]);
+    const queue = [0];
+    while (queue.length) {
+      const i = queue.pop()!;
+      const a = lots[i]!;
+      const ax = a.x + a.w * 0.5;
+      const ay = a.y + a.d * 0.5;
+      for (let j = 0; j < lots.length; j++) {
+        if (seen.has(j)) continue;
+        const b = lots[j]!;
+        if (Math.hypot(ax - (b.x + b.w * 0.5), ay - (b.y + b.d * 0.5)) < 48) {
+          seen.add(j);
+          queue.push(j);
+        }
+      }
+    }
+    expect(seen.size).toBe(lots.length);
+  });
+
   it("rejects a disconnected public street", () => {
     const town = makeInvalidDisconnectedTown(createTown({ district: "d10", seed: 1 }));
     const report = validateTown(town);

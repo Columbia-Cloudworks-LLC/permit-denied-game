@@ -503,11 +503,14 @@ function roofFallEase(t: number): number {
 }
 
 /** After the hinge swing, flatten and lower onto a debris landing pose. */
-const ROOF_SWING_PEAK = 0.58;
-const ROOF_SWING_TILT = 0.95;
+const ROOF_SWING_PEAK = 0.44;
+const ROOF_SWING_TILT = 1.05;
 const ROOF_LANDING_TILT = 0.06;
 const ROOF_LANDING_Z = 0.16;
-const ROOF_FALL_DURATION = 0.64;
+const ROOF_FALL_DURATION = 0.7;
+const ROOF_SAG_TILT = 0.55;
+const ROOF_SAG_DROP = 0.32;
+const ROOF_NEIGHBOR_FALL_DELAY = 0.14;
 
 function roofSettle(t: number): number {
   if (t <= ROOF_SWING_PEAK) return 0;
@@ -516,7 +519,7 @@ function roofSettle(t: number): number {
 }
 
 export function roofTiltAngle(roof: RoofSection): number {
-  const sagTilt = roof.sag * 0.3;
+  const sagTilt = roof.sag * ROOF_SAG_TILT;
   const t = Math.max(0, Math.min(1, roof.fallT));
   if (t <= 0) return sagTilt;
   if (t <= ROOF_SWING_PEAK) {
@@ -558,12 +561,13 @@ export function displacedRoofVerts(roof: RoofSection): { x: number; y: number; z
   const t = Math.max(0, Math.min(1, roof.fallT));
   const slide = roofFallEase(t);
   const settle = roofSettle(t);
-  const drop = slide * 1.05;
+  const sagDrop = t <= 0 ? roof.sag * ROOF_SAG_DROP : 0;
+  const drop = slide * 1.4 + sagDrop;
   const swung = roof.verts.map((v) => {
     const r = angle === 0 ? { x: v.x, y: v.y, z: v.z } : rotateAroundHinge(v, roof, angle);
     return {
-      x: r.x + roof.fallDx * slide * 0.55,
-      y: r.y + roof.fallDy * slide * 0.55,
+      x: r.x + roof.fallDx * slide * 0.7,
+      y: r.y + roof.fallDy * slide * 0.7,
       z: r.z - drop,
     };
   });
@@ -603,6 +607,17 @@ function neighborRoofBay(building: Building, roof: RoofSection, dgx: number): Ro
 export function neighborRoofBayOpen(building: Building, roof: RoofSection, dgx: number): boolean {
   const partner = neighborRoofBay(building, roof, dgx);
   return !!partner && (partner.state === "gone" || partner.state === "falling");
+}
+
+/** Hold a bay that still has a neighbor so adjacent planes peel instead of dropping as one slab. */
+function roofNeighborFallDelay(building: Building, roof: RoofSection): number {
+  const mine = roof.support[0]?.gx ?? roof.id;
+  const hasNeighbor = [-1, 1].some((dgx) => {
+    const partner = neighborRoofBay(building, roof, dgx);
+    return !!partner && partner.state !== "gone";
+  });
+  if (!hasNeighbor) return 0;
+  return (Math.abs(mine) % 3) * ROOF_NEIGHBOR_FALL_DELAY;
 }
 
 function exposedRoofEdges(building: Building, roof: RoofSection): RoofEdge[] {
@@ -1102,7 +1117,7 @@ export function stepRoofs(
     roof.sag = Math.min(1, roof.unsupportedTime / 0.26);
     if (roof.unsupportedTime > 0.1) roof.state = "sagging";
     building.roofDirty = true;
-    if (frac.have === 0 || roof.unsupportedTime > 0.36) {
+    if (frac.have === 0 || roof.unsupportedTime > 0.36 + roofNeighborFallDelay(building, roof)) {
       startRoofFall(building, roof, particles, events);
     }
   }

@@ -22,6 +22,8 @@ http://localhost:5173/?perf=1
 http://localhost:5173/?sandbox=1&district=d30&nhood=1
 ```
 
+Ranch benchmark: `?sandbox=1&ranch=1` loads d10 seed `17634759` with the dozer on the ranch south lawn, facing the house. **R** rebuilds the same lot. Drive **W** into the south wall; **Space** for a powered blade. Chip the middle three south cells, then ease off and watch those roof bays sag, hinge, fall, and settle into pushable panels. Leave and drive back — the wreck and rubble stay. A long hold on **W** punches through the whole house.
+
 ```powershell
 npm test          # destruction harness
 npm run build     # typecheck + production bundle
@@ -58,7 +60,7 @@ HUD shows **BLADE UP** / **BLADE DOWN**. Deaths: **ENGINE COOKED** (heat from gr
 
 ## How it plays
 
-Clock mode is three minutes. Cash target is on the top bar. Chip walls, breach rooms, collapse floors. Full building bonuses pay more. Cash milestones pause the clock run for one upgrade: stronger blade, more engine, or a faster powered push.
+Clock mode is three minutes. Cash target is on the top bar. Chip walls, breach rooms, collapse floors. The ranch house is the demolition benchmark — open `?sandbox=1&ranch=1` and see **Run** above. Full building bonuses pay more. Cash milestones pause the clock run for one upgrade: stronger blade, more engine, or a faster powered push.
 
 Sandbox mode has no county clock and does not end from heat or thrown tracks. Restart (R) rebuilds the same layout and seed. New Lot / N rolls a new seed. HUD buttons pick Clock or Sandbox and district size (classic 7, 10, 30, or 100 buildings). Optional BLADE+ / ENGINE+ / PUSH+ never force a pause in sandbox. Technical timings stay off the normal HUD; add `?perf=1` or press ` to inspect frame, sim, and debris budgets.
 
