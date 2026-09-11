@@ -1,3 +1,4 @@
+import { populateTowerTest } from './towerTest';
 import { populateTestYard, type TestYard } from './testYard';
 import { CELL } from "../game/constants";
 import { Rng } from "../game/rng";
@@ -50,6 +51,7 @@ export interface Town {
 }
 
 export interface TownOptions {
+  towerTest?: boolean;
   showcase?: boolean;
   yard?: boolean;
   district?: DistrictId;
@@ -66,6 +68,7 @@ export function createTown(options: TownOptions = {}): Town {
 
   if (district === "classic") {
     const town = createClassicTown(seed, options.showcase);
+    if (options.towerTest) return populateTowerTest(town);
     return options.yard ? populateTestYard(town) : town;
   }
 

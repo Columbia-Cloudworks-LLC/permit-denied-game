@@ -238,3 +238,8 @@ body {
 .yard-row > * { flex: 1; min-width: 0; }
 .yard-filters { flex-wrap: wrap; }
 .yard-filters select { flex: 1 1 90px; }
+
+#hud-root .tower-test { position: absolute; left: 14px; top: 120px; max-width: 310px; padding: 12px; background: rgba(23,32,28,.92); border: 1px solid #a79464; border-radius: 6px; pointer-events: auto; font-size: 12px; }
+#hud-root .tower-test p { line-height: 1.4; }
+#hud-root .tower-test button { margin: 3px; font-size: 11px; }
+#hud-root .tower-test span { display: block; margin-top: 8px; color: #edd18a; }

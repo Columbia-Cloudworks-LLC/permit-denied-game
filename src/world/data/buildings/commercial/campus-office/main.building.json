@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "kind": "shop",
+  "construction": "brick-mixed-use",
+  "roof": "flat",
+  "theme": "storefront",
+  "windowStride": 3,
+  "features": {
+    "porch": false,
+    "awning": false,
+    "parapet": false,
+    "chimney": false,
+    "garage": false
+  },
+  "zones": {
+    "residential": 0,
+    "commercial": 0,
+    "industrial": 0
+  },
+  "id": "campus-office",
+  "label": "CAMPUS OPERATIONS",
+  "w": 6,
+  "d": 4,
+  "floors": 1,
+  "cellSize": 1.5,
+  "sections": [
+    {
+      "id": "office",
+      "role": "office",
+      "x": 0,
+      "y": 0,
+      "w": 6,
+      "d": 4,
+      "floor": 0,
+      "floors": 1,
+      "layout": "office.layout.json"
+    }
+  ],
+  "openings": [
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.5,
+      "kind": "door"
+    }
+  ]
+}

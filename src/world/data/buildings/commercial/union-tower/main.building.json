@@ -1,0 +1,124 @@
+{
+  "version": 1,
+  "kind": "shop",
+  "construction": "concrete-bearing",
+  "roof": "flat",
+  "theme": "civic",
+  "windowStride": 3,
+  "features": {
+    "porch": false,
+    "awning": false,
+    "parapet": false,
+    "chimney": false,
+    "garage": false
+  },
+  "zones": {
+    "residential": 0,
+    "commercial": 0,
+    "industrial": 0
+  },
+  "id": "union-tower",
+  "label": "UNION TOWER",
+  "w": 12,
+  "d": 10,
+  "floors": 24,
+  "traits": {
+    "use": [
+      "office",
+      "retail"
+    ],
+    "form": [
+      "podium",
+      "tower"
+    ],
+    "construction": [
+      "concrete"
+    ],
+    "era": [
+      "postwar"
+    ],
+    "scale": [
+      "high-rise"
+    ]
+  },
+  "sections": [
+    {
+      "id": "podium",
+      "role": "podium",
+      "x": 0,
+      "y": 0,
+      "w": 12,
+      "d": 10,
+      "floor": 0,
+      "floors": 2,
+      "layout": "podium.layout.json"
+    },
+    {
+      "id": "tower",
+      "role": "tower",
+      "x": 2,
+      "y": 2,
+      "w": 8,
+      "d": 6,
+      "floor": 2,
+      "floors": 21,
+      "layout": "office.layout.json"
+    },
+    {
+      "id": "mechanical",
+      "role": "mechanical",
+      "x": 2,
+      "y": 2,
+      "w": 8,
+      "d": 6,
+      "floor": 23,
+      "floors": 1,
+      "layout": "mechanical.layout.json"
+    }
+  ],
+  "openings": [
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.5,
+      "kind": "door"
+    }
+  ],
+  "coreCollapse": {
+    "supports": [
+      {
+        "x": 4,
+        "y": 4,
+        "weight": 1
+      },
+      {
+        "x": 6,
+        "y": 4,
+        "weight": 2
+      },
+      {
+        "x": 8,
+        "y": 4,
+        "weight": 1
+      },
+      {
+        "x": 4,
+        "y": 6,
+        "weight": 1
+      },
+      {
+        "x": 6,
+        "y": 6,
+        "weight": 2
+      },
+      {
+        "x": 8,
+        "y": 6,
+        "weight": 1
+      }
+    ],
+    "capacityThreshold": 0.45,
+    "warningDuration": 1.1,
+    "duration": 5
+  }
+}

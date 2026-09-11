@@ -5,18 +5,22 @@ import type { Building, FixtureKind, Prop } from '../structure/types';
 import { ASSET_CATALOG, spawnAssetDefinition, type AssetDef } from './catalog';
 import { ARCHETYPES, archetypeById, type Archetype } from './archetypes';
 import { CONTENT_ASSETS } from './contents';
+import { BUILDING_SITES, instantiateBuildingSite, type BuildingSite } from './buildingSites';
 
 export interface YardAsset {
   id: string; name: string; category: string; material: string; destruction: string;
   variants: number; w: number; d: number; clearance: number;
   prop?: AssetDef; archetype?: Archetype; fixture?: FixtureKind;
+  site?: BuildingSite;
 }
-export function discoverYardAssets(props: readonly AssetDef[] = ASSET_CATALOG, buildings: readonly Archetype[] = ARCHETYPES): YardAsset[] {
+export function discoverYardAssets(props: readonly AssetDef[] = ASSET_CATALOG, buildings: readonly Archetype[] = ARCHETYPES, sites: readonly BuildingSite[] = BUILDING_SITES): YardAsset[] {
   const fixtures = new Set(CONTENT_ASSETS.map(a => a.id));
   return [
     ...buildings.map(a => ({ id: `building:${a.id}`, name: a.label, category: 'building', material: a.construction.structure,
       destruction: `${a.construction.walls} collapse`, variants: 1,
-      w: a.w * CELL, d: a.d * CELL, clearance: Math.max(5, a.floors * 2.35), archetype: a })),
+      w: a.w * (a.cellSize ?? CELL), d: a.d * (a.cellSize ?? CELL), clearance: Math.max(5, a.floors * .55 + 3), archetype: a })),
+    ...sites.map(site => ({ id: `site:${site.id}`, name: site.label, category: 'site', material: 'mixed',
+      destruction: 'independent buildings + equipment', variants: 1, w: site.w, d: site.d, clearance: 6, site })),
     ...props.map(a => ({ id: `prop:${a.id}`, name: a.id.replaceAll('-', ' '), category: a.family,
       material: a.material, destruction: a.destruction, variants: a.variants,
       w: Math.max(a.footprint.w, a.collision.w), d: Math.max(a.footprint.d, a.collision.d),
@@ -31,8 +35,17 @@ export function yardAssetIssue(a: YardAsset): string | undefined {
   if (a.prop && (!Number.isFinite(a.prop.hp) || a.prop.hp <= 0 || !Number.isFinite(a.prop.mass) || a.prop.mass <= 0)) return `${a.id}: invalid health or mass`;
   return undefined;
 }
+export function yardGridSlots(a: YardAsset): number {
+  if (a.archetype) return a.archetype.w * a.archetype.d * a.archetype.floors;
+  if (a.site) return a.site.buildings.reduce((n, member) => {
+    const def = archetypeById(member.building); return n + def.w * def.d * def.floors;
+  }, 0);
+  return a.fixture ? 40 : 0;
+}
 export interface YardBox { x: number; y: number; w: number; d: number }
-export interface YardBay extends YardBox { key: string; asset: YardAsset; variant: number; baseline: boolean; building?: Building; prop?: Prop }
+export interface YardBay extends YardBox { key: string; asset: YardAsset; variant: number; baseline: boolean; building?: Building; prop?: Prop; site?: { buildings: Building[]; props: Prop[] } }
+export function bayBuildings(bay: YardBay): Building[] { return bay.site?.buildings ?? (bay.building ? [bay.building] : []); }
+export function bayProps(bay: YardBay): Prop[] { return bay.site?.props ?? (bay.prop ? [bay.prop] : []); }
 export function overlap(a: YardBox, b: YardBox): boolean {
   return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.d && a.y + a.d > b.y;
 }
@@ -50,7 +63,9 @@ export function layoutYard(assets = discoverYardAssets(), x = 8, y = 12): YardBa
 }
 export function instantiateBay(bay: YardBay): void {
   const a = bay.asset, x = bay.x + a.clearance, y = bay.y + a.clearance;
-  if (a.archetype) {
+  if (a.site) {
+    bay.site = instantiateBuildingSite(a.site, x, y);
+  } else if (a.archetype) {
     // Use the production constructor. Source registry additions need no yard placement edits.
     bay.building = createBuildingFromDefinition(a.archetype, a.name, x, y);
   } else if (a.fixture) {

@@ -1,0 +1,113 @@
+{
+  "version": 1,
+  "kind": "industrial",
+  "construction": "steel-hall",
+  "roof": "flat",
+  "theme": "warehouse",
+  "windowStride": 3,
+  "features": {
+    "porch": false,
+    "awning": false,
+    "parapet": false,
+    "chimney": false,
+    "garage": false
+  },
+  "zones": {
+    "residential": 0,
+    "commercial": 0,
+    "industrial": 0
+  },
+  "id": "logistics-hub",
+  "label": "INTERSTATE LOGISTICS HUB",
+  "w": 32,
+  "d": 20,
+  "floors": 2,
+  "cellSize": 2.5,
+  "traits": {
+    "use": [
+      "logistics",
+      "office"
+    ],
+    "form": [
+      "hall",
+      "attached-office",
+      "loading-bays"
+    ],
+    "construction": [
+      "steel-frame"
+    ],
+    "scale": [
+      "large-footprint"
+    ]
+  },
+  "partitions": true,
+  "connections": [
+    {
+      "a": "hall/0/storage",
+      "b": "loading/0/docks",
+      "at": 0.5,
+      "width": 0.7
+    },
+    {
+      "a": "loading/0/docks",
+      "b": "office/0/office",
+      "at": 0.5,
+      "width": 0.5
+    }
+  ],
+  "sections": [
+    {
+      "id": "hall",
+      "role": "storage-hall",
+      "x": 0,
+      "y": 0,
+      "w": 32,
+      "d": 16,
+      "floor": 0,
+      "floors": 1,
+      "layout": "hall.layout.json"
+    },
+    {
+      "id": "loading",
+      "role": "loading",
+      "x": 0,
+      "y": 16,
+      "w": 24,
+      "d": 4,
+      "floor": 0,
+      "floors": 1,
+      "layout": "loading.layout.json"
+    },
+    {
+      "id": "office",
+      "role": "attached-office",
+      "x": 24,
+      "y": 16,
+      "w": 8,
+      "d": 4,
+      "floor": 0,
+      "floors": 2,
+      "layout": "office.layout.json"
+    }
+  ],
+  "openings": [
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.15,
+      "kind": "loading"
+    },
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.45,
+      "kind": "loading"
+    },
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.9,
+      "kind": "door"
+    }
+  ]
+}

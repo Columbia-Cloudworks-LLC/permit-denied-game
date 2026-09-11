@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "id": "storefront",
+  "kind": "shop",
+  "label": "MART",
+  "w": 4,
+  "d": 3,
+  "floors": 2,
+  "roof": "flat",
+  "theme": "storefront",
+  "windowStride": 1,
+  "features": {
+    "porch": false,
+    "awning": true,
+    "parapet": true,
+    "chimney": false,
+    "garage": false
+  },
+  "zones": {
+    "residential": 1,
+    "commercial": 8,
+    "industrial": 1
+  },
+  "construction": "brick-mixed-use",
+  "layout": "main.layout.json",
+  "footprint": [
+    [
+      "####",
+      "####",
+      "####"
+    ],
+    [
+      "####",
+      "####",
+      "####"
+    ]
+  ],
+  "openings": [
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.5,
+      "kind": "door"
+    }
+  ],
+  "generationOrder": 7
+}

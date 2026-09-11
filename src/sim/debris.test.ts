@@ -24,6 +24,15 @@ function stepOnce(town: ReturnType<typeof createTown>, dozer = createDozer(2, 2,
 }
 
 describe("debris spawn and mass", () => {
+  it('conserves structural mass and ownership when a burst goes directly to pile', () => {
+    const town = createTown();
+    town.pile.ownerAt = () => 'large-building';
+    const spawn = { x: 12, y: 18, dx: 1, dy: 0, material: 'concrete' as const, floor: 20, cellSize: 1.15 };
+    expect(spawnCollapseDebris(town, spawn, 0)).toEqual([]);
+    expect(totalDebrisMass(town)).toBeCloseTo(1.15 * 1.15 * 1.85 * 1.35, 5);
+    town.pile.removeOwner('large-building');
+    expect(totalDebrisMass(town)).toBeCloseTo(0, 5);
+  });
   it("spawns debris along collapse displacement and direction", () => {
     const town = createTown();
     const house = town.buildings[0]!;

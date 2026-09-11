@@ -13,3 +13,6 @@ coverage/
 .env
 .env.*
 .vercel
+
+# Local visual verification captures and measurement artifacts
+/docs/visual-verification/

@@ -1,0 +1,10 @@
+{
+  "id": "steel-hall",
+  "walls": "frame",
+  "structure": "metal",
+  "skin": "metal",
+  "floor": "concrete",
+  "roof": "metal",
+  "fallDuration": 0.65,
+  "failureDelay": 0.7
+}

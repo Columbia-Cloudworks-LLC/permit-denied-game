@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "id": "rivertown",
+  "kind": "shop",
+  "label": "RIVER MERCANTILE",
+  "w": 5,
+  "d": 4,
+  "floors": 2,
+  "roof": "flat",
+  "roofAxis": "x",
+  "theme": "storefront",
+  "windowStride": 1,
+  "features": {
+    "porch": false,
+    "awning": true,
+    "parapet": true,
+    "chimney": false,
+    "garage": false
+  },
+  "zones": {
+    "residential": 0,
+    "commercial": 4,
+    "industrial": 0
+  },
+  "construction": "brick-mixed-use",
+  "layout": "main.layout.json",
+  "footprint": [
+    [
+      "#####",
+      "#####",
+      "#####",
+      "#####"
+    ],
+    [
+      "#####",
+      "#####",
+      "#####",
+      "#####"
+    ]
+  ],
+  "openings": [
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.5,
+      "kind": "door"
+    }
+  ],
+  "generationOrder": 0
+}

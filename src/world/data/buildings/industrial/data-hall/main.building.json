@@ -1,0 +1,72 @@
+{
+  "version": 1,
+  "kind": "industrial",
+  "construction": "steel-hall",
+  "roof": "flat",
+  "theme": "warehouse",
+  "windowStride": 3,
+  "features": {
+    "porch": false,
+    "awning": false,
+    "parapet": false,
+    "chimney": false,
+    "garage": false
+  },
+  "zones": {
+    "residential": 0,
+    "commercial": 0,
+    "industrial": 0
+  },
+  "id": "data-hall",
+  "label": "DATA HALL",
+  "w": 12,
+  "d": 8,
+  "floors": 1,
+  "cellSize": 2,
+  "traits": {
+    "use": [
+      "datacenter"
+    ],
+    "form": [
+      "hall"
+    ],
+    "construction": [
+      "steel-frame"
+    ],
+    "scale": [
+      "campus-building"
+    ]
+  },
+  "sections": [
+    {
+      "id": "servers",
+      "role": "server-hall",
+      "x": 0,
+      "y": 0,
+      "w": 12,
+      "d": 6,
+      "floor": 0,
+      "floors": 1,
+      "layout": "servers.layout.json"
+    },
+    {
+      "id": "service",
+      "role": "service",
+      "x": 0,
+      "y": 6,
+      "w": 12,
+      "d": 2,
+      "floor": 0,
+      "floors": 1,
+      "layout": "service.layout.json"
+    }
+  ],
+  "openings": [
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.8,
+      "kind": "door"
+    }
+  ]
+}

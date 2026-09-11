@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "id": "steel-warehouse",
+  "kind": "industrial",
+  "label": "STEEL WORKSHOP",
+  "w": 6,
+  "d": 5,
+  "floors": 1,
+  "roof": "shed",
+  "roofAxis": "y",
+  "theme": "warehouse",
+  "windowStride": 3,
+  "features": {
+    "porch": false,
+    "awning": false,
+    "parapet": false,
+    "chimney": false,
+    "garage": false
+  },
+  "zones": {
+    "residential": 0,
+    "commercial": 0,
+    "industrial": 5
+  },
+  "construction": "steel-hall",
+  "layout": "main.layout.json",
+  "footprint": [
+    [
+      "######",
+      "######",
+      "######",
+      "######",
+      "######"
+    ]
+  ],
+  "openings": [
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.5,
+      "kind": "loading"
+    }
+  ],
+  "generationOrder": 1
+}

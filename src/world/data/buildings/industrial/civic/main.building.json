@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "id": "civic",
+  "kind": "industrial",
+  "label": "ANNEX",
+  "w": 4,
+  "d": 4,
+  "floors": 3,
+  "roof": "flat",
+  "theme": "civic",
+  "windowStride": 2,
+  "features": {
+    "porch": false,
+    "awning": false,
+    "parapet": true,
+    "chimney": false,
+    "garage": false
+  },
+  "zones": {
+    "residential": 0,
+    "commercial": 3,
+    "industrial": 4
+  },
+  "construction": "concrete-bearing",
+  "layout": "main.layout.json",
+  "footprint": [
+    [
+      "####",
+      "####",
+      "####",
+      "####"
+    ],
+    [
+      "####",
+      "####",
+      "####",
+      "####"
+    ],
+    [
+      "####",
+      "####",
+      "####",
+      "####"
+    ]
+  ],
+  "openings": [
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.5,
+      "kind": "door"
+    }
+  ],
+  "generationOrder": 9
+}

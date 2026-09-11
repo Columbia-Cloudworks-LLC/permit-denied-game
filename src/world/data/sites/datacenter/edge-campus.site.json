@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "id": "edge-campus",
+  "label": "EDGE DATACENTER CAMPUS",
+  "w": 66,
+  "d": 42,
+  "buildings": [
+    {
+      "id": "hall-a",
+      "building": "data-hall",
+      "x": 3,
+      "y": 3
+    },
+    {
+      "id": "hall-b",
+      "building": "data-hall",
+      "x": 35,
+      "y": 3
+    },
+    {
+      "id": "operations",
+      "building": "campus-office",
+      "x": 5,
+      "y": 29
+    }
+  ],
+  "equipment": [
+    {
+      "id": "power-a",
+      "asset": "transformer",
+      "x": 30,
+      "y": 5
+    },
+    {
+      "id": "power-b",
+      "asset": "transformer",
+      "x": 30,
+      "y": 11
+    },
+    {
+      "id": "cooling-a",
+      "asset": "hvac",
+      "x": 40,
+      "y": 27
+    },
+    {
+      "id": "cooling-b",
+      "asset": "hvac",
+      "x": 46,
+      "y": 27
+    }
+  ]
+}
+

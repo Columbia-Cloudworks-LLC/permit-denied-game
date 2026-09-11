@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "id": "walkup",
+  "kind": "house",
+  "label": "WALK-UP",
+  "w": 2,
+  "d": 3,
+  "floors": 2,
+  "roof": "gable",
+  "roofAxis": "y",
+  "theme": "walkup",
+  "windowStride": 1,
+  "features": {
+    "porch": false,
+    "awning": false,
+    "parapet": false,
+    "chimney": false,
+    "garage": false
+  },
+  "zones": {
+    "residential": 5,
+    "commercial": 2,
+    "industrial": 0
+  },
+  "construction": "timber-house",
+  "layout": "main.layout.json",
+  "footprint": [
+    [
+      "##",
+      "##",
+      "##"
+    ],
+    [
+      "##",
+      "##",
+      "##"
+    ]
+  ],
+  "openings": [
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0,
+      "kind": "door"
+    }
+  ],
+  "generationOrder": 5
+}

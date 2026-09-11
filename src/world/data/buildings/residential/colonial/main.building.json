@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "id": "colonial",
+  "kind": "house",
+  "label": "COLONIAL",
+  "w": 4,
+  "d": 3,
+  "floors": 2,
+  "roof": "gable",
+  "roofAxis": "x",
+  "theme": "colonial",
+  "windowStride": 1,
+  "features": {
+    "porch": false,
+    "awning": false,
+    "parapet": false,
+    "chimney": true,
+    "garage": false
+  },
+  "zones": {
+    "residential": 6,
+    "commercial": 1,
+    "industrial": 0
+  },
+  "construction": "brick-mixed-use",
+  "layout": "main.layout.json",
+  "footprint": [
+    [
+      "####",
+      "####",
+      "####"
+    ],
+    [
+      "####",
+      "####",
+      "####"
+    ]
+  ],
+  "openings": [
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.5,
+      "kind": "door"
+    }
+  ],
+  "generationOrder": 4
+}

@@ -1,99 +1,107 @@
-# Building authoring
+# Building packages
 
-Every registered building uses one construction system: perimeter walls or frame columns, independent floor slabs, furnished rooms, and locally supported roof sections. There is no filled-cell building mode.
+Building content lives under `src/world/data/`. Vite discovers `*.building.json`, `*.layout.json`, `*.construction.json`, and `*.site.json` recursively. No registration list or barrel import is required. JSON is imported as raw text so malformed JSON can be reported with its source path. `archetypes.ts` resolves buildings; `buildingSites.ts` resolves sites after the buildings and prop catalog are available.
 
-## Author a building with JSON
+## Ownership and reuse
 
-Edit `src/world/data/buildings.json`. The versioned catalog has three sections:
-
-- `constructions`: shared structural assemblies, materials and collapse timing.
-- `layouts`: rooms, finishes, object placements and room connections.
-- `buildings`: dimensions, footprint, construction/layout references, openings, roof, appearance and zoning weights.
-
-A building using existing materials, objects and construction behaviors needs no simulation or renderer changes. It appears automatically in the asset yard. Positive zoning weights make it eligible for district generation.
-
-For example, this is a complete building entry using existing catalog references:
-
-```json
-{
-  "id": "garden-house",
-  "kind": "house",
-  "label": "GARDEN HOUSE",
-  "w": 5,
-  "d": 3,
-  "floors": 1,
-  "construction": "timber-house",
-  "layout": "ranch",
-  "footprint": [["#####", "#####", "#####"]],
-  "openings": [{"floor": 0, "side": "south", "at": 0.5, "kind": "door"}],
-  "roof": "gable",
-  "roofAxis": "x",
-  "theme": "ranch",
-  "windowStride": 2,
-  "features": {"porch": false, "awning": false, "parapet": false, "chimney": true, "garage": false},
-  "zones": {"residential": 4, "commercial": 0, "industrial": 0}
-}
+```text
+src/world/data/
+  shared/construction/timber-house.construction.json
+  buildings/residential/ranch/
+    main.building.json
+    main.layout.json
+  buildings/commercial/union-tower/
+    main.building.json
+    podium.layout.json
+    office.layout.json
+    mechanical.layout.json
+  buildings/industrial/logistics-hub/
+    main.building.json
+    hall.layout.json
+    loading.layout.json
+    office.layout.json
+  sites/datacenter/edge-campus.site.json
 ```
 
-Footprints are arrays of floors, each containing north-to-south row strings. `#` means occupied floor space; `.` means absent floor space. Row length is `w`; rows per floor are `d`. The compiler derives perimeter walls from this footprint. Empty structural grid cells inside a room are usable space, not missing floors.
+Folders are for people, not a rigid taxonomy. Put a new package in any sensible subfolder. Each building owns its sibling layouts; a layout reference must be a basename ending in `.layout.json`. Parent-directory paths, cross-package layout references, and two building IDs claiming the same layout file are rejected. All 11 original buildings have been migrated, including private copies of layouts formerly shared by the cottage/colonial/walkup and commercial variations.
 
-Room bounds (`x, y, w, d`) are fractions of the entire building footprint. Every occupied area must belong to exactly one room. A room has a stable `id`, a purpose such as `bedroom`, a floor number and a floor finish. Multiple bedrooms use different IDs.
+`construction` explicitly references the `id` of a discovered shared construction preset. Editing that preset intentionally affects every referencing building. Presets contain physical materials and collapse timings; layouts contain rooms and furnishings. There is no inheritance or override chain. Resolved definitions are copied and deeply frozen; each runtime instance owns fresh health, cells, floors, roofs and fixtures.
 
-Object slots have their own stable IDs. Their bounds are fractions of their room; height is in world units. Rotation is 0, 90, 180 or 270 degrees. The slot dimensions describe the final rotated footprint. Use the existing content kinds from `src/world/contents.ts`.
+## Add a building or variation
+
+1. Copy a nearby building directory, or create a directory with a `*.building.json` file and its sibling layouts.
+2. Set a new stable `id` and `label`. Retain the ID when updating an existing building: saved references and named placements use it. For a variation, copy its layouts too, then edit those private copies.
+3. Choose an explicit shared `construction` ID. To isolate a construction change, create a new `.construction.json` with a unique ID and reference it.
+4. Author either `layout` + `footprint`, or `sections`. Keep the common fields illustrated in the existing packages: `version: 1`, dimensions, kind, roof, theme, features, openings, window stride and zoning weights.
+5. Remove the copied `generationOrder`. This optional unique order preserves the old weighted-selection sequence. New definitions sort by stable ID after explicitly ordered buildings, independent of filenames or import enumeration.
+6. Start with all zoning weights zero. This makes the building playable in **SANDBOX → TEST YARD** without changing seeded districts or trying to fit a campus into a house lot. Setting a positive weight deliberately changes district selection; large structures need suitable lot-generation support before doing so.
+7. Run `npm test` and `npm run build`. Open the yard, search its ID or traits, jump to it, use **View whole example**, destroy it and restore its bay. Driving resumes the close follow camera. Use the existing Debug roof/floor/reveal controls to inspect rooms.
+
+`kind` remains the small existing gameplay category (`house`, `shop`, `industrial`), and `theme` selects an existing facade renderer. Neither is a comprehensive architectural taxonomy. Optional `traits` has independent string arrays for `use`, `form`, `construction`, `style`, `era`, and `scale`. The yard searches these values; they do not secretly change structural behavior. A landmark, apartment building or skyscraper can combine any of these descriptors while choosing an existing gameplay kind and visual theme.
+
+## Flat layouts and sections
+
+Flat packages retain the original normalized room format. `w` and `d` count simulation cells; `floors` counts stories. `footprint` is one array of `#`/`.` rows per story. Room coordinates are fractions of the whole building. Rooms must cover all occupied area without overlap, remain inside the footprint, and use existing room kinds, finishes and content assets. `contents` coordinates are fractions of the room, height is in world units, and rotation is 0/90/180/270. `partitions` creates physical room partitions. `connections` names room IDs and gives a doorway position and width as fractions of the shared wall.
+
+Section packages compile rectangular volumes into that same runtime format. For example, Union Tower has:
 
 ```json
-{
-  "id": "bed-west",
-  "kind": "bed",
-  "x": 0.14, "y": 0.12, "w": 0.58, "d": 0.66, "h": 0.48,
-  "rotation": 90
-}
+"sections": [
+  { "id": "podium", "role": "podium", "x": 0, "y": 0, "w": 12, "d": 10,
+    "floor": 0, "floors": 2, "layout": "podium.layout.json" },
+  { "id": "tower", "role": "tower", "x": 2, "y": 2, "w": 8, "d": 6,
+    "floor": 2, "floors": 21, "layout": "office.layout.json" },
+  { "id": "mechanical", "role": "mechanical", "x": 2, "y": 2, "w": 8, "d": 6,
+    "floor": 23, "floors": 1, "layout": "mechanical.layout.json" }
+]
 ```
 
-When `partitions` is true, adjacent rooms receive destructible partition walls. Specify door gaps through `connections`; there is no automatic centered-door fallback:
+Section dimensions and offsets are integer cells, with zero-based starting floors. Each local template describes exactly one floor (`floor: 0`) using section-relative room fractions. `floors` repeats it without duplicating authoring data. Resolved room IDs are `section-id/absolute-floor/room-id`; each repeated room and content array is separately copied. Templates referenced by several sections of the **same** building are deliberate local reuse.
 
-```json
-{"a": "1-bedroom-west", "b": "1-bedroom-east", "at": 0.5, "width": 0.4}
-```
+Volumes may touch but cannot overlap, extend outside the declared dimensions, or overhang unoccupied lower floors. The union produces one building with one damage state. Setback roofs remain exposed on lower floors. Flat roofs are split into rectangles so they do not bridge a tower cutout. Insets transfer support through the lower slab's existing bearing lines, using the same inexpensive collapse model. This is approximate structural behavior, not engineering analysis.
 
-Both door position and width are fractions of the shared wall. Rooms must share an actual edge on the same floor. Every room on a partitioned floor must be connected through doorways. Open industrial plans can use `partitions: false`.
+Set building-level `partitions` and `connections` for section packages. Connections between sections use the fully qualified room IDs above; the logistics hub demonstrates storage → loading → office connections. Template-local connections are repeated and qualified automatically. `role` describes the section; geometry and the referenced layout determine behavior. Section construction, roof style and facade theme are currently uniform across the building.
 
-## Compilation and ownership
+Openings retain normalized `at` along occupied south frontage. An optional `cell: { "x": 4, "y": 7 }` selects a recessed south-facing cell; it must actually be exposed. `kind` is `door` or `loading`. Openings remain destructible wall panels, not automatically open passages. Other entrance orientations, stairs and pedestrian circulation are not implemented.
 
-`parseBuildingCatalog` is the JSON validation seam. It rejects malformed shapes, unknown fields, unsupported versions, missing references, duplicate identities, unknown materials/objects, invalid dimensions, overlapping rooms/objects, incomplete room coverage, rooms crossing footprint holes, invalid entrances and disconnected partitioned rooms. Loaded definitions are copied and frozen.
+## Sites
 
-`createBuildingFromDefinition` is the production constructor used by both district generation and the test yard. It creates mutable state from the definition: walls, slabs, roof coverage/bearings, furnishings and collision state. Invalid definitions throw before insertion into a town. The lower-level `createBuilding` also requires construction, layout and openings; it is used for explicit test hosts, not an alternate building model.
+`edge-campus.site.json` demonstrates a site with two `data-hall` placements, a `campus-office`, transformers and HVAC equipment. Its `buildings` entries have a unique site-local member `id`, a building ID reference and world-space `x`/`y` offsets. `equipment` entries similarly reference existing destructible prop assets. Site dimensions and offsets are world units, not cells. Bounds, overlaps, duplicate member IDs, missing references and content budgets are validated before placement.
 
-The runtime uses flat arrays for efficient iteration, with explicit ownership:
+A site is a placement group, not one enormous structural grid. `instantiateBuildingSite` returns separate runtime buildings and props, which use normal collision, damage, collapse and debris paths. Damaging a hall does not mutate its sibling's state. Ordinary nearby explosions and falling debris can still damage neighbors. Member order and relative placements are deterministic. There are no nested sites or site-level construction overrides.
 
-- `Building.lotId` and `Prop.lotId` link developed placements to lots. Street props and standalone yard experiments have null lot ownership.
-- `Building.layout.rooms` contains immutable room definitions.
-- Slabs retain `roomId`; furnishings retain `roomId`, `placementId` and their floor.
-- Roof sections retain their bearing floor, including roofs over lower extensions.
-- Materials are shared definitions referenced by construction assemblies and objects, not children of rooms.
+Reusing `data-hall` twice explicitly shares its immutable definition. To change only one hall's layout, copy that building package under a new ID and update only that site's reference. **Restore bay** restores the entire placement group and removes its owned debris and collapsed-site records; it is not an undo system for damage caused outside the bay. Sites are currently available in the yard and through the placement function, not in district generation. Equipment uses existing prop behaviors; utility networks and datacenter operations are not simulated.
 
-## Physical behavior
+## Scale and costs
 
-`src/structure/materials.ts` owns material HP, beam span, density, crushability and friction defaults. Appearance finishes remain separate: ceramic-looking fixtures can use a concrete gameplay material. Object definitions may explicitly override health and mass.
+The examples are intentionally coarse, playable slices:
 
-All buildings use independent slabs. Ground slabs persist after demolition; upper slabs fall when their local bearing cells are lost. Roof coverage is separate from support. Frame columns can shed sacrificial cladding before the column fails. Roofs over lower extensions use that extension's bearings.
+| Example | World footprint | Stories | Grid slots / occupied floor tiles | Structural cells | Fixtures | Roof panels |
+| --- | --- | --- | --- | --- | --- | --- |
+| Union Tower | 13.8 × 11.5 | 24 | 2880 / 1296 | 608 | 45 | 18 |
+| Interstate Logistics Hub | 80 × 50 | Hall 1, office 2 | 1280 / 672 | 120 | 20 | 32 |
+| Data hall (each) | 24 × 16 | 1 | 96 / 96 | 36 | 9 | 6 |
+| Edge campus | 66 × 42 | Three separate buildings | 216 / 216 total | 88 total | 19 total | 15 total |
 
-`src/sim/objectBehavior.ts` owns shared object damage response and debris recipes. Interior fixtures and outdoor props use it. Room placement adds floor support and exposure; upstairs fixtures never enter ground vehicle collision. Broken objects stop blocking vehicles. Debris and loose mass remain in the bounded world debris system.
+The engine allocates a dense bounding grid, including empty placeholders, and occupied slab tiles. It does **not** allocate a Pixi object for each grid cell: exterior wall spans, roof panels and drawing caches reduce intact geometry. The constructor now shares precomputed bearing lines within an instance; roof exposure uses indexed occupancy, and fixture/floor checks use tile references indexed by floor and column. Runtime tile state remains mutable; indexes do not cache health.
 
-Collapse remains controlled animation suitable for districts, not a general physics engine.
+Package limits are 64 cells per axis, 64 stories, 8192 bounding grid slots, 256 expanded rooms and 512 content placements. `cellSize` defaults to the original 1.15 and supports 0.5–4 world units. The warehouse uses 2.5 to represent a large footprint with only 640 ground tiles; higher cell size makes damage and doors coarser. Sites allow up to 16 buildings, 64 equipment items, 256 × 256 world units and 16384 total grid slots. Yard batches are capped at 32768 building grid slots, with 65536 for the live yard. These are allocation safeguards, not a promise that every maximum-size combination runs at 60 FPS.
 
-## Verify
+Large structural bursts (over 32 debris/fixture emissions in one simulation step) limit new dynamic debris near the existing 72-body budget. Once full, additional mass goes straight into the owned editable pile, instead of first allocating thousands of bodies. One structural debris recipe may cross the threshold slightly. Existing particles, controlled falling walls, support timing and ordinary smaller debris events retain their paths. This bounds the demonstrated tower-demolition allocation spike while preserving debris mass and local restoration.
 
-Run `npm test` and `npm run build`. Building-definition tests exercise new JSON entries, invalid authoring, immutable definitions and ownership. Construction tests demolish every registered archetype and check that structures and contents settle without duplicate rewards or fragments.
+See [verification results](visual-verification/building-packages/verification.md) for measurements and screenshots. Full-building demolition still costs more than intact rendering, and dense debris contact can lower frame rate. This is not a city-wide skyscraper stress guarantee. Arbitrary rotations, per-section materials/heights, detailed structural bay analysis, full warehouse inventories, utility simulation and general-purpose collapse physics are future engine work, not supported package features.
 
-Open **SANDBOX → TEST YARD**. Every building uses the production constructor. The same content definition also appears in standalone and interior contexts so its shared behavior can be compared. Use **DEBUG** to hide roofs, choose floors, reveal contents or inspect support. **Destroy example** and **Restore bay** exercise complete collapse and local restoration.
 
-The ranch, brick mixed-use and steel presets remain available. **BRICK JOB** retains its contract controller; see [brick-job.md](brick-job.md). Yard controls are documented in [asset-test-yard.md](asset-test-yard.md).
+## Core-supported tall buildings
 
-## Supported scope
+Union Tower opts into `coreCollapse` in its own building definition. Existing buildings keep their existing bearing-wall/frame behavior. Copy the tower package under a new ID to make a variation; author dimensions, sections, private layouts, and supports together. Runtime resizing of core-collapse buildings is rejected.
 
-The current renderer and simulation use axis-aligned footprints on a cell grid, rectangular rooms, south-frontage entrance panels, procedural windows and gable/flat/shed roofs. Entrance panels are destructible; an authored door is not an automatically open vehicle passage. Connection validation establishes room topology, not a pedestrian navigation or circulation solver. Floor finish rendering follows the cell grid.
+`coreCollapse.supports` lists ground-floor grid coordinates `{ x, y, weight }`. These create actual central columns with collision and destructible HP. The six Union Tower columns occupy (4,4), (6,4), (8,4), (4,6), (6,6), (8,6); the middle pair has weight 2, the others weight 1. Keep furnishings clear of the columns. Coordinates must be unique and inside the ground footprint, not on its facade. Validation includes the source package and building ID.
 
-Stairs, arbitrary rotated buildings, other entrance orientations, utility networks, multilayer wall stacks and new physical material categories need explicit engine support. Room objects currently support brittle, crush and panel-collapse profiles; other profiles are rejected for room placement rather than silently ignored. Outdoor explosive, roll and topple behaviors retain their world handlers.
+Remaining capacity is the weight of intact/cracked columns divided by the original total. Facade panels carry no capacity. Below `capacityThreshold` (Union Tower: 0.45), a one-way warning begins for `warningDuration` (1.1 seconds), followed by `duration` (5 seconds) of coordinated sinking. Thresholds are authored gameplay values, not structural engineering predictions. Damaged but unbreached supports currently retain their full weight.
 
-Do not reintroduce compatibility flags or special cases for a building ID. Extend a shared behavior deliberately, migrate affected definitions, and delete the superseded path.
+Supported behavior: ground-core failure, one coherent building-wide vertical collapse, repeated compression pulses, outward dust, nearby dozer impulse/track stress, editable rubble with material/yard ownership, and one completion reward. All sections of this building participate. Independently failing wings/cores, upper-floor initiation, torsion, lateral toppling, and load redistribution are not simulated. Use separate site buildings for independent damage states.
+
+Collapse shells use precomputed merged floor rectangles. Pulses deposit mass directly into the existing pile (256 samples per material per floor) and use the fixed particle pool, creating no dynamic debris bodies. Local panel damage uses the existing debris budget before allocation. The pile renderer samples a coarse continuous surface, visually capped at 3.5 world units; simulation retains the complete mass/height and blade interaction. This does not introduce rigid-body physics. Many simultaneously collapsing towers and very large persistent pile fields remain unbenchmarked.
+
+Settled core-collapse piles also constrain dozer movement. Their influence radius is 0.85 times the larger footprint dimension in world units. Resistance combines radial depth with local pile mass and height sampled across the chassis; it increases gradually and rejects movement into the dense center. It does not allocate colliders or debris. Blade excavation lowers resistance locally. The check uses the movement origin recorded by stepDozer, before world collision and excavation, so engine acceleration cannot produce frame-by-frame creep through a blocked area. A dozer caught inside can move toward equal or lower resistance to escape. Ordinary building rubble and road-vehicle behavior are unchanged.

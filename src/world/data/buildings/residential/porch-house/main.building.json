@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "id": "porch-house",
+  "kind": "house",
+  "label": "PORCH",
+  "w": 4,
+  "d": 3,
+  "floors": 2,
+  "roof": "gable",
+  "theme": "porch",
+  "windowStride": 2,
+  "features": {
+    "porch": true,
+    "awning": false,
+    "parapet": false,
+    "chimney": true,
+    "garage": true
+  },
+  "zones": {
+    "residential": 5,
+    "commercial": 0,
+    "industrial": 0
+  },
+  "construction": "timber-house",
+  "layout": "main.layout.json",
+  "footprint": [
+    [
+      "####",
+      "####",
+      "####"
+    ],
+    [
+      "###.",
+      "###.",
+      "###."
+    ]
+  ],
+  "openings": [
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.5,
+      "kind": "door"
+    }
+  ],
+  "generationOrder": 6
+}
