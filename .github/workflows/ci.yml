@@ -7,6 +7,9 @@ on:
   pull_request:
     branches: [main, master]
 
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -18,6 +21,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+      - run: node --test scripts/*.test.mjs
       - run: npm run build
 
   windows:
@@ -30,4 +34,104 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+      - run: node --test scripts/*.test.mjs
       - run: npm run build
+
+  deploy:
+    needs: [build, windows]
+    # Fork PRs get tests, never deployment credentials. Dispatch also handles the
+    # final screenshot-bot commit, whose push does not start ordinary CI.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: vercel-${{ github.head_ref || github.ref_name }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      deployments: write
+    env:
+      VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+      FACEBOOK_APP_ID: ${{ vars.FACEBOOK_APP_ID }}
+      REQUIRE_FACEBOOK_APP_ID: '1'
+      DEPLOY_TARGET: ${{ github.ref == 'refs/heads/main' && 'production' || 'preview' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Verify deployment configuration
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          for name in VERCEL_TOKEN VERCEL_ORG_ID VERCEL_PROJECT_ID FACEBOOK_APP_ID; do
+            if [ -z "${!name}" ]; then echo "::error::Missing repository configuration: $name"; exit 1; fi
+          done
+          node --input-type=module <<'NODE'
+          const url = new URL(`https://api.vercel.com/v9/projects/${process.env.VERCEL_PROJECT_ID}`);
+          url.searchParams.set('teamId', process.env.VERCEL_ORG_ID);
+          const response = await fetch(url, { headers: { Authorization: `Bearer ${process.env.VERCEL_TOKEN}` } });
+          const data = await response.json();
+          if (!response.ok) throw new Error(`Vercel project access failed: HTTP ${response.status}, ${data.error?.code || 'unknown'}: ${data.error?.message || 'Check token scope'}`);
+          console.log(`Vercel project access verified: ${data.name}`);
+          NODE
+      - run: npm ci
+      - name: Build deployment with public Facebook metadata
+        run: |
+          npm run build
+          node --input-type=module -e 'import fs from "node:fs"; const html=fs.readFileSync("dist/index.html","utf8"); if(!html.includes(`property="fb:app_id" content="${process.env.FACEBOOK_APP_ID.trim()}"`)) throw Error("Built HTML is missing the configured Facebook App ID");'
+      - name: Check branch is still current
+        id: current
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const branch = context.payload.pull_request?.head.ref || context.ref.replace('refs/heads/', '');
+            const expected = context.payload.pull_request?.head.sha || context.sha;
+            const { data } = await github.rest.repos.getBranch({ ...context.repo, branch });
+            core.setOutput('yes', String(data.commit.sha === expected));
+            if (data.commit.sha !== expected) core.notice('Newer branch commit exists; skipping stale deployment.');
+      - name: Create GitHub deployment
+        if: steps.current.outputs.yes == 'true'
+        id: deployment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data } = await github.rest.repos.createDeployment({
+              ...context.repo, ref: context.payload.pull_request?.head.sha || context.sha,
+              environment: process.env.DEPLOY_TARGET, auto_merge: false, required_contexts: [],
+              production_environment: process.env.DEPLOY_TARGET === 'production',
+              transient_environment: process.env.DEPLOY_TARGET !== 'production',
+            });
+            core.setOutput('id', data.id);
+      - name: Deploy prebuilt output
+        if: steps.current.outputs.yes == 'true'
+        id: publish
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          DEPLOY_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          DEPLOY_BRANCH: ${{ github.head_ref || github.ref_name }}
+        run: node scripts/deploy-vercel.mjs
+      - name: Verify production metadata
+        if: steps.current.outputs.yes == 'true' && env.DEPLOY_TARGET == 'production'
+        id: verify
+        run: node scripts/verify-production.mjs
+      - name: Report deployment result
+        if: always() && steps.deployment.outputs.id != ''
+        uses: actions/github-script@v7
+        env:
+          DEPLOYMENT_ID: ${{ steps.deployment.outputs.id }}
+          DEPLOYMENT_URL: ${{ steps.publish.outputs.url }}
+          DEPLOYMENT_STATE: ${{ steps.publish.outcome == 'success' && steps.verify.outcome != 'failure' && 'success' || 'failure' }}
+        with:
+          script: |
+            await github.rest.repos.createDeploymentStatus({
+              ...context.repo, deployment_id: Number(process.env.DEPLOYMENT_ID),
+              state: process.env.DEPLOYMENT_STATE,
+              environment_url: process.env.DEPLOYMENT_URL || undefined,
+              log_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            });

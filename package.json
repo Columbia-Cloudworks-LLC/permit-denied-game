@@ -1,13 +1,14 @@
 {
   "name": "permit-denied",
   "private": true,
-  "version": "1.0.9",
+  "version": "1.0.10",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "test": "vitest run",
+    "test:mobile": "node scripts/verify-mobile.mjs",
     "screenshot:title": "node scripts/capture-title.mjs"
   },
   "dependencies": {

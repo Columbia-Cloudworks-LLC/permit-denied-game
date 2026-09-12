@@ -30,11 +30,17 @@ npm run build     # typecheck + production bundle
 npm run preview   # serve the production build
 ```
 
+Mobile UI verification: with the Vite dev server running and Playwright Chromium installed (`npx playwright install chromium`), run `npm run test:mobile`. Set `MOBILE_TEST_URL` if using another port. The check covers phone/tablet geometry, multi-touch resets, menus, warnings and permit resubmission; screenshots go to the ignored `docs/visual-verification/mobile-ui/` directory.
+
 ## Play
 
 https://permitdenied.app (also https://www.permitdenied.app)
 
-Vercel hosts the Vite static build. The GitHub repo `Columbia-Cloudworks-LLC/permit-denied-game` is linked to the `permit-denied` project on the Columbia Cloudworks LLC team. Merges to `main` deploy production. Pull requests get preview URLs.
+Vercel hosts the Vite static build. GitHub Actions owns deployment to the linked `permit-denied` project on the Columbia Cloudworks LLC team. After Linux and Windows CI pass, internal pull requests get preview deployments and `main` gets production deployments. Deployment links appear in GitHub deployments and the CI job summary. `vercel.json` disables Vercel's automatic Git builds to avoid duplicate deployments. Fork PRs run checks without deployment credentials.
+
+GitHub Actions repository variables are the source of truth for `FACEBOOK_APP_ID`, `VERCEL_ORG_ID`, and `VERCEL_PROJECT_ID`. `VERCEL_TOKEN` is a repository secret used only by deployment steps. `FACEBOOK_APP_SECRET` remains stored for future server-side integration and is never passed to the build or browser. There is no duplicate App ID setting to maintain in Vercel or source code. The Vite HTML transform injects the public `fb:app_id` from the workflow environment; deployment builds fail if it is missing or malformed. Local builds omit the tag unless `FACEBOOK_APP_ID` is provided.
+
+Actions builds with the repository's configuration, checks the generated metadata, and uploads only the compiled static site through Vercel's Build Output API. The API path avoids a Vercel CLI user-profile lookup that fails for the current team token. Older commits skip deployment when the branch has advanced. To redeploy after a variable or token update, dispatch the CI workflow on `main` (production) or the relevant internal branch (preview). Changing GitHub configuration alone does not change an already deployed page. The workflow verifies the production metadata after deployment. Test the build helper with `node --test scripts/*.test.mjs`.
 
 IONOS is only the registrar. Nameservers are Vercel (`ns1.vercel-dns.com`, `ns2.vercel-dns.com`). No backend, accounts, or API keys. Entirely client-side.
 
@@ -47,6 +53,8 @@ When the image changes, CI commits only that file to the PR branch, then explici
 For a local preview, run `npx playwright install chromium`, `npm run build`, and `npm run screenshot:title`. The capture script starts and stops its own preview server on port 4173. CI is the canonical renderer; operating-system font differences can change local image pixels. The generated social image is an intentional tracked asset; `dist/` and temporary captures remain untracked. Social networks may cache the image after deployment.
 
 ## Controls
+
+On touch devices the world fills the screen, with floating corner controls and compact cash, time, heat and track readouts. Pause opens equipment/objective details, permit resubmission and Debug.
 
 Touch controls appear automatically on coarse-pointer devices; use `?controls=1` to preview them on desktop. The left stick drives forward/reverse and steers relative to the dozer, with a 15% dead zone and proportional speed. Hold the right POWER BLADE button to power the blade while driving. Releasing the stick coasts; releasing the blade lets an already-started powered push finish.
 

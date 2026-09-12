@@ -1,6 +1,13 @@
 import { defineConfig } from "vitest/config";
+import { facebookMetadata } from "./scripts/facebook-metadata.mjs";
 
 export default defineConfig({
+  plugins: [{
+    name: 'facebook-app-metadata',
+    transformIndexHtml() {
+      return facebookMetadata(process.env.FACEBOOK_APP_ID, process.env.REQUIRE_FACEBOOK_APP_ID === '1');
+    },
+  }],
   server: {
     host: true,
     port: 5173,

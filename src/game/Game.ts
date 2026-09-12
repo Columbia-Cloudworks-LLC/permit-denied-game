@@ -123,7 +123,7 @@ export class Game {
     this.hud.onClick = () => { void this.audio.unlock().then(() => this.audio.switchClick()); };
     this.hud.onUnlockSound = () => this.audio.unlock();
     this.hud.onResubmit = () => {
-      if (this.mode !== 'play') return null;
+      if (this.mode !== 'play' && this.mode !== 'pause') return null;
       const fee = this.resubmission.charge(this.cash);
       if (fee !== null) {
         this.cash -= fee;

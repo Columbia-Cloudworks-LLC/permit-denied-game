@@ -5,8 +5,9 @@ import { MENU_LABELS as L, MODE_LABELS, MODE_DESCRIPTIONS, SITE_LABELS } from '.
 import { version } from '../../package.json';
 import notices from './thirdPartyNotices.txt?raw';
 
-type Page = 'home' | 'dispatch' | 'controls' | 'about';
+type Page = 'home' | 'dispatch' | 'controls' | 'about' | 'equipment' | 'debug';
 export interface MenuActions {
+  page?(page: Page | null, host?: HTMLElement): void;
   resume(): void;
   start(kind: SessionKind, district: DistrictId, layout: LayoutChoice): void;
   restart(): void;
@@ -114,11 +115,14 @@ export class OperatorMenu {
     if (mode) {
       this.navigate('home');
     } else {
+      this.actions.page?.(null);
       this.introVersion++;
       this.intro.stop();
       document.querySelector<HTMLCanvasElement>('#game-root canvas')?.focus();
     }
   }
+
+  get debugOpen(): boolean { return this.mode === 'pause' && this.page === 'debug'; }
 
   back(): void {
     if (this.page !== 'home') this.navigate('home');
@@ -144,16 +148,20 @@ export class OperatorMenu {
   private navigate(page: Page): void {
     this.introVersion++;
     this.intro.stop();
+    this.actions.page?.(null);
     this.page = page;
     this.root.classList.toggle('title-open', this.mode === 'title' && page === 'home');
     this.root.querySelector<HTMLButtonElement>('[data-nav="back"]')!.hidden = page === 'home' || page === 'dispatch';
-    const titles = { home: this.mode === 'title' ? TITLE : 'Paused', dispatch: L.newGame, controls: L.controls, about: L.about };
+    const titles = { home: this.mode === 'title' ? TITLE : 'Paused', dispatch: L.newGame, controls: L.controls, about: L.about, equipment: 'Equipment & Objective', debug: L.debug };
     this.heading.textContent = titles[page];
     this.root.querySelector<HTMLElement>('.nameplate')!.hidden = !(this.mode === 'title' && page === 'home') && page !== 'about';
     if (page === 'home') this.body.innerHTML = `${this.mode === 'title'
       ? `${permitDocument()}<button class="ignition primary" data-nav="dispatch"><span class="ignition-symbol" aria-hidden="true">⏻</span><span>${L.play}</span><span aria-hidden="true">↗</span></button>`
-      : `<button class="primary" data-menu-action="resume">${L.resume}</button><div class="menu-grid"><button data-menu-action="restart" aria-describedby="restart-help">${L.restart}</button><button data-nav="dispatch">${L.newGame}</button></div><p class="fine-print" id="restart-help">Start this site over with the same layout. Resets cash, demolition, upgrades, and the permit application.</p>`}
+      : `<button class="primary" data-menu-action="resume">${L.resume}</button><div class="mobile-menu-links menu-grid"><button data-nav="equipment">Equipment & Objective</button><button data-nav="debug">${L.debug}</button></div><div class="menu-grid"><button data-menu-action="restart" aria-describedby="restart-help">${L.restart}</button><button data-nav="dispatch">${L.newGame}</button></div><p class="fine-print" id="restart-help">Start this site over with the same layout. Resets cash, demolition, upgrades, and the permit application.</p>`}
       <nav class="menu-grid" aria-label="Game menu"><button data-nav="controls">${L.controls}</button><button data-menu-action="mute">${L.soundOn}</button><button data-nav="about">${L.about}</button>${this.mode === 'pause' ? `<button data-menu-action="title" aria-describedby="main-menu-help">${L.mainMenu}</button>` : ''}</nav>${this.mode === 'pause' ? '<p class="fine-print" id="main-menu-help">Returning to the main menu ends this game. You cannot resume it.</p>' : ''}`;
+    if (page === 'equipment') this.body.innerHTML = '<div class="equipment-details"></div><h2>Permit Application</h2><p class="fine-print">Resubmitting spends cash on a county processing fee.</p><div class="menu-permit-host"></div>';
+    if (page === 'debug') this.body.innerHTML = '<div class="menu-debug-host"></div>';
+    this.root.classList.toggle('debug-page', page === 'debug');
     if (page === 'dispatch') {
       this.body.innerHTML = `<div class="dispatch-fields"><label>Mode<select id="dispatch-mode">${Object.entries(MODE_LABELS).map(([id, label]) => `<option value="${id}">${label}</option>`).join('')}</select></label><label>Site Size<select id="dispatch-lot"></select></label><label>Layout<select id="dispatch-layout"><option value="standard">Standard</option><option value="randomized">Randomized</option></select></label></div><p class="fine-print" id="mode-description"></p><p class="fine-print">Standard uses the site's original layout. Randomized generates a new layout.</p>${this.mode === 'pause' ? '<p class="caution">Starting a new game replaces your current progress and upgrades.</p>' : ''}<button class="primary" data-menu-action="start">${L.start}</button><button data-nav="back">Back</button>`;
       this.syncSetup();
@@ -163,6 +171,7 @@ export class OperatorMenu {
       this.body.innerHTML = `<dl class="credits-list"><div><dt>Publisher</dt><dd>Columbia Cloudworks LLC</dd></div><div><dt>Website</dt><dd><a href="https://columbiacloudworks.com" target="_blank" rel="noopener noreferrer">columbiacloudworks.com ↗</a></dd></div><div><dt>Contact</dt><dd><a href="mailto:nicholas.king@columbiacloudworks.com">nicholas.king@columbiacloudworks.com</a></dd></div><div><dt>Game</dt><dd><a href="https://permitdenied.app" target="_blank" rel="noopener noreferrer">permitdenied.app ↗</a></dd></div><div><dt>GitHub</dt><dd><a href="https://github.com/Columbia-Cloudworks-LLC/permit-denied-game" target="_blank" rel="noopener noreferrer">permit-denied-game ↗</a></dd></div><div><dt>Version</dt><dd>${version}</dd></div></dl><details class="license-notices"><summary>Third-party software notices</summary><pre></pre></details>`;
       this.body.querySelector('pre')!.textContent = notices;
     }
+    this.actions.page?.(page, this.body);
     this.syncMuted(this.muted);
     this.heading.focus();
     this.root.querySelector('.console-panel')!.scrollTop = 0;
