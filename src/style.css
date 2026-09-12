@@ -125,18 +125,12 @@ dt { color: #d9b96f; font: bold 11px/1.5 var(--mono); } dd { margin: 0; color: #
 #hud-root .touch-blade.active { background: #ffdb72; box-shadow: 0 0 0 3px #151d11, 0 0 15px #e9c45066; }
 .blocked .touch-deck { opacity: .3; }
 .modal-open #touch-controls { visibility: hidden; }
-.touch-ui { --deck-base-height: 166px; }
-.touch-ui .instrument-deck { gap: 16px; }
-.touch-ui .blade-module { width: 155px; padding-left: 14px; }
-.touch-ui .gauge { width: 86px; height: 86px; }
-.touch-ui .gauge-module > .instrument-label { font-size: 8px; }
-.touch-ui #hud-root :is(button,select,summary) { min-height: 48px; }
+
 @media (max-width: 1000px) {
   .top { gap: 14px; padding: 10px 12px; }
   .stat { padding-left: 14px; min-width: 80px; }
   .stat strong { font-size: 16px; }
   .instrument-label { font-size: 9px; }
-  .touch-ui .blade-module { display: none; }
 }
 @media (max-width: 620px) {
   :root { --deck-base-height: 126px; }
@@ -166,19 +160,12 @@ dt { color: #d9b96f; font: bold 11px/1.5 var(--mono); } dd { margin: 0; color: #
   .control-list > div, .credits-list > div { grid-template-columns: 115px 1fr; gap: 12px; }
   dd { font-size: 12px; }
   .credits-list > div { grid-template-columns: 1fr; gap: 4px; }
-  .touch-ui { --deck-base-height: calc(210px + env(safe-area-inset-bottom)); --stick-size: 112px; --blade-size: 78px; }
-  .touch-ui .instrument-deck { align-items: flex-start; padding-top: 10px; gap: 24px; }
-  .touch-ui .gauge { width: 64px; height: 64px; border-width: 3px; }
-  .touch-ui .gauge-min, .touch-ui .gauge-max { display: none; }
-  .touch-ui .gauge output { font-size: 10px; }
-  .touch-ui .touch-deck { align-items: flex-end; padding-left: 22px; padding-right: 22px; }
-  .touch-ui .gauge-module:first-of-type { margin-left: 0; }
 }
 @media (max-height: 500px) and (min-width: 621px) {
-  :root, .touch-ui { --deck-base-height: 108px; --stick-size: 76px; --blade-size: 68px; }
+  :root { --deck-base-height: 108px; --stick-size: 76px; --blade-size: 68px; }
   .top { top: 6px; padding: 6px 10px; }
   .top .stat strong { font-size: 13px; }
-  .gauge, .touch-ui .gauge { width: 65px; height: 65px; border-width: 3px; }
+  .gauge { width: 65px; height: 65px; border-width: 3px; }
   .gauge-min, .gauge-max { display: none; }
   .instrument-deck { gap: 20px; padding: 8px 12px; }
   .blade-module { width: 200px; }
@@ -189,10 +176,6 @@ dt { color: #d9b96f; font: bold 11px/1.5 var(--mono); } dd { margin: 0; color: #
   .operator-menu, .overlay { padding: 10px; }
 }
 @media (prefers-reduced-motion: reduce) { #hud-root *, #hud-root *:before, #hud-root *:after { transition: none !important; animation: none !important; } }
-/* Hydraulic status remains visible above the control deck on touch devices. */
-.touch-ui .blade-module { display: block; position: absolute; right: 12px; bottom: calc(100% + 10px); width: 185px; padding: 9px 12px; background: #162015ed; border: 1px solid #6c755b; border-radius: 3px; }
-.touch-ui .blade-module .blade { padding: 6px 8px; margin-top: 5px; font-size: 11px; }
-.touch-ui #hud-advisory { min-height: 0; font-size: 8px; margin-top: 5px; }
 @media (max-height: 740px) and (min-width: 621px) {
   .title-open h1 { font-size: 54px; max-width: none; }
   .title-open .menu-heading { padding-top: 22px; }
@@ -204,21 +187,10 @@ dt { color: #d9b96f; font: bold 11px/1.5 var(--mono); } dd { margin: 0; color: #
 @media (max-width: 620px) {
   .nameplate { font-size: 10px; }
   .top .stat .instrument-label { font-size: 9px; }
-  .touch-ui .gauge-module > .instrument-label { font-size: 9px; }
 }
 @media (max-width: 620px) {
   .top > div:first-child { flex: 1 1 calc(100% - 120px); }
   .stat { flex: 1 1 28%; }
-  .touch-ui { --deck-base-height: calc(240px + env(safe-area-inset-bottom)); }
-  .touch-ui .gauge-module > .instrument-label { font-size: 10px; }
-}
-@media (max-width: 620px) and (max-height: 650px) {
-  .touch-ui { --deck-base-height: calc(200px + env(safe-area-inset-bottom)); --stick-size: 88px; --blade-size: 72px; }
-  .touch-ui #hud-root #hud-menu { min-height: 40px; }
-  .touch-ui .gauge { width: 54px; height: 54px; }
-  .touch-ui .gauge-module > .instrument-label { font-size: 9px; }
-  .touch-ui .blade-module { padding: 5px 8px; }
-  .touch-ui .blade-module .blade { margin-top: 0; padding: 4px 8px; }
 }
 
 /* Direct inspector access shares the HUD action row on every screen. */
@@ -378,11 +350,6 @@ dt { color: #d9b96f; font: bold 11px/1.5 var(--mono); } dd { margin: 0; color: #
   .upgrade-label { margin-bottom: 2px; font-size: 10px; }
   .upgrade-value { font-size: 18px; line-height: 1; padding: 2px; }
 }
-.touch-ui { --upgrade-strip-height: 56px; }
-.touch-ui .instrument-deck { padding-top: 68px; }
-.touch-ui .upgrade-bank { position: absolute; top: 6px; left: max(28px, env(safe-area-inset-left)); right: max(28px, env(safe-area-inset-right)); width: auto; height: 48px; padding: 3px 8px; gap: 10px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.touch-ui .upgrade-label { margin-bottom: 2px; font-size: 10px; }
-.touch-ui .upgrade-value { font-size: 18px; line-height: 1; padding: 2px; }
 
 /* Upper dash: mechanical cash wheels and an amber equipment timer. */
 .top { flex-wrap: wrap; --top-offset: max(14px, env(safe-area-inset-top)); top: var(--top-offset); }
@@ -429,4 +396,56 @@ dt { color: #d9b96f; font: bold 11px/1.5 var(--mono); } dd { margin: 0; color: #
   .clock-digit { width: 13px; height: 25px; }
   .clock-colon { width: 5px; height: 25px; }
   .equipment-clock { gap: 2px; padding: 4px 6px; }
+}
+
+/* Touch HUD: one compact status area and floating controls over the full world. */
+.mobile-hud, .mobile-menu-links { display: none; }
+.touch-ui { --deck-base-height: 0px; --upgrade-strip-height: 0px; --stick-size: 96px; --blade-size: 80px; }
+.touch-ui.touch-portrait { --stick-size: 112px; }
+.touch-ui #game-root { inset: 0; }
+.touch-ui #hud-root > :is(.top, .instrument-deck, .job) { display: none; }
+.touch-ui .mobile-hud { display: block; position: absolute; top: max(6px, env(safe-area-inset-top)); left: max(12px, env(safe-area-inset-left)); right: max(12px, env(safe-area-inset-right)); height: 64px; padding: 0 8px 5px; border-top: 1px solid #d5aa4699; border-radius: 4px; background: #172019c9; }
+.mobile-readouts { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 48px; align-items: center; gap: 12px; height: 48px; }
+.mobile-readouts > div { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.mobile-readouts strong { font: bold 18px/1.1 var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mobile-readouts small { color: #c1c5b5; font: 10px/1.2 var(--mono); white-space: nowrap; }
+.mobile-readouts .long-value { font-size: 14px; }
+#mobile-clock { color: #efbb59; }
+#hud-root #mobile-pause { width: 48px; height: 48px; min-height: 48px; padding: 0; background: transparent; border: 0; box-shadow: none; font-size: 22px; }
+.mobile-meters { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.mobile-meters [role=meter] { display: flex; align-items: center; gap: 8px; color: #c4cbb8; font: 10px/1 var(--mono); }
+.mobile-meters span { white-space: nowrap; }
+.mobile-meters i { flex: 1; height: 3px; background: linear-gradient(to right, #c3b46c var(--level), #82947a44 var(--level)); border-radius: 2px; }
+.mobile-meters .warning { color: #ffb087; }
+.mobile-meters .warning i { background: linear-gradient(to right, #ff9a6b var(--level), #82947a44 var(--level)); }
+.mobile-notices { position: absolute; top: calc(100% + 6px); left: 0; right: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.mobile-notices > div { max-width: 100%; padding: 5px 8px; border-radius: 3px; background: #172019d9; font: 11px/1.3 var(--mono); }
+#mobile-warning { color: #ffbd91; }
+.touch-ui.touch-portrait .mobile-hud { height: 76px; }
+.touch-portrait .mobile-readouts { height: 54px; }
+.touch-portrait .mobile-readouts > div { display: flex; flex-direction: column; gap: 3px; }
+.touch-ui .touch-deck { height: auto; padding: 0; bottom: max(16px, env(safe-area-inset-bottom)); left: max(16px, env(safe-area-inset-left)); right: max(16px, env(safe-area-inset-right)); align-items: flex-end; pointer-events: none; }
+.touch-ui .touch-drive > span, .touch-ui .touch-action > span { display: none; }
+.touch-ui .touch-stick { background: #26342570; border: 2px solid #c5cba185; box-shadow: inset 0 0 0 7px #19241b50; }
+.touch-ui .stick-knob { background: #c4cba18c; border: 1px solid #eef0cfa0; box-shadow: 0 2px 6px #0004; }
+.touch-ui #hud-root .touch-blade { width: 80px; height: 80px; min-height: 80px; border: 2px solid #e9c86fa0; padding: 12px; background: #816e32a6; color: #fff0c8; box-shadow: none; font-size: 11px; }
+.touch-ui #hud-root .touch-blade:is(.active, .engaged) { background: #d5aa46dd; color: #182017; border-color: #fff0b1; }
+.touch-ui .modal-open .mobile-hud, .touch-ui .modal-open #touch-controls { visibility: hidden; }
+.touch-ui .mobile-menu-links { display: grid; }
+.equipment-details { white-space: pre-line; font: 14px/1.7 var(--mono); }
+.menu-permit-host { min-height: 330px; position: relative; padding-top: 12px; }
+.menu-permit-host .permit-logo { width: 100%; }
+#hud-root .menu-permit-host .permit-logo-button { width: 100%; height: 56px; border: 1px solid #777b64; }
+.menu-permit-host .resubmit-offer { opacity: 1; }
+.menu-permit-host .permit-logo:not(.resubmitting) .permit-slot { visibility: hidden; }
+.menu-permit-host .resubmitting .permit-slot { max-width: 100%; }
+.menu-permit-host .resubmitting .resubmit-status { max-width: 100%; white-space: normal; }
+.menu-debug-host #debug-panel { position: static; width: 100%; max-height: none; padding: 0; border: 0; box-shadow: none; background: transparent; overflow: visible; }
+.menu-debug-host .debug-pages { overflow: visible; }
+.menu-debug-host .debug-heading { display: none; }
+.touch-ui #hud-root .operator-menu :is(button, select, summary), .touch-ui #hud-root .overlay button { min-height: 44px; }
+.touch-ui .operator-menu, .touch-ui .overlay { padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); }
+@media (max-height: 500px) {
+  .touch-ui .console-panel, .touch-ui .panel { padding: 12px 20px; border-top-width: 3px; }
+  .touch-ui .menu-heading { padding: 4px 0 10px; }
 }

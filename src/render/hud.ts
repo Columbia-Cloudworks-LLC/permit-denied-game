@@ -1,3 +1,4 @@
+import { clockValue } from './instrumentValues';
 import { CashCounter } from './cashCounter';
 import { EquipmentClock } from './equipmentClock';
 import { upgradePercent, type UpgradeModifiers } from '../game/upgrades';
@@ -84,6 +85,7 @@ export class Hud {
         <div class="stat clock-stat"><span class="instrument-label" id="hud-clock-label">County Clock</span><div id="hud-time"></div></div>
         <div class="hud-actions"><button type="button" id="debug-toggle" aria-expanded="false" aria-controls="debug-panel">${L.debug}</button><button type="button" id="hud-menu">${L.pause}</button></div>
       </div>
+      <div class="mobile-hud"><div class="mobile-readouts"><div><strong id="mobile-cash"></strong><small id="mobile-target"></small></div><div><strong id="mobile-clock"></strong><small id="mobile-clock-label"></small></div><button type="button" id="mobile-pause" aria-label="Pause">Ⅱ</button></div><div class="mobile-meters">${['heat', 'track'].map(id => `<div id="mobile-${id}" role="meter" aria-label="${id === 'heat' ? 'Engine heat' : 'Track stress'}" aria-valuemin="0" aria-valuemax="100"><span>${id === 'heat' ? 'Heat' : 'Track'} <output>0%</output></span><i></i></div>`).join('')}</div><div class="mobile-notices"><div id="mobile-warning" role="status" hidden></div><div id="mobile-job" hidden></div></div></div>
       <div class="session" id="hud-session"></div>
       <details id="hud-tower" class="tower-test" aria-label="Skyscraper test controls" open hidden>
         <summary>Skyscraper Test</summary> <span id="tower-status"></span>
@@ -136,9 +138,24 @@ export class Hud {
       (kind, index) => this.onTitleSound?.(kind, index),
       () => this.onUnlockSound?.() ?? Promise.resolve());
     root.querySelector('#hud-permit')!.append(this.permitLogo.root);
+    this.permitLogo.root.addEventListener('click', () => {
+      if (this.permitLogo.root.classList.contains('resubmitting')) {
+        this.permitLogo.root.closest('.menu-permit-host')?.scrollIntoView({ block: 'start' });
+      }
+    });
 
     root.querySelector('#hud-menu')!.addEventListener('click', () => { this.onClick?.(); this.onMenu?.(); });
+    root.querySelector('#mobile-pause')!.addEventListener('click', () => { this.onClick?.(); this.onMenu?.(); });
     this.menu = new OperatorMenu(root, {
+      page: (page, host) => {
+        if (!page && this.permitLogo.root.closest('.menu-permit-host')) this.permitLogo.reset();
+        root.querySelector('#hud-permit')!.append(this.permitLogo.root);
+        const debug = root.querySelector<HTMLElement>('#debug-panel')!;
+        root.querySelector('.debug-menu')!.append(debug);
+        debug.hidden = true;
+        if (page === 'equipment') host!.querySelector('.menu-permit-host')!.append(this.permitLogo.root);
+        if (page === 'debug') { host!.querySelector('.menu-debug-host')!.append(debug); debug.hidden = false; this.onDebugOpen?.(); }
+      },
       resume: () => this.onResume?.(), start: (kind, district, layout) => this.onStart?.(kind, district, layout),
       restart: () => this.onRestart?.(),
       title: () => this.onTitle?.(), mute: () => this.onMute?.(), click: () => this.onClick?.(),
@@ -167,11 +184,45 @@ export class Hud {
     }).observe(top);
   }
 
+  private renderMobile(s: HudState, elapsedClock: boolean, advisory: string): void {
+    const text = (selector: string, value: string) => {
+      const el = this.root.querySelector<HTMLElement>(selector);
+      if (el && el.textContent !== value) el.textContent = value;
+    };
+    const cash = '$' + Math.max(0, Math.floor(s.cash)).toLocaleString('en-US');
+    text('#mobile-cash', cash);
+    this.root.querySelector('#mobile-cash')!.classList.toggle('long-value', cash.length > 10);
+    text('#mobile-target', elapsedClock ? 'Cash' : `of $${CASH_TARGET.toLocaleString('en-US')}`);
+    const time = clockValue(elapsedClock ? s.elapsed : s.timeLeft, elapsedClock);
+    text('#mobile-clock', time.display);
+    this.root.querySelector('#mobile-clock')!.setAttribute('aria-label', time.accessible);
+    text('#mobile-clock-label', elapsedClock ? 'Elapsed' : 'Remaining');
+    for (const [id, value] of [['heat', s.heat], ['track', s.track]] as const) {
+      const meter = this.root.querySelector<HTMLElement>('#mobile-' + id)!;
+      const percent = Math.round(Math.max(0, Math.min(100, value)));
+      meter.style.setProperty('--level', percent + '%');
+      meter.setAttribute('aria-valuenow', String(percent));
+      meter.classList.toggle('warning', value > 65);
+      text(`#mobile-${id} output`, percent + '%');
+    }
+    text('#mobile-warning', advisory);
+    this.root.querySelector<HTMLElement>('#mobile-warning')!.hidden = !advisory;
+    text('#mobile-job', s.job ? s.job.paid ? `Demolition complete · +$${s.job.payout}` : `Demolition · ${Math.floor(s.job.progress * 100)}% / 90%` : '');
+    this.root.querySelector<HTMLElement>('#mobile-job')!.hidden = !s.job;
+    const blade = this.root.querySelector<HTMLButtonElement>('.touch-blade');
+    if (blade) {
+      blade.classList.toggle('engaged', s.bladeDown);
+      blade.setAttribute('aria-label', s.bladeDown ? 'Powered blade engaged; release to finish push' : 'Hold powered blade');
+      text('.touch-blade', s.bladeDown ? 'BLADE DOWN' : 'POWER BLADE');
+    }
+    text('.equipment-details', `Blade ${s.upgradeModifiers.bladeMul.toFixed(2)}× · Engine ${s.upgradeModifiers.engineMul.toFixed(2)}× · Push ${s.upgradeModifiers.pushMul.toFixed(2)}×\n\n${s.job ? s.job.instruction + '\nRemove 90% of the structure.' : s.session === 'challenge' ? `Earn $${CASH_TARGET.toLocaleString('en-US')} before the county clock expires.` : 'Sandbox · demolish freely.'}`);
+  }
+
   private bindDebugMenu(): void {
     const panel = this.root.querySelector<HTMLElement>("#debug-panel")!;
     const toggle = this.root.querySelector<HTMLButtonElement>("#debug-toggle")!;
     toggle.addEventListener('click', () => { if (panel.hidden) this.openDebug(); else this.closeDebug(true); });
-    this.root.querySelector('#debug-close')!.addEventListener('click', () => this.closeDebug(true));
+    this.root.querySelector('#debug-close')!.addEventListener('click', () => { if (this.menu.debugOpen) this.menu.back(); else this.closeDebug(true); });
     this.root.querySelector('.debug-menu')!.addEventListener('keydown', event => {
       const e = event as KeyboardEvent;
       if (e.key === 'Escape' && !panel.hidden) { e.preventDefault(); e.stopPropagation(); this.closeDebug(true); return; }
@@ -306,7 +357,8 @@ export class Hud {
       }
       this.modifierValues.set(key, value);
     }
-    this.permitLogo.render(s.resubmitted, s.cash, s.overlay !== 'none');
+    const permitInMenu = !!this.permitLogo.root.closest('.menu-permit-host');
+    this.permitLogo.render(s.resubmitted, s.cash, s.overlay !== 'none' && !(s.overlay === 'pause' && permitInMenu));
     const touch = document.documentElement.classList.contains('touch-ui');
     this.root.querySelector<HTMLElement>('#hud-tower p')!.textContent = touch
       ? 'Use the stick to drive and steer. Hold POWER BLADE. Break the facade, then reach the central supports.'
@@ -347,16 +399,17 @@ export class Hud {
     (advisoryEl as HTMLElement).hidden = !advisory;
     this.root.querySelector('#hud-clock-label')!.textContent = s.session === 'sandbox' || s.job ? 'Elapsed' : 'County Clock';
     const modal = s.overlay !== 'none';
-    if (modal) this.closeDebug();
+    if (modal && !this.menu.debugOpen) this.closeDebug();
     this.root.querySelector<HTMLElement>('#debug-open-yard')!.hidden = s.hasYard;
     this.root.classList.toggle('modal-open', modal);
     document.querySelector<HTMLElement>('#game-root')!.inert = modal;
-    for (const selector of ['.top', '.instrument-deck', '#touch-controls']) {
+    for (const selector of ['.top', '.mobile-hud', '.instrument-deck', '#touch-controls']) {
       const el = this.root.querySelector<HTMLElement>(selector);
       if (el) el.inert = modal;
     }
     this.menu.show(s.overlay === 'title' || s.overlay === 'pause' ? s.overlay : null, s.session, s.district, s.developmentScenario);
     this.menu.syncMuted(s.muted);
+    this.renderMobile(s, elapsedClock, advisory);
 
     if (s.overlay === "none" || s.overlay === "pause" || s.overlay === "title") {
       this.overlay.classList.remove("show");

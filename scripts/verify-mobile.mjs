@@ -1,0 +1,132 @@
+import { chromium } from 'playwright';
+import assert from 'node:assert/strict';
+import { mkdir } from 'node:fs/promises';
+
+const base = process.env.MOBILE_TEST_URL || 'http://localhost:5173';
+const output = process.argv[2] || 'docs/visual-verification/mobile-ui';
+await mkdir(output, { recursive: true });
+const browser = await chromium.launch({ headless: true });
+const errors = [];
+const page = await browser.newPage({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+page.on('pageerror', error => errors.push(error.message));
+try {
+  await page.goto(`${base}/?controls=1`);
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
+  await page.getByRole('button', { name: 'Start Game', exact: true }).click();
+  await page.locator('.mobile-hud').waitFor({ state: 'visible' });
+  for (const [width, height] of [[360,640],[640,360],[390,844],[844,390],[430,932],[932,430],[768,1024],[1024,768]]) {
+    await page.setViewportSize({ width, height });
+    await page.waitForTimeout(200);
+    const geometry = await page.evaluate(() => {
+      const rect = selector => { const r = document.querySelector(selector).getBoundingClientRect(); return { x:r.x,y:r.y,w:r.width,h:r.height,right:r.right,bottom:r.bottom }; };
+      return { game:rect('#game-root'), hud:rect('.mobile-hud'), stick:rect('.touch-stick'), blade:rect('.touch-blade'), pause:rect('#mobile-pause'), overflow:document.documentElement.scrollWidth > innerWidth, center:document.elementFromPoint(innerWidth/2,innerHeight/2)?.tagName };
+    });
+    assert.equal(geometry.game.h, height);
+    assert.equal(geometry.game.w, width);
+    assert.ok(geometry.hud.h <= (height > width ? 80 : 64));
+    assert.equal(geometry.stick.w, height > width ? 112 : 96);
+    assert.equal(geometry.blade.w,80);
+    assert.equal(geometry.pause.h,48);
+    assert.equal(geometry.overflow,false);
+    assert.equal(geometry.center,'CANVAS');
+    for (const box of [geometry.hud,geometry.stick,geometry.blade]) assert.ok(box.x >= 0 && box.right <= width && box.y >= 0 && box.bottom <= height);
+    assert.ok(geometry.stick.right < geometry.blade.x);
+    await page.screenshot({ path:`${output}/${width}x${height}.png` });
+    console.log(`${width}x${height}: canvas ${geometry.game.h}px, HUD ${geometry.hud.h}px`);
+  }
+  await page.setViewportSize({ width:390,height:844 });
+  await page.locator('#mobile-pause').click();
+  await page.getByRole('button',{name:'Equipment & Objective',exact:true}).click();
+  await page.locator('.equipment-details').waitFor();
+  assert.match(await page.locator('.equipment-details').innerText(),/Blade 1.00/);
+  await page.getByRole('button',{name:'Back',exact:true}).click();
+  await page.getByRole('button',{name:'Debug',exact:true}).click();
+  await page.getByRole('checkbox',{name:'Freeze Simulation',exact:true}).check();
+  await page.getByRole('button',{name:'Step One Frame',exact:true}).click();
+  await page.getByRole('checkbox',{name:'Freeze Simulation',exact:true}).uncheck();
+  await page.getByRole('tab',{name:'Test Scenarios',exact:true}).click();
+  await page.getByRole('tab',{name:'Assets',exact:true}).click();
+  await page.screenshot({path:`${output}/debug-menu.png`});
+  await page.getByRole('button',{name:'Back',exact:true}).click();
+  await page.getByRole('button',{name:'Resume',exact:true}).click();
+  await page.locator('.mobile-hud').waitFor({state:'visible'});
+
+  await page.locator('#mobile-pause').click();
+  await page.getByRole('button',{name:'Debug',exact:true}).click();
+  await page.getByRole('tab',{name:'Test Scenarios',exact:true}).click();
+  await page.getByRole('button',{name:'Brick Building Demolition',exact:true}).click();
+  await page.locator('#mobile-job').waitFor({state:'visible'});
+
+  // Isolated real HUD/controls with deterministic state for warnings and pointer ownership.
+  await page.route('**/__mobile-fixture', route => route.fulfill({ contentType:'text/html', body:'<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><link rel="stylesheet" href="/src/style.css"><div id="game-root"><canvas></canvas></div><div id="hud-root"></div>' }));
+  await page.goto(`${base}/__mobile-fixture`);
+  await page.evaluate(async () => {
+    const { Hud } = await import('/src/render/hud.ts');
+    const { TouchControls } = await import('/src/render/touchControls.ts');
+    const { Resubmission } = await import('/src/game/resubmission.ts');
+    const state = { hasYard:false,upgradeModifiers:{bladeMul:1.25,engineMul:1.5,pushMul:1.75},cash:123456789,timeLeft:120,elapsed:3661,session:'sandbox',district:'d10',bladeDown:false,muted:true,heat:66,track:88,overlay:'none',death:null,won:false,resubmitted:false,job:{progress:.8,remaining:10,instruction:'Clear the remaining walls.',paid:false,payout:250} };
+    const hud = new Hud(document.querySelector('#hud-root'));
+    const fixture = window.mobileFixture = {state,hud,input:null,releases:0};
+    const touch = fixture.touch = new TouchControls(hud.root,{change:value=>fixture.input=value,release:()=>fixture.releases++,interact:()=>{},resize:()=>{}});
+    const render = fixture.render = () => {hud.render(state);touch.setBlocked(state.overlay !== 'none');};
+    hud.onMenu = () => {state.overlay='pause';render();};
+    hud.onResume = () => {state.overlay='none';render();};
+    const permit = new Resubmission();
+    hud.onResubmit = () => {const fee=permit.charge(state.cash,()=>0);if(fee!==null){state.cash-=fee;state.resubmitted=permit.used;}return fee;};
+    render();
+  });
+  assert.equal(await page.locator('#mobile-clock').innerText(),'1:01:01');
+  assert.equal(await page.locator('#mobile-cash').innerText(),'$123,456,789');
+  assert.match(await page.locator('#mobile-warning').innerText(),/HIGH HEAT/);
+  assert.equal(await page.locator('#mobile-track').getAttribute('aria-valuenow'),'88');
+  await page.screenshot({path:`${output}/warnings-job.png`});
+  const client = await page.context().newCDPSession(page);
+  const stick = await page.locator('.touch-stick').boundingBox();
+  const blade = await page.locator('.touch-blade').boundingBox();
+  const points = [{x:stick.x+stick.width/2,y:stick.y+12,id:1},{x:blade.x+40,y:blade.y+40,id:2}];
+  await client.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:points});
+  let input = await page.evaluate(()=>window.mobileFixture.input);
+  assert.ok(input.throttle > 0); assert.equal(input.blade,true);
+  await client.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+  input = await page.evaluate(()=>window.mobileFixture.input);
+  assert.equal(input.throttle,0); assert.equal(input.blade,false);
+  await client.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:points});
+  await page.setViewportSize({width:844,height:390});
+  await page.waitForTimeout(100);
+  input = await page.evaluate(()=>window.mobileFixture.input);
+  assert.equal(input.throttle,0); assert.equal(input.blade,false);
+  await client.send('Input.dispatchTouchEvent',{type:'touchCancel',touchPoints:[]});
+  const rotatedStick = await page.locator('.touch-stick').boundingBox();
+  await client.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:rotatedStick.x+48,y:rotatedStick.y+10,id:3}]});
+  await page.evaluate(()=>window.mobileFixture.hud.onMenu());
+  assert.equal(await page.evaluate(()=>window.mobileFixture.input.throttle),0);
+  await client.send('Input.dispatchTouchEvent',{type:'touchCancel',touchPoints:[]});
+  await page.getByRole('button',{name:'Equipment & Objective',exact:true}).click();
+  await page.evaluate(()=>window.mobileFixture.render());
+  assert.match(await page.locator('.equipment-details').innerText(),/Clear the remaining walls/);
+  await page.getByRole('button',{name:'Resubmit Application — spends cash',exact:true}).click();
+  await page.evaluate(()=>window.mobileFixture.render());
+  assert.equal(await page.evaluate(()=>window.mobileFixture.state.cash),111111111);
+  assert.equal(await page.locator('.menu-permit-host .resubmitting').count(),1);
+  await page.waitForTimeout(800);
+  await page.screenshot({path:`${output}/permit-menu.png`});
+  assert.equal(await page.getByRole('button',{name:'Re-apply In 6 Months',exact:true}).getAttribute('aria-disabled'),'true');
+  await page.getByRole('button',{name:'Re-apply In 6 Months',exact:true}).dispatchEvent('click');
+  assert.equal(await page.evaluate(()=>window.mobileFixture.state.cash),111111111);
+  await page.getByRole('button',{name:'Back',exact:true}).click();
+  await page.getByRole('button',{name:'Resume',exact:true}).click();
+  assert.equal(await page.locator('.resubmitting').count(),0);
+  for (const overlay of ['upgrade','results']) {
+    await page.evaluate(overlay=>{window.mobileFixture.state.overlay=overlay;window.mobileFixture.render();},overlay);
+    assert.equal(await page.locator('#hud-overlay').isVisible(),true);
+    assert.equal(await page.locator('.touch-stick').isVisible(),false);
+  }
+  const desktop = await browser.newPage({viewport:{width:1440,height:900}});
+  desktop.on('pageerror',error=>errors.push(error.message));
+  await desktop.goto(`${base}/?sandbox=1`);
+  await desktop.locator('.top').waitFor({state:'visible'});
+  assert.equal(await desktop.locator('.mobile-hud').isVisible(),false);
+  await desktop.screenshot({path:`${output}/desktop.png`});
+  assert.deepEqual(errors,[]);
+  console.log('Mobile layout, menu, permit, warnings, overlays and multi-touch checks passed.');
+} finally { await browser.close(); }
