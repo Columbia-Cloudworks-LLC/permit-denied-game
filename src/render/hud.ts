@@ -1,20 +1,25 @@
+import { CashCounter } from './cashCounter';
+import { EquipmentClock } from './equipmentClock';
+import { upgradePercent, type UpgradeModifiers } from '../game/upgrades';
+import { MENU_LABELS as L, MODE_LABELS, SITE_LABELS, BRICK_DESCRIPTION } from '../game/menuLabels';
 import { COPY, CASH_TARGET, MATCH_SECONDS } from "../game/constants";
 import { PermitLogo } from './permitLogo';
 import { OperatorMenu } from './operatorMenu';
 import type { PermitSound } from './permitIntro';
 import { DEBUG_GROUPS, type DebugView, type DebugToggle } from "../debug/view";
-import { DISTRICT_LABELS, type DistrictId, type SessionKind, type DemoAsset } from "../game/session";
+import { type DistrictId, type SessionKind, type DemoAsset, type LayoutChoice } from "../game/session";
 
 export type OverlayMode = "none" | "title" | "pause" | "upgrade" | "results";
 
 export interface HudState {
   hasYard: boolean;
+  upgradeModifiers: UpgradeModifiers;
+  developmentScenario?: boolean;
   pileResistance?: number;
   tower?: { phase: string; capacity: number };
   job?: { progress: number; remaining: number; instruction: string; paid: boolean; payout: number };
   cash: number;
   resubmitted: boolean;
-  score: number;
   timeLeft: number;
   elapsed: number;
   session: SessionKind;
@@ -33,14 +38,15 @@ export class Hud {
   readonly assetsHost: HTMLElement;
   readonly permitLogo: PermitLogo;
   onResubmit?: () => number | null;
-  private debugOrigin: 'hud' | 'menu' | null = null;
   private debugTab: 'inspector' | 'sites' | 'assets' = 'inspector';
   private lastOverlay: OverlayMode | null = null;
   private lastDeath: string | null = null;
   private lastWon = false;
-  private readonly cashEl: HTMLElement;
-  private readonly timeEl: HTMLElement;
-  private readonly scoreEl: HTMLElement;
+  private modifierValues = new Map<string, number>();
+  private modifierElements: HTMLElement[];
+  private readonly cashCounter: CashCounter;
+  private readonly cashTarget: HTMLElement;
+  private readonly clock: EquipmentClock;
   private readonly bladeEl: HTMLElement;
   readonly menu: OperatorMenu;
   private readonly overlay: HTMLElement;
@@ -48,7 +54,7 @@ export class Hud {
   onMute?: () => void;
   onMenu?: () => void;
   onTitle?: () => void;
-  onStart?: (kind: SessionKind, district: DistrictId) => void;
+  onStart?: (kind: SessionKind, district: DistrictId, layout: LayoutChoice) => void;
   onClick?: () => void;
   onUnlockSound?: () => Promise<void>;
   onTitleSound?: (kind: PermitSound, index: number) => void;
@@ -74,25 +80,24 @@ export class Hud {
     root.innerHTML = `
       <div class="top">
         <div id="hud-permit"></div>
-        <div class="stat"><span class="instrument-label">CASH</span><strong id="hud-cash"></strong></div>
-        <div class="stat"><span class="instrument-label" id="hud-clock-label">COUNTY CLOCK</span><strong id="hud-time"></strong></div>
-        <div class="stat"><span class="instrument-label">SCORE</span><strong id="hud-score"></strong></div>
-        <div class="hud-actions"><button type="button" id="debug-toggle" aria-expanded="false" aria-controls="debug-panel">DEBUG</button><button type="button" id="hud-menu">MENU</button></div>
+        <div class="stat cash-stat"><span class="instrument-label">Cash</span><div id="hud-cash"></div><span id="cash-target" class="cash-target">Target $${CASH_TARGET.toLocaleString('en-US')}</span></div>
+        <div class="stat clock-stat"><span class="instrument-label" id="hud-clock-label">County Clock</span><div id="hud-time"></div></div>
+        <div class="hud-actions"><button type="button" id="debug-toggle" aria-expanded="false" aria-controls="debug-panel">${L.debug}</button><button type="button" id="hud-menu">${L.pause}</button></div>
       </div>
       <div class="session" id="hud-session"></div>
       <details id="hud-tower" class="tower-test" aria-label="Skyscraper test controls" open hidden>
-        <summary>SKYSCRAPER TEST</summary> <span id="tower-status"></span>
+        <summary>Skyscraper Test</summary> <span id="tower-status"></span>
         <p>W/S drive · A/D steer · SPACE powered blade. Break the facade, then reach the central supports.</p>
         <button data-tower="view">Tower / dozer view</button><button data-tower="core-view">Inspect ground floor</button>
         <button data-tower="facade">Breach facade</button><button data-tower="core">Fail core</button><button data-tower="reset">Reset tower</button>
       </details>
       <div id="hud-job" class="job" hidden></div>
       <div class="debug-menu">
-        <section id="debug-panel" aria-label="Debug" tabindex="-1" hidden>
-          <div class="debug-heading"><strong>Debug</strong><button type="button" id="debug-close" aria-label="Close debug menu">×</button></div>
-          <div class="debug-toolbar"><label><input type="checkbox" data-debug="freeze"> Freeze</label><button type="button" id="debug-step" disabled>STEP</button></div>
+        <section id="debug-panel" aria-label="${L.debug}" tabindex="-1" hidden>
+          <div class="debug-heading"><strong>${L.debug}</strong><button type="button" id="debug-close" aria-label="Close Debug">×</button></div>
+          <div class="debug-toolbar"><label><input type="checkbox" data-debug="freeze"> Freeze Simulation</label><button type="button" id="debug-step" disabled>Step One Frame</button></div>
           <div class="debug-tabs" role="tablist" aria-label="Debug tools">
-            ${(['inspector', 'sites', 'assets'] as const).map(tab => `<button type="button" role="tab" id="debug-tab-${tab}" aria-controls="debug-${tab}" aria-selected="${tab === 'inspector'}" tabindex="${tab === 'inspector' ? 0 : -1}" data-debug-tab="${tab}">${tab[0].toUpperCase() + tab.slice(1)}</button>`).join('')}
+            ${(['inspector', 'sites', 'assets'] as const).map(tab => `<button type="button" role="tab" id="debug-tab-${tab}" aria-controls="debug-${tab}" aria-selected="${tab === 'inspector'}" tabindex="${tab === 'inspector' ? 0 : -1}" data-debug-tab="${tab}">${tab === 'sites' ? 'Test Scenarios' : tab[0].toUpperCase() + tab.slice(1)}</button>`).join('')}
           </div>
           <div class="debug-pages">
           <section id="debug-inspector" role="tabpanel" aria-labelledby="debug-tab-inspector">
@@ -103,24 +108,26 @@ export class Hud {
           </select></label>
           ${DEBUG_GROUPS.map(group => `<fieldset><legend>${group.label}</legend>${group.options.filter(([key]) => key !== 'freeze').map(([key, label, checked]) =>
             `<label><input type="checkbox" data-debug="${key}" ${checked ? "checked" : ""}> ${label}</label>`).join("")}</fieldset>`).join("")}
-          <button type="button" id="debug-reset">RESET OPTIONS</button>
+          <button type="button" id="debug-reset">Reset Debug Options</button>
           <p class="debug-legend">Paths: blue · route: yellow · lots: green · buildable: purple · rooms: gold<br>Collision: pink walls, orange props/contents, white dozer · supports: green live / pink failing</p>
           </section>
           <section id="debug-sites" role="tabpanel" aria-labelledby="debug-tab-sites" hidden></section>
-          <section id="debug-assets" role="tabpanel" aria-labelledby="debug-tab-assets" hidden><button type="button" id="debug-open-yard">OPEN TEST YARD</button><div id="debug-asset-host"></div></section>
+          <section id="debug-assets" role="tabpanel" aria-labelledby="debug-tab-assets" hidden><button type="button" id="debug-open-yard">${L.yard}</button><div id="debug-asset-host"></div></section>
           </div>
         </section>
       </div>
       <div class="instrument-deck">
         ${gauge('heat', 'ENGINE HEAT')}
         ${gauge('track', 'TRACK STRESS')}
+        <div class="upgrade-bank" role="group" aria-label="Dozer Upgrades">${(['blade', 'engine', 'push'] as const).map(key => `<div class="upgrade-instrument"><span class="upgrade-label">${L[key]}</span><span class="upgrade-value" data-modifier="${key}Mul" data-description="${key === 'push' ? 'Push duration' : key === 'blade' ? 'Blade damage' : 'Engine performance'}" aria-label="${key === 'push' ? 'Push duration' : key === 'blade' ? 'Blade damage' : 'Engine performance'}: 1.00 times">1.00<span class="multiplier-symbol">×</span></span></div>`).join('')}</div>
         <div class="blade-module"><div class="blade" id="hud-blade"></div><p id="hud-advisory" role="status"></p></div>
       </div>
       <div class="overlay" id="hud-overlay" role="dialog" aria-modal="true" aria-labelledby="result-heading"><div class="panel" id="hud-panel" tabindex="-1"></div></div>
     `;
-    this.cashEl = root.querySelector("#hud-cash")!;
-    this.timeEl = root.querySelector("#hud-time")!;
-    this.scoreEl = root.querySelector("#hud-score")!;
+    this.modifierElements = [...root.querySelectorAll<HTMLElement>('[data-modifier]')];
+    this.cashCounter = new CashCounter(root.querySelector("#hud-cash")!);
+    this.cashTarget = root.querySelector("#cash-target")!;
+    this.clock = new EquipmentClock(root.querySelector("#hud-time")!);
     this.bladeEl = root.querySelector("#hud-blade")!;
     this.overlay = root.querySelector("#hud-overlay")!;
     this.panel = root.querySelector("#hud-panel")!;
@@ -132,12 +139,11 @@ export class Hud {
 
     root.querySelector('#hud-menu')!.addEventListener('click', () => { this.onClick?.(); this.onMenu?.(); });
     this.menu = new OperatorMenu(root, {
-      resume: () => this.onResume?.(), start: (kind, district) => this.onStart?.(kind, district),
-      job: () => this.onJob?.(), restart: () => this.onRestart?.(), newLot: () => this.onNewSeed?.(),
+      resume: () => this.onResume?.(), start: (kind, district, layout) => this.onStart?.(kind, district, layout),
+      restart: () => this.onRestart?.(),
       title: () => this.onTitle?.(), mute: () => this.onMute?.(), click: () => this.onClick?.(),
       unlockSound: () => this.onUnlockSound?.() ?? Promise.resolve(),
       titleSound: (kind, index) => this.onTitleSound?.(kind, index),
-      debug: () => this.openDebug('menu'),
     });
     for (const selector of ['#hud-session', '#hud-tower']) root.querySelector('#debug-sites')!.append(root.querySelector(selector)!);
     this.overlay.addEventListener('keydown', e => {
@@ -155,23 +161,20 @@ export class Hud {
     root.querySelectorAll<HTMLButtonElement>('[data-tower]').forEach(button => button.addEventListener('click', () => this.onTowerAction?.(button.dataset.tower!)));
     this.bindSessionBar();
     this.bindDebugMenu();
+    const top = root.querySelector<HTMLElement>('.top')!;
+    new ResizeObserver(() => {
+      root.style.setProperty('--top-panel-height', top.offsetHeight + 'px');
+    }).observe(top);
   }
 
   private bindDebugMenu(): void {
     const panel = this.root.querySelector<HTMLElement>("#debug-panel")!;
     const toggle = this.root.querySelector<HTMLButtonElement>("#debug-toggle")!;
-    toggle.addEventListener('click', () => { if (panel.hidden) this.openDebug('hud'); else this.closeDebug(true); });
+    toggle.addEventListener('click', () => { if (panel.hidden) this.openDebug(); else this.closeDebug(true); });
     this.root.querySelector('#debug-close')!.addEventListener('click', () => this.closeDebug(true));
     this.root.querySelector('.debug-menu')!.addEventListener('keydown', event => {
       const e = event as KeyboardEvent;
       if (e.key === 'Escape' && !panel.hidden) { e.preventDefault(); e.stopPropagation(); this.closeDebug(true); return; }
-      if (e.key === 'Tab' && this.debugOrigin === 'menu') {
-        const items = [...panel.querySelectorAll<HTMLElement>('button, input, select, summary, [tabindex="0"]')]
-          .filter(el => !el.closest('[hidden]') && !el.matches(':disabled') && el.tabIndex >= 0 && el.getClientRects().length);
-        const first = items[0], last = items.at(-1);
-        if (e.shiftKey && (document.activeElement === first || document.activeElement === panel)) { e.preventDefault(); last?.focus(); }
-        else if (!e.shiftKey && (document.activeElement === last || document.activeElement === panel)) { e.preventDefault(); first?.focus(); }
-      }
     }, true);
     const tabs = [...panel.querySelectorAll<HTMLButtonElement>('[data-debug-tab]')];
     tabs.forEach((button, index) => {
@@ -188,7 +191,11 @@ export class Hud {
         tabs[next].focus();
       });
     });
-    this.root.querySelector('#debug-open-yard')!.addEventListener('click', () => this.onTestYard?.());
+    this.root.querySelector('#debug-open-yard')!.addEventListener('click', () => {
+      this.onTestYard?.();
+      // The launch button disappears in the yard; retain keyboard access to its tools.
+      panel.focus();
+    });
     panel.querySelectorAll<HTMLInputElement>("[data-debug]").forEach(input => {
       input.addEventListener("change", () => this.onDebugToggle?.(input.dataset.debug as DebugToggle, input.checked));
     });
@@ -210,14 +217,10 @@ export class Hud {
     this.onDebugOpen?.();
   }
 
-  private openDebug(origin: 'hud' | 'menu'): void {
-    this.debugOrigin = origin;
-    this.menu.setCovered(origin === 'menu');
+  private openDebug(): void {
     const panel = this.root.querySelector<HTMLElement>('#debug-panel')!;
     panel.hidden = false;
-    panel.setAttribute('role', origin === 'menu' ? 'dialog' : 'region');
-    if (origin === 'menu') panel.setAttribute('aria-modal', 'true'); else panel.removeAttribute('aria-modal');
-    this.root.classList.toggle('debug-from-menu', origin === 'menu');
+    panel.setAttribute('role', 'region');
     this.root.querySelector('#debug-toggle')!.setAttribute('aria-expanded', 'true');
     this.onDebugOpen?.();
     this.onClick?.();
@@ -230,11 +233,7 @@ export class Hud {
     panel.hidden = true;
     const toggle = this.root.querySelector<HTMLButtonElement>('#debug-toggle')!;
     toggle.setAttribute('aria-expanded', 'false');
-    const fromMenu = this.debugOrigin === 'menu';
-    this.debugOrigin = null;
-    this.menu.setCovered(false);
-    this.root.classList.remove('debug-from-menu');
-    if (restoreFocus && !fromMenu) toggle.focus();
+    if (restoreFocus) toggle.focus();
     return true;
   }
 
@@ -244,32 +243,33 @@ export class Hud {
     });
     this.root.querySelector<HTMLSelectElement>("#debug-floor")!.value = String(view.maxFloor);
     this.root.querySelector<HTMLButtonElement>("#debug-step")!.disabled = !view.freeze;
-    this.root.querySelector<HTMLButtonElement>("#debug-toggle")!.textContent = "DEBUG";
+    this.root.querySelector<HTMLButtonElement>("#debug-toggle")!.textContent = L.debug;
   }
 
   private bindSessionBar(): void {
     const bar = this.root.querySelector("#hud-session")!;
     bar.innerHTML = `
-      <h3>OPERATING MODE</h3>
-      <button type="button" data-session="challenge">CLOCK</button>
-      <button type="button" data-session="sandbox">SANDBOX</button>
-      <button type="button" data-act="job">BRICK JOB</button>
-      <h3>SITE SIZE / REBUILD</h3>
-      <button type="button" data-district="classic">${DISTRICT_LABELS.classic}</button>
-      <button type="button" data-district="d10">${DISTRICT_LABELS.d10}</button>
-      <button type="button" data-district="d30">${DISTRICT_LABELS.d30}</button>
-      <button type="button" data-district="d100">${DISTRICT_LABELS.d100}</button>
-      <button type="button" data-act="restart">RESTART</button>
-      <button type="button" data-act="newseed">NEW LOT</button>
-      <h3>TEST SCENARIOS</h3>
-      <button type="button" data-demo="ranch">RANCH</button>
-      <button type="button" data-demo="rivertown">BRICK</button>
-      <button type="button" data-demo="steel-warehouse">STEEL</button>
-      <button type="button" data-act="tower">SKYSCRAPER</button>
-      <h3 class="sandbox-upgrades">SANDBOX EQUIPMENT</h3>
-      <button type="button" data-up="blade">BLADE+</button>
-      <button type="button" data-up="engine">ENGINE+</button>
-      <button type="button" data-up="push">PUSH+</button>
+      <h3>Mode</h3>
+      <button type="button" data-session="challenge">${MODE_LABELS.challenge}</button>
+      <button type="button" data-session="sandbox">${MODE_LABELS.sandbox}</button>
+      <h3>Demolition Objective</h3>
+      <button type="button" data-act="job">${L.brick}</button><p class="fine-print">${BRICK_DESCRIPTION}</p>
+      <h3>Site Size / Layout</h3>
+      <button type="button" data-district="classic">${SITE_LABELS.classic}</button>
+      <button type="button" data-district="d10">${SITE_LABELS.d10}</button>
+      <button type="button" data-district="d30">${SITE_LABELS.d30}</button>
+      <button type="button" data-district="d100">${SITE_LABELS.d100}</button>
+      <button type="button" data-act="restart">${L.restart}</button>
+      <button type="button" data-act="newseed">${L.newLayout}</button>
+      <h3>Building Previews</h3>
+      <button type="button" data-demo="ranch">Ranch Preview</button>
+      <button type="button" data-demo="rivertown">${L.brickPreview}</button>
+      <button type="button" data-demo="steel-warehouse">Steel Warehouse Preview</button>
+      <button type="button" data-act="tower">Skyscraper Test</button>
+      <h3 class="sandbox-upgrades">Sandbox Upgrades</h3>
+      <button type="button" data-up="blade">${L.blade} ${upgradePercent('blade')}</button>
+      <button type="button" data-up="engine">${L.engine} ${upgradePercent('engine')}</button>
+      <button type="button" data-up="push">${L.push} ${upgradePercent('push')}</button>
     `;
     bar.querySelectorAll("button").forEach((btn) => {
       btn.addEventListener("click", () => {
@@ -290,7 +290,22 @@ export class Hud {
     });
   }
 
+  resetCash(): void { this.cashCounter.reset(); }
+
   render(s: HudState): void {
+    for (const element of this.modifierElements) {
+      const key = element.dataset.modifier as keyof UpgradeModifiers;
+      const value = s.upgradeModifiers[key];
+      const previous = this.modifierValues.get(key);
+      if (previous === value) continue;
+      element.innerHTML = `${value.toFixed(2)}<span class="multiplier-symbol">×</span>`;
+      element.setAttribute('aria-label', `${element.dataset.description}: ${value.toFixed(2)} times`);
+      element.getAnimations().forEach(animation => animation.cancel());
+      if (previous !== undefined && value > previous && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        element.animate([{ color: '#fff4c4', textShadow: '0 0 12px #ffc863' }, { color: '#e8bf70', textShadow: '0 0 3px #e8bf7026' }], { duration: 650 });
+      }
+      this.modifierValues.set(key, value);
+    }
     this.permitLogo.render(s.resubmitted, s.cash, s.overlay !== 'none');
     const touch = document.documentElement.classList.contains('touch-ui');
     this.root.querySelector<HTMLElement>('#hud-tower p')!.textContent = touch
@@ -302,24 +317,20 @@ export class Hud {
       this.root.querySelector<HTMLElement>('#tower-status')!.textContent = text;
       for (const action of ['facade', 'core']) this.root.querySelector<HTMLButtonElement>('[data-tower="' + action + '"]')!.disabled = s.tower.phase !== 'standing';
     }
-    this.root.querySelector<HTMLElement>('[data-district="classic"]')!.textContent = s.session === "sandbox" ? "TEST YARD" : DISTRICT_LABELS.classic;
+    this.root.querySelector<HTMLElement>('[data-district="classic"]')!.hidden = s.session === "sandbox";
     const job = this.root.querySelector<HTMLElement>("#hud-job")!;
     job.hidden = !s.job;
     if (s.job) job.textContent = s.job.paid
-      ? `CONTRACT COMPLETE · +$${s.job.payout}`
-      : `BRICK CONTRACT · ${Math.floor(s.job.progress * 100)}%\n${s.job.instruction}\nRemove 90% of the structure.`;
-    this.root.querySelectorAll<HTMLElement>("[data-demo], #hud-session [data-up], .sandbox-upgrades").forEach(el => {
+      ? `Demolition Complete · +$${s.job.payout}`
+      : `${L.brick} · ${Math.floor(s.job.progress * 100)}%\n${s.job.instruction}\nRemove 90% of the structure.`;
+    this.root.querySelectorAll<HTMLElement>("#hud-session [data-up], .sandbox-upgrades").forEach(el => {
       el.hidden = s.session !== "sandbox";
     });
-    this.cashEl.textContent =
-      s.session === "sandbox" || s.job ? `$${Math.floor(s.cash)}` : `$${Math.floor(s.cash)} / $${CASH_TARGET}`;
-    if (s.session === "sandbox" || s.job) {
-      this.timeEl.textContent = formatTime(s.elapsed);
-    } else {
-      this.timeEl.textContent = formatTime(Math.max(0, s.timeLeft));
-    }
+    const elapsedClock = s.session === 'sandbox' || !!s.job;
+    this.cashCounter.update(s.cash);
+    this.cashTarget.hidden = elapsedClock;
+    this.clock.update(elapsedClock ? s.elapsed : s.timeLeft, elapsedClock);
     this.paintSessionBar(s.session, s.district);
-    this.scoreEl.textContent = String(Math.floor(s.score));
     this.bladeEl.textContent = s.bladeDown ? COPY.bladeDown : COPY.bladeUp;
     this.bladeEl.classList.toggle('engaged', s.bladeDown);
     for (const [id, value] of [['heat', s.heat], ['track', s.track]] as const) {
@@ -334,16 +345,9 @@ export class Hud {
     const advisoryEl = this.root.querySelector('#hud-advisory')!;
     if (advisoryEl.textContent !== advisory) advisoryEl.textContent = advisory;
     (advisoryEl as HTMLElement).hidden = !advisory;
-    this.root.querySelector('#hud-clock-label')!.textContent = s.session === 'sandbox' || s.job ? 'ELAPSED' : 'COUNTY CLOCK';
+    this.root.querySelector('#hud-clock-label')!.textContent = s.session === 'sandbox' || s.job ? 'Elapsed' : 'County Clock';
     const modal = s.overlay !== 'none';
-    if (s.overlay === 'results' || s.overlay === 'upgrade' || (modal && this.debugOrigin === 'hud')) this.closeDebug();
-    if (s.overlay === 'none' && this.debugOrigin === 'menu') {
-      this.debugOrigin = 'hud';
-      this.root.classList.remove('debug-from-menu');
-      const debug = this.root.querySelector<HTMLElement>('#debug-panel')!;
-      debug.setAttribute('role', 'region');
-      debug.removeAttribute('aria-modal');
-    }
+    if (modal) this.closeDebug();
     this.root.querySelector<HTMLElement>('#debug-open-yard')!.hidden = s.hasYard;
     this.root.classList.toggle('modal-open', modal);
     document.querySelector<HTMLElement>('#game-root')!.inert = modal;
@@ -351,8 +355,7 @@ export class Hud {
       const el = this.root.querySelector<HTMLElement>(selector);
       if (el) el.inert = modal;
     }
-    this.menu.show(s.overlay === 'title' || s.overlay === 'pause' ? s.overlay : null, s.session, s.district);
-    this.menu.setCovered(this.debugOrigin === 'menu');
+    this.menu.show(s.overlay === 'title' || s.overlay === 'pause' ? s.overlay : null, s.session, s.district, s.developmentScenario);
     this.menu.syncMuted(s.muted);
 
     if (s.overlay === "none" || s.overlay === "pause" || s.overlay === "title") {
@@ -377,20 +380,20 @@ export class Hud {
     this.lastWon = s.won;
     if (s.overlay === "upgrade") {
       this.panel.innerHTML = `
-        <h2 id="result-heading">${s.job ? "Contract Complete" : "Upgrade"}</h2>
+        <h2 id="result-heading">${s.job ? "Demolition Complete" : "Upgrade"}</h2>
         <p>${s.job ? `+${s.job.payout}. Choose an upgrade.` : "Choose an upgrade."}</p>
         <div class="choices">
-          <button type="button" data-up="blade">1 · BLADE +42%</button>
-          <button type="button" data-up="engine">2 · ENGINE +28%</button>
-          <button type="button" data-up="push">3 · PUSH +35%</button>
+          <button type="button" data-up="blade">1 · ${L.blade} ${upgradePercent('blade')}</button>
+          <button type="button" data-up="engine">2 · ${L.engine} ${upgradePercent('engine')}</button>
+          <button type="button" data-up="push">3 · ${L.push} ${upgradePercent('push')}</button>
         </div>`;
     } else {
       const headline = s.won ? "PERMIT DENIED" : (s.death ?? "COUNTY CLOCK");
       this.panel.innerHTML = `
         <h2 id="result-heading">${headline}</h2>
-        <p>CASH $${Math.floor(s.cash)} &nbsp; SCORE ${Math.floor(s.score)} &nbsp; TIME ${formatTime(MATCH_SECONDS - s.timeLeft)}</p>
+        <p>CASH $${Math.floor(s.cash)} &nbsp; TIME ${formatTime(MATCH_SECONDS - s.timeLeft)}</p>
         <div class="choices">
-          <button class="primary" type="button" data-act="restart">RESTART</button><button type="button" data-act="title">TITLE SCREEN</button>
+          <button class="primary" type="button" data-act="restart">${L.restart}</button><button type="button" data-act="title">${L.mainMenu}</button>
         </div>`;
     }
     this.panel.focus();
