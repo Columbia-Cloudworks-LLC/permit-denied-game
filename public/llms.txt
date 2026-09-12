@@ -1,0 +1,11 @@
+# PERMIT DENIED
+
+> A single-player browser demolition arcade game by Columbia Cloudworks LLC.
+> Drive a bulldozer, smash buildings, and push rubble. Play a timed County
+> Clock challenge or explore Sandbox without a deadline or breakdowns.
+
+## Official sources
+
+- [Game information](https://permitdenied.app/game-info.txt): Plain-text description of gameplay, modes, sites, and controls. Readable without JavaScript.
+- [Play PERMIT DENIED](https://permitdenied.app/): Browser game with structured game information in the HTML head.
+- [Publisher](https://columbiacloudworks.com/): Columbia Cloudworks LLC.

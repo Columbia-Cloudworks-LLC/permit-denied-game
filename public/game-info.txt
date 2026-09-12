@@ -1,0 +1,36 @@
+PERMIT DENIED
+Official game information
+Play: https://permitdenied.app/
+Publisher: Columbia Cloudworks LLC
+Publisher website: https://columbiacloudworks.com/
+
+WHAT IS THE GAME?
+PERMIT DENIED is a single-player demolition arcade game that runs in a web
+browser. You drive a bulldozer around a town, smash buildings, and push rubble.
+The camera shows the town from above at an angle, so you can see the streets,
+buildings, and debris around your machine.
+
+The title screen looks like a demolition application stamped PERMIT DENIED.
+It is the game's start menu. Select PLAY to choose a mode and site.
+
+GAME MODES
+County Clock: Earn $1,800 in in-game cash within three minutes. Demolition
+earns cash and score. Watch engine heat and track stress: overheating or
+overloading the tracks can end the run. Upgrade the blade, engine, or push
+power as you reach cash milestones.
+
+Sandbox: Explore and demolish without a deadline or breakdowns. Engine heat
+and track stress remain visible as guides. Try different approaches to
+breaking structures and moving debris.
+
+Brick Contract: Take on a focused job to demolish a brick building. Bring down
+its structural sections and let them settle to complete the job.
+
+SITES AND CONTROLS
+Choose the classic site or a larger site with 10, 30, or 100 buildings.
+Use W/S or the up/down arrows to drive forward and reverse. Use A/D or the
+left/right arrows to steer. Hold Space to power the blade. Press Escape to
+pause. Touch controls provide a driving stick and a POWER BLADE button.
+
+The game uses JavaScript to display its menus and draw the game world.
+This text file provides game information without running JavaScript.
