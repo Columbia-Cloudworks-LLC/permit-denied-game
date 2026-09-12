@@ -1,0 +1,85 @@
+name: Title Screenshot
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: title-screenshot-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  capture:
+    # Never execute fork code with a write token. Bot image commits need no recapture.
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Use the latest branch on retries, including any earlier image commit.
+          ref: ${{ github.event.pull_request.head.ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run build
+      - run: npm run screenshot:title
+      - uses: actions/upload-artifact@v4
+        with:
+          name: title-screen
+          path: public/social/permit-denied-title.jpg
+      - name: Check CI dispatch availability
+        id: dispatch
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // Dispatch must be enabled on the default branch. During installation,
+            // publish the capture as an artifact; automatic commits start next PR.
+            const { data } = await github.rest.repos.getContent({
+              ...context.repo, path: '.github/workflows/ci.yml',
+              ref: context.payload.repository.default_branch,
+            });
+            const enabled = /\bworkflow_dispatch:/.test(Buffer.from(data.content, 'base64').toString());
+            core.setOutput('enabled', String(enabled));
+            if (!enabled) await core.summary.addRaw('Bootstrap: screenshot captured. Automatic image commits activate after this workflow is merged.').write();
+      - name: Commit changed screenshot to PR branch
+        if: steps.dispatch.outputs.enabled == 'true'
+        id: commit
+        env:
+          HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          if git diff --quiet -- public/social/permit-denied-title.jpg; then
+            if [ "$(git log -1 --format=%s)" = 'Update title-screen screenshot' ]; then
+              echo 'changed=true' >> "$GITHUB_OUTPUT"
+            fi
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- public/social/permit-denied-title.jpg
+          git commit -m 'Update title-screen screenshot'
+          # No force push: a newer developer commit must never be overwritten.
+          git push origin "HEAD:refs/heads/$HEAD_BRANCH"
+          echo 'changed=true' >> "$GITHUB_OUTPUT"
+      - name: Run CI on the screenshot commit
+        if: steps.commit.outputs.changed == 'true'
+        uses: actions/github-script@v7
+        env:
+          HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
+        with:
+          script: |
+            // GITHUB_TOKEN pushes do not reliably start ordinary push/PR checks.
+            // Explicit dispatch validates the final commit without another capture.
+            await github.rest.actions.createWorkflowDispatch({
+              ...context.repo, workflow_id: 'ci.yml', ref: process.env.HEAD_BRANCH,
+            });
