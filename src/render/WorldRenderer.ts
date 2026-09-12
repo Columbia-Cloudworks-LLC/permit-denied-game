@@ -8,7 +8,7 @@ import { drawDebugOverlay } from "./debugOverlay";
 import { Container, Graphics, Text } from "pixi.js";
 import { DOZER, FLOOR_Z } from "../game/constants";
 import { Rng } from "../game/rng";
-import { depthKey, roofPainterDepth, screenAabbVisible, worldBoundsToScreen, worldToScreen } from "../world/iso";
+import { depthKey, screenAabbVisible, worldBoundsToScreen, worldToScreen } from "../world/iso";
 import type { ParticlePool } from "../fx/particles";
 import { applyBrokenRoofEdge, displacedRoofVerts, roofHeightAt, sectionOwnsRidge } from "../structure/roof";
 import type { Bird, Building, CollapsedSite, CoverKind, GroundMark, GroundPatch, Particle, RoofSection, Rubble } from "../structure/types";
@@ -16,7 +16,7 @@ import type { Dozer } from "../vehicle/dozer";
 import type { Town } from "../world/town";
 import { getBuildingSurfaces, releaseBuildingSurfaces } from "./buildingSurfaces";
 import { drawCatalogProp } from "./assets";
-import { drawRoofFrame, interiorCmds, roofShowsFrame } from "./interiorDraw";
+import { drawRoofFrame, interiorCmds, roofInteriorPainterDepth, roofShowsFrame } from "./interiorDraw";
 import { cellColors, drawGroundPoly, drawIsoBox, drawOrientedGround, drawOrientedIsoBox, drawShadow, drawSlopedQuad, drawWorldPoly, PAL, shade } from "./drawIso";
 import {
   drawBuildingFootprintShadow,
@@ -235,7 +235,9 @@ export class WorldRenderer {
       const hasSolid = b.cells.some((c) => c.state !== "gone" && c.state !== "falling");
       if (hasSolid && view.walls) {
         visible++;
-        this.cmds.push({
+        // A whole-hall ground shadow must not paint over the rear roof panels.
+        if (b.roofs.some(r => r.bay)) drawBuildingFootprintShadow(this.groundOverlays, surfaces.footprint, 1);
+        else this.cmds.push({
           depth: depthKey(b.x + bw * 0.5, b.y + bd * 0.5, 0),
           run: (g) => drawBuildingFootprintShadow(g, surfaces.footprint, 1),
         });
@@ -301,7 +303,7 @@ export class WorldRenderer {
               Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys), Math.min(...zs), Math.max(...zs) + .2);
             visible++;
             this.cmds.push({
-              depth: roofPainterDepth(moved),
+              depth: roofInteriorPainterDepth(b, roof, moved),
               run: (g) => drawRoofBay(g, b, roof, alpha),
             });
           }
@@ -470,7 +472,7 @@ function drawRoofSection(
   const cols = roofColors(b, roof, verts);
   const faded = roof.state === "falling" ? alpha * 0.9 : alpha;
   const thick = 0.14;
-  if (thick > 0) {
+  if (!roof.bay) {
     const under = verts.map((v) => ({ x: v.x, y: v.y, z: v.z - thick }));
     drawSlopedQuad(g, under.slice().reverse(), cols.edge, cols.edge, faded * 0.95);
     for (let i = 0; i < verts.length; i++) {
@@ -484,8 +486,33 @@ function drawRoofSection(
       );
     }
   }
-  beforeCover?.();
-  drawSlopedQuad(g, verts, cols.top, cols.edge, faded);
+  if (!roof.bay) beforeCover?.();
+  if (roof.bay && verts.length === 4) {
+    // Shrinking the torn covering slightly reveals the short steel members underneath.
+    const cx = verts.reduce((s, v) => s + v.x, 0) / 4;
+    const cy = verts.reduce((s, v) => s + v.y, 0) / 4;
+    const exposed = roofShowsFrame(b, roof);
+    const inset = exposed ? .055 * (1 - roof.fallT) : 0;
+    const cover = verts.map(v => ({ ...v, x: v.x + (cx - v.x) * inset, y: v.y + (cy - v.y) * inset }));
+    const [a, b0, c, d] = cover as [typeof verts[number], typeof verts[number], typeof verts[number], typeof verts[number]];
+    const buckle = (roof.sag * .22 + Math.sin(roof.fallT * Math.PI) * .18) * (1 - roof.fallT);
+    const mid = (p: typeof a, q: typeof a) => ({ x: (p.x + q.x) / 2, y: (p.y + q.y) / 2, z: Math.max(.16, (p.z + q.z) / 2 - buckle) });
+    const ab = mid(a, b0), dc = mid(d, c);
+    // Give each folded half its own underside, rather than a rigid slab across the crease.
+    for (const face of [[a, ab, dc, d], [ab, b0, c, dc]]) {
+      const under = face.map(v => ({ ...v, z: v.z - thick }));
+      drawSlopedQuad(g, under.slice().reverse(), cols.edge, cols.edge, faded);
+      for (let i = 0; i < face.length; i++) {
+        const n = (i + 1) % face.length;
+        drawSlopedQuad(g, [face[i]!, face[n]!, under[n]!, under[i]!], cols.edge, cols.edge, faded);
+      }
+    }
+    beforeCover?.();
+    drawSlopedQuad(g, [a, ab, dc, d], cols.top, cols.top, faded);
+    drawSlopedQuad(g, [ab, b0, c, dc], shade(cols.top, 1 - buckle * .2), cols.top, faded);
+    const p = worldToScreen(ab.x, ab.y, ab.z), q = worldToScreen(dc.x, dc.y, dc.z);
+    g.moveTo(p.x, p.y).lineTo(q.x, q.y).stroke({ color: cols.edge, width: .6, alpha: faded * .25 });
+  } else drawSlopedQuad(g, verts, cols.top, cols.edge, faded);
   if (roof.ridge && roof.state !== "falling" && sectionOwnsRidge(b, roof)) {
     const key = ridgeKey(roof.ridge);
     if (!drawnRidges.has(key)) {

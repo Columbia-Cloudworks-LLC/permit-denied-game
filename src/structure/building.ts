@@ -547,6 +547,7 @@ export interface StructureStepResult {
     elev?: number;
     panelW?: number;
     panelD?: number;
+    preservePanelPose?: boolean;
   }[];
   leans: { x: number; y: number; dx: number; dy: number; mag: number }[];
   fixtureFrags: FixtureFrag[];

@@ -53,7 +53,8 @@ describe("shared building construction", () => {
     const b = createBuildingFromArchetype("steel-warehouse", "HALL", 0, 0);
     expect(b.grid[0]![2]![2]!.state).toBe("gone");
     expect(b.floorTiles).toHaveLength(b.w * b.d);
-    expect(b.roofs.every(r => roofCoverage(r).length > r.support.length)).toBe(true);
+    expect(b.roofs.every(r => r.bay && roofCoverage(r).length <= 4 && r.support.length > 0)).toBe(true);
+    expect(b.roofs.some(r => r.support.some(s => !roofCoverage(r).some(c => c.gx === s.gx && c.gy === s.gy)))).toBe(true);
     expect(b.roofs.every(r => r.support.every(s => b.grid[0]![s.gx]![s.gy]!.role === "column"))).toBe(true);
   });
 

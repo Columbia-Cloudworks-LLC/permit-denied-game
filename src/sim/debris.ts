@@ -70,6 +70,7 @@ export interface CollapseSpawn {
   elev?: number;
   panelW?: number;
   panelD?: number;
+  preservePanelPose?: boolean;
 }
 
 export function resetDebrisSim(seed = 0xdeb415): void {
@@ -212,7 +213,8 @@ export function spawnCollapseDebris(town: Town, spawn: CollapseSpawn, bodyLimit 
   const rng = new Rng(
     (Math.floor(spawn.x * 1009) ^ Math.floor(spawn.y * 917) ^ (spawn.floor * 131) ^ materialSeed(spawn.material)) >>> 0,
   );
-  const volume = cellVolume(spawn.cellSize);
+  const volume = spawn.preservePanelPose && spawn.panelW && spawn.panelD
+    ? spawn.panelW * spawn.panelD * .14 : cellVolume(spawn.cellSize);
   const budget = volume * materialDensity(spawn.material);
   // A large collapse must not allocate thousands of bodies before the cleanup
   // pass. Keep the excess as owned, editable pile mass at the collapse location.
@@ -238,7 +240,8 @@ export function spawnCollapseDebris(town: Town, spawn: CollapseSpawn, bodyLimit 
     if (remaining < 0.08) break;
     const mass = Math.min(remaining * plan.massShare, remaining);
     remaining -= mass;
-    const jitter = roofing ? 0.08 : 0.28;
+    const exactPanel = spawn.preservePanelPose && plan.shape === "panel";
+    const jitter = exactPanel ? 0 : roofing ? 0.08 : 0.28;
     const ox = (rng.range(-jitter, jitter) + plan.along * dx) * (roofing ? 0.55 : spawn.cellSize);
     const oy = (rng.range(-jitter, jitter) + plan.along * dy) * (roofing ? 0.55 : spawn.cellSize);
     const body = addDebrisBody(town, {
@@ -250,13 +253,13 @@ export function spawnCollapseDebris(town: Town, spawn: CollapseSpawn, bodyLimit 
       layer: "remnant",
       shape: plan.shape,
       skin: plan.skin,
-      heading: baseHeading + rng.range(roofing ? -0.28 : -0.9, roofing ? 0.28 : 0.9),
+      heading: exactPanel ? baseHeading : baseHeading + rng.range(roofing ? -0.28 : -0.9, roofing ? 0.28 : 0.9),
       elev: Math.max(heap, startElev + (roofing ? plan.along * 0.04 : rng.range(0, 0.08))),
       thickness: plan.thickness,
       mass,
       vx: dx * rng.range(roofing ? 0.15 : 0.4, roofing ? 0.7 : 1.8) + rng.range(-0.28, 0.28),
       vy: dy * rng.range(roofing ? 0.15 : 0.4, roofing ? 0.7 : 1.8) + rng.range(-0.28, 0.28),
-      omega: rng.range(roofing ? -1.6 : -4, roofing ? 1.6 : 4),
+      omega: exactPanel ? 0 : rng.range(roofing ? -1.6 : -4, roofing ? 1.6 : 4),
       seed: rng.int(1, 0x7fffffff),
     });
     created.push(body);
@@ -318,6 +321,10 @@ function roofRemnantPlan(
 ): { w: number; d: number; thickness: number; shape: DebrisShape; massShare: number; along: number; skin: DebrisSkin }[] {
   const panelW = spawn.panelW ?? rng.range(0.7, 1.05);
   const panelD = spawn.panelD ?? rng.range(0.32, 0.5);
+  if (spawn.preservePanelPose) return [
+    { w: panelW, d: panelD, thickness: .14, shape: "panel", massShare: .8, along: 0, skin: "roofing" },
+    { w: Math.min(panelW, 1.1), d: .09, thickness: .08, shape: "beam", massShare: .2, along: .12, skin: "default" },
+  ];
   if (material === "wood") {
     return [
       { w: panelW, d: panelD, thickness: 0.14, shape: "panel", massShare: 0.7, along: 0.28, skin: "roofing" },

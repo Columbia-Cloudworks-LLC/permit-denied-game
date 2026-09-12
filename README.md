@@ -42,7 +42,7 @@ IONOS is only the registrar. Nameservers are Vercel (`ns1.vercel-dns.com`, `ns2.
 
 Touch controls appear automatically on coarse-pointer devices; use `?controls=1` to preview them on desktop. The left stick drives forward/reverse and steers relative to the dozer, with a 15% dead zone and proportional speed. Hold the right POWER BLADE button to power the blade while driving. Releasing the stick coasts; releasing the blade lets an already-started powered push finish.
 
-Portrait screens reserve a bottom control deck and render the game above it. Landscape screens put the controls at the lower corners. MENU (or Escape) pauses play and offers Resume, Restart, session, lot, upgrade, and audio controls. DEBUG opens the inspector directly from the HUD; its freeze and single-step tools remain available. Rotation, backgrounding, menus, and gameplay overlays release held controls, so touch again to resume driving. Keyboard controls remain available alongside touch.
+The unbranded operator console reserves a bottom instrument deck, with separate engine-heat and track-stress gauges, a hydraulic blade indicator, and touch controls at the lower corners. MENU (or Escape) opens the same paused operator menu on desktop and touch. Controls, About, and Debug are available there. DEBUG beside MENU opens the same panel during live play. Its Inspector, Sites, and Assets tabs collect scene diagnostics, site and scenario controls, sandbox upgrades, and the asset test yard. Freeze and Step stay visible above the tabs. Opening Debug releases held input; opening it from a menu preserves that menu's paused state. Starting a site keeps the selected tab open in the new run. Escape closes Debug first; results and earned upgrades dismiss it. Rotation, backgrounding, menus, and gameplay overlays release held controls, so touch again to resume driving. Keyboard controls remain available alongside touch.
 
 | Key | Action |
 | --- | --- |
@@ -66,13 +66,19 @@ HUD shows **BLADE UP** / **BLADE DOWN**. Deaths: **ENGINE COOKED** (heat from gr
 
 Clock mode is three minutes. Cash target is on the top bar. Chip walls, breach rooms, collapse floors. The ranch house is the demolition benchmark — open `?sandbox=1&ranch=1` and see **Run** above. Full building bonuses pay more. Cash milestones pause the clock run for one upgrade: stronger blade, more engine, or a faster powered push.
 
-Sandbox mode has no county clock and does not end from heat or thrown tracks. Restart (R) rebuilds the same layout and seed. New Lot / N rolls a new seed. HUD buttons pick Clock or Sandbox and district size (classic 7, 10, 30, or 100 buildings). Optional BLADE+ / ENGINE+ / PUSH+ never force a pause in sandbox. Technical timings stay off the normal HUD; add `?perf=1` or press ` to inspect frame, sim, and debris budgets.
+Sandbox mode has no county clock and does not end from heat or thrown tracks. Restart (R) rebuilds the same layout and seed. New Lot / N rolls a new seed. Play / Change Site selects County Clock or Sandbox and district size (classic 7, 10, 30, or 100 buildings). Optional BLADE+ / ENGINE+ / PUSH+ never force a pause in sandbox. Technical timings stay off the normal HUD; add `?perf=1` or press ` to inspect frame, sim, and debris budgets.
 
 Same seed plus the same inputs reproduce a run within ordinary floating-point drift (tests allow about 5–8% mass tolerance through crush/aggregation).
 
 Buildings are cell stacks with load-bearing ground supports and explicit sloped roofs. Damage stays on the wall you hit. Take out supports and the floors above sag, crack, and fall; roof sections sag and drop with the bays that hold them. A falling bay can lean into a neighbor and start a second collapse. Live rubble stays on the lot and can be pushed or crushed. Compacted mass stays in the pile field. A demolished building also leaves a permanent collapsed site on its footprint. Press **V** to spawn a lighter test car that follows a generated road route (or call `window.__pd.spawnRoadVehicle()`). `window.__pd.obstructionAt(x, y)` reports live heap height and resistance.
 
 District lots pick from a small set of archetypes (ranch, cottage, colonial, walk-up, porch house, storefront, corner shop, civic, warehouse) and sit on a road-first rural network (county road, crossroads, T-junction, curve, loop, or frontage). Same district and seed always rebuilds the same roads, driveways, lot dressing, ground covers, silhouettes, roofs, and facades. Yards and worksites get catalog props (mailboxes, hay, pumps, trees, and the rest) that break according to a shared destruction profile. See `docs/architecture.md` for the asset catalog, road graph, roofs, debris layers, and cleanup.
+
+## Operator interface
+
+Normal visits open the title screen without advancing the simulation. Play chooses a mode and site; explicit scenario and diagnostic query links still launch directly. Mouse, keyboard, and touch share one menu, with keyboard focus contained while it is open and restored to the game on resume. Active-play restart/new-lot shortcuts cannot replace a run while browsing menus. Switch clicks respect the sound toggle; instrument transitions respect reduced-motion preferences.
+
+About & Credits includes the package version, publisher website, email contact, and bundled runtime software notices. Copyright © 2026 Columbia Cloudworks LLC. All rights reserved. Publisher: [Columbia Cloudworks LLC](https://columbiacloudworks.com). Contact: [nicholas.king@columbiacloudworks.com](mailto:nicholas.king@columbiacloudworks.com). The machine-inspired visual design uses no equipment manufacturer branding.
 
 ## Stack
 

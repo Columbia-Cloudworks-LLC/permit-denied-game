@@ -93,6 +93,10 @@ export interface RoofVertex {
 }
 
 export interface RoofSection {
+  /** Industrial panels share a bearing bay, but have independent covering/animation. */
+  bay?: { id: number; minX: number; maxX: number; minY: number; maxY: number };
+  /** Generated once, indexed by actual shared coverage edges. Values are roof array indices. */
+  neighbors?: Partial<Record<"minX" | "maxX" | "minY" | "maxY", number[]>>;
   floor: number;
   /** Covered floor tiles are distinct from the walls/columns carrying the roof. */
   coverage?: { gx: number; gy: number }[];

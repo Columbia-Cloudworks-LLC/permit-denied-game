@@ -1,7 +1,7 @@
 export type SessionKind = "challenge" | "sandbox";
 export type DemoAsset = "ranch" | "rivertown" | "steel-warehouse";
 export type DistrictId = "classic" | "d10" | "d30" | "d100";
-export type PlayMode = "play" | "pause" | "upgrade" | "results";
+export type PlayMode = "title" | "play" | "pause" | "upgrade" | "results";
 
 export const DISTRICT_COUNTS: Record<DistrictId, number> = {
   classic: 7,
@@ -100,3 +100,9 @@ export function canPickUpgrade(rules: SessionRules, mode: PlayMode, earned: bool
   return rules.kind === "sandbox" || (mode === "upgrade" && earned);
 }
 
+
+/** Explicit scenario links retain their immediate-play behavior. */
+export function startsAtTitle(search: string): boolean {
+  const params = new URLSearchParams(search);
+  return !['sandbox', 'mode', 'district', 'seed', 'ranch', 'demo', 'tower', 'job', 'perf', 'nhood'].some(key => params.has(key));
+}
