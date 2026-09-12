@@ -38,6 +38,14 @@ Vercel hosts the Vite static build. The GitHub repo `Columbia-Cloudworks-LLC/per
 
 IONOS is only the registrar. Nameservers are Vercel (`ns1.vercel-dns.com`, `ns2.vercel-dns.com`). No backend, accounts, or API keys. Entirely client-side.
 
+## Automated title screenshot
+
+Internal pull requests automatically capture `public/social/permit-denied-title.jpg` from the production build. The Title Screenshot workflow uses a pinned Playwright Chromium version on Ubuntu 22.04, a fresh browser session, reduced motion, and the existing 1199 × 630 social-image dimensions. It waits for the title, assets, fonts, and consecutive identical frames before saving. The image is also available as a workflow artifact.
+
+When the image changes, CI commits only that file to the PR branch, then explicitly dispatches the normal Linux/Windows CI workflow on the updated branch. Bot commits are excluded from capture to prevent loops; pushes never overwrite newer branch changes. No extra token or direct push to `main` is needed. During the initial installation PR, capture runs but automatic commits wait until CI's dispatch support has reached `main`. Fork PRs do not receive write access or automatic image updates. Release reviewers should wait for Title Screenshot and the checks on the final commit before merging.
+
+For a local preview, run `npx playwright install chromium`, `npm run build`, and `npm run screenshot:title`. The capture script starts and stops its own preview server on port 4173. CI is the canonical renderer; operating-system font differences can change local image pixels. The generated social image is an intentional tracked asset; `dist/` and temporary captures remain untracked. Social networks may cache the image after deployment.
+
 ## Controls
 
 Touch controls appear automatically on coarse-pointer devices; use `?controls=1` to preview them on desktop. The left stick drives forward/reverse and steers relative to the dozer, with a 15% dead zone and proportional speed. Hold the right POWER BLADE button to power the blade while driving. Releasing the stick coasts; releasing the blade lets an already-started powered push finish.
