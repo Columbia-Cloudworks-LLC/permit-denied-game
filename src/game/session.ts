@@ -1,4 +1,14 @@
 export type SessionKind = "challenge" | "sandbox";
+export type LayoutChoice = 'standard' | 'randomized';
+
+export function playableDistrict(kind: SessionKind, district: DistrictId): DistrictId {
+  return kind === 'sandbox' && district === 'classic' ? 'd10' : district;
+}
+
+export function gameSetupRules(kind: SessionKind, district: DistrictId, layout: LayoutChoice, currentSeed: number): SessionRules {
+  district = playableDistrict(kind, district);
+  return { kind, district, seed: layout === 'randomized' ? nextSeed(currentSeed) : DEFAULT_DISTRICT_SEEDS[district], ranchFocus: false };
+}
 export type DemoAsset = "ranch" | "rivertown" | "steel-warehouse";
 export type DistrictId = "classic" | "d10" | "d30" | "d100";
 export type PlayMode = "title" | "play" | "pause" | "upgrade" | "results";
@@ -15,13 +25,6 @@ export const DEFAULT_DISTRICT_SEEDS: Record<DistrictId, number> = {
   d10: 0x10d15c7,
   d30: 0x30d15c7,
   d100: 0x100d15c,
-};
-
-export const DISTRICT_LABELS: Record<DistrictId, string> = {
-  classic: "LOT 7",
-  d10: "10",
-  d30: "30",
-  d100: "100",
 };
 
 export interface SessionRules {

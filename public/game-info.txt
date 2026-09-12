@@ -15,7 +15,7 @@ It is the game's start menu. Select PLAY to choose a mode and site.
 
 GAME MODES
 County Clock: Earn $1,800 in in-game cash within three minutes. Demolition
-earns cash and score. Watch engine heat and track stress: overheating or
+earns cash. Watch engine heat and track stress: overheating or
 overloading the tracks can end the run. Upgrade the blade, engine, or push
 power as you reach cash milestones.
 

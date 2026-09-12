@@ -1,3 +1,4 @@
+import { upgradeModifiers } from './upgrades';
 import { applyFixtureDamage } from '../structure/interior';
 import { Resubmission } from './resubmission';
 import { bayBuildings, bayProps, type YardBay } from '../world/yardCatalog';
@@ -38,6 +39,8 @@ import { Input } from "./input";
 import { lerp } from "./math";
 import {
   DEFAULT_DISTRICT_SEEDS,
+  gameSetupRules,
+  playableDistrict,
   nextSeed,
   parseSessionFromSearch,
   startsAtTitle,
@@ -81,7 +84,6 @@ export class Game {
   private birds: Bird[] = [];
   private cash = 0;
   private resubmission = new Resubmission();
-  private score = 0;
   private timeLeft = MATCH_SECONDS;
   private elapsed = 0;
   private hint = 1;
@@ -135,8 +137,8 @@ export class Game {
     };
     this.hud.onMenu = () => { this.releaseControls(); if (this.mode === 'play') this.mode = 'pause'; };
     this.hud.onTitle = () => { this.releaseControls(); this.mode = 'title'; };
-    this.hud.onStart = (kind, district) => {
-      this.rules = { kind, district, seed: DEFAULT_DISTRICT_SEEDS[district], ranchFocus: false };
+    this.hud.onStart = (kind, district, layout) => {
+      this.rules = gameSetupRules(kind, district, layout, this.rules.seed);
       this.reset('same');
     };
     this.hud.onTestYard = () => {
@@ -222,7 +224,6 @@ export class Game {
 
   snapshot(): {
     cash: number;
-    score: number;
     timeLeft: number;
     elapsed: number;
     mode: GameMode;
@@ -237,7 +238,6 @@ export class Game {
   } {
     return {
       cash: this.cash,
-      score: this.score,
       timeLeft: this.timeLeft,
       elapsed: this.elapsed,
       mode: this.mode,
@@ -263,6 +263,8 @@ export class Game {
     this.rules.job = false;
     this.rules.demo = undefined;
     this.rules.kind = kind;
+    this.rules.district = playableDistrict(kind, this.rules.district);
+    this.rules.ranchFocus = false;
     this.reset("same");
   }
 
@@ -270,8 +272,9 @@ export class Game {
     this.rules.towerTest = false;
     this.rules.job = false;
     this.rules.demo = undefined;
-    this.rules.district = district;
-    this.rules.seed = DEFAULT_DISTRICT_SEEDS[district];
+    this.rules.district = playableDistrict(this.rules.kind, district);
+    this.rules.ranchFocus = false;
+    this.rules.seed = DEFAULT_DISTRICT_SEEDS[this.rules.district];
     this.reset("same");
   }
 
@@ -301,7 +304,7 @@ export class Game {
     this.cash = 0;
     this.resubmission = new Resubmission();
     this.hud.permitLogo.reset();
-    this.score = 0;
+    this.hud.resetCash();
     this.timeLeft = MATCH_SECONDS;
     this.elapsed = 0;
     this.hint = 1;
@@ -444,9 +447,7 @@ export class Game {
         throttle: drive.throttle,
         steer: drive.steer,
         blade: this.input.blade(),
-        engineMul: 1 + this.upgrades.engine * 0.28,
-        bladeMul: 1 + this.upgrades.blade * 0.42,
-        pushMul: 1 + this.upgrades.push * 0.35,
+        ...upgradeModifiers(this.upgrades),
       },
       dt,
     );
@@ -455,7 +456,6 @@ export class Game {
     const out = stepWorld(this.town, this.dozer, this.particles, this.upgrades, dt);
     this.lastMetrics = out.metrics;
     this.cash += out.cash;
-    this.score += out.score;
     this.react(out.events);
     for (const b of out.birds) {
       this.birds.push({
@@ -630,12 +630,13 @@ export class Game {
     this.yardPanel?.tick(dt);
     this.hud.render({
       resubmitted: this.resubmission.used,
+      upgradeModifiers: upgradeModifiers(this.upgrades),
       hasYard: !!this.town.yard,
+      developmentScenario: !!(this.rules.demo || this.rules.towerTest || this.rules.job || this.rules.ranchFocus || this.town.yard),
       pileResistance: this.dozer.pileResistance,
       tower: this.rules.towerTest ? this.town.buildings[0]?.coreCollapse : undefined,
       job: this.job ? { ...this.job.status(), paid: this.job.paid, payout: this.job.payout } : undefined,
       cash: this.cash,
-      score: this.score,
       timeLeft: this.timeLeft,
       elapsed: this.elapsed,
       session: this.rules.kind,

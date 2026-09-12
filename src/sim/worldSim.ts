@@ -1,3 +1,5 @@
+import { upgradeModifiers, type Upgrades } from '../game/upgrades';
+export type { Upgrades } from '../game/upgrades';
 import { applyCoreImpact } from './coreImpact';
 import { resistCorePile } from './corePileResistance';
 import { retireStructures } from './retirement';
@@ -23,11 +25,6 @@ import { ensureCollapsedSite, siteContaining, siteFeel } from "../structure/site
 import { getAsset } from "../world/catalog";
 import { roadSurfaceAt, terrainHeightAt } from "../world/roads";
 
-export interface Upgrades {
-  blade: number;
-  engine: number;
-  push: number;
-}
 
 export interface SimMetrics {
   buildingsStepped: number;
@@ -37,7 +34,6 @@ export interface SimMetrics {
 
 export interface SimFrame {
   cash: number;
-  score: number;
   events: WorldEvent[];
   birds: { x: number; y: number }[];
   debrisLoad: number;
@@ -161,14 +157,13 @@ export function stepWorld(
   const events: WorldEvent[] = [];
   const birds: { x: number; y: number }[] = [];
   let cash = 0;
-  let score = 0;
 
   resistCorePile(town, dozer, dt);
 
   const rebuilt = rebuildHash(town);
   hash.query(dozer.x - 3, dozer.y - 3, 6, 6, nearby);
 
-  const bladeMul = 1 + upgrades.blade * 0.42;
+  const { bladeMul, engineMul } = upgradeModifiers(upgrades);
   const grind = (dozer.bladeDown ? DOZER.grindDps * (0.65 + (dozer.pushT > 0 ? DOZER.pushGrind : 1)) : DOZER.grindDps * 0.45) * bladeMul;
   const speed = dozerSpeed(dozer);
   const pts = bladePoints(dozer);
@@ -354,7 +349,7 @@ export function stepWorld(
     if (feel > 0.1 && dozerSpeed(dozer) > 1.6) dozer.track += feel * 1.1 * dt;
   }
 
-  const engineMul = 1 + upgrades.engine * 0.28;
+
   const debris = stepDebris(town, dozer, particles, events, engineMul, dt);
 
   if (town.roadCar?.alive) {
@@ -375,13 +370,8 @@ export function stepWorld(
   particles.step(dt);
   depositSettledParticles(town, particles);
 
-  for (const e of events) {
-    score += e.cash ?? 0;
-  }
-
   return {
     cash,
-    score,
     events,
     birds,
     debrisLoad: debris.load,
