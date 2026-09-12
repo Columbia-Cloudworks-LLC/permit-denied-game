@@ -72,19 +72,27 @@ jobs:
           for name in VERCEL_TOKEN VERCEL_ORG_ID VERCEL_PROJECT_ID FACEBOOK_APP_ID; do
             if [ -z "${!name}" ]; then echo "::error::Missing repository configuration: $name"; exit 1; fi
           done
+          node --input-type=module <<'NODE'
+          const url = new URL(`https://api.vercel.com/v9/projects/${process.env.VERCEL_PROJECT_ID}`);
+          url.searchParams.set('teamId', process.env.VERCEL_ORG_ID);
+          const response = await fetch(url, { headers: { Authorization: `Bearer ${process.env.VERCEL_TOKEN}` } });
+          const data = await response.json();
+          if (!response.ok) throw new Error(`Vercel project access failed: HTTP ${response.status}, ${data.error?.code || 'unknown'}: ${data.error?.message || 'Check token scope'}`);
+          console.log(`Vercel project access verified: ${data.name}`);
+          NODE
       - run: npm ci
       - run: npm install --global vercel@59.16.0
       - name: Pull Vercel project settings
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-        run: vercel pull --yes --environment="$DEPLOY_TARGET" --token="$VERCEL_TOKEN"
+        run: vercel pull --yes --environment="$DEPLOY_TARGET" --scope="$VERCEL_ORG_ID" --token="$VERCEL_TOKEN"
       - name: Build deployment with public Facebook metadata
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: |
           args=()
           if [ "$DEPLOY_TARGET" = production ]; then args+=(--prod); fi
-          vercel build "${args[@]}" --token="$VERCEL_TOKEN"
+          vercel build "${args[@]}" --scope="$VERCEL_ORG_ID" --token="$VERCEL_TOKEN"
           node --input-type=module -e 'import fs from "node:fs"; const html=fs.readFileSync(".vercel/output/static/index.html","utf8"); if(!html.includes(`property="fb:app_id" content="${process.env.FACEBOOK_APP_ID.trim()}"`)) throw Error("Built HTML is missing the configured Facebook App ID");'
       - name: Check branch is still current
         id: current
@@ -117,7 +125,7 @@ jobs:
         run: |
           args=()
           if [ "$DEPLOY_TARGET" = production ]; then args+=(--prod); fi
-          url=$(vercel deploy --prebuilt --yes "${args[@]}" --token="$VERCEL_TOKEN")
+          url=$(vercel deploy --prebuilt --yes "${args[@]}" --scope="$VERCEL_ORG_ID" --token="$VERCEL_TOKEN")
           echo "url=$url" >> "$GITHUB_OUTPUT"
           echo "### $DEPLOY_TARGET deployment" >> "$GITHUB_STEP_SUMMARY"
           echo "$url" >> "$GITHUB_STEP_SUMMARY"
