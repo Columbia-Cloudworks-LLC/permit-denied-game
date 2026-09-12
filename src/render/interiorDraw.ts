@@ -6,10 +6,10 @@ import {
   interiorFloorCoverage,
   type InteriorFloorSpan,
 } from "../structure/interior";
-import { neighborRoofBayOpen, roofFrameBeams } from "../structure/roof";
+import { industrialRoofOpen, neighborRoofBayOpen, roofFrameBeams } from "../structure/roof";
 import type { Building, Cell, InteriorFixture, RoofSection } from "../structure/types";
 import { cellPresent, cellWorldBox } from "../structure/types";
-import { depthKey } from "../world/iso";
+import { depthKey, roofPainterDepth } from "../world/iso";
 import { drawFaceWindow, drawIsoBox, drawOrientedIsoBox, drawSlopedQuad, drawTopCap, shade } from "./drawIso";
 import { brokenEdgeColor, floorFinishColor, topFaceColor, wallFaceColor } from "./lighting";
 import { PAL } from "./palette";
@@ -27,6 +27,7 @@ function jag(gx: number, gy: number, k: number): number {
 export function roofShowsFrame(b: Building, roof: RoofSection): boolean {
   if (roof.state === "gone") return false;
   if (roof.state === "sagging" || roof.state === "falling") return true;
+  if (roof.bay) return industrialRoofOpen(b, roof);
   return neighborRoofBayOpen(b, roof, -1) || neighborRoofBayOpen(b, roof, 1);
 }
 
@@ -188,6 +189,21 @@ function fixtureDepth(fixture: InteriorFixture): number {
   return depthKey(fixture.x + fixture.w * 0.5, fixture.y + fixture.d * 0.5, fixture.floor * FLOOR_Z + fixture.h * 0.45);
 }
 
+/** Long racks/partitions can sort ahead of a small panel above their rear end. */
+export function roofInteriorPainterDepth(b: Building, roof: RoofSection, verts: RoofSection["verts"]): number {
+  let depth = roofPainterDepth(verts);
+  if (!roof.bay || roof.state === "falling") return depth;
+  const x0 = Math.min(...verts.map(v => v.x)), x1 = Math.max(...verts.map(v => v.x));
+  const y0 = Math.min(...verts.map(v => v.y)), y1 = Math.max(...verts.map(v => v.y));
+  for (const fixture of b.fixtures) {
+    if (fixture.broken || fixture.floor > roof.floor) continue;
+    if (fixture.x < x1 && fixture.x + fixture.w > x0 && fixture.y < y1 && fixture.y + fixture.d > y0) {
+      depth = Math.max(depth, fixtureDepth(fixture) + 1);
+    }
+  }
+  return depth;
+}
+
 function drawSlopedBeam(
   g: Graphics,
   a: { x: number; y: number; z: number },
@@ -219,8 +235,8 @@ function drawSlopedBeam(
 export function drawRoofFrame(g: Graphics, _b: Building, roof: RoofSection, alpha: number): void {
   const beams = roofFrameBeams(roof);
   if (beams.length === 0) return;
-  const top = PAL.woodTop;
-  const side = PAL.woodDark;
+  const top = roof.bay ? PAL.roofMetal : PAL.woodTop;
+  const side = roof.bay ? PAL.metalDark : PAL.woodDark;
   for (const beam of beams) {
     const half = beam.kind === "plate" ? 0.055 : 0.045;
     drawSlopedBeam(g, beam.a, beam.b, half, top, side, alpha);

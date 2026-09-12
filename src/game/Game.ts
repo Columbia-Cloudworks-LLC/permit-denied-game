@@ -1,4 +1,5 @@
 import { applyFixtureDamage } from '../structure/interior';
+import { Resubmission } from './resubmission';
 import { bayBuildings, bayProps, type YardBay } from '../world/yardCatalog';
 import { YardPanel } from '../render/yardPanel';
 import { applyCellDamage } from '../structure/building';
@@ -39,6 +40,7 @@ import {
   DEFAULT_DISTRICT_SEEDS,
   nextSeed,
   parseSessionFromSearch,
+  startsAtTitle,
   sessionFailsOn,
   sessionForcesUpgrade,
   type DistrictId,
@@ -78,6 +80,7 @@ export class Game {
   private dozer = createDozer(this.town.spawnX, this.town.spawnY, this.town.spawnHeading);
   private birds: Bird[] = [];
   private cash = 0;
+  private resubmission = new Resubmission();
   private score = 0;
   private timeLeft = MATCH_SECONDS;
   private elapsed = 0;
@@ -107,14 +110,43 @@ export class Game {
       preference: "webgl",
     });
     root.appendChild(this.app.canvas);
+    this.app.canvas.tabIndex = 0;
+    this.app.canvas.setAttribute('aria-label', 'Demolition site. W and S drive, A and D steer, Space powers the blade, Escape opens the menu.');
     this.app.stage.addChild(this.renderer.root);
     this.hud = new Hud(hudRoot);
     this.hud.onMute = () => {
       void this.audio.unlock();
       this.audio.toggleMute();
     };
+    this.hud.onClick = () => { void this.audio.unlock().then(() => this.audio.switchClick()); };
+    this.hud.onUnlockSound = () => this.audio.unlock();
+    this.hud.onResubmit = () => {
+      if (this.mode !== 'play') return null;
+      const fee = this.resubmission.charge(this.cash);
+      if (fee !== null) {
+        this.cash -= fee;
+        this.releaseControls();
+      }
+      return fee;
+    };
+    this.hud.onTitleSound = (kind, index) => {
+      if (kind === 'stamp') this.audio.permitStamp();
+      else this.audio.typewriterKey(index);
+    };
+    this.hud.onMenu = () => { this.releaseControls(); if (this.mode === 'play') this.mode = 'pause'; };
+    this.hud.onTitle = () => { this.releaseControls(); this.mode = 'title'; };
+    this.hud.onStart = (kind, district) => {
+      this.rules = { kind, district, seed: DEFAULT_DISTRICT_SEEDS[district], ranchFocus: false };
+      this.reset('same');
+    };
+    this.hud.onTestYard = () => {
+      this.rules = { kind: 'sandbox', district: 'classic', seed: DEFAULT_DISTRICT_SEEDS.classic, ranchFocus: false };
+      this.reset('same');
+      this.yardPanel!.root.open = true;
+    };
     this.hud.onChoice = (id) => this.pickUpgrade(id);
     this.hud.onResume = () => {
+      this.releaseControls();
       if (this.mode === "pause") this.mode = "play";
     };
     this.hud.onRestart = () => this.reset("same");
@@ -147,7 +179,7 @@ export class Game {
     this.hud.onDebugToggle = (key, value) => { this.renderer.debug[key] = value; this.syncDebug(); };
     this.hud.onDebugFloor = floor => { this.renderer.debug.maxFloor = floor; this.syncDebug(); };
     this.hud.onDebugReset = () => { Object.assign(this.renderer.debug, defaultDebugView()); this.syncDebug(); };
-    this.hud.onDebugStep = () => { if (this.renderer.debug.freeze && this.mode === "play") this.step(SIM_DT); };
+    this.hud.onDebugStep = () => { if (this.renderer.debug.freeze && this.mode !== 'upgrade' && this.mode !== 'results') this.step(SIM_DT); };
     this.yardPanel = new YardPanel(hudRoot, {
       town: () => this.town, particles: this.particles, dozer: () => this.dozer,
       jump: (x, y) => { this.yardFocus = undefined; this.followRoadCamera = false; this.dozer = createDozer(x, y, -Math.PI / 2); this.renderer.showNhood = false; },
@@ -166,12 +198,13 @@ export class Game {
         } else for (const building of bayBuildings(bay)) for (const cell of building.cells) applyCellDamage(building, cell, 10000, 1, 0, this.particles, []);
       },
     });
+    this.hud.assetsHost.append(this.yardPanel.root);
+    this.yardPanel.root.open = true;
     this.detachInput = this.input.attach();
     this.touch = new TouchControls(hudRoot, {
       change: state => this.input.setTouch(state),
       release: () => this.input.reset(),
       interact: () => { void this.audio.unlock(); },
-      restart: () => this.reset('same'),
       resize: () => this.app.resize(),
     });
     this.perf.enabled = new URLSearchParams(window.location.search).get("perf") === "1";
@@ -180,6 +213,7 @@ export class Game {
     this.renderer.debug.perf = this.perf.enabled;
     this.syncDebug();
     this.reset("same");
+    if (startsAtTitle(window.location.search)) this.mode = "title";
     (window as unknown as { __pd: Game }).__pd = this;
     this.app.ticker.add((ticker) => {
       this.frame(Math.min(0.05, ticker.deltaMS / 1000));
@@ -265,6 +299,8 @@ export class Game {
     this.renderer.invalidate();
     this.birds = [];
     this.cash = 0;
+    this.resubmission = new Resubmission();
+    this.hud.permitLogo.reset();
     this.score = 0;
     this.timeLeft = MATCH_SECONDS;
     this.elapsed = 0;
@@ -318,34 +354,39 @@ export class Game {
 
   private frame(realDt: number): void {
     this.touch?.setBlocked(this.mode !== 'play' || this.renderer.debug.freeze);
-    if (this.touch?.menuOpen) this.input.reset();
     const now = performance.now();
     const frameMs = this.perf.markFrameStart(now);
     if (this.input.consume("m") || this.input.consume("M")) {
       void this.audio.unlock();
       this.audio.toggleMute();
     }
-    if (this.input.consume("r") || this.input.consume("R")) this.reset("same");
-    if (this.input.consume("n") || this.input.consume("N")) this.reset("new");
-    if (this.input.consume("v") || this.input.consume("V")) this.spawnRoadVehicle();
-    if (this.input.consume("g") || this.input.consume("G")) { this.renderer.showNhood = !this.renderer.showNhood; this.syncDebug(); }
-    if (this.input.consume("`")) {
-      this.renderer.debug.perf = !this.renderer.debug.perf;
-      this.syncDebug();
+    if (this.mode === "play" || this.mode === "results") {
+      if (this.input.consume("r") || this.input.consume("R")) this.reset("same");
+      if (this.input.consume("n") || this.input.consume("N")) this.reset("new");
+      if (this.input.consume("v") || this.input.consume("V")) this.spawnRoadVehicle();
+      if (this.input.consume("g") || this.input.consume("G")) { this.renderer.showNhood = !this.renderer.showNhood; this.syncDebug(); }
+      if (this.input.consume("`")) {
+        this.renderer.debug.perf = !this.renderer.debug.perf;
+        this.syncDebug();
+      }
     }
-    if (this.input.consume("1")) this.pickUpgrade("blade");
-    if (this.input.consume("2")) this.pickUpgrade("engine");
-    if (this.input.consume("3")) this.pickUpgrade("push");
+    if (this.mode === "play" || this.mode === "upgrade") {
+      if (this.input.consume("1")) this.pickUpgrade("blade");
+      if (this.input.consume("2")) this.pickUpgrade("engine");
+      if (this.input.consume("3")) this.pickUpgrade("push");
+    }
     if (this.input.consume("Escape")) {
-      if (this.touch?.enabled && this.mode === 'play') this.touch.toggleMenu();
-      else if (this.mode === "play") this.mode = "pause";
-      else if (this.mode === "pause") this.mode = "play";
+      this.releaseControls();
+      if (!this.hud.closeDebug(true)) {
+        if (this.mode === "play") this.mode = "pause";
+        else if (this.mode === "pause") this.mode = "play";
+      }
     }
     if (this.input.down.size > 0) void this.audio.unlock();
 
     let simCpuMs = 0;
     this.touch?.setBlocked(this.mode !== 'play' || this.renderer.debug.freeze);
-    if (this.mode === "play" && !this.renderer.debug.freeze && !this.touch?.menuOpen) {
+    if (this.mode === "play" && !this.renderer.debug.freeze) {
       this.acc += realDt;
       const simStart = performance.now();
       const advanced = advanceSimulation(this.acc, SIM_DT, SIM_MAX_STEPS,
@@ -588,6 +629,8 @@ export class Game {
     this.renderer.draw(this.town, this.dozer, this.particles, this.birds, dt);
     this.yardPanel?.tick(dt);
     this.hud.render({
+      resubmitted: this.resubmission.used,
+      hasYard: !!this.town.yard,
       pileResistance: this.dozer.pileResistance,
       tower: this.rules.towerTest ? this.town.buildings[0]?.coreCollapse : undefined,
       job: this.job ? { ...this.job.status(), paid: this.job.paid, payout: this.job.payout } : undefined,
@@ -601,7 +644,6 @@ export class Game {
       muted: this.audio.muted,
       heat: this.dozer.heat,
       track: this.dozer.track,
-      hintAlpha: 1,
       overlay: this.mode === "play" ? "none" : this.mode,
       death: this.death,
       won: this.mode === "results" && this.cash >= CASH_TARGET && !this.death,

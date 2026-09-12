@@ -115,6 +115,24 @@ export class AudioBus {
     this.blip(880, 0.1, 0.07, "square");
   }
 
+  switchClick(): void {
+    this.blip(210, 0.035, 0.07, "triangle");
+    this.noiseBurst(0.018, 0.035, 1600);
+  }
+
+  permitStamp(): void {
+    if (this.muted || this.ctx?.state !== 'running') return;
+    this.blip(85, 0.11, 0.25, "sine");
+    this.noiseBurst(0.075, 0.25, 850);
+  }
+
+  typewriterKey(index: number): void {
+    if (this.muted || this.ctx?.state !== 'running') return;
+    this.noiseBurst(0.026, 0.12, 2200 + (index % 3) * 240);
+    this.blip(1250 + (index % 4) * 110, 0.018, 0.06, "triangle");
+    this.blip(165, 0.035, 0.07, "square");
+  }
+
   private blip(freq: number, dur: number, gain: number, type: OscillatorType): void {
     if (!this.ctx || !this.master) return;
     const osc = this.ctx.createOscillator();

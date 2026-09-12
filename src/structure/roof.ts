@@ -17,6 +17,7 @@ export interface RoofDebrisSpawn {
   elev: number;
   panelW: number;
   panelD: number;
+  preservePanelPose?: boolean;
 }
 
 function wallTopZ(floors: number): number {
@@ -460,7 +461,84 @@ export function generateRoofs(building: Building): RoofSection[] {
     const layer = { ...building, floors: floor + 1, floorTiles: exposed };
     for (const roof of generateRoofLayer(layer)) roofs.push({ ...roof, floor, id: roofs.length + 1 });
   }
+  linkRoofPanels(roofs, building);
   return roofs;
+}
+
+/** Clip in world space, interpolating height so neighboring panels share the same pitch. */
+function clipRoof(verts: RoofSection["verts"], axis: "x" | "y", plane: number, greater: boolean): RoofSection["verts"] {
+  const clipped: RoofSection["verts"] = [];
+  for (let i = 0; i < verts.length; i++) {
+    const a = verts[i]!, b = verts[(i + 1) % verts.length]!;
+    const insideA = greater ? a[axis] >= plane : a[axis] <= plane;
+    const insideB = greater ? b[axis] >= plane : b[axis] <= plane;
+    if (insideA) clipped.push(a);
+    if (insideA !== insideB) {
+      const t = (plane - a[axis]) / (b[axis] - a[axis]);
+      clipped.push({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, z: a.z + (b.z - a.z) * t });
+    }
+  }
+  return clipped.filter((v, i) => {
+    const previous = clipped[(i + clipped.length - 1) % clipped.length]!;
+    return Math.hypot(v.x - previous.x, v.y - previous.y, v.z - previous.z) > 1e-8;
+  });
+}
+
+function industrialPanels(building: Building, bays: RoofSection[]): RoofSection[] {
+  if (building.construction.walls !== "frame" || building.construction.roof !== "metal" || building.coreCollapse) return bays;
+  const panels: RoofSection[] = [];
+  const bearings = new Map<string, NonNullable<RoofSection["bay"]>>();
+  for (const bay of bays) {
+    if (bay.style === "gable") { panels.push(bay); continue; }
+    const coverage = roofCoverage(bay), bounds = bbox(coverage);
+    const key = bay.support.map(s => `${s.gx}:${s.gy}`).join("/");
+    const extent = bbox([...coverage, ...bay.support]);
+    let bearing = bearings.get(key);
+    if (!bearing) { bearing = { id: bay.id, ...extent }; bearings.set(key, bearing); }
+    else {
+      bearing.minX = Math.min(bearing.minX, extent.minX); bearing.maxX = Math.max(bearing.maxX, extent.maxX);
+      bearing.minY = Math.min(bearing.minY, extent.minY); bearing.maxY = Math.max(bearing.maxY, extent.maxY);
+    }
+    for (let gy = bounds.minY; gy <= bounds.maxY; gy += 2) {
+      const end = Math.min(bounds.maxY, gy + 1);
+      const y0 = building.y + gy * building.cellSize - (gy === bounds.minY ? .14 : 0);
+      const y1 = building.y + (end + 1) * building.cellSize + (end === bounds.maxY ? .14 : 0);
+      const verts = clipRoof(clipRoof(bay.verts, "y", y0, true), "y", y1, false);
+      const covered = coverage.filter(c => c.gy >= gy && c.gy <= end);
+      if (verts.length < 3 || !covered.length) continue;
+      panels.push({ ...makeSection(panels.length + 1, bay.style, bay.support, verts, bay.material),
+        coverage: covered, bay: bearing });
+    }
+  }
+  return panels;
+}
+
+/** A cell lookup avoids scanning every panel during animation and rendering. */
+function linkRoofPanels(roofs: RoofSection[], building: Building): void {
+  const cells = new Map<string, number>();
+  roofs.forEach((r, i) => { if (r.bay) for (const c of roofCoverage(r)) cells.set(`${r.floor}:${c.gx}:${c.gy}`, i); });
+  roofs.forEach((r, i) => {
+    if (!r.bay) return;
+    r.neighbors = {};
+    for (const [edge, dx, dy] of [["minX", -1, 0], ["maxX", 1, 0], ["minY", 0, -1], ["maxY", 0, 1]] as const) {
+      const indices = new Set<number>();
+      for (const c of roofCoverage(r)) {
+        const j = cells.get(`${r.floor}:${c.gx + dx}:${c.gy + dy}`);
+        if (j !== undefined && j !== i) indices.add(j);
+      }
+      r.neighbors[edge] = [...indices];
+      // Adjacent authored regions share an edge; overhang belongs only on exterior edges.
+      if (indices.size) {
+        const bounds = bbox(roofCoverage(r));
+        const axis = dx ? "x" : "y", greater = dx + dy < 0;
+        const gridLine = axis === "x" ? (greater ? bounds.minX : bounds.maxX + 1) : (greater ? bounds.minY : bounds.maxY + 1);
+        r.verts = clipRoof(r.verts, axis, building[axis] + gridLine * building.cellSize, greater);
+      }
+    }
+    // Keep the metal seam and framing orientation consistent after polygon clipping.
+    const first = r.verts.reduce((best, v, j) => v.x + v.y < r.verts[best]!.x + r.verts[best]!.y ? j : best, 0);
+    r.verts = [...r.verts.slice(first), ...r.verts.slice(0, first)];
+  });
 }
 
 function generateRoofLayer(building: Building): RoofSection[] {
@@ -484,7 +562,7 @@ function generateRoofLayer(building: Building): RoofSection[] {
       sections.push(...extra);
     }
   }
-  return splitStructuralBays(building, sections);
+  return industrialPanels(building, splitStructuralBays(building, sections));
 }
 
 /** Slice existing planes so shed pitch and flat deck elevation remain continuous across bays. */
@@ -583,6 +661,10 @@ function roofSettle(t: number): number {
 }
 
 export function roofTiltAngle(roof: RoofSection): number {
+  if (roof.bay) {
+    const t = Math.max(0, Math.min(1, roof.fallT));
+    return roof.sag * .10 * (1 - t * t * (3 - 2 * t)) + Math.sin(t * Math.PI) * .12;
+  }
   const sagTilt = roof.sag * ROOF_SAG_TILT;
   const t = Math.max(0, Math.min(1, roof.fallT));
   if (t <= 0) return sagTilt;
@@ -621,6 +703,18 @@ function rotateAroundHinge(
 }
 
 export function displacedRoofVerts(roof: RoofSection): { x: number; y: number; z: number }[] {
+  if (roof.bay) {
+    const t = Math.max(0, Math.min(1, roof.fallT));
+    const drop = t * t * (3 - 2 * t);
+    const center = vertsCenter(roof.verts);
+    const tilt = roofTiltAngle(roof);
+    return roof.verts.map(v => ({
+      x: v.x + roof.fallDx * drop * .18,
+      y: v.y + roof.fallDy * drop * .18,
+      z: Math.max(ROOF_LANDING_Z, (v.z - roof.sag * .18 -
+        ((v.x - center.x) * roof.fallDx + (v.y - center.y) * roof.fallDy) * tilt) * (1 - drop) + ROOF_LANDING_Z * drop),
+    }));
+  }
   const angle = roofTiltAngle(roof);
   const t = Math.max(0, Math.min(1, roof.fallT));
   const slide = roofFallEase(t);
@@ -663,8 +757,20 @@ function neighborRoofBay(building: Building, roof: RoofSection, dgx: number): Ro
 
 /** True when the neighboring bay has already dropped or is falling away. */
 export function neighborRoofBayOpen(building: Building, roof: RoofSection, dgx: number): boolean {
+  if (roof.neighbors) return roofEdgeOpen(building, roof, dgx < 0 ? "minX" : "maxX");
   const partner = neighborRoofBay(building, roof, dgx);
   return !!partner && (partner.state === "gone" || partner.state === "falling");
+}
+
+function roofEdgeOpen(building: Building, roof: RoofSection, edge: RoofEdge): boolean {
+  return !!roof.neighbors?.[edge]?.some(i => {
+    const other = building.roofs[i];
+    return other?.state === "gone" || other?.state === "falling";
+  });
+}
+
+export function industrialRoofOpen(building: Building, roof: RoofSection): boolean {
+  return (["minX", "maxX", "minY", "maxY"] as const).some(edge => roofEdgeOpen(building, roof, edge));
 }
 
 /** Hold a bay that still has a neighbor so adjacent planes peel instead of dropping as one slab. */
@@ -681,6 +787,7 @@ function roofNeighborFallDelay(building: Building, roof: RoofSection): number {
 function exposedRoofEdges(building: Building, roof: RoofSection): RoofEdge[] {
   const edges: RoofEdge[] = [];
   if (roof.state === "gone") return edges;
+  if (roof.neighbors) return (["minX", "maxX", "minY", "maxY"] as const).filter(edge => roofEdgeOpen(building, roof, edge));
   const alongY = roof.style === "gable" && building.roofAxis === "y";
   if (neighborRoofBayOpen(building, roof, -1)) edges.push(alongY ? "minY" : "minX");
   if (neighborRoofBayOpen(building, roof, 1)) edges.push(alongY ? "maxY" : "maxX");
@@ -737,6 +844,10 @@ export function applyBrokenRoofEdge(
     if ((roof.state === "sagging" || roof.state === "falling") && v.z <= minZ + 0.2) {
       z -= Math.abs(roofEdgeJag(roof.id, i, 3)) * 0.45;
     }
+    if (roof.bay) {
+      const tear = 1 - Math.min(1, roof.fallT);
+      return { x: v.x + (x - v.x) * tear, y: v.y + (y - v.y) * tear, z: Math.max(ROOF_LANDING_Z, v.z + (z - v.z) * tear) };
+    }
     return { x, y, z };
   });
 }
@@ -763,6 +874,14 @@ function lerp3(
 export function roofFrameBeams(roof: RoofSection): RoofRafterBeam[] {
   const verts = displacedRoofVerts(roof);
   if (verts.length < 4) return [];
+  if (roof.bay) {
+    const lowered = verts.map(v => ({ ...v, z: Math.max(.08, v.z - .08) }));
+    const [a, b, c, d] = lowered as [typeof verts[number], typeof verts[number], typeof verts[number], typeof verts[number]];
+    return [
+      { a, b, kind: "plate" }, { a: d, b: c, kind: "plate" },
+      ...[.15, .5, .85].map(t => ({ a: lerp3(a, b, t), b: lerp3(d, c, t), kind: "rafter" as const })),
+    ];
+  }
   const ranked = verts.slice().sort((a, b) => b.z - a.z);
   const ridgePair = [ranked[0]!, ranked[1]!];
   const eavePair = [ranked[ranked.length - 1]!, ranked[ranked.length - 2]!];
@@ -1070,6 +1189,10 @@ export function roofHandoffPose(roof: RoofSection): {
 } {
   const verts = displacedRoofVerts(roof);
   const c = vertsCenter(verts);
+  if (roof.bay) {
+    const xs = verts.map(v => v.x), ys = verts.map(v => v.y);
+    return { ...c, heading: 0, panelW: Math.max(...xs) - Math.min(...xs), panelD: Math.max(...ys) - Math.min(...ys) };
+  }
   const ranked = verts.slice().sort((a, b) => b.z - a.z);
   const ridge = ranked[0]!;
   const eave = ranked[ranked.length - 1]!;
@@ -1105,16 +1228,31 @@ function startRoofFall(building: Building, roof: RoofSection, particles: Particl
   building.roofDirty = true;
   building.structureDirty = true;
   const c = sectionCenter(roof);
-  particles.burst(debrisKind(roof.material), c.x, c.y, c.z, 1.1);
-  particles.collapseCloud(c.x, c.y, c.z, roof.fallDx, roof.fallDy);
+  particles.burst(debrisKind(roof.material), c.x, c.y, c.z, roof.bay ? .35 : 1.1);
+  if (!roof.bay) particles.collapseCloud(c.x, c.y, c.z, roof.fallDx, roof.fallDy);
   events.push({
     kind: "collapse",
     x: c.x,
     y: c.y,
     z: c.z,
-    mag: 0.85,
+    mag: roof.bay ? .22 : 0.85,
     material: roof.material,
   });
+}
+
+/** Travel from the missing bearings across this bay, not across neighboring healthy bays. */
+function industrialFailureDelay(building: Building, roof: RoofSection): number {
+  const center = sectionCenter(roof);
+  let distance = Infinity;
+  for (const s of roof.support) {
+    const cell = building.grid[roof.floor]?.[s.gx]?.[s.gy];
+    if (cell && cellPresent(cell)) continue;
+    const p = supportWorld(building, s);
+    distance = Math.min(distance, Math.hypot(center.x - p.x, center.y - p.y));
+  }
+  const bay = roof.bay!;
+  const span = Math.max(1, Math.hypot(bay.maxX - bay.minX + 1, bay.maxY - bay.minY + 1) * building.cellSize);
+  return (Number.isFinite(distance) ? Math.min(1, distance / span) : 0) * .65 + (roof.id % 3) * .025;
 }
 
 export function roofsNeedStep(building: Building): boolean {
@@ -1137,13 +1275,19 @@ export function stepRoofs(
   building.visualRevision++;
   let present = 0;
   let total = 0;
+  const bearingCounts = new Map<string, { have: number; total: number }>();
   for (const roof of building.roofs) {
     if (roof.state === "gone") continue;
-    const frac = supportFraction(building, roof);
+    const bayKey = roof.bay ? `${roof.floor}:${roof.bay.id}` : undefined;
+    let frac = bayKey ? bearingCounts.get(bayKey) : undefined;
+    if (!frac) {
+      frac = supportFraction(building, roof);
+      if (bayKey) bearingCounts.set(bayKey, frac);
+    }
     present += frac.have;
     total += frac.total;
     if (roof.state === "falling") {
-      roof.fallT += dt / ROOF_FALL_DURATION;
+      roof.fallT += dt / (roof.bay ? .85 : ROOF_FALL_DURATION);
       if (roof.fallT >= 1) {
         roof.fallT = 1;
         const pose = roofHandoffPose(roof);
@@ -1162,7 +1306,9 @@ export function stepRoofs(
           elev: Math.max(0.05, pose.z - 0.06),
           panelW: pose.panelW,
           panelD: pose.panelD,
+          ...(roof.bay ? { preservePanelPose: true, elev: pose.z - .14 } : {}),
         });
+        if (roof.bay) particles.collapseCloud(pose.x, pose.y, .16, roof.fallDx * .25, roof.fallDy * .25);
       }
       continue;
     }
@@ -1175,16 +1321,18 @@ export function stepRoofs(
       continue;
     }
     roof.unsupportedTime += dt;
-    roof.sag = Math.min(1, roof.unsupportedTime / 0.26);
-    if (roof.unsupportedTime > 0.1) roof.state = "sagging";
+    const delay = roof.bay ? industrialFailureDelay(building, roof) : 0;
+    const localTime = Math.max(0, roof.unsupportedTime - delay);
+    roof.sag = Math.min(1, localTime / 0.26);
+    if (localTime > 0.1) roof.state = "sagging";
     building.roofDirty = true;
-    if (roof.unsupportedTime > (frac.have === 0 ? .08 : .36) + roofNeighborFallDelay(building, roof)) {
+    if (roof.bay ? localTime > .36 : roof.unsupportedTime > (frac.have === 0 ? .08 : .36) + roofNeighborFallDelay(building, roof)) {
       startRoofFall(building, roof, particles, events);
     }
   }
   if (total > 0 && present / total < 0.35) {
     for (const roof of building.roofs) {
-      if (roof.state === "intact" || roof.state === "sagging") {
+      if (!roof.bay && (roof.state === "intact" || roof.state === "sagging")) {
         startRoofFall(building, roof, particles, events);
       }
     }
