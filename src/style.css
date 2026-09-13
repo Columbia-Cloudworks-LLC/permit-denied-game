@@ -457,3 +457,7 @@ dt { color: #d9b96f; font: bold 11px/1.5 var(--mono); } dd { margin: 0; color: #
 .publisher-brand img { width: 28px; height: 28px; flex: none; object-fit: contain; }
 .publisher-brand:hover span { text-decoration: underline; }
 .publisher-brand:focus-visible { outline: 2px solid #e3bd59; outline-offset: 4px; }
+
+#hud-root .menu-social { display: flex; justify-content: center; align-items: center; gap: 9px; min-height: 44px; padding: 12px 16px; border: 1px solid #777b64; border-radius: 3px; color: var(--cream); background: linear-gradient(#40463a, #2b3028); font: bold 12px var(--mono); text-decoration: none; box-shadow: 0 3px 0 #12170f; }
+#hud-root .menu-social:hover { background: #48503e; }
+#hud-root .menu-social:focus-visible { outline: 2px solid #e3bd59; outline-offset: 3px; }
