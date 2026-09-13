@@ -8,7 +8,10 @@ export default defineConfig({
       return facebookMetadata(process.env.FACEBOOK_APP_ID, process.env.REQUIRE_FACEBOOK_APP_ID === '1');
     },
   }],
+  // Generated capture galleries are not application entry points.
+  optimizeDeps: { entries: ["index.html"] },
   server: {
+    watch: { ignored: ["**/artifacts/**", "**/docs/visual-verification/**"] },
     host: true,
     port: 5173,
     strictPort: true,
