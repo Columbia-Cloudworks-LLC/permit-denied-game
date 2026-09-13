@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "id": "service-station",
+  "label": "SERVICE STATION",
+  "w": 38,
+  "d": 29,
+  "buildings": [
+    {
+      "id": "shop",
+      "building": "storefront",
+      "x": 3,
+      "y": 3
+    },
+    {
+      "id": "repair",
+      "building": "auto-repair-shop",
+      "x": 18,
+      "y": 3
+    },
+    {
+      "id": "pump-canopy",
+      "building": "service-station-canopy",
+      "x": 4.5,
+      "y": 16
+    }
+  ],
+  "equipment": [
+    {
+      "id": "pump-a",
+      "asset": "fuel-pump",
+      "x": 6,
+      "y": 17
+    },
+    {
+      "id": "pump-b",
+      "asset": "fuel-pump",
+      "x": 12,
+      "y": 17
+    },
+    {
+      "id": "pump-c",
+      "asset": "fuel-pump",
+      "x": 6,
+      "y": 22
+    },
+    {
+      "id": "pump-d",
+      "asset": "fuel-pump",
+      "x": 12,
+      "y": 22
+    },
+    {
+      "id": "parked-car",
+      "asset": "car",
+      "x": 24,
+      "y": 20
+    },
+    {
+      "id": "utility",
+      "asset": "utility-cabinet",
+      "x": 33,
+      "y": 5
+    }
+  ]
+}

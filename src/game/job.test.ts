@@ -32,7 +32,7 @@ describe("brick contract", () => {
     expect(job.takeChoice()).toBe(false);
   });
   it("does not let toolbar/number shortcuts buy unearned challenge upgrades", () => {
-    const rules = parseSessionFromSearch("");
+    const rules = parseSessionFromSearch("?mode=challenge");
     expect(canPickUpgrade(rules, "play", false)).toBe(false);
     expect(canPickUpgrade(rules, "pause", true)).toBe(false);
     expect(canPickUpgrade(rules, "upgrade", false)).toBe(false);

@@ -1,0 +1,188 @@
+{
+  "partitions": true,
+  "rooms": [
+    {
+      "id": "work-floor",
+      "kind": "production",
+      "floor": 0,
+      "x": 0,
+      "y": 0,
+      "w": 1,
+      "d": 1,
+      "finish": "plank",
+      "contents": [
+        {
+          "id": "pinsetter-0",
+          "kind": "pinsetter",
+          "x": 0.065,
+          "y": 0.04,
+          "w": 0.12,
+          "d": 0.036,
+          "h": 1.3,
+          "rotation": 0
+        },
+        {
+          "id": "pins-0",
+          "kind": "bowling-pins",
+          "x": 0.065,
+          "y": 0.082,
+          "w": 0.12,
+          "d": 0.078,
+          "h": 0.58,
+          "rotation": 0
+        },
+        {
+          "id": "pinsetter-1",
+          "kind": "pinsetter",
+          "x": 0.21,
+          "y": 0.04,
+          "w": 0.12,
+          "d": 0.036,
+          "h": 1.3,
+          "rotation": 0
+        },
+        {
+          "id": "pins-1",
+          "kind": "bowling-pins",
+          "x": 0.21,
+          "y": 0.082,
+          "w": 0.12,
+          "d": 0.078,
+          "h": 0.58,
+          "rotation": 0
+        },
+        {
+          "id": "pinsetter-2",
+          "kind": "pinsetter",
+          "x": 0.355,
+          "y": 0.04,
+          "w": 0.12,
+          "d": 0.036,
+          "h": 1.3,
+          "rotation": 0
+        },
+        {
+          "id": "pins-2",
+          "kind": "bowling-pins",
+          "x": 0.355,
+          "y": 0.082,
+          "w": 0.12,
+          "d": 0.078,
+          "h": 0.58,
+          "rotation": 0
+        },
+        {
+          "id": "pinsetter-3",
+          "kind": "pinsetter",
+          "x": 0.49999999999999994,
+          "y": 0.04,
+          "w": 0.12,
+          "d": 0.036,
+          "h": 1.3,
+          "rotation": 0
+        },
+        {
+          "id": "pins-3",
+          "kind": "bowling-pins",
+          "x": 0.49999999999999994,
+          "y": 0.082,
+          "w": 0.12,
+          "d": 0.078,
+          "h": 0.58,
+          "rotation": 0
+        },
+        {
+          "id": "pinsetter-4",
+          "kind": "pinsetter",
+          "x": 0.645,
+          "y": 0.04,
+          "w": 0.12,
+          "d": 0.036,
+          "h": 1.3,
+          "rotation": 0
+        },
+        {
+          "id": "pins-4",
+          "kind": "bowling-pins",
+          "x": 0.645,
+          "y": 0.082,
+          "w": 0.12,
+          "d": 0.078,
+          "h": 0.58,
+          "rotation": 0
+        },
+        {
+          "id": "pinsetter-5",
+          "kind": "pinsetter",
+          "x": 0.79,
+          "y": 0.04,
+          "w": 0.12,
+          "d": 0.036,
+          "h": 1.3,
+          "rotation": 0
+        },
+        {
+          "id": "pins-5",
+          "kind": "bowling-pins",
+          "x": 0.79,
+          "y": 0.082,
+          "w": 0.12,
+          "d": 0.078,
+          "h": 0.58,
+          "rotation": 0
+        }
+      ],
+      "floorDesigns": [
+        {
+          "id": "bowling-lane-0",
+          "kind": "bowling-lane",
+          "x": 0.065,
+          "y": 0.18,
+          "w": 0.12,
+          "d": 0.72
+        },
+        {
+          "id": "bowling-lane-1",
+          "kind": "bowling-lane",
+          "x": 0.21,
+          "y": 0.18,
+          "w": 0.12,
+          "d": 0.72
+        },
+        {
+          "id": "bowling-lane-2",
+          "kind": "bowling-lane",
+          "x": 0.355,
+          "y": 0.18,
+          "w": 0.12,
+          "d": 0.72
+        },
+        {
+          "id": "bowling-lane-3",
+          "kind": "bowling-lane",
+          "x": 0.49999999999999994,
+          "y": 0.18,
+          "w": 0.12,
+          "d": 0.72
+        },
+        {
+          "id": "bowling-lane-4",
+          "kind": "bowling-lane",
+          "x": 0.645,
+          "y": 0.18,
+          "w": 0.12,
+          "d": 0.72
+        },
+        {
+          "id": "bowling-lane-5",
+          "kind": "bowling-lane",
+          "x": 0.79,
+          "y": 0.18,
+          "w": 0.12,
+          "d": 0.72
+        }
+      ]
+    }
+  ],
+  "connections": []
+}

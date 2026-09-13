@@ -1,0 +1,113 @@
+{
+  "partitions": true,
+  "rooms": [
+    {
+      "id": "stall-0",
+      "kind": "storage",
+      "floor": 0,
+      "x": 0,
+      "y": 0,
+      "w": 0.25,
+      "d": 1,
+      "finish": "plank",
+      "contents": [
+        {
+          "id": "stall-0-0",
+          "kind": "pallet",
+          "x": 0.1,
+          "y": 0.1,
+          "w": 0.3,
+          "d": 0.22,
+          "h": 0.5,
+          "rotation": 0
+        }
+      ]
+    },
+    {
+      "id": "stall-1",
+      "kind": "storage",
+      "floor": 0,
+      "x": 0.25,
+      "y": 0,
+      "w": 0.25,
+      "d": 1,
+      "finish": "plank",
+      "contents": [
+        {
+          "id": "stall-1-0",
+          "kind": "pallet",
+          "x": 0.1,
+          "y": 0.1,
+          "w": 0.3,
+          "d": 0.22,
+          "h": 0.5,
+          "rotation": 0
+        }
+      ]
+    },
+    {
+      "id": "stall-2",
+      "kind": "storage",
+      "floor": 0,
+      "x": 0.5,
+      "y": 0,
+      "w": 0.25,
+      "d": 1,
+      "finish": "plank",
+      "contents": [
+        {
+          "id": "stall-2-0",
+          "kind": "pallet",
+          "x": 0.1,
+          "y": 0.1,
+          "w": 0.3,
+          "d": 0.22,
+          "h": 0.5,
+          "rotation": 0
+        }
+      ]
+    },
+    {
+      "id": "stall-3",
+      "kind": "storage",
+      "floor": 0,
+      "x": 0.75,
+      "y": 0,
+      "w": 0.25,
+      "d": 1,
+      "finish": "plank",
+      "contents": [
+        {
+          "id": "stall-3-0",
+          "kind": "pallet",
+          "x": 0.1,
+          "y": 0.1,
+          "w": 0.3,
+          "d": 0.22,
+          "h": 0.5,
+          "rotation": 0
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "a": "stall-0",
+      "b": "stall-1",
+      "at": 0.5,
+      "width": 0.35
+    },
+    {
+      "a": "stall-1",
+      "b": "stall-2",
+      "at": 0.5,
+      "width": 0.35
+    },
+    {
+      "a": "stall-2",
+      "b": "stall-3",
+      "at": 0.5,
+      "width": 0.35
+    }
+  ]
+}

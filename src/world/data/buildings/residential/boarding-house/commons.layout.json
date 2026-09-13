@@ -1,0 +1,58 @@
+{
+  "partitions": true,
+  "rooms": [
+    {
+      "id": "common-room",
+      "kind": "living",
+      "floor": 0,
+      "x": 0,
+      "y": 0,
+      "w": 1,
+      "d": 1,
+      "finish": "plank",
+      "contents": [
+        {
+          "id": "west-sofa",
+          "kind": "sofa",
+          "x": 0.05,
+          "y": 0.12,
+          "w": 0.25,
+          "d": 0.2,
+          "h": 0.8,
+          "rotation": 0
+        },
+        {
+          "id": "east-sofa",
+          "kind": "sofa",
+          "x": 0.7,
+          "y": 0.12,
+          "w": 0.25,
+          "d": 0.2,
+          "h": 0.8,
+          "rotation": 0
+        },
+        {
+          "id": "dining-table",
+          "kind": "table",
+          "x": 0.25,
+          "y": 0.68,
+          "w": 0.5,
+          "d": 0.22,
+          "h": 0.65,
+          "rotation": 0
+        },
+        {
+          "id": "shared-counter",
+          "kind": "counter",
+          "x": 0.43,
+          "y": 0.04,
+          "w": 0.14,
+          "d": 0.09,
+          "h": 0.8,
+          "rotation": 0
+        }
+      ]
+    }
+  ],
+  "connections": []
+}

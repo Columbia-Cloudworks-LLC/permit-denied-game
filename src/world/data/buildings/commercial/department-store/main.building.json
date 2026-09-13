@@ -1,0 +1,70 @@
+{
+  "version": 1,
+  "id": "department-store",
+  "label": "DEPARTMENT STORE",
+  "w": 12,
+  "d": 11,
+  "floors": 4,
+  "kind": "shop",
+  "construction": "concrete-bearing",
+  "roof": "flat",
+  "theme": "corner",
+  "windowStride": 2,
+  "features": {
+    "porch": false,
+    "awning": false,
+    "parapet": true,
+    "chimney": false,
+    "garage": false
+  },
+  "zones": {
+    "residential": 0,
+    "commercial": 0,
+    "industrial": 0
+  },
+  "traits": {
+    "use": [
+      "department-store"
+    ],
+    "form": [
+      "B55"
+    ],
+    "style": [
+      "corner"
+    ]
+  },
+  "partitions": true,
+  "sections": [
+    {
+      "id": "retail",
+      "role": "retail",
+      "x": 0,
+      "y": 0,
+      "w": 12,
+      "d": 11,
+      "floor": 0,
+      "floors": 3,
+      "layout": "retail.layout.json"
+    },
+    {
+      "id": "furniture",
+      "role": "furniture",
+      "x": 0,
+      "y": 0,
+      "w": 12,
+      "d": 11,
+      "floor": 3,
+      "floors": 1,
+      "layout": "furniture.layout.json"
+    }
+  ],
+  "connections": [],
+  "openings": [
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.5,
+      "kind": "door"
+    }
+  ]
+}

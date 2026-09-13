@@ -13,6 +13,7 @@ import type {
 export type LotCompat = LotZone | "agricultural" | "roadside" | "yard" | "driveway" | "frontage" | "utility";
 
 export interface RenderBox {
+  slope?: boolean;
   along: number;
   across: number;
   z: number;
@@ -106,6 +107,19 @@ const TRUNK = { t: 0x8a6238, l: 0x4a3018, r: 0x6a4428 };
 
 export const ASSET_CATALOG: readonly AssetDef[] = [
   ...CONTENT_ASSETS,
+  asset({
+    id: 'loading-dock-bumpers', family: 'commercial', tags: ['commercial', 'utility'],
+    footprint: { w: 1.8, d: .28, h: .62 }, collision: { w: 1.8, d: .28 },
+    material: 'metal', hp: 18, mass: 1.4, resistance: .6, bladeMul: 1, trackHazard: 0, cash: 8,
+    destruction: 'crush', debris: debris(2, 2, 5, .55, .3, 'panel'), variants: 1,
+    boxes: [-.65, .65].flatMap(along => [
+      box(along, 0, 0, .45, .13, .6, MET.t, MET.l, MET.r),
+      box(along, .09, .06, .32, .18, .46, DARK.t, DARK.l, DARK.r),
+      box(along, .19, .24, .28, .025, .035, MET.t, MET.l, MET.r),
+    ]),
+    zones: ['yard'], roadsideOk: false, minClear: .05, sparks: true, birdGag: false,
+    explodeRadius: 0, explodeImpulse: 0, explodeDamage: 0, yawResist: .8,
+  }),
   asset({
     id: "fence",
     family: "residential",

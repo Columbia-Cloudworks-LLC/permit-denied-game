@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "id": "manufactured-home",
+  "label": "SINGLE WIDE HOME",
+  "w": 10,
+  "d": 3,
+  "floors": 1,
+  "kind": "house",
+  "construction": "timber-house",
+  "roof": "gable",
+  "theme": "ranch",
+  "windowStride": 2,
+  "features": {
+    "porch": false,
+    "awning": false,
+    "parapet": false,
+    "chimney": false,
+    "garage": false
+  },
+  "zones": {
+    "residential": 0,
+    "commercial": 0,
+    "industrial": 0
+  },
+  "traits": {
+    "use": [
+      "manufactured-home"
+    ],
+    "form": [
+      "B08"
+    ],
+    "style": [
+      "ranch"
+    ]
+  },
+  "partitions": true,
+  "sections": [
+    {
+      "id": "home",
+      "role": "home",
+      "x": 0,
+      "y": 0,
+      "w": 10,
+      "d": 3,
+      "floor": 0,
+      "floors": 1,
+      "layout": "home.layout.json"
+    }
+  ],
+  "connections": [],
+  "openings": [
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.5,
+      "kind": "door"
+    }
+  ]
+}

@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "id": "neighborhood-clinic",
+  "label": "NEIGHBORHOOD CLINIC",
+  "w": 9,
+  "d": 5,
+  "floors": 1,
+  "kind": "shop",
+  "construction": "brick-mixed-use",
+  "roof": "flat",
+  "theme": "civic",
+  "windowStride": 2,
+  "features": {
+    "porch": false,
+    "awning": false,
+    "parapet": true,
+    "chimney": false,
+    "garage": false
+  },
+  "zones": {
+    "residential": 0,
+    "commercial": 0,
+    "industrial": 0
+  },
+  "traits": {
+    "use": [
+      "neighborhood-clinic"
+    ],
+    "form": [
+      "B45"
+    ],
+    "style": [
+      "civic"
+    ]
+  },
+  "partitions": true,
+  "sections": [
+    {
+      "id": "clinic",
+      "role": "clinic",
+      "x": 0,
+      "y": 0,
+      "w": 9,
+      "d": 5,
+      "floor": 0,
+      "floors": 1,
+      "layout": "clinic.layout.json"
+    }
+  ],
+  "connections": [],
+  "openings": [
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.5,
+      "kind": "door"
+    }
+  ]
+}

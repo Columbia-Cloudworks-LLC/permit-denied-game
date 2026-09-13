@@ -1,0 +1,58 @@
+{
+  "partitions": true,
+  "rooms": [
+    {
+      "id": "switching-room",
+      "kind": "production",
+      "floor": 0,
+      "x": 0,
+      "y": 0,
+      "w": 1,
+      "d": 1,
+      "finish": "concrete",
+      "contents": [
+        {
+          "id": "switching-room-0",
+          "kind": "rack",
+          "x": 0.08,
+          "y": 0.1,
+          "w": 0.12,
+          "d": 0.7,
+          "h": 1.8,
+          "rotation": 0
+        },
+        {
+          "id": "switching-room-1",
+          "kind": "rack",
+          "x": 0.2925,
+          "y": 0.1,
+          "w": 0.12,
+          "d": 0.7,
+          "h": 1.8,
+          "rotation": 0
+        },
+        {
+          "id": "switching-room-2",
+          "kind": "rack",
+          "x": 0.505,
+          "y": 0.1,
+          "w": 0.12,
+          "d": 0.7,
+          "h": 1.8,
+          "rotation": 0
+        },
+        {
+          "id": "switching-room-3",
+          "kind": "rack",
+          "x": 0.7174999999999999,
+          "y": 0.1,
+          "w": 0.12,
+          "d": 0.7,
+          "h": 1.8,
+          "rotation": 0
+        }
+      ]
+    }
+  ],
+  "connections": []
+}

@@ -46,8 +46,8 @@ describe("sandbox session rules", () => {
   it("parses sandbox URL without treating a missing seed as zero", () => {
     expect(parseSessionFromSearch("?sandbox=1")).toMatchObject({
       kind: "sandbox",
-      district: "classic",
-      seed: 0x0ddba11,
+      district: "d10",
+      seed: 0x10d15c7,
       ranchFocus: false,
     });
     expect(parseSessionFromSearch("?sandbox=1&seed=0").seed).toBe(0);

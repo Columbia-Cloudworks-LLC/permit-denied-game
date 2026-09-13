@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "id": "contractor-yard",
+  "label": "CONTRACTOR YARD",
+  "w": 53,
+  "d": 30,
+  "buildings": [
+    {
+      "id": "workshop",
+      "building": "contractor-workshop",
+      "x": 3,
+      "y": 3
+    },
+    {
+      "id": "depot",
+      "building": "freight-transfer-depot",
+      "x": 24,
+      "y": 3
+    }
+  ],
+  "equipment": [
+    {
+      "id": "pallets",
+      "asset": "pallet-stack",
+      "x": 8,
+      "y": 21
+    },
+    {
+      "id": "crates",
+      "asset": "crate-stack",
+      "x": 15,
+      "y": 22
+    },
+    {
+      "id": "equipment",
+      "asset": "farm-implement",
+      "x": 31,
+      "y": 21
+    },
+    {
+      "id": "fuel",
+      "asset": "propane-tank",
+      "x": 44,
+      "y": 21
+    },
+    {
+      "id": "dock-bumpers",
+      "asset": "loading-dock-bumpers",
+      "x": 34,
+      "y": 9
+    }
+  ]
+}

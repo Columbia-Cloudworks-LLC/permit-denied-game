@@ -1,0 +1,111 @@
+{
+  "version": 1,
+  "id": "self-storage-row",
+  "label": "SELF STORAGE ROW",
+  "kind": "industrial",
+  "w": 12,
+  "d": 3,
+  "floors": 1,
+  "roof": "shed",
+  "theme": "warehouse",
+  "windowStride": 4,
+  "features": {
+    "porch": false,
+    "awning": false,
+    "parapet": false,
+    "chimney": false,
+    "garage": false
+  },
+  "construction": "steel-hall",
+  "zones": {
+    "residential": 0,
+    "commercial": 0,
+    "industrial": 0
+  },
+  "traits": {
+    "use": [
+      "self-storage-row"
+    ],
+    "form": [
+      "B22",
+      "sectioned"
+    ],
+    "scale": [
+      "broad"
+    ]
+  },
+  "partitions": true,
+  "connections": [],
+  "sections": [
+    {
+      "id": "unit-1",
+      "role": "unit-1",
+      "x": 0,
+      "y": 0,
+      "w": 3,
+      "d": 3,
+      "floor": 0,
+      "floors": 1,
+      "layout": "unit-1.layout.json"
+    },
+    {
+      "id": "unit-2",
+      "role": "unit-2",
+      "x": 3,
+      "y": 0,
+      "w": 3,
+      "d": 3,
+      "floor": 0,
+      "floors": 1,
+      "layout": "unit-2.layout.json"
+    },
+    {
+      "id": "unit-3",
+      "role": "unit-3",
+      "x": 6,
+      "y": 0,
+      "w": 3,
+      "d": 3,
+      "floor": 0,
+      "floors": 1,
+      "layout": "unit-3.layout.json"
+    },
+    {
+      "id": "unit-4",
+      "role": "unit-4",
+      "x": 9,
+      "y": 0,
+      "w": 3,
+      "d": 3,
+      "floor": 0,
+      "floors": 1,
+      "layout": "unit-4.layout.json"
+    }
+  ],
+  "openings": [
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.125,
+      "kind": "loading"
+    },
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.375,
+      "kind": "loading"
+    },
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.625,
+      "kind": "loading"
+    },
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.875,
+      "kind": "loading"
+    }
+  ]
+}

@@ -74,6 +74,7 @@ export function drawOrientedIsoBox(
   left: number,
   right: number,
   alpha = 1,
+  slope = false,
 ): void {
   const fx = Math.cos(heading);
   const fy = Math.sin(heading);
@@ -92,7 +93,7 @@ export function drawOrientedIsoBox(
     y: cy + fy * p.a + ry * p.c,
   }));
   const bot = world.map((p) => worldToScreen(p.x, p.y, z0));
-  const lid = world.map((p) => worldToScreen(p.x, p.y, z0 + h));
+  const lid = world.map((p, i) => worldToScreen(p.x, p.y, z0 + h * (slope ? (hw - local[i]!.c) / width : 1)));
 
   const faces: { depth: number; color: number; pts: number[] }[] = [];
   const edges = [

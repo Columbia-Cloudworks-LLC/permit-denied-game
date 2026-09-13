@@ -1,7 +1,7 @@
 {
   "name": "permit-denied",
   "private": true,
-  "version": "1.0.10",
+  "version": "1.0.11",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:mobile": "node scripts/verify-mobile.mjs",
+    "capture:assets": "node scripts/capture-assets.mjs",
     "screenshot:title": "node scripts/capture-title.mjs"
   },
   "dependencies": {

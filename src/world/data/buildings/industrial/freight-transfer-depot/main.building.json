@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "id": "freight-transfer-depot",
+  "label": "FREIGHT TRANSFER DEPOT",
+  "w": 18,
+  "d": 5,
+  "floors": 1,
+  "kind": "industrial",
+  "construction": "steel-hall",
+  "roof": "flat",
+  "theme": "warehouse",
+  "windowStride": 2,
+  "features": {
+    "porch": false,
+    "awning": false,
+    "parapet": true,
+    "chimney": false,
+    "garage": false
+  },
+  "zones": {
+    "residential": 0,
+    "commercial": 0,
+    "industrial": 0
+  },
+  "traits": {
+    "use": [
+      "freight-transfer-depot"
+    ],
+    "form": [
+      "B28"
+    ],
+    "style": [
+      "warehouse"
+    ]
+  },
+  "partitions": true,
+  "sections": [
+    {
+      "id": "depot",
+      "role": "depot",
+      "x": 0,
+      "y": 0,
+      "w": 18,
+      "d": 5,
+      "floor": 0,
+      "floors": 1,
+      "layout": "depot.layout.json"
+    }
+  ],
+  "connections": [],
+  "openings": [
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.5,
+      "kind": "door"
+    }
+  ]
+}

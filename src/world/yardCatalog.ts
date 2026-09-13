@@ -1,4 +1,4 @@
-import { CELL } from '../game/constants';
+import { CELL, FLOOR_Z } from '../game/constants';
 import { createBuilding, createBuildingFromDefinition } from '../structure/building';
 import { makeFixture } from '../structure/interior';
 import type { Building, FixtureKind, Prop } from '../structure/types';
@@ -11,6 +11,8 @@ export interface YardAsset {
   id: string; name: string; category: string; material: string; destruction: string;
   variants: number; w: number; d: number; clearance: number;
   prop?: AssetDef; archetype?: Archetype; fixture?: FixtureKind;
+  fixtureSize?: { w:number; d:number; h:number };
+  fixtureLevels?: number;
   site?: BuildingSite;
 }
 export function discoverYardAssets(props: readonly AssetDef[] = ASSET_CATALOG, buildings: readonly Archetype[] = ARCHETYPES, sites: readonly BuildingSite[] = BUILDING_SITES): YardAsset[] {
@@ -27,7 +29,10 @@ export function discoverYardAssets(props: readonly AssetDef[] = ASSET_CATALOG, b
       clearance: Math.max(3, a.minClear, a.footprint.h, a.explodeRadius + 3), prop: a })),
     ...props.filter(a => fixtures.has(a.id)).map(a => ({ id: `fixture:${a.id}`, name: `${a.id.slice(9)} (interior)`,
       category: 'fixture', material: a.material, destruction: a.destruction, variants: 1,
-      w: 5 * CELL, d: 4 * CELL, clearance: 5, fixture: a.id.slice(9) as FixtureKind })),
+      w: Math.max(5,Math.ceil((a.footprint.w+3)/CELL)) * CELL,
+      d: Math.max(4,Math.ceil((a.footprint.d+3)/CELL)) * CELL,
+      clearance: 5, fixture: a.id.slice(9) as FixtureKind, fixtureSize: a.footprint,
+      fixtureLevels: Math.ceil((a.footprint.h+.2)/FLOOR_Z) })),
   ].sort((a, b) => a.category.localeCompare(b.category) || a.id.localeCompare(b.id));
 }
 export function yardAssetIssue(a: YardAsset): string | undefined {
@@ -40,7 +45,7 @@ export function yardGridSlots(a: YardAsset): number {
   if (a.site) return a.site.buildings.reduce((n, member) => {
     const def = archetypeById(member.building); return n + def.w * def.d * def.floors;
   }, 0);
-  return a.fixture ? 40 : 0;
+  return a.fixture ? Math.round(a.w/CELL)*Math.round(a.d/CELL)*2*(a.fixtureLevels??1) : 0;
 }
 export interface YardBox { x: number; y: number; w: number; d: number }
 export interface YardBay extends YardBox { key: string; asset: YardAsset; variant: number; baseline: boolean; building?: Building; prop?: Prop; site?: { buildings: Building[]; props: Prop[] } }
@@ -55,7 +60,7 @@ export function layoutYard(assets = discoverYardAssets(), x = 8, y = 12): YardBa
   for (const asset of assets) {
     if (yardAssetIssue(asset)) continue;
     const w = asset.w + asset.clearance * 2, d = asset.d + asset.clearance * 2;
-    if (cx > x && (cx + w > x + 105 || category !== asset.category)) { cx = x; cy += row + 6; row = 0; }
+    if (cx > x && (cx + w > x + 140 || category !== asset.category)) { cx = x; cy += row + 6; row = 0; }
     out.push({ key: `baseline:${asset.id}`, asset, variant: 0, baseline: true, x: cx, y: cy, w, d });
     cx += w + 6; row = Math.max(row, d); category = asset.category;
   }
@@ -69,16 +74,19 @@ export function instantiateBay(bay: YardBay): void {
     // Use the production constructor. Source registry additions need no yard placement edits.
     bay.building = createBuildingFromDefinition(a.archetype, a.name, x, y);
   } else if (a.fixture) {
-    const b = createBuilding({ name: a.name, kind: 'shop', x, y, w: 5, d: 4, floors: 2,
+    const levels=a.fixtureLevels??1;
+    const b = createBuilding({ name: a.name, kind: 'shop', x, y, w: Math.round(a.w/CELL), d: Math.round(a.d/CELL), floors: levels*2,
       roof: 'flat', construction: archetypeById('rivertown').construction, openings: [],
       layout: { partitions: false,
-        rooms: [0, 1].map(floor => ({ id: `room-${floor}`, kind: 'living', floor, x: 0, y: 0, w: 1, d: 1, finish: 'plank', contents: [] })) } });
+        rooms: Array.from({length:levels*2},(_,floor) => ({ id: `room-${floor}`, kind: 'living', floor, x: 0, y: 0, w: 1, d: 1, finish: 'plank', contents: [] })) } });
+    if(levels>1)b.floorTiles=b.floorTiles.map(t=>t.floor%levels!==0 && t.gx>0 && t.gx<b.w-1 && t.gy>0 && t.gy<b.d-1?{...t,void:true}:t);
     // Open-front contextual host: retain floor tiles under the opening, so the
     // production envelope/exposure and ground collision paths are active at entry.
     for (const cell of b.cells) if (cell.gy === b.d - 1 && cell.gx >= 1 && cell.gx <= 3) {
       cell.state = 'gone'; cell.hp = 0;
     }
-    b.fixtures = [0, 1].map(floor => makeFixture(b, floor + 1, a.fixture!, 'living', floor, x + 2, y + 2, 1, 1, 1));
+    const size=a.fixtureSize??{w:1,d:1,h:1};
+    b.fixtures = [0, levels].map(floor => makeFixture(b, floor + 1, a.fixture!, 'living', floor, x + 2, y + 2, size.w, size.d, size.h));
     bay.building = b;
   } else if (a.prop) bay.prop = spawnAssetDefinition(a.prop, x, y, 0, bay.variant);
 }

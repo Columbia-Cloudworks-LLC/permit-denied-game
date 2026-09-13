@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "id": "textile-mill",
+  "label": "TEXTILE MILL",
+  "w": 14,
+  "d": 7,
+  "floors": 4,
+  "kind": "shop",
+  "construction": "brick-mixed-use",
+  "roof": "flat",
+  "theme": "corner",
+  "windowStride": 2,
+  "features": {
+    "porch": false,
+    "awning": false,
+    "parapet": true,
+    "chimney": false,
+    "garage": false
+  },
+  "zones": {
+    "residential": 0,
+    "commercial": 0,
+    "industrial": 0
+  },
+  "traits": {
+    "use": [
+      "textile-mill"
+    ],
+    "form": [
+      "B25"
+    ],
+    "style": [
+      "corner"
+    ]
+  },
+  "partitions": true,
+  "sections": [
+    {
+      "id": "mill",
+      "role": "mill",
+      "x": 0,
+      "y": 0,
+      "w": 14,
+      "d": 7,
+      "floor": 0,
+      "floors": 4,
+      "layout": "mill.layout.json"
+    }
+  ],
+  "connections": [],
+  "openings": [
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.5,
+      "kind": "door"
+    }
+  ]
+}

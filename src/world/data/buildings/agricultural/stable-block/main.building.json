@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "id": "stable-block",
+  "label": "STABLE BLOCK",
+  "w": 12,
+  "d": 4,
+  "floors": 1,
+  "kind": "house",
+  "construction": "timber-house",
+  "roof": "gable",
+  "theme": "ranch",
+  "windowStride": 2,
+  "features": {
+    "porch": false,
+    "awning": false,
+    "parapet": false,
+    "chimney": false,
+    "garage": false
+  },
+  "zones": {
+    "residential": 0,
+    "commercial": 0,
+    "industrial": 0
+  },
+  "traits": {
+    "use": [
+      "stable-block"
+    ],
+    "form": [
+      "B33"
+    ],
+    "style": [
+      "ranch"
+    ]
+  },
+  "partitions": true,
+  "sections": [
+    {
+      "id": "stables",
+      "role": "stables",
+      "x": 0,
+      "y": 0,
+      "w": 12,
+      "d": 4,
+      "floor": 0,
+      "floors": 1,
+      "layout": "stables.layout.json"
+    }
+  ],
+  "connections": [],
+  "openings": [
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.5,
+      "kind": "loading"
+    }
+  ]
+}

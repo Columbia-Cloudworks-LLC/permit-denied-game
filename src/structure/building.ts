@@ -1,6 +1,9 @@
-import { initializeCore, stepCoreCollapse, type CoreImpact } from './coreCollapse';
+import { automaticCore, DETAILED_FLOORS, initializeCore, stepCoreCollapse, type CoreImpact } from './coreCollapse';
+import { initializeElevatedTank, stepElevatedTank } from './elevatedTank';
+import { siloAt, siloSupports, stepSilos } from './silos';
+import { initializeFacadeDetails } from './facadeDetails';
 import { CELL, FLOOR_Z } from "../game/constants";
-import { validateConstruction, validateLayout, roomAt, type LayoutDef, type OpeningDef, type ConstructionDef } from "./construction";
+import { validateConstruction, validateLayout, roomAt, openingCell, type LayoutDef, type OpeningDef, type ConstructionDef } from "./construction";
 import { debrisKind, ParticlePool } from "../fx/particles";
 import { archetypeById, fullMask, occupiedMask, validateBuildingDefinition, type ArchetypeId, type Archetype } from "../world/archetypes";
 import type {
@@ -51,6 +54,7 @@ function makeCell(gx: number, gy: number, floor: number, material: Material, isS
 }
 
 export interface BuildingSpec {
+  facadeDetails?: import('./facadeDetails').FacadeDetailDef[];
   construction: ConstructionDef;
   layout: LayoutDef;
   openings: OpeningDef[];
@@ -121,11 +125,9 @@ function applyFacade(
 
 function placeOpenings(spec: BuildingSpec, grid: Cell[][][], occupied: boolean[][][]): void {
   for (const opening of spec.openings) {
-    const gy = opening.cell?.y ?? spec.d - 1;
-    const south = Array.from({ length: spec.w }, (_, gx) => gx).filter(gx => occupied[opening.floor]?.[gx]?.[gy] && !occupied[opening.floor]?.[gx]?.[gy + 1]);
-    const gx = opening.cell?.x ?? south[Math.min(south.length - 1, Math.floor(opening.at * south.length))];
-    if (gx === undefined) throw new Error('Entrance has no occupied frontage');
-    if (!south.includes(gx)) throw new Error('Entrance must touch exposed south frontage');
+    const resolved = openingCell(opening, spec.w, spec.d, occupied);
+    if (!resolved) throw new Error('Entrance must touch exposed south frontage');
+    const { gx, gy, frontage: south } = resolved;
     const cell = grid[opening.floor]![gx]![gy]!;
     if (opening.kind === 'loading') {
       for (const x of south) if (Math.abs(x - gx) <= 1) grid[opening.floor]![x]![gy]!.loadingS = true;
@@ -181,7 +183,13 @@ export function createBuilding(spec: BuildingSpec, definition?: Archetype): Buil
   if (![spec.w, spec.d, spec.floors].every(n => Number.isInteger(n) && n > 0 && n <= 64) || ![spec.x, spec.y, cellSize].every(Number.isFinite) || cellSize <= 0) throw new Error('Invalid building dimensions or placement');
   if (spec.w * spec.d * spec.floors > 8192) throw new Error('Building exceeds 8192 grid slots');
   const archetype = definition ?? (spec.archetypeId ? archetypeById(spec.archetypeId) : undefined);
+  if(archetype?.silos && (spec.w!==archetype.w || spec.d!==archetype.d || spec.floors!==archetype.floors))throw new Error('Silo assemblies require authored dimensions');
+  const frame = archetype?.canopy ?? archetype?.openDecks;
+  if (archetype?.openDecks && (spec.w !== archetype.w || spec.d !== archetype.d || spec.floors !== archetype.floors)) throw new Error('Open decks require their authored frame dimensions');
+  if (archetype?.floorVoids?.length && (spec.w !== archetype.w || spec.d !== archetype.d || spec.floors !== archetype.floors)) throw new Error('Floor openings require authored building dimensions');
+  if (archetype?.canopy && (spec.w !== archetype.w || spec.d !== archetype.d || spec.floors !== 1 || spec.roof !== 'flat')) throw new Error('Canopies require their authored frame dimensions');
   if (archetype?.coreCollapse && (spec.w !== archetype.w || spec.d !== archetype.d || spec.floors !== archetype.floors || spec.roof !== 'flat')) throw new Error('Core-collapse buildings require their authored dimensions and flat roof; create a variation to move supports');
+  if (archetype?.elevatedTank && (spec.w !== archetype.w || spec.d !== archetype.d || spec.floors !== archetype.floors || spec.roof !== 'flat' || spec.layout.rooms.length || spec.layout.partitions || spec.openings.length)) throw new Error('Elevated tanks require their authored frame dimensions and no enclosed rooms');
   const construction = spec.construction;
   {
     const issues = validateConstruction(construction);
@@ -203,7 +211,7 @@ export function createBuilding(spec: BuildingSpec, definition?: Archetype): Buil
   const roofAxis: RoofAxis = spec.roofAxis ?? archetype?.roofAxis ?? (spec.w >= spec.d ? "x" : "y");
   const windowStride = spec.windowStride ?? archetype?.windowStride ?? 2;
   const filled: BuildingSpec = { ...spec, theme, windowStride };
-  const layoutIssues = validateLayout(spec.layout, spec.w, spec.d, spec.floors, mask);
+  const layoutIssues = archetype?.elevatedTank ? [] : validateLayout(spec.layout, spec.w, spec.d, spec.floors, mask, spec.openings);
   if (layoutIssues.length) throw new Error(`Invalid layout: ${layoutIssues.join("; ")}`);
   const grid: Cell[][][] = [];
   const cells: Cell[] = [];
@@ -217,7 +225,9 @@ export function createBuilding(spec: BuildingSpec, definition?: Archetype): Buil
         const occN = (x: number, y: number) => mask[floor]?.[x]?.[y] === true;
         const edge = !occN(gx - 1, gy) || !occN(gx + 1, gy) || !occN(gx, gy - 1) || !occN(gx, gy + 1);
         const coreSupport = floor === 0 && !!archetype?.coreCollapse?.supports.some(p => p.x === gx && p.y === gy);
-        const live = occupied && (edge || coreSupport);
+        const silo=floor===0?siloAt(archetype?.silos??[],gx,gy):undefined;
+        const siloMount=silo?siloSupports(silo).find(p=>p.gx===gx && p.gy===gy):undefined;
+        const live = occupied && (silo ? !!siloMount : frame ? !(archetype?.openDecks && floor === spec.floors - 1) && frame.columns.some(p => p.x === gx && p.y === gy) : (edge || coreSupport));
         const mat = construction.structure;
         const cell = makeCell(gx, gy, floor, mat, live);
         cell.exterior = { north: !occN(gx, gy - 1), south: !occN(gx, gy + 1), west: !occN(gx - 1, gy), east: !occN(gx + 1, gy) };
@@ -228,16 +238,26 @@ export function createBuilding(spec: BuildingSpec, definition?: Archetype): Buil
           if (cell.role === "column") cell.cladding = { material: construction.skin, hp: 12, maxHp: 12, shed: false };
           if (construction.walls === "frame" && cell.role === "wall") {
             cell.hp = cell.maxHp = materialHp(mat) * .35;
+            if (construction.skin === 'glass') {
+              cell.material = 'glass';
+              cell.hp = cell.maxHp = materialHp('glass');
+            }
           }
         }
         if (archetype?.coreCollapse) { cell.isSupport = coreSupport; cell.coreSupport = coreSupport; if (coreSupport) cell.role = "column"; }
+        if (frame) { cell.role = 'column'; cell.isSupport = true; cell.cladding = undefined; cell.hp = cell.maxHp = materialHp(mat); }
         if (!live) {
           cell.state = "gone";
           cell.hp = 0;
           col.push(cell);
           continue;
         }
-        applyFacade(cell, filled, mask, gx, gy, floor);
+        if (!frame && !silo) applyFacade(cell, filled, mask, gx, gy, floor);
+        if(silo && siloMount) {
+          cell.silo={id:silo.id,cx:(silo.gx+silo.diameter/2)*cellSize,cy:(silo.gy+silo.diameter/2)*cellSize,radius:silo.diameter*cellSize/2,angle:siloMount.angle};
+          cell.exterior={north:false,south:false,east:false,west:false};cell.role='wall';cell.isSupport=true;cell.cladding=undefined;
+          cell.material='metal';cell.hp=cell.maxHp=materialHp('metal');
+        }
         col.push(cell);
         cells.push(cell);
       }
@@ -249,7 +269,7 @@ export function createBuilding(spec: BuildingSpec, definition?: Archetype): Buil
 
   // The bearing line depends only on floor and x, not on each individual slab tile.
   const bearing = Array.from({ length: spec.floors }, (_, floor) =>
-    Array.from({ length: spec.w }, (_, gx) => cells.filter(c => c.floor === floor && c.isSupport && Math.abs(c.gx - gx) <= 1)
+    Array.from({ length: spec.w }, (_, gx) => cells.filter(c => c.floor === floor && c.isSupport && (archetype?.openDecks || Math.abs(c.gx - gx) <= 1))
       .map(c => ({ gx: c.gx, gy: c.gy }))));
   if (archetype?.sections) for (const cell of cells) {
     // Setbacks bear on the lower slab's existing bearing line. Transfer disappears
@@ -260,6 +280,9 @@ export function createBuilding(spec: BuildingSpec, definition?: Archetype): Buil
   }
 
   const building: Building = {
+    ...(archetype?.silos?{silos:archetype.silos.map(definition=>({definition,phase:'standing' as const,progress:0,dx:0,dy:0}))}:{}),
+    ...(archetype?.canopy ? { canopy: true } : {}),
+    ...(archetype?.openDecks ? { openDecks: true } : {}),
     visualRevision: 1,
     retired: false,
     settledAwayTime: 0,
@@ -269,6 +292,7 @@ export function createBuilding(spec: BuildingSpec, definition?: Archetype): Buil
     floorTiles: Array.from({ length: spec.floors }, (_, floor) =>
       Array.from({ length: spec.w }, (_, gx) => Array.from({ length: spec.d }, (_, gy) => ({
         gx, gy, floor, roomId: "", state: "intact" as const, fallT: 0,
+        ...(archetype?.floorVoids?.some(v=>v.floor===floor && gx>=v.x && gx<v.x+v.w && gy>=v.y && gy<v.y+v.d)?{void:true}:{}),
         support: floor === 0 ? [] : bearing[floor - 1]![gx]!,
       })).filter(t => mask[floor]?.[gx]?.[t.gy])).flat()).flat(),
     id: nextId++,
@@ -287,6 +311,7 @@ export function createBuilding(spec: BuildingSpec, definition?: Archetype): Buil
     roofAxis,
     windowStride,
     features,
+    facadeDetails: structuredClone(spec.facadeDetails ?? archetype?.facadeDetails ?? []),
     decorBoxes: makeDecor(spec, cellSize, features),
     fixtures: [],
     cells,
@@ -300,10 +325,19 @@ export function createBuilding(spec: BuildingSpec, definition?: Archetype): Buil
     collisionDirty: true,
     roofDirty: false,
   };
-  for (const tile of building.floorTiles) tile.roomId = roomAt(building, tile.gx, tile.gy, tile.floor)!.id;
-  building.roofs = generateRoofs(building);
-  building.fixtures = generateInteriors(building);
+  if(archetype?.elevatedTank) initializeElevatedTank(building, archetype.elevatedTank);
+  else {
+    for (const tile of building.floorTiles) tile.roomId = roomAt(building, tile.gx, tile.gy, tile.floor)!.id;
+    const allTiles=building.floorTiles;
+    if(archetype?.silos)building.floorTiles=allTiles.filter(t=>!siloAt(archetype.silos!,t.gx,t.gy));
+    building.roofs = archetype?.openDecks ? [] : generateRoofs(building);
+    building.floorTiles=allTiles;
+    if (archetype?.canopy) for (const roof of building.roofs) roof.support = archetype.canopy.columns.map(p => ({ gx: p.x, gy: p.y }));
+    building.fixtures = generateInteriors(building);
+  }
   if (archetype?.coreCollapse) initializeCore(building, archetype.coreCollapse);
+  else if (building.floors > DETAILED_FLOORS && !building.elevatedTank) initializeCore(building, automaticCore(building));
+  initializeFacadeDetails(building);
   return building;
 }
 
@@ -573,8 +607,13 @@ export function stepStructures(
   const roofSpawns: RoofDebrisSpawn[] = [];
 
   for (const building of buildings) {
+    if (building.elevatedTank) stepElevatedTank(building, dt, result, particles, events);
+    if (building.silos) {
+      stepSilos(building, dt, result, particles);
+      if (building.coreCollapse?.phase === 'settled') building.fullyDown = building.silos.every(s => s.phase === 'gone');
+    }
     if (building.coreCollapse) {
-      if (building.coreCollapse.phase === 'settled' || (building.coreCollapse.phase === 'standing' && !building.structureDirty)) { skipped++; continue; }
+      if ((building.coreCollapse.phase === 'settled' && !building.structureDirty) || (building.coreCollapse.phase === 'standing' && !building.structureDirty)) { skipped++; continue; }
       stepCoreCollapse(building, dt, result, particles, events); stepped++; continue;
     }
     if (building.fullyDown && !roofsNeedStep(building)) {
@@ -665,8 +704,8 @@ export function stepStructures(
     result.fixtureFrags.push(...interiors.frags);
     const cellsDown = building.cells.every((c) => c.state === "gone");
     const roofsDown = building.roofs.every((r) => r.state === "gone");
-    const floorsDown = !building.floorTiles.some(t => t.floor > 0 && t.state !== "gone");
-    if (cellsDown && roofsDown && floorsDown) building.fullyDown = true;
+    const floorsDown = !building.floorTiles.some(t => !t.void && t.floor > 0 && t.state !== "gone");
+    if (cellsDown && roofsDown && floorsDown && (!building.elevatedTank || building.elevatedTank.phase === 'gone') && (!building.silos || building.silos.every(s=>s.phase==='gone'))) building.fullyDown = true;
     building.structureDirty = buildingStillUnsettled(building);
     building.roofDirty = roofsNeedStep(building);
   }
@@ -681,6 +720,8 @@ export function stepStructures(
 }
 
 function buildingStillUnsettled(building: Building): boolean {
+  if (building.elevatedTank && ['warning','falling'].includes(building.elevatedTank.phase)) return true;
+  if (building.silos?.some(s=>s.phase==='falling')) return true;
   if (building.fullyDown) return false;
   if (building.floorTiles.some(t => t.state === "falling")) return true;
   for (const cell of building.cells) {
@@ -694,7 +735,7 @@ function buildingStillUnsettled(building: Building): boolean {
 /** Ground slabs persist. Upper slabs fall only when their authored bearing line is lost. */
 function stepFloorTiles(building: Building, dt: number, result: StructureStepResult): void {
   for (const tile of building.floorTiles) {
-    if (tile.floor === 0 || tile.state === "gone") continue;
+    if (tile.void || tile.floor === 0 || tile.state === "gone") continue;
     const supported = tile.support.some(s => {
       const cell = building.grid[tile.floor - 1]?.[s.gx]?.[s.gy];
       return cell && cellPresent(cell);

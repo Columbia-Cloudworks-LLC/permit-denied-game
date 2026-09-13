@@ -1,0 +1,99 @@
+{
+  "version": 1,
+  "id": "clock-hall",
+  "label": "CLOCK HALL",
+  "w": 11,
+  "d": 8,
+  "floors": 5,
+  "kind": "shop",
+  "construction": "brick-mixed-use",
+  "roof": "flat",
+  "theme": "civic",
+  "windowStride": 2,
+  "features": {
+    "porch": false,
+    "awning": false,
+    "parapet": true,
+    "chimney": false,
+    "garage": false
+  },
+  "zones": {
+    "residential": 0,
+    "commercial": 0,
+    "industrial": 0
+  },
+  "traits": {
+    "use": [
+      "clock-hall"
+    ],
+    "form": [
+      "B57"
+    ],
+    "style": [
+      "civic"
+    ]
+  },
+  "partitions": true,
+  "sections": [
+    {
+      "id": "hall",
+      "role": "hall",
+      "x": 0,
+      "y": 0,
+      "w": 11,
+      "d": 8,
+      "floor": 0,
+      "floors": 2,
+      "layout": "hall.layout.json"
+    },
+    {
+      "id": "clock",
+      "role": "clock",
+      "x": 4,
+      "y": 2,
+      "w": 3,
+      "d": 4,
+      "floor": 2,
+      "floors": 3,
+      "layout": "clock.layout.json"
+    }
+  ],
+  "connections": [],
+  "openings": [
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.5,
+      "kind": "door"
+    }
+  ],
+  "facadeDetails": [
+    {
+      "id": "hall-steps",
+      "kind": "entry-steps",
+      "floor": 0,
+      "gx": 4,
+      "gy": 7,
+      "side": "south",
+      "width": 3
+    },
+    {
+      "id": "south-clock",
+      "kind": "clock-face",
+      "floor": 4,
+      "gx": 4,
+      "gy": 5,
+      "side": "south",
+      "width": 3
+    },
+    {
+      "id": "east-clock",
+      "kind": "clock-face",
+      "floor": 4,
+      "gx": 6,
+      "gy": 2,
+      "side": "east",
+      "width": 4
+    }
+  ]
+}

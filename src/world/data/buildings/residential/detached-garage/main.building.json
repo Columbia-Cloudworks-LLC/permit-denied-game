@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "id": "detached-garage",
+  "label": "DETACHED GARAGE",
+  "kind": "house",
+  "w": 4,
+  "d": 4,
+  "floors": 1,
+  "roof": "gable",
+  "theme": "ranch",
+  "windowStride": 2,
+  "features": {
+    "porch": false,
+    "awning": false,
+    "parapet": false,
+    "chimney": false,
+    "garage": false
+  },
+  "construction": "timber-house",
+  "zones": {
+    "residential": 0,
+    "commercial": 0,
+    "industrial": 0
+  },
+  "traits": {
+    "use": [
+      "detached-garage"
+    ],
+    "form": [
+      "B01",
+      "single-volume"
+    ],
+    "scale": [
+      "neighborhood"
+    ]
+  },
+  "partitions": true,
+  "connections": [],
+  "sections": [
+    {
+      "id": "garage",
+      "role": "garage",
+      "x": 0,
+      "y": 0,
+      "w": 4,
+      "d": 4,
+      "floor": 0,
+      "floors": 1,
+      "layout": "garage.layout.json"
+    }
+  ],
+  "openings": [
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.5,
+      "kind": "loading"
+    }
+  ]
+}

@@ -339,6 +339,30 @@ function flatPlane(building: Building, cells: { gx: number; gy: number }[], id: 
   );
 }
 
+/** Three-cell teeth reset pitch at each clerestory. No overlap at internal seams. */
+function sawtoothPlanes(building: Building, cells: { gx: number; gy: number }[], axis: RoofAxis, id0: number): RoofSection[] {
+  const bounds = bbox(cells), out: RoofSection[] = [];
+  const first = axis === 'x' ? bounds.minX : bounds.minY;
+  const last = axis === 'x' ? bounds.maxX : bounds.maxY;
+  for (let start = first; start <= last; start += 3) {
+    const end = Math.min(last, start + 2);
+    const strip = cells.filter(c => (axis === 'x' ? c.gx : c.gy) >= start && (axis === 'x' ? c.gx : c.gy) <= end);
+    // Flat rectangle decomposition also handles a tooth intersecting a setback/hole.
+    for (const rectangle of stripFallback(building, strip, 'flat', axis, id0 + out.length)) {
+      const bb = bbox(roofCoverage(rectangle));
+      const box = worldBox(building, bb.minX, bb.maxX, bb.minY, bb.maxY, 0);
+      const z = wallTopZ(building.floors);
+      const points = [{ x: box.x0, y: box.y0 }, { x: box.x1, y: box.y0 }, { x: box.x1, y: box.y1 }, { x: box.x0, y: box.y1 }];
+      const toothStart = building[axis] + start * building.cellSize;
+      const width = (end - start + 1) * building.cellSize;
+      out.push({ ...makeSection(id0 + out.length, 'sawtooth', roofCoverage(rectangle),
+        points.map(p => ({ ...p, z: z + .92 * (p[axis] - toothStart) / width })), roofMaterial(building)),
+        tooth: { axis, minX: box.x0, maxX: box.x1, minY: box.y0, maxY: box.y1, eaveZ: z } });
+    }
+  }
+  return out;
+}
+
 function stripFallback(
   building: Building,
   cells: { gx: number; gy: number }[],
@@ -507,7 +531,7 @@ function industrialPanels(building: Building, bays: RoofSection[]): RoofSection[
       const covered = coverage.filter(c => c.gy >= gy && c.gy <= end);
       if (verts.length < 3 || !covered.length) continue;
       panels.push({ ...makeSection(panels.length + 1, bay.style, bay.support, verts, bay.material),
-        coverage: covered, bay: bearing });
+        coverage: covered, bay: bearing, tooth: bay.tooth });
     }
   }
   return panels;
@@ -548,6 +572,10 @@ function generateRoofLayer(building: Building): RoofSection[] {
   let nextId = 1;
   for (const comp of connected(cells)) {
     const axis = chooseAxis(building, comp);
+    if (building.roof === 'sawtooth') {
+      const teeth = sawtoothPlanes(building, comp, axis, nextId);
+      sections.push(...teeth); nextId += teeth.length; continue;
+    }
     if (solidRect(comp)) {
       if (building.roof === "flat") sections.push(flatPlane(building, comp, nextId++));
       else if (building.roof === "shed") sections.push(shedPlane(building, comp, axis, nextId++));
@@ -572,7 +600,8 @@ function splitStructuralBays(building: Building, sections: RoofSection[]): RoofS
   for (const section of sections) {
     const covered = section.support;
     if (section.style === 'gable') {
-      const support = building.cells.filter(c => c.floor === building.floors - 1 && c.isSupport && covered.some(t => t.gx === c.gx && t.gy === c.gy))
+      const bearingPad = building.construction.walls === 'frame' ? 1 : 0;
+      const support = building.cells.filter(c => c.floor === building.floors - 1 && c.isSupport && covered.some(t => Math.abs(t.gx - c.gx) <= bearingPad && (bearingPad > 0 || t.gy === c.gy)))
         .map(c => ({ gx: c.gx, gy: c.gy }));
       out.push({ ...section, id: out.length + 1, support, coverage: covered });
       continue;
@@ -600,9 +629,12 @@ function splitStructuralBays(building: Building, sections: RoofSection[]): RoofS
       }
       if (verts.length < 3) continue;
       const coverage = covered.filter(c => c.gx >= gx && c.gx <= end);
-      const support = building.cells.filter(c => c.floor === building.floors - 1 && c.isSupport && c.gx >= gx && c.gx <= end)
+      // A tooth can end on an odd column. Its short edge panel transfers through
+      // the adjacent purlin to the same nearest bearing line used by floor slabs.
+      const bearingPad = section.tooth ? 1 : 0;
+      const support = building.cells.filter(c => c.floor === building.floors - 1 && c.isSupport && c.gx >= gx - bearingPad && c.gx <= end + bearingPad)
         .map(c => ({ gx: c.gx, gy: c.gy }));
-      out.push({ ...makeSection(out.length + 1, section.style, support, verts, section.material), coverage });
+      out.push({ ...makeSection(out.length + 1, section.style, support, verts, section.material), coverage, tooth: section.tooth });
     }
   }
   return out;
@@ -702,13 +734,13 @@ function rotateAroundHinge(
   };
 }
 
-export function displacedRoofVerts(roof: RoofSection): { x: number; y: number; z: number }[] {
+export function displacedRoofVerts(roof: RoofSection, vertices = roof.verts): { x: number; y: number; z: number }[] {
   if (roof.bay) {
     const t = Math.max(0, Math.min(1, roof.fallT));
     const drop = t * t * (3 - 2 * t);
     const center = vertsCenter(roof.verts);
     const tilt = roofTiltAngle(roof);
-    return roof.verts.map(v => ({
+    return vertices.map(v => ({
       x: v.x + roof.fallDx * drop * .18,
       y: v.y + roof.fallDy * drop * .18,
       z: Math.max(ROOF_LANDING_Z, (v.z - roof.sag * .18 -
@@ -721,7 +753,7 @@ export function displacedRoofVerts(roof: RoofSection): { x: number; y: number; z
   const settle = roofSettle(t);
   const sagDrop = roof.sag * ROOF_SAG_DROP * (1 - slide);
   const drop = slide * 1.4 + sagDrop;
-  const swung = roof.verts.map((v) => {
+  const swung = vertices.map((v) => {
     const r = angle === 0 ? { x: v.x, y: v.y, z: v.z } : rotateAroundHinge(v, roof, angle);
     return {
       x: r.x + roof.fallDx * slide * 0.7,
@@ -735,6 +767,25 @@ export function displacedRoofVerts(roof: RoofSection): { x: number; y: number; z
     y: v.y,
     z: v.z * (1 - settle) + ROOF_LANDING_Z * settle,
   }));
+}
+
+/** Roof-owned end closures and clerestories use exactly the covering's transform. */
+export function sawtoothClosures(roof: RoofSection): { verts: RoofSection['verts']; glass: boolean }[] {
+  const tooth = roof.tooth;
+  if (!tooth || roof.state === 'gone') return [];
+  const faces: { verts: RoofSection['verts']; glass: boolean }[] = [];
+  const near = (a: number, b: number) => Math.abs(a - b) < 1e-6;
+  for (let i = 0; i < roof.verts.length; i++) {
+    const a = roof.verts[i]!, b = roof.verts[(i + 1) % roof.verts.length]!;
+    const boundary = (near(a.x, tooth.minX) && near(b.x, tooth.minX)) || (near(a.x, tooth.maxX) && near(b.x, tooth.maxX)) ||
+      (near(a.y, tooth.minY) && near(b.y, tooth.minY)) || (near(a.y, tooth.maxY) && near(b.y, tooth.maxY));
+    if (!boundary || Math.max(a.z, b.z) <= tooth.eaveZ + 1e-6) continue;
+    const high = tooth.axis === 'x' ? tooth.maxX : tooth.maxY;
+    const glass = near(a[tooth.axis], high) && near(b[tooth.axis], high);
+    const vertices = [a, b, { ...b, z: tooth.eaveZ }, { ...a, z: tooth.eaveZ }];
+    faces.push({ verts: displacedRoofVerts(roof, vertices), glass });
+  }
+  return faces;
 }
 
 type RoofEdge = "minX" | "maxX" | "minY" | "maxY";
@@ -906,7 +957,7 @@ export function roofFrameBeams(roof: RoofSection): RoofRafterBeam[] {
   return beams;
 }
 
-function heightOnPoly(verts: { x: number; y: number; z: number }[], x: number, y: number): number | null {
+export function heightOnPoly(verts: { x: number; y: number; z: number }[], x: number, y: number): number | null {
   if (verts.length < 3) return null;
   for (let i = 1; i < verts.length - 1; i++) {
     const z = baryZ(verts[0]!, verts[i]!, verts[i + 1]!, x, y);

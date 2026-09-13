@@ -1,6 +1,6 @@
 import { TITLE } from '../game/constants';
 import { PermitIntro, permitDocument, type PermitSound } from './permitIntro';
-import { playableDistrict, type DistrictId, type SessionKind, type LayoutChoice } from '../game/session';
+import { playableDistrict, type DistrictId, type SessionKind } from '../game/session';
 import { MENU_LABELS as L, MODE_LABELS, MODE_DESCRIPTIONS, SITE_LABELS } from '../game/menuLabels';
 import { version } from '../../package.json';
 import notices from './thirdPartyNotices.txt?raw';
@@ -9,7 +9,7 @@ type Page = 'home' | 'dispatch' | 'controls' | 'about' | 'equipment' | 'debug';
 export interface MenuActions {
   page?(page: Page | null, host?: HTMLElement): void;
   resume(): void;
-  start(kind: SessionKind, district: DistrictId, layout: LayoutChoice): void;
+  start(kind: SessionKind, district: DistrictId): void;
   restart(): void;
   title(): void;
   mute(): void;
@@ -18,7 +18,8 @@ export interface MenuActions {
   titleSound(kind: PermitSound, index: number): void;
 }
 
-const copyright = '© 2026 Columbia Cloudworks LLC. All rights reserved.';
+const publisher = '<a class="publisher-brand" href="https://columbiacloudworks.com/" target="_blank" rel="noopener noreferrer"><img src="/brand/Columbia-Cloudworks-Icon-Small.png" width="28" height="28" alt="" /><span>Columbia Cloudworks LLC</span></a>';
+const copyright = '<span>© 2026</span>' + publisher + '<span>All rights reserved.</span>';
 
 /** One navigation and focus owner for keyboard, mouse and touch menus. */
 export class OperatorMenu {
@@ -27,9 +28,8 @@ export class OperatorMenu {
   private heading: HTMLElement;
   private mode: 'title' | 'pause' | null = null;
   private page: Page = 'home';
-  private session: SessionKind = 'challenge';
-  private district: DistrictId = 'classic';
-  private layout: LayoutChoice = 'standard';
+  private session: SessionKind = 'sandbox';
+  private district: DistrictId = 'd10';
   private muted = false;
   private readonly intro = new PermitIntro();
   private introVersion = 0;
@@ -53,7 +53,7 @@ export class OperatorMenu {
     this.root.setAttribute('role', 'dialog');
     this.root.setAttribute('aria-modal', 'true');
     this.root.setAttribute('aria-labelledby', 'operator-heading');
-    this.root.innerHTML = `<div class="console-panel"><div class="menu-heading"><div><h1 id="operator-heading" tabindex="-1"></h1></div><button data-nav="back" aria-label="Back">← Back</button></div><div class="menu-body"></div><footer class="nameplate"><span>${copyright}</span></footer></div>`;
+    this.root.innerHTML = `<div class="console-panel"><div class="menu-heading"><div><h1 id="operator-heading" tabindex="-1"></h1></div><button data-nav="back" aria-label="Back">← Back</button></div><div class="menu-body"></div><footer class="nameplate"><div class="copyright">${copyright}</div></footer></div>`;
     this.body = this.root.querySelector('.menu-body')!;
     this.heading = this.root.querySelector('#operator-heading')!;
     parent.append(this.root);
@@ -71,7 +71,7 @@ export class OperatorMenu {
       if (action === 'title') this.actions.title();
       if (action === 'mute') this.actions.mute();
       if (action === 'start') {
-        this.actions.start(this.session, this.district, this.layout);
+        this.actions.start(this.session, this.district);
       }
     });
     this.body.addEventListener('change', e => {
@@ -82,7 +82,6 @@ export class OperatorMenu {
         this.syncSetup();
       }
       if (input.id === 'dispatch-lot') this.district = input.value as DistrictId;
-      if (input.id === 'dispatch-layout') this.layout = input.value as LayoutChoice;
     });
     // Handle menu navigation before focused controls consume the key.
     this.root.addEventListener('keydown', e => {
@@ -108,8 +107,8 @@ export class OperatorMenu {
     if (mode === 'pause') {
       this.session = session;
       this.district = developmentScenario ? 'd10' : playableDistrict(session, district);
-      this.layout = 'standard';
     }
+    if (mode === 'title') { this.session = 'sandbox'; this.district = 'd10'; }
     this.mode = mode;
     this.root.hidden = !mode;
     if (mode) {
@@ -138,10 +137,9 @@ export class OperatorMenu {
   private syncSetup(): void {
     this.body.querySelector<HTMLSelectElement>('#dispatch-mode')!.value = this.session;
     const sizes = this.body.querySelector<HTMLSelectElement>('#dispatch-lot')!;
-    sizes.innerHTML = Object.entries(SITE_LABELS).filter(([id]) => this.session !== 'sandbox' || id !== 'classic')
+    sizes.innerHTML = Object.entries(SITE_LABELS)
       .map(([id, label]) => `<option value="${id}">${label}</option>`).join('');
     sizes.value = this.district;
-    this.body.querySelector<HTMLSelectElement>('#dispatch-layout')!.value = this.layout;
     this.body.querySelector('#mode-description')!.textContent = MODE_DESCRIPTIONS[this.session];
   }
 
@@ -163,12 +161,12 @@ export class OperatorMenu {
     if (page === 'debug') this.body.innerHTML = '<div class="menu-debug-host"></div>';
     this.root.classList.toggle('debug-page', page === 'debug');
     if (page === 'dispatch') {
-      this.body.innerHTML = `<div class="dispatch-fields"><label>Mode<select id="dispatch-mode">${Object.entries(MODE_LABELS).map(([id, label]) => `<option value="${id}">${label}</option>`).join('')}</select></label><label>Site Size<select id="dispatch-lot"></select></label><label>Layout<select id="dispatch-layout"><option value="standard">Standard</option><option value="randomized">Randomized</option></select></label></div><p class="fine-print" id="mode-description"></p><p class="fine-print">Standard uses the site's original layout. Randomized generates a new layout.</p>${this.mode === 'pause' ? '<p class="caution">Starting a new game replaces your current progress and upgrades.</p>' : ''}<button class="primary" data-menu-action="start">${L.start}</button><button data-nav="back">Back</button>`;
+      this.body.innerHTML = `<div class="dispatch-fields"><label>Mode<select id="dispatch-mode">${Object.entries(MODE_LABELS).map(([id, label]) => `<option value="${id}">${label}</option>`).join('')}</select></label><label>Site Size<select id="dispatch-lot"></select></label></div><p class="fine-print" id="mode-description"></p>${this.mode === 'pause' ? '<p class="caution">Starting a new game replaces your current progress and upgrades.</p>' : ''}<button class="primary" data-menu-action="start">${L.start}</button><button data-nav="back">Back</button>`;
       this.syncSetup();
     }
     if (page === 'controls') this.body.innerHTML = `<dl class="control-list"><div><dt>W / S or ↑ / ↓</dt><dd>Drive forward / reverse</dd></div><div><dt>A / D or ← / →</dt><dd>Steer left / right</dd></div><div><dt>Hold SPACE</dt><dd>Power the blade</dd></div><div><dt>Esc / Pause</dt><dd>Pause / Resume</dd></div><div><dt>R</dt><dd>${L.restart}</dd></div><div><dt>N</dt><dd>${L.newLayout}</dd></div><div><dt>1 / 2 / 3</dt><dd>${L.blade} / ${L.engine} / ${L.push} upgrade</dd></div><div><dt>M</dt><dd>Toggle sound</dd></div></dl><div class="instruction-card"><strong>Touch Controls</strong><p>Drag the left stick to drive and steer. Hold the right POWER BLADE button while driving. Release the stick to coast. Release the blade to finish the current push.</p></div><p class="fine-print">Watch ENGINE HEAT and TRACK STRESS. Above 65%, release the blade or back off rubble. In sandbox these gauges remain advisory.</p>`;
     if (page === 'about') {
-      this.body.innerHTML = `<dl class="credits-list"><div><dt>Publisher</dt><dd>Columbia Cloudworks LLC</dd></div><div><dt>Website</dt><dd><a href="https://columbiacloudworks.com" target="_blank" rel="noopener noreferrer">columbiacloudworks.com ↗</a></dd></div><div><dt>Contact</dt><dd><a href="mailto:nicholas.king@columbiacloudworks.com">nicholas.king@columbiacloudworks.com</a></dd></div><div><dt>Game</dt><dd><a href="https://permitdenied.app" target="_blank" rel="noopener noreferrer">permitdenied.app ↗</a></dd></div><div><dt>GitHub</dt><dd><a href="https://github.com/Columbia-Cloudworks-LLC/permit-denied-game" target="_blank" rel="noopener noreferrer">permit-denied-game ↗</a></dd></div><div><dt>Version</dt><dd>${version}</dd></div></dl><details class="license-notices"><summary>Third-party software notices</summary><pre></pre></details>`;
+      this.body.innerHTML = `<dl class="credits-list"><div><dt>Publisher</dt><dd>${publisher}</dd></div><div><dt>Website</dt><dd><a href="https://columbiacloudworks.com" target="_blank" rel="noopener noreferrer">columbiacloudworks.com ↗</a></dd></div><div><dt>Contact</dt><dd><a href="mailto:nicholas.king@columbiacloudworks.com">nicholas.king@columbiacloudworks.com</a></dd></div><div><dt>Game</dt><dd><a href="https://permitdenied.app" target="_blank" rel="noopener noreferrer">permitdenied.app ↗</a></dd></div><div><dt>GitHub</dt><dd><a href="https://github.com/Columbia-Cloudworks-LLC/permit-denied-game" target="_blank" rel="noopener noreferrer">permit-denied-game ↗</a></dd></div><div><dt>Version</dt><dd>${version}</dd></div></dl><details class="license-notices"><summary>Third-party software notices</summary><pre></pre></details>`;
       this.body.querySelector('pre')!.textContent = notices;
     }
     this.actions.page?.(page, this.body);

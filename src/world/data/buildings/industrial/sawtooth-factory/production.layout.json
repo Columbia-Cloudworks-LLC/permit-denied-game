@@ -1,0 +1,17 @@
+{
+  "partitions": false,
+  "rooms": [{
+    "id": "production",
+    "kind": "production",
+    "floor": 0,
+    "x": 0, "y": 0, "w": 1, "d": 1,
+    "finish": "concrete",
+    "contents": [
+      { "id": "machine-a", "kind": "machine", "x": 0.1, "y": 0.1, "w": 0.2, "d": 0.18, "h": 1.4, "rotation": 0 },
+      { "id": "machine-b", "kind": "machine", "x": 0.6, "y": 0.1, "w": 0.2, "d": 0.18, "h": 1.4, "rotation": 0 },
+      { "id": "machine-c", "kind": "machine", "x": 0.1, "y": 0.4, "w": 0.2, "d": 0.18, "h": 1.4, "rotation": 0 },
+      { "id": "machine-d", "kind": "machine", "x": 0.6, "y": 0.4, "w": 0.2, "d": 0.18, "h": 1.4, "rotation": 0 },
+      { "id": "stock", "kind": "pallet", "x": 0.1, "y": 0.7, "w": 0.2, "d": 0.12, "h": 0.8, "rotation": 0 }
+    ]
+  }]
+}

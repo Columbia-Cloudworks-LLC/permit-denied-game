@@ -1,0 +1,107 @@
+{
+  "partitions": true,
+  "rooms": [
+    {
+      "id": "sales",
+      "kind": "retail",
+      "floor": 0,
+      "x": 0,
+      "y": 0.25,
+      "w": 1,
+      "d": 0.75,
+      "finish": "tile",
+      "contents": [
+        {
+          "id": "sales-0",
+          "kind": "shelf",
+          "x": 0.08,
+          "y": 0.1,
+          "w": 0.12,
+          "d": 0.5,
+          "h": 1.3,
+          "rotation": 0
+        },
+        {
+          "id": "sales-1",
+          "kind": "shelf",
+          "x": 0.36333333333333334,
+          "y": 0.1,
+          "w": 0.12,
+          "d": 0.5,
+          "h": 1.3,
+          "rotation": 0
+        },
+        {
+          "id": "sales-2",
+          "kind": "shelf",
+          "x": 0.6466666666666666,
+          "y": 0.1,
+          "w": 0.12,
+          "d": 0.5,
+          "h": 1.3,
+          "rotation": 0
+        },
+        {
+          "id": "sales-3",
+          "kind": "checkout-register",
+          "x": 0.55,
+          "y": 0.8,
+          "w": 0.3,
+          "d": 0.12,
+          "h": 0.85,
+          "rotation": 0
+        }
+      ]
+    },
+    {
+      "id": "stock",
+      "kind": "storage",
+      "floor": 0,
+      "x": 0,
+      "y": 0,
+      "w": 1,
+      "d": 0.25,
+      "finish": "concrete",
+      "contents": [
+        {
+          "id": "stock-0",
+          "kind": "pallet",
+          "x": 0.08,
+          "y": 0.1,
+          "w": 0.12,
+          "d": 0.65,
+          "h": 0.8,
+          "rotation": 0
+        },
+        {
+          "id": "stock-1",
+          "kind": "pallet",
+          "x": 0.36333333333333334,
+          "y": 0.1,
+          "w": 0.12,
+          "d": 0.65,
+          "h": 0.8,
+          "rotation": 0
+        },
+        {
+          "id": "stock-2",
+          "kind": "pallet",
+          "x": 0.6466666666666666,
+          "y": 0.1,
+          "w": 0.12,
+          "d": 0.65,
+          "h": 0.8,
+          "rotation": 0
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "a": "sales",
+      "b": "stock",
+      "at": 0.5,
+      "width": 0.35
+    }
+  ]
+}

@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "id": "gable-barn",
+  "label": "GABLE BARN",
+  "kind": "house",
+  "w": 8,
+  "d": 10,
+  "floors": 1,
+  "roof": "gable",
+  "theme": "ranch",
+  "windowStride": 2,
+  "features": {
+    "porch": false,
+    "awning": false,
+    "parapet": false,
+    "chimney": false,
+    "garage": false
+  },
+  "construction": "timber-house",
+  "zones": {
+    "residential": 0,
+    "commercial": 0,
+    "industrial": 0
+  },
+  "traits": {
+    "use": [
+      "gable-barn"
+    ],
+    "form": [
+      "B31",
+      "single-volume"
+    ],
+    "scale": [
+      "neighborhood"
+    ]
+  },
+  "partitions": true,
+  "connections": [],
+  "sections": [
+    {
+      "id": "barn",
+      "role": "barn",
+      "x": 0,
+      "y": 0,
+      "w": 8,
+      "d": 10,
+      "floor": 0,
+      "floors": 1,
+      "layout": "barn.layout.json"
+    }
+  ],
+  "openings": [
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.5,
+      "kind": "loading"
+    }
+  ]
+}

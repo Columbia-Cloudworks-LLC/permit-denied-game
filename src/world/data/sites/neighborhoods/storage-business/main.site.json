@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "id": "storage-business",
+  "label": "STORAGE BUSINESS",
+  "w": 45,
+  "d": 32,
+  "buildings": [
+    {
+      "id": "office",
+      "building": "campus-office",
+      "x": 3,
+      "y": 23
+    },
+    {
+      "id": "east-row-0",
+      "building": "self-storage-row",
+      "x": 25,
+      "y": 3
+    },
+    {
+      "id": "east-row-1",
+      "building": "self-storage-row",
+      "x": 25,
+      "y": 13
+    },
+    {
+      "id": "east-row-2",
+      "building": "self-storage-row",
+      "x": 25,
+      "y": 23
+    },
+    {
+      "id": "west-row-a",
+      "building": "self-storage-row",
+      "x": 3,
+      "y": 3
+    },
+    {
+      "id": "west-row-b",
+      "building": "self-storage-row",
+      "x": 3,
+      "y": 13
+    }
+  ],
+  "equipment": [
+    {
+      "id": "dumpster",
+      "asset": "dumpster",
+      "x": 17,
+      "y": 26
+    },
+    {
+      "id": "light",
+      "asset": "light",
+      "x": 21,
+      "y": 9
+    },
+    {
+      "id": "camera",
+      "asset": "camera",
+      "x": 21,
+      "y": 19
+    }
+  ]
+}

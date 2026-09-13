@@ -1,0 +1,58 @@
+{
+  "partitions": true,
+  "rooms": [
+    {
+      "id": "laundry",
+      "kind": "retail",
+      "floor": 0,
+      "x": 0,
+      "y": 0,
+      "w": 1,
+      "d": 1,
+      "finish": "tile",
+      "contents": [
+        {
+          "id": "laundry-0",
+          "kind": "washer-dryer",
+          "x": 0.05,
+          "y": 0.05,
+          "w": 0.4,
+          "d": 0.2,
+          "h": 1,
+          "rotation": 0
+        },
+        {
+          "id": "laundry-1",
+          "kind": "washer-dryer",
+          "x": 0.55,
+          "y": 0.05,
+          "w": 0.4,
+          "d": 0.2,
+          "h": 1,
+          "rotation": 0
+        },
+        {
+          "id": "laundry-2",
+          "kind": "washer-dryer",
+          "x": 0.05,
+          "y": 0.7,
+          "w": 0.4,
+          "d": 0.2,
+          "h": 1,
+          "rotation": 0
+        },
+        {
+          "id": "laundry-3",
+          "kind": "table",
+          "x": 0.58,
+          "y": 0.68,
+          "w": 0.32,
+          "d": 0.2,
+          "h": 0.7,
+          "rotation": 0
+        }
+      ]
+    }
+  ],
+  "connections": []
+}

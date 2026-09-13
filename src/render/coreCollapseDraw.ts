@@ -9,6 +9,10 @@ export function drawCoreFloor(g: Graphics, b: Building, rect: NonNullable<Buildi
   const bottom = rect.floor * FLOOR_Z - drop, top = bottom + FLOOR_Z;
   if (top <= burial) return;
   const x = b.x + rect.x * cs, y = b.y + rect.y * cs, w = rect.w * cs, d = rect.d * cs;
+  if (b.openDecks) {
+    if (bottom >= burial) drawIsoBox(g, x, y, w, d, bottom, .18, PAL.concrete, PAL.concreteDark, PAL.concrete);
+    return;
+  }
   drawIsoBox(g, x, y, w, d, Math.max(burial, bottom), top - Math.max(burial, bottom), PAL.concrete, PAL.concreteDark, PAL.concrete);
   const z0 = Math.max(burial, bottom + .55), z1 = bottom + 1.85;
   if (z1 <= z0) return;

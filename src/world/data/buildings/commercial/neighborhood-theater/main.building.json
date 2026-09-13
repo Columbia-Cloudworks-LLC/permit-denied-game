@@ -1,0 +1,109 @@
+{
+  "version": 1,
+  "id": "neighborhood-theater",
+  "label": "NEIGHBORHOOD THEATER",
+  "w": 10,
+  "d": 13,
+  "floors": 2,
+  "kind": "shop",
+  "construction": "brick-mixed-use",
+  "roof": "flat",
+  "theme": "corner",
+  "windowStride": 2,
+  "features": {
+    "porch": false,
+    "awning": false,
+    "parapet": true,
+    "chimney": false,
+    "garage": false
+  },
+  "zones": {
+    "residential": 0,
+    "commercial": 0,
+    "industrial": 0
+  },
+  "traits": {
+    "use": [
+      "neighborhood-theater"
+    ],
+    "form": [
+      "B18"
+    ],
+    "style": [
+      "corner"
+    ]
+  },
+  "partitions": true,
+  "sections": [
+    {
+      "id": "auditorium",
+      "role": "auditorium",
+      "x": 0,
+      "y": 0,
+      "w": 10,
+      "d": 9,
+      "floor": 0,
+      "floors": 1,
+      "layout": "auditorium.layout.json"
+    },
+    {
+      "id": "lobby",
+      "role": "lobby",
+      "x": 0,
+      "y": 9,
+      "w": 10,
+      "d": 4,
+      "floor": 0,
+      "floors": 1,
+      "layout": "lobby.layout.json"
+    },
+    {
+      "id": "upper-auditorium",
+      "role": "auditorium-volume",
+      "x": 0,
+      "y": 0,
+      "w": 10,
+      "d": 9,
+      "floor": 1,
+      "floors": 1,
+      "layout": "upper-auditorium.layout.json"
+    }
+  ],
+  "connections": [
+    {
+      "a": "auditorium/0/auditorium",
+      "b": "lobby/0/lobby",
+      "at": 0.5,
+      "width": 0.5
+    }
+  ],
+  "openings": [
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.5,
+      "kind": "door"
+    }
+  ],
+  "facadeDetails": [
+    {
+      "id": "star-marquee",
+      "kind": "marquee",
+      "floor": 0,
+      "gx": 3,
+      "gy": 12,
+      "side": "south",
+      "width": 4,
+      "text": "STAR THEATER"
+    }
+  ],
+  "floorVoids": [
+    {
+      "floor": 1,
+      "x": 0,
+      "y": 0,
+      "w": 10,
+      "d": 9
+    }
+  ]
+}

@@ -169,6 +169,7 @@ export function stepWorld(
   const pts = bladePoints(dozer);
 
   const damaged = new Set<Cell>();
+  const dozerPins = new Set<Prop>();
 
   for (const ref of nearby) {
     if (ref.kind === "cell" && ref.building && ref.cell) {
@@ -194,6 +195,7 @@ export function stepWorld(
       if (!p || p.broken) continue;
       const impact = resolveCircleSolid(dozer, p.x, p.y, p.w, p.d, 0.05);
       if (impact > 0.25) {
+        if (p.assetId === 'interior-bowling-pins') dozerPins.add(p);
         applyAssetHit(p, impact * 6, dozer.x - (p.x + p.w / 2), dozer.y - (p.y + p.d / 2));
         dozer.track += trackFromAsset(p, speed) * 0.25;
         const def = getAsset(p.assetId);
@@ -215,6 +217,7 @@ export function stepWorld(
           dozer.y - (ref.y + ref.d / 2),
           particles,
           events,
+          true,
         );
         cash += hit.cash;
         spawnFixtureFrags(town, hit.frags);
@@ -248,6 +251,7 @@ export function stepWorld(
       } else if (ref.kind === "prop") {
         const p = ref.prop;
         if (!p || p.broken) continue;
+        if (p.assetId === 'interior-bowling-pins') dozerPins.add(p);
         applyAssetHit(p, (8 + speed * 4) * bladeMul * dt, Math.cos(dozer.heading), Math.sin(dozer.heading));
         const def = getAsset(p.assetId);
         if (def.sparks && p.hp < p.maxHp * 0.75) {
@@ -265,6 +269,7 @@ export function stepWorld(
           Math.sin(dozer.heading),
           particles,
           events,
+          true,
         );
         cash += hit.cash;
         spawnFixtureFrags(town, hit.frags);
@@ -276,6 +281,7 @@ export function stepWorld(
     if (p.broken || p.hp > 0) continue;
     const def = getAsset(p.assetId);
     cash += destroyProp(town, p, particles, events, dozer.x, dozer.y);
+    if (dozerPins.has(p)) events.push({ kind: 'bowling-strike', x: p.x, y: p.y, z: .5, mag: 1 });
     dozer.track += trackFromAsset(p, speed);
     if (def.birdGag) birds.push({ x: p.x, y: p.y });
   }

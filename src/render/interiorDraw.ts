@@ -1,3 +1,4 @@
+import { drawBowlingLanes } from './bowlingLanes';
 import { Graphics } from "pixi.js";
 import { FLOOR_Z } from "../game/constants";
 import {
@@ -167,14 +168,16 @@ function drawFixtureSolid(
 ): void {
   const def = fixtureCatalog(fixture.kind);
   const swapped = Math.abs(Math.sin(fixture.heading)) > .5;
-  const w = swapped ? fixture.d : fixture.w, d = swapped ? fixture.w : fixture.d;
+  const w = (swapped ? fixture.d : fixture.w) / def.footprint.w, d = (swapped ? fixture.w : fixture.d) / def.footprint.d;
+  const height = fixture.h / def.footprint.h;
   const cos = Math.cos(fixture.heading), sin = Math.sin(fixture.heading);
-  for (const box of def.boxes) {
+  const boxes = fixture.kind === 'staircase' ? [...def.boxes].sort((a,b)=>(cos+sin)*(a.along-b.along)*w+(cos-sin)*(a.across-b.across)*d) : def.boxes;
+  for (const box of boxes) {
     drawOrientedIsoBox(g,
       fixture.x + fixture.w / 2 + cos * box.along * w - sin * box.across * d,
       fixture.y + fixture.d / 2 + sin * box.along * w + cos * box.across * d,
-      fixture.heading, box.len * w, box.wid * d, z0 + box.z * fixture.h, box.h * fixture.h * (1 - fixture.pose.crush * .4),
-      box.top, box.left, box.right, alpha);
+      fixture.heading, box.len * w, box.wid * d, z0 + box.z * height, box.h * height * (1 - fixture.pose.crush * .4),
+      box.top, box.left, box.right, alpha, box.slope);
   }
 }
 
@@ -232,11 +235,12 @@ function drawSlopedBeam(
   drawSlopedQuad(g, topQuad, top, side, alpha);
 }
 
-export function drawRoofFrame(g: Graphics, _b: Building, roof: RoofSection, alpha: number): void {
+export function drawRoofFrame(g: Graphics, b: Building, roof: RoofSection, alpha: number): void {
   const beams = roofFrameBeams(roof);
   if (beams.length === 0) return;
-  const top = roof.bay ? PAL.roofMetal : PAL.woodTop;
-  const side = roof.bay ? PAL.metalDark : PAL.woodDark;
+  const steel = roof.bay || b.construction.structure === 'metal';
+  const top = steel ? PAL.roofMetal : PAL.woodTop;
+  const side = steel ? PAL.metalDark : PAL.woodDark;
   for (const beam of beams) {
     const half = beam.kind === "plate" ? 0.055 : 0.045;
     drawSlopedBeam(g, beam.a, beam.b, half, top, side, alpha);
@@ -250,8 +254,8 @@ export function interiorCmds(
   fade: number,
   options: { reveal?: boolean; maxFloor?: number;
     fadeBox?: (key: string, x: number, y: number, w: number, d: number, z: number, top: number) => number } = {},
-): { depth: number; kind: InteriorDrawKind; run: (g: Graphics) => void }[] {
-  const cmds: { depth: number; kind: InteriorDrawKind; run: (g: Graphics) => void }[] = [];
+): { floor:number; depth: number; kind: InteriorDrawKind; run: (g: Graphics) => void }[] {
+  const cmds: { floor:number; depth: number; kind: InteriorDrawKind; run: (g: Graphics) => void }[] = [];
   const interiorFade = fade;
   const localFade = (key: string, x: number, y: number, w: number, d: number, z: number, top: number) =>
     interiorFade * (options.fadeBox?.(key, x, y, w, d, z, top) ?? 1);
@@ -263,16 +267,17 @@ export function interiorCmds(
       const cs = b.cellSize, x = b.x + tile.gx * cs, y = b.y + tile.gy * cs;
       const z = tile.floor * FLOOR_Z * (1 - tile.fallT);
       const mat = b.construction.floor;
-      cmds.push({ kind: "floor", depth: depthKey(x + cs / 2, y + cs / 2, z), run: g =>
+      cmds.push({ floor:tile.floor, kind: "floor", depth: depthKey(x + cs / 2, y + cs / 2, z), run: g =>
         drawIsoBox(g, x, y, cs, cs, z, FLOOR_H, topFaceColor(mat), wallFaceColor(mat, "south"), wallFaceColor(mat, "east"), fade) });
     }
     for (const cell of b.cells) {
+      if (b.canopy || b.openDecks) continue; // Open-frame columns use their actual collision boxes.
       if (!cellPresent(cell) || cell.floor > maxFloor) continue;
       if (cell.cladding?.hp === 0) {
         const box = cellWorldBox(b, cell);
         const alpha = localFade(`column:${cell.floor}:${cell.gx}:${cell.gy}`, box.x, box.y, box.w, box.d,
           cell.floor * FLOOR_Z, (cell.floor + 1) * FLOOR_Z);
-        cmds.push({ kind: "stub", depth: depthKey(box.x + box.w / 2, box.y + box.d / 2, cell.floor * FLOOR_Z), run: g =>
+        cmds.push({ floor:cell.floor, kind: "stub", depth: depthKey(box.x + box.w / 2, box.y + box.d / 2, cell.floor * FLOOR_Z), run: g =>
           drawIsoBox(g, box.x, box.y, box.w, box.d, cell.floor * FLOOR_Z, FLOOR_Z, PAL.metalTop, PAL.metalDark, PAL.metal, alpha) });
         continue;
       }
@@ -281,12 +286,12 @@ export function interiorCmds(
       const alpha = localFade(`stub:${cell.floor}:${cell.gx}:${cell.gy}`, x, y,
         cell.exterior.north ? cs : WALL_THICK, cell.exterior.north ? WALL_THICK : cs,
         cell.floor * FLOOR_Z, (cell.floor + 1) * FLOOR_Z);
-      cmds.push({ kind: "stub", depth: depthKey(x + (cell.exterior.north ? cs / 2 : WALL_THICK / 2),
+      cmds.push({ floor:cell.floor, kind: "stub", depth: depthKey(x + (cell.exterior.north ? cs / 2 : WALL_THICK / 2),
         y + (cell.exterior.north ? WALL_THICK / 2 : cs / 2), cell.floor * FLOOR_Z), run: g => {
         const north = cell.exterior.north;
-        const mat = b.construction.structure;
+        const mat = cell.material;
         drawIsoBox(g, x, y, north ? cs : WALL_THICK, north ? WALL_THICK : cs, cell.floor * FLOOR_Z, FLOOR_Z,
-          topFaceColor(mat), wallFaceColor(mat, "south"), wallFaceColor(mat, "east"), alpha);
+          topFaceColor(mat), wallFaceColor(mat, "south"), wallFaceColor(mat, "east"), mat === 'glass' ? alpha * .28 : alpha);
       }});
     }
   }
@@ -302,9 +307,9 @@ export function interiorCmds(
       b.y + span.gy0 * cs, (span.gx1 - span.gx0 + 1) * cs, (span.gy1 - span.gy0 + 1) * cs,
       span.floor * FLOOR_Z, span.floor * FLOOR_Z + FLOOR_H);
     cmds.push({
-      kind: "floor",
+      floor:span.floor, kind: "floor",
       depth: interiorFloorPainterDepth(b, span),
-      run: (g) => drawInteriorFloorSpan(g, b, span, alpha, coverage.hasFloor),
+      run: (g) => { drawInteriorFloorSpan(g, b, span, alpha, coverage.hasFloor); drawBowlingLanes(g, b, span, alpha); },
     });
   }
   for (const fixture of b.fixtures) {
@@ -314,7 +319,7 @@ export function interiorCmds(
     const alpha = localFade(`fixture:${fixture.id}`, fixture.x, fixture.y, fixture.w, fixture.d,
       fixture.floor * FLOOR_Z, fixture.floor * FLOOR_Z + fixture.h);
     cmds.push({
-      kind: fixture.kind === "partition" ? "partition" : "fixture",
+      floor:fixture.floor, kind: fixture.kind === "partition" ? "partition" : "fixture",
       depth: fixtureDepth(fixture),
       run: (g) => drawInteriorFixture(g, b, fixture, alpha, true),
     });

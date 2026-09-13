@@ -1,0 +1,67 @@
+{
+  "partitions": true,
+  "rooms": [
+    {
+      "id": "sleeping",
+      "kind": "bedroom",
+      "floor": 0,
+      "x": 0,
+      "y": 0,
+      "w": 0.7,
+      "d": 1,
+      "finish": "plank",
+      "contents": [
+        {
+          "id": "sleeping-0",
+          "kind": "bed",
+          "x": 0.08,
+          "y": 0.12,
+          "w": 0.6,
+          "d": 0.45,
+          "h": 0.65,
+          "rotation": 0
+        },
+        {
+          "id": "sleeping-1",
+          "kind": "table",
+          "x": 0.3,
+          "y": 0.75,
+          "w": 0.2,
+          "d": 0.15,
+          "h": 0.65,
+          "rotation": 0
+        }
+      ]
+    },
+    {
+      "id": "bathroom",
+      "kind": "bathroom",
+      "floor": 0,
+      "x": 0.7,
+      "y": 0,
+      "w": 0.3,
+      "d": 1,
+      "finish": "tile",
+      "contents": [
+        {
+          "id": "bathroom-0",
+          "kind": "toilet",
+          "x": 0.1,
+          "y": 0.1,
+          "w": 0.55,
+          "d": 0.25,
+          "h": 0.8,
+          "rotation": 0
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "a": "sleeping",
+      "b": "bathroom",
+      "at": 0.5,
+      "width": 0.35
+    }
+  ]
+}

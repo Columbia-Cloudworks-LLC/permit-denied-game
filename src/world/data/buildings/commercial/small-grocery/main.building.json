@@ -1,0 +1,86 @@
+{
+  "version": 1,
+  "id": "small-grocery",
+  "label": "NEIGHBORHOOD GROCERY",
+  "kind": "shop",
+  "w": 8,
+  "d": 7,
+  "floors": 1,
+  "roof": "flat",
+  "theme": "storefront",
+  "windowStride": 2,
+  "features": {
+    "porch": false,
+    "awning": false,
+    "parapet": true,
+    "chimney": false,
+    "garage": false
+  },
+  "construction": "brick-mixed-use",
+  "zones": {
+    "residential": 0,
+    "commercial": 0,
+    "industrial": 0
+  },
+  "traits": {
+    "use": [
+      "small-grocery"
+    ],
+    "form": [
+      "B12",
+      "single-volume"
+    ],
+    "scale": [
+      "neighborhood"
+    ]
+  },
+  "partitions": true,
+  "connections": [],
+  "sections": [
+    {
+      "id": "grocery",
+      "role": "grocery",
+      "x": 0,
+      "y": 0,
+      "w": 8,
+      "d": 7,
+      "floor": 0,
+      "floors": 1,
+      "layout": "grocery.layout.json"
+    }
+  ],
+  "openings": [
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.3,
+      "kind": "door"
+    },
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.85,
+      "kind": "loading"
+    }
+  ],
+  "facadeDetails": [
+    {
+      "id": "west-display",
+      "kind": "display-glazing",
+      "floor": 0,
+      "gx": 0,
+      "gy": 6,
+      "side": "south",
+      "width": 3
+    },
+    {
+      "id": "east-display",
+      "kind": "display-glazing",
+      "floor": 0,
+      "gx": 5,
+      "gy": 6,
+      "side": "south",
+      "width": 3
+    }
+  ]
+}

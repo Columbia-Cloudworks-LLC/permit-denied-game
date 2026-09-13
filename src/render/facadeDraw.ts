@@ -12,6 +12,10 @@ import { PAL } from "./palette";
 const STORY_H = FLOOR_Z;
 
 export function drawWallSpan(g: Graphics, b: Building, span: WallSpan, alpha: number): void {
+  if (b.construction.skin === 'glass') {
+    drawGlassWallSpan(g, b, span, alpha);
+    return;
+  }
   const cs = b.cellSize;
   const z0 = span.floor * FLOOR_Z;
   const z1 = z0 + STORY_H;
@@ -55,6 +59,24 @@ export function drawWallSpan(g: Graphics, b: Building, span: WallSpan, alpha: nu
     drawThickBrokenWall(g, b, "east", x1, y0, d, z0, mat, alpha);
   }
   drawEastWindows(g, b, span, alpha, z0, z1);
+}
+
+function drawGlassWallSpan(g: Graphics, b: Building, span: WallSpan, alpha: number): void {
+  const cs = b.cellSize, z0 = span.floor * STORY_H, z1 = z0 + STORY_H;
+  const south = span.dir === 'south';
+  const a = south ? b.x + span.gx0 * cs : b.y + span.gy0 * cs;
+  const end = south ? b.x + (span.gx1 + 1) * cs : b.y + (span.gy1 + 1) * cs;
+  const plane = south ? b.y + (span.gy0 + 1) * cs : b.x + (span.gx0 + 1) * cs;
+  const ax = south ? a : plane, ay = south ? plane : a;
+  const bx = south ? end : plane, by = south ? plane : end;
+  if (!drawPitchedWall(g, b, span, PAL.glassLit, alpha * .28, z0, a, end, plane))
+    drawFaceWindow(g, ax, ay, bx, by, z0, z1, 0, 1, 0, 1, PAL.glassLit, alpha * .28);
+  const count = south ? span.gx1 - span.gx0 + 1 : span.gy1 - span.gy0 + 1;
+  for (let i = 0; i <= count; i++) {
+    const u = i / count, half = .035 / Math.max(cs, end - a);
+    drawFaceWindow(g, ax, ay, bx, by, z0, z1, Math.max(0, u - half), Math.min(1, u + half), 0, 1, PAL.metal, alpha);
+  }
+  for (const v of [.03, .5, .97]) drawFaceWindow(g, ax, ay, bx, by, z0, z1, 0, 1, v, Math.min(1, v + .025), PAL.metal, alpha);
 }
 
 function drawSurfacePattern(g: Graphics, material: Cell["material"], ax: number, ay: number, bx: number, by: number, z0: number, z1: number, alpha: number): void {

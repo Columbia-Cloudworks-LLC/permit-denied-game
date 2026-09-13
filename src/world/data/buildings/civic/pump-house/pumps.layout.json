@@ -1,0 +1,38 @@
+{
+  "partitions": true,
+  "rooms": [
+    {
+      "id": "pump-room",
+      "kind": "production",
+      "floor": 0,
+      "x": 0,
+      "y": 0,
+      "w": 1,
+      "d": 1,
+      "finish": "concrete",
+      "contents": [
+        {
+          "id": "pump-room-0",
+          "kind": "machine",
+          "x": 0.1,
+          "y": 0.12,
+          "w": 0.3,
+          "d": 0.6,
+          "h": 1.4,
+          "rotation": 0
+        },
+        {
+          "id": "pump-room-1",
+          "kind": "machine",
+          "x": 0.6,
+          "y": 0.12,
+          "w": 0.3,
+          "d": 0.6,
+          "h": 1.4,
+          "rotation": 0
+        }
+      ]
+    }
+  ],
+  "connections": []
+}

@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "id": "school-grounds",
+  "label": "SCHOOL GROUNDS",
+  "w": 51,
+  "d": 39,
+  "buildings": [
+    {
+      "id": "west-classrooms",
+      "building": "school-classroom-wing",
+      "x": 3,
+      "y": 3
+    },
+    {
+      "id": "east-classrooms",
+      "building": "school-classroom-wing",
+      "x": 29,
+      "y": 3
+    },
+    {
+      "id": "hall",
+      "building": "community-hall",
+      "x": 3,
+      "y": 24
+    }
+  ],
+  "equipment": [
+    {
+      "id": "table-a",
+      "asset": "picnic-table",
+      "x": 27,
+      "y": 25
+    },
+    {
+      "id": "table-b",
+      "asset": "picnic-table",
+      "x": 32,
+      "y": 25
+    },
+    {
+      "id": "fence-a",
+      "asset": "fence",
+      "x": 23,
+      "y": 19
+    },
+    {
+      "id": "fence-b",
+      "asset": "fence",
+      "x": 25,
+      "y": 19
+    },
+    {
+      "id": "tree",
+      "asset": "mature-tree",
+      "x": 40,
+      "y": 28
+    }
+  ]
+}

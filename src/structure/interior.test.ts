@@ -10,10 +10,18 @@ const open = (b: ReturnType<typeof make>, floor = 0) => {
 };
 
 describe('building interiors', () => {
-  it.each(ARCHETYPES.map(a => a.id))('gives %s supported floors and identifiable furnishings', id => {
+  it.each(ARCHETYPES.map(a => a.id))('gives %s interiors appropriate to its structure', id => {
     const b = make(id);
+    if (b.elevatedTank) {
+      expect(b.layout.rooms).toEqual([]);
+      expect(b.fixtures).toEqual([]);
+      expect(b.floorTiles).toEqual([]);
+      expect(generateInteriors(b)).toEqual([]);
+      return;
+    }
     expect(b.layout.rooms.length).toBeGreaterThan(0);
-    expect(b.fixtures.length).toBeGreaterThan(0);
+    if (b.canopy) expect(b.fixtures).toEqual([]);
+    else expect(b.fixtures.length).toBeGreaterThan(0);
     expect(b.fixtures.every(f => fixtureSupported(b, f) && b.layout.rooms.some(r => r.id === f.roomId && r.floor === f.floor))).toBe(true);
     expect(b.floorTiles.every(t => b.layout.rooms.some(r => r.id === t.roomId))).toBe(true);
     expect(generateInteriors(b)).toEqual(b.fixtures);

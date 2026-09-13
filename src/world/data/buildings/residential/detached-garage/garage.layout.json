@@ -1,0 +1,38 @@
+{
+  "partitions": true,
+  "rooms": [
+    {
+      "id": "workshop",
+      "kind": "storage",
+      "floor": 0,
+      "x": 0,
+      "y": 0,
+      "w": 1,
+      "d": 1,
+      "finish": "concrete",
+      "contents": [
+        {
+          "id": "workshop-0",
+          "kind": "shelf",
+          "x": 0.08,
+          "y": 0.08,
+          "w": 0.15,
+          "d": 0.65,
+          "h": 1.3,
+          "rotation": 0
+        },
+        {
+          "id": "workshop-1",
+          "kind": "table",
+          "x": 0.4,
+          "y": 0.08,
+          "w": 0.45,
+          "d": 0.15,
+          "h": 0.65,
+          "rotation": 0
+        }
+      ]
+    }
+  ],
+  "connections": []
+}

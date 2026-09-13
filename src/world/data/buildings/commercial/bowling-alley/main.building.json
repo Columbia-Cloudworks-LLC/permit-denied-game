@@ -1,0 +1,77 @@
+{
+  "version": 1,
+  "id": "bowling-alley",
+  "label": "BOWLING ALLEY",
+  "w": 10,
+  "d": 18,
+  "floors": 1,
+  "kind": "industrial",
+  "construction": "steel-hall",
+  "roof": "flat",
+  "theme": "storefront",
+  "windowStride": 2,
+  "features": {
+    "porch": false,
+    "awning": false,
+    "parapet": true,
+    "chimney": false,
+    "garage": false
+  },
+  "zones": {
+    "residential": 0,
+    "commercial": 0,
+    "industrial": 0
+  },
+  "traits": {
+    "use": [
+      "bowling-alley"
+    ],
+    "form": [
+      "B19"
+    ],
+    "style": [
+      "storefront"
+    ]
+  },
+  "partitions": true,
+  "sections": [
+    {
+      "id": "lanes",
+      "role": "lanes",
+      "x": 0,
+      "y": 0,
+      "w": 10,
+      "d": 14,
+      "floor": 0,
+      "floors": 1,
+      "layout": "lanes.layout.json"
+    },
+    {
+      "id": "front-desk",
+      "role": "front-desk",
+      "x": 0,
+      "y": 14,
+      "w": 10,
+      "d": 4,
+      "floor": 0,
+      "floors": 1,
+      "layout": "front-desk.layout.json"
+    }
+  ],
+  "connections": [
+    {
+      "a": "lanes/0/work-floor",
+      "b": "front-desk/0/common-room",
+      "at": 0.5,
+      "width": 0.35
+    }
+  ],
+  "openings": [
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.5,
+      "kind": "door"
+    }
+  ]
+}

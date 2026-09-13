@@ -1,0 +1,107 @@
+{
+  "version": 1,
+  "id": "grain-elevator",
+  "label": "GRAIN ELEVATOR",
+  "w": 14,
+  "d": 6,
+  "floors": 6,
+  "kind": "industrial",
+  "construction": "concrete-bearing",
+  "roof": "flat",
+  "theme": "warehouse",
+  "windowStride": 4,
+  "features": {
+    "porch": false,
+    "awning": false,
+    "parapet": false,
+    "chimney": false,
+    "garage": false
+  },
+  "zones": {
+    "residential": 0,
+    "commercial": 0,
+    "industrial": 0
+  },
+  "traits": {
+    "use": [
+      "grain-storage"
+    ],
+    "form": [
+      "B40",
+      "headhouse-and-cylinders"
+    ]
+  },
+  "partitions": false,
+  "connections": [],
+  "openings": [
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.1,
+      "kind": "loading"
+    }
+  ],
+  "sections": [
+    {
+      "id": "headhouse",
+      "role": "elevator-machinery",
+      "x": 0,
+      "y": 0,
+      "w": 4,
+      "d": 6,
+      "floor": 0,
+      "floors": 6,
+      "layout": "headhouse.layout.json"
+    },
+    {
+      "id": "bin-1",
+      "role": "silo-base",
+      "x": 4,
+      "y": 1,
+      "w": 5,
+      "d": 5,
+      "floor": 0,
+      "floors": 1,
+      "layout": "bin-1.layout.json"
+    },
+    {
+      "id": "bin-2",
+      "role": "silo-base",
+      "x": 9,
+      "y": 1,
+      "w": 5,
+      "d": 5,
+      "floor": 0,
+      "floors": 1,
+      "layout": "bin-2.layout.json"
+    }
+  ],
+  "silos": [
+    {
+      "id": "bin-1",
+      "gx": 4,
+      "gy": 1,
+      "diameter": 5,
+      "height": 9,
+      "minimumSupports": 5,
+      "feed": {
+        "gx": 3,
+        "gy": 0,
+        "floor": 4
+      }
+    },
+    {
+      "id": "bin-2",
+      "gx": 9,
+      "gy": 1,
+      "diameter": 5,
+      "height": 8,
+      "minimumSupports": 5,
+      "feed": {
+        "gx": 3,
+        "gy": 0,
+        "floor": 4
+      }
+    }
+  ]
+}

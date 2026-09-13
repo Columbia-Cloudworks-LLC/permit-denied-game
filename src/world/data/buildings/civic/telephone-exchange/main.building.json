@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "id": "telephone-exchange",
+  "label": "TELEPHONE EXCHANGE",
+  "w": 5,
+  "d": 6,
+  "floors": 3,
+  "kind": "shop",
+  "construction": "concrete-bearing",
+  "roof": "flat",
+  "theme": "civic",
+  "windowStride": 8,
+  "features": {
+    "porch": false,
+    "awning": false,
+    "parapet": true,
+    "chimney": false,
+    "garage": false
+  },
+  "zones": {
+    "residential": 0,
+    "commercial": 0,
+    "industrial": 0
+  },
+  "traits": {
+    "use": [
+      "telephone-exchange"
+    ],
+    "form": [
+      "B49"
+    ],
+    "style": [
+      "civic"
+    ]
+  },
+  "partitions": true,
+  "sections": [
+    {
+      "id": "exchange",
+      "role": "exchange",
+      "x": 0,
+      "y": 0,
+      "w": 5,
+      "d": 6,
+      "floor": 0,
+      "floors": 3,
+      "layout": "exchange.layout.json"
+    }
+  ],
+  "connections": [],
+  "openings": [
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.5,
+      "kind": "door"
+    }
+  ]
+}

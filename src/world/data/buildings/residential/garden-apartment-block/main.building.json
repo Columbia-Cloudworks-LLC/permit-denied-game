@@ -1,0 +1,233 @@
+{
+  "version": 1,
+  "id": "garden-apartment-block",
+  "label": "GARDEN APARTMENTS",
+  "w": 12,
+  "d": 12,
+  "floors": 3,
+  "kind": "house",
+  "construction": "brick-mixed-use",
+  "roof": "flat",
+  "theme": "walkup",
+  "windowStride": 2,
+  "features": {
+    "porch": false,
+    "awning": false,
+    "parapet": true,
+    "chimney": false,
+    "garage": false
+  },
+  "zones": {
+    "residential": 0,
+    "commercial": 0,
+    "industrial": 0
+  },
+  "traits": {
+    "use": [
+      "garden-apartment-block"
+    ],
+    "form": [
+      "B09"
+    ],
+    "style": [
+      "walkup"
+    ]
+  },
+  "partitions": true,
+  "sections": [
+    {
+      "id": "west",
+      "role": "west",
+      "x": 0,
+      "y": 7,
+      "w": 4,
+      "d": 5,
+      "floor": 0,
+      "floors": 2,
+      "layout": "west.layout.json"
+    },
+    {
+      "id": "east",
+      "role": "east",
+      "x": 8,
+      "y": 7,
+      "w": 4,
+      "d": 5,
+      "floor": 0,
+      "floors": 2,
+      "layout": "east.layout.json"
+    },
+    {
+      "id": "shared-hall",
+      "role": "shared-circulation",
+      "x": 0,
+      "y": 5,
+      "w": 12,
+      "d": 2,
+      "floor": 0,
+      "floors": 3,
+      "layout": "shared-hall.layout.json"
+    },
+    {
+      "id": "main-1",
+      "role": "main",
+      "x": 0,
+      "y": 0,
+      "w": 4,
+      "d": 5,
+      "floor": 0,
+      "floors": 3,
+      "layout": "main-1.layout.json"
+    },
+    {
+      "id": "main-2",
+      "role": "main",
+      "x": 4,
+      "y": 0,
+      "w": 4,
+      "d": 5,
+      "floor": 0,
+      "floors": 3,
+      "layout": "main-2.layout.json"
+    },
+    {
+      "id": "main-3",
+      "role": "main",
+      "x": 8,
+      "y": 0,
+      "w": 4,
+      "d": 5,
+      "floor": 0,
+      "floors": 3,
+      "layout": "main-3.layout.json"
+    }
+  ],
+  "connections": [
+    {
+      "a": "west/0/hall",
+      "b": "shared-hall/0/hall",
+      "at": 0.5,
+      "width": 0.6
+    },
+    {
+      "a": "east/0/hall",
+      "b": "shared-hall/0/hall",
+      "at": 0.5,
+      "width": 0.6
+    },
+    {
+      "a": "west/1/hall",
+      "b": "shared-hall/1/hall",
+      "at": 0.5,
+      "width": 0.6
+    },
+    {
+      "a": "east/1/hall",
+      "b": "shared-hall/1/hall",
+      "at": 0.5,
+      "width": 0.6
+    },
+    {
+      "a": "main-1/0/living",
+      "b": "shared-hall/0/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "main-1/1/living",
+      "b": "shared-hall/1/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "main-1/2/living",
+      "b": "shared-hall/2/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "main-2/0/living",
+      "b": "shared-hall/0/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "main-2/1/living",
+      "b": "shared-hall/1/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "main-2/2/living",
+      "b": "shared-hall/2/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "main-3/0/living",
+      "b": "shared-hall/0/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "main-3/1/living",
+      "b": "shared-hall/1/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "main-3/2/living",
+      "b": "shared-hall/2/hall",
+      "at": 0.5,
+      "width": 0.3
+    }
+  ],
+  "openings": [
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.5,
+      "kind": "door",
+      "cell": {
+        "x": 6,
+        "y": 6
+      }
+    }
+  ],
+  "stairs": [
+    {
+      "a": "shared-hall/0/hall",
+      "b": "shared-hall/1/hall",
+      "x": 0.33749999999999997,
+      "y": 0.42083333333333334,
+      "w": 0.24166666666666667,
+      "d": 0.075,
+      "rotation": 90
+    },
+    {
+      "a": "shared-hall/1/hall",
+      "b": "shared-hall/2/hall",
+      "x": 0.33749999999999997,
+      "y": 0.5041666666666667,
+      "w": 0.24166666666666667,
+      "d": 0.075,
+      "rotation": 90
+    }
+  ],
+  "floorVoids": [
+    {
+      "floor": 1,
+      "x": 4,
+      "y": 5,
+      "w": 3,
+      "d": 1
+    },
+    {
+      "floor": 2,
+      "x": 4,
+      "y": 6,
+      "w": 3,
+      "d": 1
+    }
+  ]
+}

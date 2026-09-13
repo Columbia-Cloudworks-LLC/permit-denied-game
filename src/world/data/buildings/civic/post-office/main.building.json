@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "id": "post-office",
+  "label": "POST OFFICE",
+  "w": 7,
+  "d": 6,
+  "floors": 1,
+  "kind": "shop",
+  "construction": "brick-mixed-use",
+  "roof": "flat",
+  "theme": "civic",
+  "windowStride": 2,
+  "features": {
+    "porch": false,
+    "awning": false,
+    "parapet": true,
+    "chimney": false,
+    "garage": false
+  },
+  "zones": {
+    "residential": 0,
+    "commercial": 0,
+    "industrial": 0
+  },
+  "traits": {
+    "use": [
+      "post-office"
+    ],
+    "form": [
+      "B42"
+    ],
+    "style": [
+      "civic"
+    ]
+  },
+  "partitions": true,
+  "sections": [
+    {
+      "id": "post",
+      "role": "post",
+      "x": 0,
+      "y": 0,
+      "w": 7,
+      "d": 6,
+      "floor": 0,
+      "floors": 1,
+      "layout": "post.layout.json"
+    }
+  ],
+  "connections": [],
+  "openings": [
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.5,
+      "kind": "door"
+    }
+  ]
+}

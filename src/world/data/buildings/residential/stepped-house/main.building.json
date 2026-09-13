@@ -1,0 +1,70 @@
+{
+  "version": 1,
+  "id": "stepped-house",
+  "label": "STEPPED HOUSE",
+  "w": 8,
+  "d": 6,
+  "floors": 2,
+  "kind": "house",
+  "construction": "brick-mixed-use",
+  "roof": "flat",
+  "theme": "colonial",
+  "windowStride": 2,
+  "features": {
+    "porch": false,
+    "awning": false,
+    "parapet": true,
+    "chimney": false,
+    "garage": false
+  },
+  "zones": {
+    "residential": 0,
+    "commercial": 0,
+    "industrial": 0
+  },
+  "traits": {
+    "use": [
+      "stepped-house"
+    ],
+    "form": [
+      "B10"
+    ],
+    "style": [
+      "colonial"
+    ]
+  },
+  "partitions": true,
+  "sections": [
+    {
+      "id": "ground",
+      "role": "ground",
+      "x": 0,
+      "y": 0,
+      "w": 8,
+      "d": 6,
+      "floor": 0,
+      "floors": 1,
+      "layout": "ground.layout.json"
+    },
+    {
+      "id": "upper",
+      "role": "upper",
+      "x": 0,
+      "y": 0,
+      "w": 4,
+      "d": 6,
+      "floor": 1,
+      "floors": 1,
+      "layout": "upper.layout.json"
+    }
+  ],
+  "connections": [],
+  "openings": [
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.5,
+      "kind": "door"
+    }
+  ]
+}

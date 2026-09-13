@@ -1,0 +1,77 @@
+{
+  "version": 1,
+  "id": "recycling-shed",
+  "label": "RECYCLING SHED",
+  "w": 14,
+  "d": 9,
+  "floors": 1,
+  "kind": "industrial",
+  "construction": "steel-hall",
+  "roof": "shed",
+  "theme": "warehouse",
+  "windowStride": 2,
+  "features": {
+    "porch": false,
+    "awning": false,
+    "parapet": false,
+    "chimney": false,
+    "garage": false
+  },
+  "zones": {
+    "residential": 0,
+    "commercial": 0,
+    "industrial": 0
+  },
+  "traits": {
+    "use": [
+      "recycling-shed"
+    ],
+    "form": [
+      "B27"
+    ],
+    "style": [
+      "warehouse"
+    ]
+  },
+  "partitions": true,
+  "sections": [
+    {
+      "id": "sorting",
+      "role": "sorting",
+      "x": 0,
+      "y": 0,
+      "w": 10,
+      "d": 9,
+      "floor": 0,
+      "floors": 1,
+      "layout": "sorting.layout.json"
+    },
+    {
+      "id": "stock",
+      "role": "stock",
+      "x": 10,
+      "y": 0,
+      "w": 4,
+      "d": 9,
+      "floor": 0,
+      "floors": 1,
+      "layout": "stock.layout.json"
+    }
+  ],
+  "connections": [
+    {
+      "a": "sorting/0/boxes",
+      "b": "stock/0/stockroom",
+      "at": 0.5,
+      "width": 0.35
+    }
+  ],
+  "openings": [
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.5,
+      "kind": "door"
+    }
+  ]
+}

@@ -1,0 +1,71 @@
+{
+  "version": 1,
+  "id": "farmstead",
+  "label": "FARMSTEAD",
+  "w": 48,
+  "d": 39,
+  "buildings": [
+    {
+      "id": "house",
+      "building": "colonial",
+      "x": 3,
+      "y": 3
+    },
+    {
+      "id": "barn",
+      "building": "gable-barn",
+      "x": 16,
+      "y": 3
+    },
+    {
+      "id": "equipment",
+      "building": "farm-equipment-shed",
+      "x": 29,
+      "y": 4
+    }
+  ],
+  "equipment": [
+    {
+      "id": "grain",
+      "asset": "grain-bin",
+      "x": 31,
+      "y": 20
+    },
+    {
+      "id": "tractor",
+      "asset": "tractor",
+      "x": 19,
+      "y": 24
+    },
+    {
+      "id": "implement",
+      "asset": "farm-implement",
+      "x": 26,
+      "y": 28
+    },
+    {
+      "id": "hay-a",
+      "asset": "hay-bale-square",
+      "x": 10,
+      "y": 26
+    },
+    {
+      "id": "hay-b",
+      "asset": "hay-bale-round",
+      "x": 13,
+      "y": 28
+    },
+    {
+      "id": "trough",
+      "asset": "water-trough",
+      "x": 4,
+      "y": 19
+    },
+    {
+      "id": "wood",
+      "asset": "woodpile",
+      "x": 5,
+      "y": 28
+    }
+  ]
+}

@@ -4,6 +4,8 @@ export const DEBUG_GROUPS = [
     ["roofs", "Roofs & chimneys", true], ["walls", "Walls & partitions", true],
     ["floors", "Floors", true], ["contents", "Interior contents", true],
     ["props", "Outdoor props", true], ["debris", "Rubble & piles", true],
+    ["vehicles", "Moving vehicles", true],
+    ["details", "Attached building details", true],
     ["effects", "Dust, particles & marks", true], ["terrain", "Terrain & lot surfaces", true],
     ["roads", "Road pavement", true], ["sites", "Foundation scars", true],
   ] },

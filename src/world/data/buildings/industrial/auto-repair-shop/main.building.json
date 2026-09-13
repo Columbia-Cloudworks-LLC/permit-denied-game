@@ -1,0 +1,116 @@
+{
+  "version": 1,
+  "id": "auto-repair-shop",
+  "label": "TWO BAY AUTO REPAIR",
+  "kind": "industrial",
+  "w": 10,
+  "d": 6,
+  "floors": 1,
+  "roof": "flat",
+  "theme": "warehouse",
+  "windowStride": 4,
+  "features": {
+    "porch": false,
+    "awning": false,
+    "parapet": true,
+    "chimney": false,
+    "garage": false
+  },
+  "construction": "steel-hall",
+  "zones": {
+    "residential": 0,
+    "commercial": 0,
+    "industrial": 0
+  },
+  "traits": {
+    "use": [
+      "auto-repair-shop"
+    ],
+    "form": [
+      "B21",
+      "sectioned"
+    ],
+    "scale": [
+      "broad"
+    ]
+  },
+  "partitions": true,
+  "connections": [
+    {
+      "a": "service-bays/0/workshop",
+      "b": "office-parts/0/parts",
+      "at": 0.5,
+      "width": 0.35
+    },
+    {
+      "a": "service-bays/0/workshop",
+      "b": "office-parts/0/office",
+      "at": 0.5,
+      "width": 0.35
+    }
+  ],
+  "sections": [
+    {
+      "id": "service-bays",
+      "role": "service-bays",
+      "x": 0,
+      "y": 0,
+      "w": 7,
+      "d": 6,
+      "floor": 0,
+      "floors": 1,
+      "layout": "service-bays.layout.json"
+    },
+    {
+      "id": "office-parts",
+      "role": "office-parts",
+      "x": 7,
+      "y": 0,
+      "w": 3,
+      "d": 6,
+      "floor": 0,
+      "floors": 1,
+      "layout": "office-parts.layout.json"
+    }
+  ],
+  "openings": [
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.2,
+      "kind": "loading"
+    },
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.55,
+      "kind": "loading"
+    },
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.9,
+      "kind": "door"
+    }
+  ],
+  "facadeDetails": [
+    {
+      "id": "west-shutter",
+      "kind": "roll-up-door",
+      "floor": 0,
+      "gx": 0,
+      "gy": 5,
+      "side": "south",
+      "width": 2
+    },
+    {
+      "id": "east-shutter",
+      "kind": "roll-up-door",
+      "floor": 0,
+      "gx": 4,
+      "gy": 5,
+      "side": "south",
+      "width": 2
+    }
+  ]
+}

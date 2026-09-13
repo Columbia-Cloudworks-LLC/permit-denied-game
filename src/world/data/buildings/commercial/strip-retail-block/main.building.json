@@ -1,0 +1,93 @@
+{
+  "version": 1,
+  "id": "strip-retail-block",
+  "label": "STRIP RETAIL BLOCK",
+  "w": 15,
+  "d": 5,
+  "floors": 1,
+  "kind": "shop",
+  "construction": "brick-mixed-use",
+  "roof": "flat",
+  "theme": "storefront",
+  "windowStride": 2,
+  "features": {
+    "porch": false,
+    "awning": false,
+    "parapet": true,
+    "chimney": false,
+    "garage": false
+  },
+  "zones": {
+    "residential": 0,
+    "commercial": 0,
+    "industrial": 0
+  },
+  "traits": {
+    "use": [
+      "strip-retail-block"
+    ],
+    "form": [
+      "B16"
+    ],
+    "style": [
+      "storefront"
+    ]
+  },
+  "partitions": true,
+  "sections": [
+    {
+      "id": "west-shop",
+      "role": "west-shop",
+      "x": 0,
+      "y": 0,
+      "w": 5,
+      "d": 5,
+      "floor": 0,
+      "floors": 1,
+      "layout": "west-shop.layout.json"
+    },
+    {
+      "id": "middle-shop",
+      "role": "middle-shop",
+      "x": 5,
+      "y": 0,
+      "w": 5,
+      "d": 5,
+      "floor": 0,
+      "floors": 1,
+      "layout": "middle-shop.layout.json"
+    },
+    {
+      "id": "east-shop",
+      "role": "east-shop",
+      "x": 10,
+      "y": 0,
+      "w": 5,
+      "d": 5,
+      "floor": 0,
+      "floors": 1,
+      "layout": "east-shop.layout.json"
+    }
+  ],
+  "connections": [],
+  "openings": [
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.16666666666666666,
+      "kind": "door"
+    },
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.5,
+      "kind": "door"
+    },
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.8333333333333334,
+      "kind": "door"
+    }
+  ]
+}

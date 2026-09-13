@@ -110,6 +110,23 @@ export class AudioBus {
     this.blip(70, 0.08, 0.06, "sine");
   }
 
+  bowlingPins(): void {
+    if (!this.ctx || !this.master || this.muted) return;
+    const ctx = this.ctx, master = this.master, now = ctx.currentTime;
+    // A short, staggered cluster of hollow wooden knocks; no timers or sound downloads.
+    for (let i = 0; i < 10; i++) {
+      const start = now + i * .022 + (i % 3) * .009;
+      const osc = ctx.createOscillator(), gain = ctx.createGain();
+      osc.type = 'triangle'; osc.frequency.setValueAtTime(420 + (i * 137 % 510), start);
+      osc.frequency.exponentialRampToValueAtTime(170 + (i * 59 % 140), start + .09);
+      gain.gain.setValueAtTime(.13 * (1 - i * .055), start);
+      gain.gain.exponentialRampToValueAtTime(.001, start + .13);
+      osc.connect(gain); gain.connect(master); osc.start(start); osc.stop(start + .15);
+      osc.onended = () => { osc.disconnect(); gain.disconnect(); };
+    }
+    this.noiseBurst(.12,.12,1800);
+  }
+
   cash(): void {
     this.blip(660, 0.08, 0.09, "square");
     this.blip(880, 0.1, 0.07, "square");

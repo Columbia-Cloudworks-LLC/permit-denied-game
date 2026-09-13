@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "id": "laundromat",
+  "label": "LAUNDROMAT",
+  "w": 6,
+  "d": 5,
+  "floors": 1,
+  "kind": "shop",
+  "construction": "brick-mixed-use",
+  "roof": "flat",
+  "theme": "storefront",
+  "windowStride": 2,
+  "features": {
+    "porch": false,
+    "awning": false,
+    "parapet": true,
+    "chimney": false,
+    "garage": false
+  },
+  "zones": {
+    "residential": 0,
+    "commercial": 0,
+    "industrial": 0
+  },
+  "traits": {
+    "use": [
+      "laundromat"
+    ],
+    "form": [
+      "B13"
+    ],
+    "style": [
+      "storefront"
+    ]
+  },
+  "partitions": true,
+  "sections": [
+    {
+      "id": "laundry",
+      "role": "laundry",
+      "x": 0,
+      "y": 0,
+      "w": 6,
+      "d": 5,
+      "floor": 0,
+      "floors": 1,
+      "layout": "laundry.layout.json"
+    }
+  ],
+  "connections": [],
+  "openings": [
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.5,
+      "kind": "door"
+    }
+  ]
+}
