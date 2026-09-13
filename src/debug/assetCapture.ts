@@ -11,6 +11,8 @@ import { createDozer, stepDozer } from '../vehicle/dozer';
 import { createRoadVehicle } from '../vehicle/roadVehicle';
 import { worldBoundsToScreen } from '../world/iso';
 import { defaultDebugView, DEBUG_GROUPS, type DebugView } from './view';
+import { archetypeById } from '../world/archetypes';
+import { getAsset } from '../world/catalog';
 import { applyCellDamage } from '../structure/building';
 import { facadeDetailPose, facadeDetailSupports, FACADE_DETAIL_KINDS } from '../structure/facadeDetails';
 import { applyFixtureDamage } from '../structure/interior';
@@ -152,7 +154,15 @@ export async function bootAssetCapture(): Promise<void> {
     invalidateWorldCollision();
     return snapshot();
   }
-  const api = { version: 1, catalog: assets.map(a => ({ id: a.id, name: a.name, category: a.category, variants: a.variants,
+  function inputs(id: string) {
+    const asset = assets.find(a => a.id === id);
+    if (!asset) throw new Error(`Unknown capture asset ${id}`);
+    return { asset, seed: 4517,
+      siteBuildings: asset.site?.buildings.map(b => archetypeById(b.building)),
+      siteEquipment: asset.site?.equipment.map(p => getAsset(p.asset)),
+      fixtureHost: asset.fixture ? archetypeById('rivertown') : undefined };
+  }
+  const api = { version: 1, inputs, catalog: assets.map(a => ({ id: a.id, name: a.name, category: a.category, variants: a.variants,
     destruction: a.category === 'runtime-vehicle' ? 'unsupported' : 'supported',
     floors: a.fixture ? (a.fixtureLevels??1)*2 : a.archetype?.floors ?? Math.max(0, ...(a.site?.buildings.map(m => assets.find(v => v.archetype?.id === m.building)?.archetype?.floors ?? 0) ?? [])) })),
     layers: DEBUG_GROUPS[0].options.map(([id]) => id), load, render, advance, damage, snapshot };
