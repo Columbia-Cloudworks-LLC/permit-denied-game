@@ -8,12 +8,28 @@ import { ParticlePool } from '../fx/particles';
 import { restoreBay, testVehicleImpact, yardVehicleRoute, runYardFleet } from '../world/testYard';
 import { SIM_DT, DEBRIS } from '../game/constants';
 import type { VehicleContact } from './types';
+import { createRoadVehicle, replaceRoadVehicle } from './roadVehicle';
 function contact(v: ReturnType<typeof createVehicle>, id: string, impulse = 8): VehicleContact {
     const d = vehicleDefinition(v.definitionId), p = partPose(v, d.parts.findIndex(p => p.id === id));
     return { x: p.x, y: p.y, z: p.z + p.height * .5, nx: 0, ny: 1, nz: 0, impulse, source: 'test' };
 }
 const empty = () => { const t = createTown(); t.buildings = []; t.props = []; t.vehicles = []; t.roadCar = null; t.rubble = []; return t; };
 describe('modular vehicle contract', () => {
+    it('replaces repeated road demos without removing placed or followed yard vehicles', () => {
+        const town = empty(), placed = createVehicle('tractor', 12, 10);
+        town.vehicles.push(placed); town.roadCar = placed;
+        const pool = new ParticlePool(), dozer = createDozer(2, 2, 0);
+        let previous;
+        for (let i = 0; i < 5; i++) {
+            const demo = createRoadVehicle(20, 20);
+            replaceRoadVehicle(town, demo);
+            stepVehicleWorld(town, dozer, pool, [], SIM_DT);
+            expect(town.vehicles).toEqual([placed, demo]);
+            expect(town.roadCar).toBe(demo);
+            if (previous) expect(town.vehicles).not.toContain(previous);
+            previous = demo;
+        }
+    });
     it('collides with an older sleeping wreck even when the wreck skips its own simulation',()=>{
         const t=empty(),wreck=createVehicle('car',14,10),moving=createVehicle('car',11.5,10),pool=new ParticlePool();
         wreck.status='wreck';wreck.sleeping=true;t.vehicles.push(wreck,moving);moving.vx=6;moving.sleeping=false;

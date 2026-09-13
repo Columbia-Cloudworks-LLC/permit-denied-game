@@ -5,7 +5,7 @@ import { PileField } from '../sim/pile';
 import { rubbleAabb } from '../sim/debris';
 import { invalidateWorldCollision } from '../sim/worldSim';
 import type { ParticlePool } from '../fx/particles';
-import { createRoadVehicle } from '../vehicle/roadVehicle';
+import { createRoadVehicle, replaceRoadVehicle } from '../vehicle/roadVehicle';
 import { emptyTerrain, RoadBuilder, linePoints, pt } from './roads';
 import { bayBuildings, bayProps, bayVehicles, discoverYardAssets, yardAssetIssue, yardGridSlots, instantiateBay, layoutYard, overlap, type YardAsset, type YardBay, type YardBox } from './yardCatalog';
 import type { Town } from './town';
@@ -185,7 +185,7 @@ export function restoreBay(town: Town, bay: YardBay, particles?: ParticlePool): 
   town.yard!.bays.push(bay); changed(town);
 }
 function changed(town: Town): void { town.visualRevision++; town.siteRevision++; invalidateWorldCollision(); }
-export function yardRoadVehicle(town: Town): void { town.roadCar = createRoadVehicle(town.roadSpawnX, town.roadSpawnY, 0);town.vehicles.push(town.roadCar); }
+export function yardRoadVehicle(town: Town): void { replaceRoadVehicle(town, createRoadVehicle(town.roadSpawnX, town.roadSpawnY, 0)); }
 export function yardVehicleRoute(v:VehicleState,delay=0,bay?:YardBay):void {
   const r=7,cx=bay ? bay.x+bay.asset.clearance+bay.asset.w/2 : v.x,cy=(bay ? bay.y+bay.asset.clearance+bay.asset.d/2-6 : v.y)+r;
   const points=Array.from({length:24},(_,i)=>{const angle=-Math.PI/2+(i+1)*Math.PI/12;return {x:cx+Math.cos(angle)*r,y:cy+Math.sin(angle)*r};});

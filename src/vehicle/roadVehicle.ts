@@ -30,6 +30,12 @@ export function createRoadVehicle(x: number = ROAD.spawnX, y: number = ROAD.spaw
 export function roadSpeed(v: RoadVehicle): number {
     return len(v.vx, v.vy);
 }
+/** The road demonstration replaces its previous instance, including detached parts. */
+export function replaceRoadVehicle(town: Town, vehicle: RoadVehicle): void {
+    town.vehicles = town.vehicles.filter(v => !v.roadDemo);
+    town.vehicles.push(vehicle);
+    town.roadCar = vehicle;
+}
 export function attachRoadRoute(town: Town, v: RoadVehicle): void {
     if (v.route.length)
         return;

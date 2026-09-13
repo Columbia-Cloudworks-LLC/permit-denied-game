@@ -25,7 +25,7 @@ import { lastDebrisStats, obstructionAt } from "../sim/debris";
 import { spawnFixtureFrags, stepWorld, type Upgrades } from "../sim/worldSim";
 import type { Bird, WorldEvent } from "../structure/types";
 import { createDozer, dozerSpeed, stepDozer } from "../vehicle/dozer";
-import { createRoadVehicle } from "../vehicle/roadVehicle";
+import { createRoadVehicle, replaceRoadVehicle } from "../vehicle/roadVehicle";
 import { pickVerificationRoute } from "../world/routing";
 import { worldBoundsToScreen, worldToScreen } from "../world/iso";
 import { createTown } from "../world/town";
@@ -564,12 +564,12 @@ export class Game {
     if (this.rules.kind !== "sandbox") return;
     this.followRoadCamera = true;
     const route = pickVerificationRoute(this.town.network) ?? [];
-    this.town.roadCar = createRoadVehicle(
+    replaceRoadVehicle(this.town, createRoadVehicle(
       this.town.roadSpawnX,
       this.town.roadSpawnY,
       this.town.roadSpawnHeading,
       route,
-    );
+    ));
   }
 
   obstructionAt(x: number, y: number, radius = 0.7) {
