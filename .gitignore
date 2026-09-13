@@ -17,3 +17,6 @@ coverage/
 # Local visual verification captures and measurement artifacts
 /docs/visual-verification/
 /artifacts/
+.wrangler/
+.dev.vars
+.dev.vars.*

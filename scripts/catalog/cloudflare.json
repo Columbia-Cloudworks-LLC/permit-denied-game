@@ -1,0 +1,7 @@
+{
+  "accountId": "d24832efce35cd4904cde1c3b7c5d04a",
+  "publicBucket": "permit-denied-catalog",
+  "privateBucket": "permit-denied-catalog-cache",
+  "publicOrigin": "https://assets.permitdenied.app",
+  "domain": "permitdenied.app"
+}

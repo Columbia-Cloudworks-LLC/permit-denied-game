@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="description" content="Explore the buildings, props, and destruction sequences of PERMIT DENIED."><title>Asset catalog · PERMIT DENIED</title></head>
+<body>
+  <header><a class="brand" href="/">PERMIT <strong>DENIED</strong><span>FIELD ARCHIVE</span></a><a class="play" href="/">Play the game ↗</a></header>
+  <main>
+    <section class="intro"><p class="eyebrow">THE DEMOLITION COLLECTION</p><h1>Built to be<br><em>broken.</em></h1><p>Explore the structures, inspect the details, and step through the destruction.</p><p id="release" class="release">Connecting to the archive…</p></section>
+    <form id="filters" role="search"><label>Find an asset<input id="search" type="search" placeholder="Search a name, ID, or word prefix" autocomplete="off"></label><label>Collection<select id="category"><option value="all">All collections</option></select></label><button type="submit">Search →</button></form>
+    <p id="status" role="status" aria-live="polite"></p>
+    <section id="grid" class="grid" aria-label="Assets"></section>
+    <nav class="pagination" aria-label="Catalog pages"><button id="previous" disabled>← Previous</button><span id="page-number">Page 1</span><button id="next" disabled>Next →</button></nav>
+  </main>
+  <footer>Every frame is captured from the game's production renderer.<span>PERMIT DENIED · ASSET CATALOG</span></footer>
+  <dialog id="viewer" aria-labelledby="viewer-title">
+    <div class="viewer-head"><div><p id="asset-id" class="eyebrow"></p><h2 id="viewer-title">Asset</h2></div><button id="close" aria-label="Close asset viewer">Close ✕</button></div>
+    <div class="viewer-options"><label>Variant<select id="variant"></select></label><label>View<select id="series"></select></label><button id="share">Copy link</button></div>
+    <p id="explanation"></p>
+    <div id="stage" class="stage" tabindex="0" aria-label="Image viewer. Use left and right arrow keys to step through frames."><img id="frame" alt=""><p id="image-status" role="status"></p></div>
+    <div class="transport"><button id="back" aria-label="Previous frame">←</button><div><label id="frame-label" for="scrubber"></label><input id="scrubber" type="range" min="0" value="0"><p id="counter"></p></div><button id="forward" aria-label="Next frame">→</button></div>
+    <p class="hint">Arrow keys or swipe to step through · Escape to close</p>
+  </dialog>
+  <script type="module" src="/src/catalog/main.ts"></script>
+</body>
+</html>

@@ -1,0 +1,10 @@
+{
+  "rules": [
+    {
+      "id": "public-catalog-read-only",
+      "allowed": { "methods": ["GET", "HEAD"], "origins": ["*"] },
+      "exposeHeaders": ["ETag", "Content-Length"],
+      "maxAgeSeconds": 86400
+    }
+  ]
+}

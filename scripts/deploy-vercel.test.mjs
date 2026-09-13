@@ -25,3 +25,20 @@ test('refuses an incomplete build', async () => {
   try { await assert.rejects(staticDeploymentFiles(root), /index.html/); }
   finally { await rm(root, { recursive: true, force: true }); }
 });
+
+test('catalog routes stay isolated from the game fallback and require a pinned release', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'permit-deployment-'));
+  try {
+    await mkdir(path.join(root, 'catalog'));
+    await writeFile(path.join(root, 'index.html'), '<html>game</html>');
+    await writeFile(path.join(root, 'catalog/index.html'), '<html>catalog</html>');
+    await assert.rejects(staticDeploymentFiles(root), /release pointer/);
+    await writeFile(path.join(root, 'catalog/release.json'), '{}');
+    const files = await staticDeploymentFiles(root);
+    const config = JSON.parse(Buffer.from(files[0].data, 'base64'));
+    const missing = config.routes.findIndex(route => route.src === '/catalog/(.*)');
+    assert.equal(config.routes[missing].status, 404);
+    assert.ok(missing < config.routes.length - 1);
+    assert.equal(config.routes.find(route => route.src === '/catalog/release.json').headers['cache-control'], 'no-store');
+  } finally { await rm(root, { recursive: true, force: true }); }
+});

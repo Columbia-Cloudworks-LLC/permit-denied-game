@@ -9,7 +9,12 @@ export async function staticDeploymentFiles(directory) {
     version: 3,
     routes: [
       { src: '/assets/(.*)', headers: { 'cache-control': 'public, max-age=31536000, immutable' }, continue: true },
+      { src: '/catalog', status: 308, headers: { Location: '/catalog/' } },
+      { src: '/catalog/', dest: '/catalog/index.html', headers: { 'cache-control': 'no-cache' } },
+      { src: '/catalog/release.json', headers: { 'cache-control': 'no-store' }, continue: true },
+      { src: '/build.json', headers: { 'cache-control': 'no-store' }, continue: true },
       { handle: 'filesystem' },
+      { src: '/catalog/(.*)', status: 404 },
       { src: '/(.*)', dest: '/index.html' },
     ],
   })).toString('base64'), encoding: 'base64' }];
@@ -23,12 +28,17 @@ export async function staticDeploymentFiles(directory) {
   }
   await visit('');
   if (!files.some(file => file.file === '.vercel/output/static/index.html')) throw new Error('Missing built index.html');
+  if (files.some(file => file.file === '.vercel/output/static/catalog/index.html') && !files.some(file => file.file === '.vercel/output/static/catalog/release.json')) throw new Error('Missing catalog release pointer');
   return files;
 }
 
 export async function deploy() {
   const { VERCEL_TOKEN: token, VERCEL_ORG_ID: teamId, VERCEL_PROJECT_ID: projectId, DEPLOY_TARGET: target } = process.env;
   if (!token || !teamId || !projectId || !['production', 'preview'].includes(target)) throw new Error('Missing or invalid deployment configuration');
+  const pointer = JSON.parse(await readFile('dist/catalog/release.json', 'utf8'));
+  if (!/^https:\/\/assets\.permitdenied\.app\/releases\/[a-f0-9]{64}\.json$/.test(pointer.url) || !/^[a-f0-9]{40}$/.test(process.env.DEPLOY_SHA || '') || pointer.commit !== process.env.DEPLOY_SHA) {
+    throw new Error('Deployment requires a verified R2 catalog release for this commit');
+  }
   async function api(endpoint, body) {
     const url = new URL(`https://api.vercel.com${endpoint}`);
     url.searchParams.set('teamId', teamId);

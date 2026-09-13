@@ -1,5 +1,6 @@
 import { facebookPageUrl } from './facebook-metadata.mjs';
 import { readFile } from 'node:fs/promises';
+import { verifyCatalogProduction } from './verify-catalog-production.mjs';
 
 const { version } = JSON.parse(await readFile('package.json', 'utf8'));
 const id = process.env.FACEBOOK_APP_ID?.trim();
@@ -18,6 +19,8 @@ for (let attempt = 0; attempt < 12; attempt++) {
     const client = await script.text();
     if (!client.includes(pageUrl)) throw new Error("Production Facebook page URL does not match the repository variable");
     if (!script.ok || !client.includes(`"${version}"`)) throw new Error('Production version does not match this release');
+    if (!process.env.DEPLOY_SHA) throw new Error('DEPLOY_SHA is required to verify the catalog release');
+    await verifyCatalogProduction('https://permitdenied.app', { version, commit: process.env.DEPLOY_SHA });
     console.log(`Production ${version} and Facebook App ID verified`);
     process.exit(0);
   } catch (error) { lastError = error; }

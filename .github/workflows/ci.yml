@@ -9,6 +9,7 @@ on:
 
 env:
   FACEBOOK_PAGE_URL: ${{ vars.FACEBOOK_PAGE_URL }}
+  DEPLOY_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
 
 permissions:
   contents: read
@@ -16,8 +17,13 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      FACEBOOK_APP_ID: ${{ vars.FACEBOOK_APP_ID }}
+      REQUIRE_FACEBOOK_APP_ID: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && '1' || '0' }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -26,11 +32,20 @@ jobs:
       - run: npm test
       - run: node --test scripts/*.test.mjs
       - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: node scripts/verify-catalog.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: game-build
+          path: dist
+          retention-days: 14
 
   windows:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -40,13 +55,23 @@ jobs:
       - run: node --test scripts/*.test.mjs
       - run: npm run build
 
+  catalog:
+    needs: build
+    uses: ./.github/workflows/asset-captures.yml
+    with:
+      sha: ${{ github.event.pull_request.head.sha || github.sha }}
+      trusted: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    secrets:
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+
   deploy:
-    needs: [build, windows]
+    needs: [build, windows, catalog]
     # Fork PRs get tests, never deployment credentials. Dispatch also handles the
     # final screenshot-bot commit, whose push does not start ordinary CI.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 60
     concurrency:
       group: vercel-${{ github.head_ref || github.ref_name }}
       cancel-in-progress: false
@@ -84,9 +109,16 @@ jobs:
           console.log(`Vercel project access verified: ${data.name}`);
           NODE
       - run: npm ci
-      - name: Build deployment with public Facebook metadata
+      - uses: actions/download-artifact@v4
+        with:
+          name: game-build
+          path: dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: asset-catalog-public
+          path: artifacts/catalog-public
+      - name: Verify built public Facebook metadata
         run: |
-          npm run build
           node --input-type=module -e 'import fs from "node:fs"; const html=fs.readFileSync("dist/index.html","utf8"); if(!html.includes(`property="fb:app_id" content="${process.env.FACEBOOK_APP_ID.trim()}"`)) throw Error("Built HTML is missing the configured Facebook App ID");'
       - name: Check branch is still current
         id: current
@@ -98,6 +130,12 @@ jobs:
             const { data } = await github.rest.repos.getBranch({ ...context.repo, branch });
             core.setOutput('yes', String(data.commit.sha === expected));
             if (data.commit.sha !== expected) core.notice('Newer branch commit exists; skipping stale deployment.');
+      - name: Publish immutable catalog objects and pin release
+        if: steps.current.outputs.yes == 'true'
+        run: node scripts/catalog.mjs publish
+        env:
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
       - name: Create GitHub deployment
         if: steps.current.outputs.yes == 'true'
         id: deployment

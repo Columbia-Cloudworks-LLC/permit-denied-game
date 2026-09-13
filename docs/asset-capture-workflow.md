@@ -77,7 +77,7 @@ Every screenshot records its SHA-256 hash and simulation state, including damage
 
 ## CI and coverage
 
-`.github/workflows/asset-captures.yml` runs on PRs to `main`, pushes to `main`, and manual dispatch. Four independent jobs build the game and capture disjoint catalog subsets. Each uploads its gallery even if capture fails. A final job verifies full variant coverage and every PNG hash, then publishes the combined **asset-catalog-complete** artifact. Artifacts are retained for 14 days; screenshots are not committed.
+`.github/workflows/asset-captures.yml` is called by the main CI workflow for its PR, push, and dispatch builds. Four workers consume the same built game artifact and capture duration-balanced batches, reusing verified private R2 evidence on trusted builds. Each uploads its captures even if capture fails. A final job verifies full coverage and image hashes, generates public WebP/catalog files, and retains the combined **asset-catalog-complete** evidence artifact for 14 days. Deployment waits for this job and publishes public files to R2 before pinning the exact release in the game deployment. Screenshots are not committed. See [the published catalog workflow](asset-catalog.md).
 
 The same sharding and verification can run locally (use separate ports for concurrent processes):
 
@@ -91,4 +91,4 @@ node scripts/verify-asset-captures.mjs artifacts/catalog
 
 The verifier rejects missing variants, duplicate variants or screenshot paths, inconsistent shard catalogs, filtered runs, capture errors, missing restoration verification and changed image bytes. It requires every standard layer view, declared floor view, damage stage and intermediate destruction view. Vehicle exemptions require all five motion frames; exhaustive runs require all 4,096 combinations. Its combined `index.html` links every model and detailed gallery. A new catalog asset is automatically part of the next capture run; no screenshot placement list needs updating.
 
-CI configuration has been authored locally. A hosted Actions run requires publishing these changes; no commit or push has been performed.
+Local raw galleries remain available for diagnosis. Public browsing and deployment now use the generated catalog described above; a hosted Actions run requires the documented Cloudflare provisioning and repository secrets.
