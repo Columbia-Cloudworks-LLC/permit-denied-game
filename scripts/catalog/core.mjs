@@ -41,7 +41,11 @@ export function requiredCaptures(asset, exhaustive = false) {
     for (const mode of ['only', 'without']) files.push(`layers/${mode}-${layer}.png`);
   for (let floor = 0; floor < asset.floors; floor++) for (const view of ['cutaway', 'structure']) files.push(`floors/${String(floor).padStart(2, '0')}-${view}.png`);
   if (exhaustive) for (let mask = 0; mask < 4096; mask++) files.push(`layers/combination-${String(mask).padStart(4, '0')}.png`);
-  if (asset.destruction === 'unsupported') for (const frame of [15, 30, 60, 120, 180]) files.push(`motion/frame-${String(frame).padStart(4, '0')}.png`);
+  if(asset.category==='vehicle') {
+    for(let heading=0;heading<4;heading++){files.push('vehicle/heading-'+heading+'-intact.png');for(const action of ['front','side','rear','overhead'])for(const frame of [0,15,60])files.push('vehicle/heading-'+heading+'-'+action+'-'+frame+'.png');}
+    for(const frame of [30,90,180])files.push('vehicle/travel-'+frame+'.png');
+    files.push('vehicle/wreck-0.png','vehicle/wreck-180.png','vehicle/wreck-pushed.png');
+  } else if (asset.destruction === 'unsupported') for (const frame of [15, 30, 60, 120, 180]) files.push(`motion/frame-${String(frame).padStart(4, '0')}.png`);
   else {
     for (const stage of ['00-intact', '01-damaged', '02-breached', '03-support-loss', '99-cleared-structure']) files.push(`destruction/${stage}.png`);
     for (const frame of [6, 15, 30, 60, 90, 120, 180, 240, 360, 600, 900]) for (const view of ['', '-cutaway', '-no-effects']) files.push(`destruction/frame-${String(frame).padStart(4, '0')}${view}.png`);

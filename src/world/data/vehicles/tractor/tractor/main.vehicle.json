@@ -1,0 +1,17 @@
+{
+  "id": "tractor",
+  "name": "Farm tractor",
+  "family": "tractor",
+  "body": "tractor",
+  "length": 2.35,
+  "width": 1.45,
+  "height": 1.5,
+  "mass": 5.5,
+  "cash": 32,
+  "paints": [
+    5609034,
+    12146241
+  ],
+  "speed": 3,
+  "steering": "front"
+}

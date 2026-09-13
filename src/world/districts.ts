@@ -33,7 +33,7 @@ export function generateDistrictLayout(
   id: Exclude<DistrictId, "classic">,
   seed: number,
   topology?: TopologyFamily,
-): Omit<Town, "pile" | "rubble" | "marks" | "roadCar" | "visualRevision" | "collapsedSites" | "siteRevision"> {
+): Omit<Town, "vehicles" | "pile" | "rubble" | "marks" | "roadCar" | "visualRevision" | "collapsedSites" | "siteRevision"> {
   const rural = generateRuralLayout(id, seed, topology);
   return {
     buildings: rural.buildings,

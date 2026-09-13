@@ -1,12 +1,16 @@
+import type { VehicleState } from '../vehicle/types';
+import { migrateVehicles } from '../vehicle/world';
+import { resetVehicleIds } from '../vehicle/runtime';
 import { populateTowerTest } from './towerTest';
 import { populateTestYard, type TestYard } from './testYard';
+import type { TestMapRequest } from './testMapRequest';
 import { CELL } from "../game/constants";
 import { Rng } from "../game/rng";
 import { DEFAULT_DISTRICT_SEEDS, type DistrictId } from "../game/session";
 import { resetDebrisSim } from "../sim/debris";
 import { PileField } from "../sim/pile";
 import { createBuildingFromArchetype, resetBuildingIds } from "../structure/building";
-import type { Building, CollapsedSite, GroundMark, GroundPatch, Lot, Prop, RoadVehicle, Rubble } from "../structure/types";
+import type { Building, CollapsedSite, GroundMark, GroundPatch, Lot, Prop, Rubble } from "../structure/types";
 import { resetPropIds, spawnAsset } from "./catalog";
 import type { DistrictReport } from "./districts";
 import { generateDistrictLayout } from "./districts";
@@ -24,7 +28,9 @@ export interface Town {
   rubble: Rubble[];
   marks: GroundMark[];
   pile: PileField;
-  roadCar: RoadVehicle | null;
+  vehicles: VehicleState[];
+  /** Camera/road-demo reference only; simulation membership is vehicles. */
+  roadCar: VehicleState | null;
   spawnX: number;
   spawnY: number;
   spawnHeading: number;
@@ -51,6 +57,7 @@ export interface Town {
 }
 
 export interface TownOptions {
+  testMap?: TestMapRequest;
   towerTest?: boolean;
   showcase?: boolean;
   yard?: boolean;
@@ -60,16 +67,21 @@ export interface TownOptions {
 }
 
 export function createTown(options: TownOptions = {}): Town {
+  resetVehicleIds(); const town = createTownLayout(options); migrateVehicles(town); return town;
+}
+function createTownLayout(options: TownOptions = {}): Town {
   const district = options.district ?? "classic";
   const seed = options.seed ?? DEFAULT_DISTRICT_SEEDS[district];
   resetBuildingIds();
   resetDebrisSim(seed);
   resetPropIds();
 
+  if (options.testMap || (options.yard && district === 'classic')) return populateTestYard(emptyTestTown(seed), options.testMap);
+
   if (district === "classic") {
     const town = createClassicTown(seed, options.showcase);
     if (options.towerTest) return populateTowerTest(town);
-    return options.yard ? populateTestYard(town) : town;
+    return town;
   }
 
   const layout = generateDistrictLayout(district, seed, options.topology);
@@ -80,10 +92,23 @@ export function createTown(options: TownOptions = {}): Town {
     rubble: [],
     marks: [],
     pile: new PileField(layout.minX - 2, layout.minY - 2, pileW, pileD),
+    vehicles: [],
     roadCar: null,
     visualRevision: 1,
     collapsedSites: [],
     siteRevision: 1,
+  };
+}
+
+/** Diagnostics start empty, without generating and discarding a populated district. */
+function emptyTestTown(seed: number): Town {
+  return {
+    buildings: [], props: [], vehicles: [], rubble: [], marks: [], lots: [], ground: [], roads: [],
+    pile: new PileField(0, 0, 2, 2), terrain: emptyTerrain(0, 0, 2, 2), network: new RoadBuilder().finish(),
+    roadCar: null, spawnX: 16, spawnY: 24, spawnHeading: -Math.PI / 2,
+    minX: 0, minY: 0, maxX: 32, maxY: 32, district: 'classic', seed,
+    roadSpawnX: 4, roadSpawnY: 4, roadSpawnHeading: 0, visualRevision: 1, siteRevision: 1,
+    collapsedSites: [], diagnostic: { ok: true, issues: [] }, nhood: { rejected: [] },
   };
 }
 
@@ -184,6 +209,7 @@ function createClassicTown(seed: number, showcase = false): Town {
     rubble: [],
     marks: [],
     pile: new PileField(0, 0, 40, 36),
+    vehicles: [],
     roadCar: null,
     spawnX: 20.6,
     spawnY: 27.2,

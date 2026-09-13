@@ -1,10 +1,14 @@
+import { testVehicleImpact, yardVehicleRoute } from '../world/testYard';
+import { hitVehicle, partPose } from '../vehicle/runtime';
+import { vehicleStats } from '../vehicle/world';
+import { VEHICLES } from '../vehicle/definitions';
 import { isCoreBearing } from '../structure/coreCollapse';
 import { Application } from 'pixi.js';
 import { SIM_DT, FLOOR_Z } from '../game/constants';
 import { ParticlePool } from '../fx/particles';
 import { WorldRenderer } from '../render/WorldRenderer';
 import { createTown, type Town } from '../world/town';
-import { bayBuildings, bayProps, discoverYardAssets, instantiateBay, type YardBay } from '../world/yardCatalog';
+import { bayBuildings, bayProps, bayVehicles, discoverYardAssets, instantiateBay, type YardBay } from '../world/yardCatalog';
 import { PileField } from '../sim/pile';
 import { emptyTerrain, RoadBuilder, linePoints, pt } from '../world/roads';
 import { createDozer, stepDozer } from '../vehicle/dozer';
@@ -55,11 +59,20 @@ export async function bootAssetCapture(): Promise<void> {
         corePhase: b.coreCollapse?.phase ?? null, elevatedTank: b.elevatedTank ? { ...b.elevatedTank } : null,
         silos:b.silos?.map(s=>({id:s.definition.id,phase:s.phase,progress:s.progress})) ?? [] })),
       props: bayProps(bay).map(p => ({ id: p.assetId, hp: p.hp, broken: p.broken })),
+      vehicles: town.vehicles.map(v=>({id:v.definitionId,x:v.x,y:v.y,heading:v.heading,status:v.status,routeStatus:v.routeStatus,owner:v.yardOwner,parts:v.parts.map(p=>({damage:p.damage,detached:p.detached,sleeping:p.sleeping})),poses:v.parts.map((_,i)=>partPose(v,i))})),
+      vehicleStats:{...vehicleStats},
       vehicle: bay.asset.category === 'runtime-vehicle' ? { ...(town.roadCar ?? dozer) } : null,
       rubble: town.rubble.length, pileMass: town.pile.mass.reduce((a, b) => a + b, 0) };
   }
   function render(view: Partial<DebugView> = {}) {
-    if (bay.asset.category === 'runtime-vehicle') {
+    if(bay.vehicle){
+      const vehicle=bay.vehicle, radius=Math.max(...vehicle.parts.map((_,i)=>partPose(vehicle,i).length),4)*2;
+      // Keep the subject legible when a small detached part travels beyond the shot.
+      // The snapshot still records every part, including those outside the camera.
+      const poses=vehicle.parts.map((_,i)=>partPose(vehicle,i)).filter(p=>Math.hypot(p.x-vehicle.x,p.y-vehicle.y)<=radius);
+      const minX=Math.min(...poses.map(p=>p.x-p.length)),minY=Math.min(...poses.map(p=>p.y-p.width));const maxX=Math.max(...poses.map(p=>p.x+p.length)),maxY=Math.max(...poses.map(p=>p.y+p.width));
+      camera=worldBoundsToScreen(minX-2,minY-2,maxX-minX+4,maxY-minY+4,0,4);renderer.zoom=Math.min(3,.88*Math.min(1280/(camera.maxX-camera.minX),960/(camera.maxY-camera.minY)));renderer.camX=(camera.minX+camera.maxX)/2*renderer.zoom;renderer.camY=(camera.minY+camera.maxY)/2*renderer.zoom;
+    } else if (bay.asset.category === 'runtime-vehicle') {
       const vehicle = town.roadCar ?? dozer;
       camera = worldBoundsToScreen(vehicle.x - 5, vehicle.y - 4, 10, 8, 0, 3);
       renderer.zoom = Math.min(6, .88 * Math.min(1280 / (camera.maxX - camera.minX), 960 / (camera.maxY - camera.minY)));
@@ -69,11 +82,11 @@ export async function bootAssetCapture(): Promise<void> {
     Object.assign(renderer.debug, defaultDebugView(), view);
     // World stepping may clamp the off-scene player back into world bounds.
     // Only explicit runtime-vehicle contexts should draw that simulation helper.
-    if (bay.asset.category !== 'runtime-vehicle') renderer.debug.vehicles = false;
+    if (bay.asset.category !== 'runtime-vehicle' && !town.vehicles.length) renderer.debug.vehicles = false;
     renderer.invalidate();
     renderer.layout(1280, 960, 0, 0);
     // Allow visibility fades to converge without advancing simulation.
-    renderer.draw(town, dozer, particles, [], 10);
+    renderer.draw(town, dozer, particles, [], 10, bay.asset.id === 'vehicle:bulldozer');
     app.render();
     return snapshot();
   }
@@ -88,7 +101,7 @@ export async function bootAssetCapture(): Promise<void> {
     // InstantiateBay positions the asset by clearance, so match the reserved origin.
     bay.x = pad - asset.clearance; bay.y = pad - asset.clearance;
     instantiateBay(bay);
-    town.buildings = bayBuildings(bay); town.props = bayProps(bay);
+    town.buildings = bayBuildings(bay); town.props = bayProps(bay);town.vehicles=bayVehicles(bay);
     if (asset.category === 'detail') for (const b of town.buildings)
       b.facadeDetails = b.facadeDetails.filter(d => `detail:${d.kind}` === asset.id);
     town.rubble = []; town.marks = []; town.collapsedSites = [];
@@ -107,7 +120,7 @@ export async function bootAssetCapture(): Promise<void> {
       const roads = new RoadBuilder(), a = roads.node(2, pad + 2), b = roads.node(town.maxX - 2, pad + 2);
       roads.segment(a, b, linePoints(pt(a), pt(b)), { roadClass: 'rural', width: 3.2 });
       town.network = roads.finish();
-      town.roadCar = createRoadVehicle(pad + 3, pad + 2, 0);
+      town.roadCar = createRoadVehicle(pad + 3, pad + 2, 0);town.vehicles.push(town.roadCar);
     }
     ticks = 0; invalidateWorldCollision();
     const height = Math.max(1, ...town.buildings.map(b => b.floors * FLOOR_Z + (b.elevatedTank ? b.elevatedTank.definition.height + .5 : 1.5)), asset.prop?.footprint.h ?? 0);
@@ -128,6 +141,7 @@ export async function bootAssetCapture(): Promise<void> {
   }
   function damage(stage: 'crack' | 'breach' | 'supports' | 'all') {
     if (bay.asset.category === 'runtime-vehicle') throw new Error('Runtime vehicles have no production destruction mechanic');
+    for(const v of bayVehicles(bay))testVehicleImpact(v,stage==='crack'?'front':'overhead',stage==='all'?120:stage==='crack'?3:20);
     for (const p of bayProps(bay)) if (!p.broken) {
       if (stage === 'crack') applyAssetHit(p, p.maxHp * .3, 1, 0);
       else if (stage !== 'breach' || p === bayProps(bay)[0]) destroyProp(town, p, particles, [], p.x - 1, p.y);
@@ -154,18 +168,27 @@ export async function bootAssetCapture(): Promise<void> {
     invalidateWorldCollision();
     return snapshot();
   }
+  function vehicleScenario(action: 'heading'|'travel'|'front'|'side'|'rear'|'overhead'|'push',value=0) {
+    const v=bay.vehicle;if(!v)throw new Error('Select a modular vehicle');
+    if(action==='heading'){v.heading=value;v.revision++;}
+    else if(action==='travel'){town.maxX=100;town.maxY=100;yardVehicleRoute(v);}
+    else if(action==='push')hitVehicle(v,[{x:v.x,y:v.y,z:v.elev+.3,nx:1,ny:0,nz:0,impulse:2,source:'capture-push'}]);
+    else testVehicleImpact(v,action,value||8);
+    return snapshot();
+  }
   function inputs(id: string) {
     const asset = assets.find(a => a.id === id);
     if (!asset) throw new Error(`Unknown capture asset ${id}`);
     return { asset, seed: 4517,
       siteBuildings: asset.site?.buildings.map(b => archetypeById(b.building)),
       siteEquipment: asset.site?.equipment.map(p => getAsset(p.asset)),
+      siteVehicles: asset.site?.equipment.flatMap(p => VEHICLES.filter(v => v.id === p.asset)),
       fixtureHost: asset.fixture ? archetypeById('rivertown') : undefined };
   }
   const api = { version: 1, inputs, catalog: assets.map(a => ({ id: a.id, name: a.name, category: a.category, variants: a.variants,
     destruction: a.category === 'runtime-vehicle' ? 'unsupported' : 'supported',
     floors: a.fixture ? (a.fixtureLevels??1)*2 : a.archetype?.floors ?? Math.max(0, ...(a.site?.buildings.map(m => assets.find(v => v.archetype?.id === m.building)?.archetype?.floors ?? 0) ?? [])) })),
-    layers: DEBUG_GROUPS[0].options.map(([id]) => id), load, render, advance, damage, snapshot };
+    layers: DEBUG_GROUPS[0].options.map(([id]) => id), load, render, advance, damage, snapshot, vehicleScenario };
   Object.assign(window, { __assetCapture: api });
   document.title = 'PERMIT DENIED — Asset capture';
 }

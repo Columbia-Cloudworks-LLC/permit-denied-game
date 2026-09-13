@@ -8,16 +8,18 @@ import { PermitLogo } from './permitLogo';
 import { OperatorMenu } from './operatorMenu';
 import type { PermitSound } from './permitIntro';
 import { DEBUG_GROUPS, type DebugView, type DebugToggle } from "../debug/view";
-import { type DistrictId, type SessionKind, type DemoAsset } from "../game/session";
+import { type DistrictId, type SessionKind } from "../game/session";
+import { createDebugBinderState, type BinderTab } from '../debug/binderState';
 
 export type OverlayMode = "none" | "title" | "pause" | "upgrade" | "results";
 
 export interface HudState {
   hasYard: boolean;
+  testMapName?: string;
+  focusedTest?: boolean;
   upgradeModifiers: UpgradeModifiers;
   developmentScenario?: boolean;
   pileResistance?: number;
-  tower?: { phase: string; capacity: number };
   job?: { progress: number; remaining: number; instruction: string; paid: boolean; payout: number };
   cash: number;
   resubmitted: boolean;
@@ -39,7 +41,11 @@ export class Hud {
   readonly assetsHost: HTMLElement;
   readonly permitLogo: PermitLogo;
   onResubmit?: () => number | null;
-  private debugTab: 'inspector' | 'sites' | 'assets' = 'inspector';
+  readonly binder = createDebugBinderState();
+  private binderBlocked = false;
+  private binderWidth = 0;
+  private binderVisible = false;
+  private binderWasCollapsed = false;
   private lastOverlay: OverlayMode | null = null;
   private lastDeath: string | null = null;
   private lastWon = false;
@@ -65,9 +71,6 @@ export class Hud {
   onNewSeed?: () => void;
   onSession?: (kind: SessionKind) => void;
   onDistrict?: (id: DistrictId) => void;
-  onDemo?: (id: DemoAsset) => void;
-  onTower?: () => void;
-  onTowerAction?: (action: string) => void;
   onJob?: () => void;
   onDebugToggle?: (key: DebugToggle, value: boolean) => void;
   onDebugFloor?: (floor: number) => void;
@@ -75,6 +78,7 @@ export class Hud {
   onDebugStep?: () => void;
   onDebugOpen?: () => void;
   onTestYard?: () => void;
+  onResetTest?: () => void;
 
   constructor(root: HTMLElement) {
     this.root = root;
@@ -85,24 +89,19 @@ export class Hud {
         <div class="stat clock-stat"><span class="instrument-label" id="hud-clock-label">County Clock</span><div id="hud-time"></div></div>
         <div class="hud-actions"><button type="button" id="debug-toggle" aria-expanded="false" aria-controls="debug-panel">${L.debug}</button><button type="button" id="hud-menu">${L.pause}</button></div>
       </div>
-      <div class="mobile-hud"><div class="mobile-readouts"><div><strong id="mobile-cash"></strong><small id="mobile-target"></small></div><div><strong id="mobile-clock"></strong><small id="mobile-clock-label"></small></div><button type="button" id="mobile-pause" aria-label="Pause">Ⅱ</button></div><div class="mobile-meters">${['heat', 'track'].map(id => `<div id="mobile-${id}" role="meter" aria-label="${id === 'heat' ? 'Engine heat' : 'Track stress'}" aria-valuemin="0" aria-valuemax="100"><span>${id === 'heat' ? 'Heat' : 'Track'} <output>0%</output></span><i></i></div>`).join('')}</div><div class="mobile-notices"><div id="mobile-warning" role="status" hidden></div><div id="mobile-job" hidden></div></div></div>
+      <div class="mobile-hud"><div class="mobile-readouts"><div><strong id="mobile-cash"></strong><small id="mobile-target"></small></div><div><strong id="mobile-clock"></strong><small id="mobile-clock-label"></small></div><button type="button" id="mobile-debug" aria-label="Debug" aria-expanded="false" aria-controls="debug-panel">Debug</button><button type="button" id="mobile-pause" aria-label="Pause">Ⅱ</button></div><div class="mobile-meters">${['heat', 'track'].map(id => `<div id="mobile-${id}" role="meter" aria-label="${id === 'heat' ? 'Engine heat' : 'Track stress'}" aria-valuemin="0" aria-valuemax="100"><span>${id === 'heat' ? 'Heat' : 'Track'} <output>0%</output></span><i></i></div>`).join('')}</div><div class="mobile-notices"><div id="mobile-warning" role="status" hidden></div><div id="mobile-job" hidden></div></div></div>
       <div class="session" id="hud-session"></div>
-      <details id="hud-tower" class="tower-test" aria-label="Skyscraper test controls" open hidden>
-        <summary>Skyscraper Test</summary> <span id="tower-status"></span>
-        <p>W/S drive · A/D steer · SPACE powered blade. Break the facade, then reach the central supports.</p>
-        <button data-tower="view">Tower / dozer view</button><button data-tower="core-view">Inspect ground floor</button>
-        <button data-tower="facade">Breach facade</button><button data-tower="core">Fail core</button><button data-tower="reset">Reset tower</button>
-      </details>
       <div id="hud-job" class="job" hidden></div>
       <div class="debug-menu">
         <section id="debug-panel" aria-label="${L.debug}" tabindex="-1" hidden>
-          <div class="debug-heading"><strong>${L.debug}</strong><button type="button" id="debug-close" aria-label="Close Debug">×</button></div>
+          <div class="debug-heading"><div><small>COUNTY FIELD OPERATIONS</small><strong>Test binder</strong></div><button type="button" id="debug-collapse" aria-label="Collapse binder" aria-expanded="true">−</button><button type="button" id="debug-close" aria-label="Close Debug">×</button></div>
+          <div class="debug-map"><span id="debug-map-name"></span><button type="button" id="debug-open-yard">All Assets Sandbox</button><button type="button" id="debug-reset-test" hidden>Reset Test</button></div>
           <div class="debug-toolbar"><label><input type="checkbox" data-debug="freeze"> Freeze Simulation</label><button type="button" id="debug-step" disabled>Step One Frame</button></div>
           <div class="debug-tabs" role="tablist" aria-label="Debug tools">
-            ${(['inspector', 'sites', 'assets'] as const).map(tab => `<button type="button" role="tab" id="debug-tab-${tab}" aria-controls="debug-${tab}" aria-selected="${tab === 'inspector'}" tabindex="${tab === 'inspector' ? 0 : -1}" data-debug-tab="${tab}">${tab === 'sites' ? 'Test Scenarios' : tab[0].toUpperCase() + tab.slice(1)}</button>`).join('')}
+            ${(['assets', 'inspector', 'session'] as const).map(tab => `<button type="button" role="tab" id="debug-tab-${tab}" aria-controls="debug-${tab}" aria-selected="${tab === 'assets'}" tabindex="${tab === 'assets' ? 0 : -1}" data-debug-tab="${tab}">${tab[0].toUpperCase() + tab.slice(1)}</button>`).join('')}
           </div>
           <div class="debug-pages">
-          <section id="debug-inspector" role="tabpanel" aria-labelledby="debug-tab-inspector">
+          <section id="debug-inspector" role="tabpanel" aria-labelledby="debug-tab-inspector" hidden>
           <p>Hidden objects still collide and simulate.</p>
           <label class="debug-floor">Show floors <select id="debug-floor" aria-label="Show floors">
             <option value="99">All floors</option><option value="0">Ground floor only</option>
@@ -113,8 +112,8 @@ export class Hud {
           <button type="button" id="debug-reset">Reset Debug Options</button>
           <p class="debug-legend">Paths: blue · route: yellow · lots: green · buildable: purple · rooms: gold<br>Collision: pink walls, orange props/contents, white dozer · supports: green live / pink failing</p>
           </section>
-          <section id="debug-sites" role="tabpanel" aria-labelledby="debug-tab-sites" hidden></section>
-          <section id="debug-assets" role="tabpanel" aria-labelledby="debug-tab-assets" hidden><button type="button" id="debug-open-yard">${L.yard}</button><div id="debug-asset-host"></div></section>
+          <section id="debug-session" role="tabpanel" aria-labelledby="debug-tab-session" hidden></section>
+          <section id="debug-assets" role="tabpanel" aria-labelledby="debug-tab-assets"><div id="debug-asset-host"></div></section>
           </div>
         </section>
       </div>
@@ -150,19 +149,16 @@ export class Hud {
       page: (page, host) => {
         if (!page && this.permitLogo.root.closest('.menu-permit-host')) this.permitLogo.reset();
         root.querySelector('#hud-permit')!.append(this.permitLogo.root);
-        const debug = root.querySelector<HTMLElement>('#debug-panel')!;
-        root.querySelector('.debug-menu')!.append(debug);
-        debug.hidden = true;
         if (page === 'equipment') host!.querySelector('.menu-permit-host')!.append(this.permitLogo.root);
-        if (page === 'debug') { host!.querySelector('.menu-debug-host')!.append(debug); debug.hidden = false; this.onDebugOpen?.(); }
       },
       resume: () => this.onResume?.(), start: (kind, district) => this.onStart?.(kind, district),
       restart: () => this.onRestart?.(),
+      debug: () => { this.onResume?.(); this.openDebug(); },
       title: () => this.onTitle?.(), mute: () => this.onMute?.(), click: () => this.onClick?.(),
       unlockSound: () => this.onUnlockSound?.() ?? Promise.resolve(),
       titleSound: (kind, index) => this.onTitleSound?.(kind, index),
     });
-    for (const selector of ['#hud-session', '#hud-tower']) root.querySelector('#debug-sites')!.append(root.querySelector(selector)!);
+    root.querySelector('#debug-session')!.append(root.querySelector('#hud-session')!);
     this.overlay.addEventListener('keydown', e => {
       if (this.lastOverlay === 'upgrade' && ['1', '2', '3'].includes(e.key) && !e.repeat) {
         e.preventDefault();
@@ -175,7 +171,6 @@ export class Hud {
       if (e.shiftKey && (document.activeElement === first || document.activeElement === this.panel)) { e.preventDefault(); last?.focus(); }
       else if (!e.shiftKey && (document.activeElement === last || document.activeElement === this.panel)) { e.preventDefault(); first?.focus(); }
     });
-    root.querySelectorAll<HTMLButtonElement>('[data-tower]').forEach(button => button.addEventListener('click', () => this.onTowerAction?.(button.dataset.tower!)));
     this.bindSessionBar();
     this.bindDebugMenu();
     const top = root.querySelector<HTMLElement>('.top')!;
@@ -220,16 +215,29 @@ export class Hud {
 
   private bindDebugMenu(): void {
     const panel = this.root.querySelector<HTMLElement>("#debug-panel")!;
-    const toggle = this.root.querySelector<HTMLButtonElement>("#debug-toggle")!;
-    toggle.addEventListener('click', () => { if (panel.hidden) this.openDebug(); else this.closeDebug(true); });
-    this.root.querySelector('#debug-close')!.addEventListener('click', () => { if (this.menu.debugOpen) this.menu.back(); else this.closeDebug(true); });
+    for (const selector of ['#debug-toggle', '#mobile-debug']) this.root.querySelector(selector)!.addEventListener('click', () => {
+      if (panel.hidden) this.openDebug(); else this.closeDebug(true);
+    });
+    this.root.querySelector('#debug-close')!.addEventListener('click', () => this.closeDebug(true));
+    this.root.querySelector('#debug-collapse')!.addEventListener('click', () => {
+      this.binder.collapsed = !this.binder.collapsed; this.syncBinder(); this.onDebugOpen?.();
+    });
+    for (const event of ['pointerdown', 'keydown', 'keyup', 'wheel']) panel.addEventListener(event, e => { e.stopPropagation(); this.onDebugOpen?.(); });
+    const pages = this.root.querySelector<HTMLElement>('.debug-pages')!;
+    const rememberScroll = (event: Event) => {
+      const scroller = this.binderScroller;
+      if (event.target === scroller && !panel.hidden && !this.binder.collapsed) this.binder.scroll[this.binder.tab] = scroller.scrollTop;
+    };
+    pages.addEventListener('scroll', rememberScroll);
+    panel.addEventListener('scroll', rememberScroll);
+    new ResizeObserver(() => { this.binderWidth = panel.offsetWidth; }).observe(panel);
     this.root.querySelector('.debug-menu')!.addEventListener('keydown', event => {
       const e = event as KeyboardEvent;
       if (e.key === 'Escape' && !panel.hidden) { e.preventDefault(); e.stopPropagation(); this.closeDebug(true); return; }
     }, true);
     const tabs = [...panel.querySelectorAll<HTMLButtonElement>('[data-debug-tab]')];
     tabs.forEach((button, index) => {
-      button.addEventListener('click', () => this.selectDebugTab(button.dataset.debugTab as typeof this.debugTab));
+      button.addEventListener('click', () => this.selectDebugTab(button.dataset.debugTab as BinderTab));
       button.addEventListener('keydown', e => {
         let next = index;
         if (e.key === 'ArrowRight') next = (index + 1) % tabs.length;
@@ -238,15 +246,14 @@ export class Hud {
         else if (e.key === 'End') next = tabs.length - 1;
         else return;
         e.preventDefault(); e.stopPropagation();
-        this.selectDebugTab(tabs[next].dataset.debugTab as typeof this.debugTab);
+        this.selectDebugTab(tabs[next].dataset.debugTab as BinderTab);
         tabs[next].focus();
       });
     });
     this.root.querySelector('#debug-open-yard')!.addEventListener('click', () => {
       this.onTestYard?.();
-      // The launch button disappears in the yard; retain keyboard access to its tools.
-      panel.focus();
     });
+    this.root.querySelector('#debug-reset-test')!.addEventListener('click', () => this.onResetTest?.());
     panel.querySelectorAll<HTMLInputElement>("[data-debug]").forEach(input => {
       input.addEventListener("change", () => this.onDebugToggle?.(input.dataset.debug as DebugToggle, input.checked));
     });
@@ -257,35 +264,71 @@ export class Hud {
     this.root.querySelector("#debug-step")!.addEventListener("click", () => this.onDebugStep?.());
   }
 
-  private selectDebugTab(tab: typeof this.debugTab): void {
-    this.debugTab = tab;
+  private selectDebugTab(tab: BinderTab): void {
+    const pages = this.binderScroller;
+    this.binder.scroll[this.binder.tab] = pages.scrollTop;
+    this.binder.tab = tab;
     this.root.querySelectorAll<HTMLButtonElement>('[data-debug-tab]').forEach(button => {
       const selected = button.dataset.debugTab === tab;
       button.setAttribute('aria-selected', String(selected));
       button.tabIndex = selected ? 0 : -1;
       this.root.querySelector<HTMLElement>('#debug-' + button.dataset.debugTab)!.hidden = !selected;
     });
+    pages.scrollTop = this.binder.scroll[tab];
     this.onDebugOpen?.();
   }
 
-  private openDebug(): void {
+  openDebug(): void {
     const panel = this.root.querySelector<HTMLElement>('#debug-panel')!;
-    panel.hidden = false;
+    this.binder.open = true;
+    this.syncBinder();
     panel.setAttribute('role', 'region');
-    this.root.querySelector('#debug-toggle')!.setAttribute('aria-expanded', 'true');
     this.onDebugOpen?.();
     this.onClick?.();
-    panel.focus();
+    panel.focus({ preventScroll: true });
   }
 
   closeDebug(restoreFocus = false): boolean {
     const panel = this.root.querySelector<HTMLElement>('#debug-panel')!;
     if (panel.hidden) return false;
-    panel.hidden = true;
-    const toggle = this.root.querySelector<HTMLButtonElement>('#debug-toggle')!;
-    toggle.setAttribute('aria-expanded', 'false');
+    this.binder.open = false; this.syncBinder();
+    const toggle = this.root.querySelector<HTMLButtonElement>(document.documentElement.classList.contains('touch-ui') ? '#mobile-debug' : '#debug-toggle')!;
     if (restoreFocus) toggle.focus();
     return true;
+  }
+
+  private syncBinder(): void {
+    const panel = this.root.querySelector<HTMLElement>('#debug-panel')!;
+    panel.hidden = !this.binder.open || this.binderBlocked;
+    panel.classList.toggle('binder-collapsed', this.binder.collapsed);
+    for (const id of ['#debug-toggle', '#mobile-debug']) this.root.querySelector(id)!.setAttribute('aria-expanded', String(!panel.hidden));
+    const collapse = this.root.querySelector<HTMLButtonElement>('#debug-collapse')!;
+    collapse.textContent = this.binder.collapsed ? '+' : '−';
+    collapse.setAttribute('aria-label', this.binder.collapsed ? 'Expand binder' : 'Collapse binder');
+    collapse.setAttribute('aria-expanded', String(!this.binder.collapsed));
+    if (!panel.hidden && !this.binder.collapsed && (!this.binderVisible || this.binderWasCollapsed)) {
+      this.binderScroller.scrollTop = this.binder.scroll[this.binder.tab];
+    }
+    this.binderVisible = !panel.hidden;
+    this.binderWasCollapsed = this.binder.collapsed;
+  }
+
+  private get binderScroller(): HTMLElement {
+    const pages = this.root.querySelector<HTMLElement>('.debug-pages')!;
+    return getComputedStyle(pages).overflowY === 'visible' ? this.root.querySelector<HTMLElement>('#debug-panel')! : pages;
+  }
+
+  /** Keep camera targets in the unobscured desktop play area. */
+  get debugDockWidth(): number {
+    return this.binder.open && !this.binder.collapsed && !this.binderBlocked && !document.documentElement.classList.contains('touch-ui') ? this.binderWidth + 30 : 0;
+  }
+
+  preserveBinderScroll<T>(update: () => T): T {
+    const pages = this.binderScroller;
+    const scroll = this.binder.scroll[this.binder.tab];
+    const result = update();
+    pages.scrollTop = scroll;
+    return result;
   }
 
   syncDebug(view: DebugView): void {
@@ -311,11 +354,6 @@ export class Hud {
       <button type="button" data-district="d100">${SITE_LABELS.d100}</button>
       <button type="button" data-act="restart">${L.restart}</button>
       <button type="button" data-act="newseed">${L.newLayout}</button>
-      <h3>Building Previews</h3>
-      <button type="button" data-demo="ranch">Ranch Preview</button>
-      <button type="button" data-demo="rivertown">${L.brickPreview}</button>
-      <button type="button" data-demo="steel-warehouse">Steel Warehouse Preview</button>
-      <button type="button" data-act="tower">Skyscraper Test</button>
       <h3 class="sandbox-upgrades">Sandbox Upgrades</h3>
       <button type="button" data-up="blade">${L.blade} ${upgradePercent('blade')}</button>
       <button type="button" data-up="engine">${L.engine} ${upgradePercent('engine')}</button>
@@ -326,14 +364,11 @@ export class Hud {
         const session = (btn as HTMLButtonElement).dataset.session as SessionKind | undefined;
         const district = (btn as HTMLButtonElement).dataset.district as DistrictId | undefined;
         const act = (btn as HTMLButtonElement).dataset.act;
-        const demo = (btn as HTMLButtonElement).dataset.demo as DemoAsset | undefined;
         const up = (btn as HTMLButtonElement).dataset.up as "blade" | "engine" | "push" | undefined;
         if (session) this.onSession?.(session);
         if (district) this.onDistrict?.(district);
-        if (demo) this.onDemo?.(demo);
         if (act === "newseed") this.onNewSeed?.();
         if (act === "restart") this.onRestart?.();
-        if (act === "tower") this.onTower?.();
         if (act === "job") this.onJob?.();
         if (up) this.onChoice?.(up);
       });
@@ -358,16 +393,6 @@ export class Hud {
     }
     const permitInMenu = !!this.permitLogo.root.closest('.menu-permit-host');
     this.permitLogo.render(s.resubmitted, s.cash, s.overlay !== 'none' && !(s.overlay === 'pause' && permitInMenu));
-    const touch = document.documentElement.classList.contains('touch-ui');
-    this.root.querySelector<HTMLElement>('#hud-tower p')!.textContent = touch
-      ? 'Use the stick to drive and steer. Hold POWER BLADE. Break the facade, then reach the central supports.'
-      : 'W/S drive · A/D steer · SPACE powered blade. Break the facade, then reach the central supports.';
-    this.root.querySelector<HTMLElement>('#hud-tower')!.hidden = !s.tower;
-    if (s.tower) {
-      const text = s.tower.phase === 'warning' ? 'CORE FAILING — BACK AWAY' : s.tower.phase === 'falling' ? 'COLLAPSE — DEBRIS MOVING OUTWARD' : s.tower.phase === 'settled' ? 'SETTLED — CLEAR THE RUBBLE' : 'Support capacity ' + Math.round(s.tower.capacity * 100) + '%';
-      this.root.querySelector<HTMLElement>('#tower-status')!.textContent = text;
-      for (const action of ['facade', 'core']) this.root.querySelector<HTMLButtonElement>('[data-tower="' + action + '"]')!.disabled = s.tower.phase !== 'standing';
-    }
     const job = this.root.querySelector<HTMLElement>("#hud-job")!;
     job.hidden = !s.job;
     if (s.job) job.textContent = s.job.paid
@@ -397,8 +422,15 @@ export class Hud {
     (advisoryEl as HTMLElement).hidden = !advisory;
     this.root.querySelector('#hud-clock-label')!.textContent = s.session === 'sandbox' || s.job ? 'Elapsed' : 'County Clock';
     const modal = s.overlay !== 'none';
-    if (modal && !this.menu.debugOpen) this.closeDebug();
-    this.root.querySelector<HTMLElement>('#debug-open-yard')!.hidden = s.hasYard;
+    this.binderBlocked = modal; this.syncBinder();
+    const mapName = s.testMapName ?? (s.job ? L.brick : `${MODE_LABELS[s.session]} · ${s.district}`);
+    const mapLabel = this.root.querySelector<HTMLElement>('#debug-map-name')!;
+    if (mapLabel.textContent !== mapName) mapLabel.textContent = mapName;
+    const resetTest = this.root.querySelector<HTMLButtonElement>('#debug-reset-test')!;
+    resetTest.hidden = !s.hasYard;
+    resetTest.textContent = s.focusedTest ? 'Reset Test' : 'Reset Entire Yard';
+    this.root.querySelector<HTMLButtonElement>('[data-act="restart"]')!.textContent = s.hasYard ? resetTest.textContent : L.restart;
+    this.root.querySelector<HTMLElement>('[data-act="newseed"]')!.hidden = s.hasYard;
     this.root.classList.toggle('modal-open', modal);
     document.querySelector<HTMLElement>('#game-root')!.inert = modal;
     for (const selector of ['.top', '.mobile-hud', '.instrument-deck', '#touch-controls']) {

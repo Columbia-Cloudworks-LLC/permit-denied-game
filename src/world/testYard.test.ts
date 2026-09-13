@@ -1,3 +1,4 @@
+import { VEHICLES } from '../vehicle/definitions';
 import { describe, it, expect } from 'vitest';
 import { FLOOR_Z } from '../game/constants';
 import { createTown } from './town';
@@ -50,8 +51,8 @@ describe('generated asset test yard', () => {
   it('covers every catalog and archetype, plus both floors of every fixture', () => {
     const t = yard();
     expect(t.yard!.issues).toEqual([]);
-    expect(t.yard!.bays).toHaveLength(ASSET_CATALOG.length + ARCHETYPES.length + CONTENT_ASSETS.length + BUILDING_SITES.length);
-    expect(new Set(t.props.map(p => p.assetId))).toEqual(new Set(ASSET_CATALOG.map(a => a.id)));
+    expect(t.yard!.bays).toHaveLength(ASSET_CATALOG.length - 2 + VEHICLES.length + ARCHETYPES.length + CONTENT_ASSETS.length + BUILDING_SITES.length);
+    expect(new Set(t.props.map(p => p.assetId))).toEqual(new Set(ASSET_CATALOG.filter(a=>!VEHICLES.some(v=>v.id===a.id)).map(a => a.id)));
     for (const a of ARCHETYPES) expect(t.buildings.some(b => b.archetypeId === a.id)).toBe(true);
     for (const a of CONTENT_ASSETS) {
       const host = t.yard!.bays.find(b => b.asset.id === `fixture:${a.id}`)!.building!;
@@ -66,7 +67,7 @@ describe('generated asset test yard', () => {
     const prop = { ...ASSET_CATALOG[0]!, id: 'new-test-prop', variants: 3 };
     const building = { ...ARCHETYPES[0]!, id: 'new-test-building', label: 'NEW TEST BUILDING', w: 7,
       footprint: Array.from({ length: 2 }, () => Array<string>(4).fill('#######')) };
-    const discovered = discoverYardAssets([prop], [building], []);
+    const discovered = discoverYardAssets([prop], [building], [], []);
     expect(discovered.map(a => a.id).sort()).toEqual(['building:new-test-building', 'prop:new-test-prop']);
     const bays = layoutYard(discovered);
     for (const b of bays) instantiateBay(b);
@@ -82,13 +83,13 @@ describe('generated asset test yard', () => {
     }
   });
   it('spawns single, ten-copy, and expanded variants with unique IDs and rejects overlap', () => {
-    const t = yard(), asset = t.yard!.assets.find(a => a.id === 'prop:car')!;
-    const plan = planBatch([asset], 10, false, 8, t.yard!.baselineEnd, 2);
+    const t = yard(), asset = t.yard!.assets.find(a => a.id === 'vehicle:car')!;
+    const plan = planBatch([asset], 10, false, 8, t.yard!.baselineEnd, 1);
     expect(placementError(t, plan)).toBeUndefined(); spawnBatch(t, plan);
-    expect(plan.every(b => b.prop?.variant === 2)).toBe(true);
+    expect(plan.every(b => b.vehicle?.variant === 1)).toBe(true);
     expect(placementError(t, plan)).toMatch(/Overlaps/);
-    const variants = planBatch([asset], 1, true, 8, t.yard!.baselineEnd + 50);
-    spawnBatch(t, variants); expect(variants.map(b => b.prop!.variant)).toEqual([0, 1, 2, 3]);
+    const variants = planBatch([asset], 1, true, 8, t.yard!.baselineEnd + 150);
+    spawnBatch(t, variants); expect(variants.map(b => b.vehicle!.variant)).toEqual([0, 1]);
     expect(new Set(t.props.map(p => p.id)).size).toBe(t.props.length);
     expect(() => planBatch([asset], 0, false, 0, 0)).toThrow();
   });

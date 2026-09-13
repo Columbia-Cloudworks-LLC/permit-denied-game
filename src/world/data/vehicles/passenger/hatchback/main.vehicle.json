@@ -1,0 +1,17 @@
+{
+  "id": "hatchback",
+  "name": "Hatchback",
+  "family": "passenger",
+  "body": "hatchback",
+  "length": 1.95,
+  "width": 1.06,
+  "height": 1.16,
+  "mass": 1.7,
+  "cash": 20,
+  "paints": [
+    14328644,
+    6595461
+  ],
+  "speed": 5.6,
+  "steering": "front"
+}

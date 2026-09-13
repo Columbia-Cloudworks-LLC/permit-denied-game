@@ -1,0 +1,17 @@
+{
+  "id": "combine",
+  "name": "Combine harvester",
+  "family": "machine",
+  "body": "combine",
+  "length": 3.65,
+  "width": 1.9,
+  "height": 2.05,
+  "mass": 8,
+  "cash": 60,
+  "paints": [
+    8497223,
+    14136649
+  ],
+  "speed": 2.6,
+  "steering": "rear"
+}

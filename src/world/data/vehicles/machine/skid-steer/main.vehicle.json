@@ -1,0 +1,17 @@
+{
+  "id": "skid-steer",
+  "name": "Tracked skid steer",
+  "family": "machine",
+  "body": "skid",
+  "length": 1.85,
+  "width": 1.25,
+  "height": 1.45,
+  "mass": 3.5,
+  "cash": 30,
+  "paints": [
+    13937986,
+    12238516
+  ],
+  "speed": 2.6,
+  "steering": "tracks"
+}

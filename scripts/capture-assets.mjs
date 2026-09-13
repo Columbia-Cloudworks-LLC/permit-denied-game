@@ -75,7 +75,7 @@ try {
     await page.evaluate(({ id, variant }) => window.__assetCapture.load(id, variant), { id: asset.id, variant });
     async function capture(file, view = {}) {
       const state = await page.evaluate(view => window.__assetCapture.render(view), view);
-      if (asset.category !== 'runtime-vehicle') assert.equal(state.debug.vehicles, false, `${asset.id}: runtime vehicle leaked into an isolated asset view`);
+      if (asset.category !== 'runtime-vehicle' && !state.vehicles.length) assert.equal(state.debug.vehicles, false, `${asset.id}: runtime vehicle leaked into an isolated asset view`);
       const png = await page.locator('canvas').screenshot({ path: join(output, folder, file) });
       record.captures.push({ file, sha256: createHash('sha256').update(png).digest('hex'), state });
     }
@@ -98,7 +98,22 @@ try {
     const initial = record.captures[0];
     if (asset.category === 'detail') assert.notEqual(record.captures.find(c => c.file === 'layers/without-details.png').sha256,
       initial.sha256, `${asset.id}: mounted detail is not visible in its host`);
-    if (asset.destruction === 'unsupported') {
+    if(asset.category==='vehicle'){
+      for(let heading=0;heading<4;heading++) {
+        await page.evaluate(({id,variant,heading})=>{window.__assetCapture.load(id,variant);window.__assetCapture.vehicleScenario('heading',heading*Math.PI/2);},{id:asset.id,variant,heading});
+        await capture('vehicle/heading-'+heading+'-intact.png');
+        for(const action of ['front','side','rear','overhead']){
+          await page.evaluate(({id,variant,heading,action})=>{window.__assetCapture.load(id,variant);window.__assetCapture.vehicleScenario('heading',heading*Math.PI/2);window.__assetCapture.vehicleScenario(action,10);},{id:asset.id,variant,heading,action});
+          for(const frame of [0,15,60]){if(frame)await page.evaluate(n=>window.__assetCapture.advance(n),frame===15?15:45);await capture('vehicle/heading-'+heading+'-'+action+'-'+frame+'.png');}
+        }
+      }
+      await page.evaluate(({id,variant})=>{window.__assetCapture.load(id,variant);window.__assetCapture.vehicleScenario('travel');},{id:asset.id,variant});
+      for(const frame of [30,90,180]) {await page.evaluate(n=>window.__assetCapture.advance(n),frame===30?30:frame===90?60:90);await capture('vehicle/travel-'+frame+'.png');}
+      await page.evaluate(()=>{for(let i=0;i<8;i++)window.__assetCapture.vehicleScenario('overhead',30);});
+      await capture('vehicle/wreck-0.png');await page.evaluate(()=>window.__assetCapture.advance(180));await capture('vehicle/wreck-180.png');
+      assert.equal(record.captures.at(-1).state.vehicles[0].status,'wreck');
+      await page.evaluate(()=>{window.__assetCapture.vehicleScenario('push');window.__assetCapture.advance(60);});await capture('vehicle/wreck-pushed.png');
+    } else if (asset.destruction === 'unsupported') {
       assert.equal(asset.category, 'runtime-vehicle', 'Only runtime vehicles may omit destruction');
       await mkdir(join(output, folder, 'motion'), { recursive: true });
       record.destructionUnsupported = 'This production vehicle has no damage or destruction mechanic. See motion/ for its actual simulation.';

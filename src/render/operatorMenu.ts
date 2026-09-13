@@ -5,12 +5,13 @@ import { MENU_LABELS as L, MODE_LABELS, MODE_DESCRIPTIONS, SITE_LABELS } from '.
 import { version } from '../../package.json';
 import notices from './thirdPartyNotices.txt?raw';
 
-type Page = 'home' | 'dispatch' | 'controls' | 'about' | 'equipment' | 'debug';
+type Page = 'home' | 'dispatch' | 'controls' | 'about' | 'equipment';
 export interface MenuActions {
   page?(page: Page | null, host?: HTMLElement): void;
   resume(): void;
   start(kind: SessionKind, district: DistrictId): void;
   restart(): void;
+  debug?(): void;
   title(): void;
   mute(): void;
   click(): void;
@@ -70,6 +71,7 @@ export class OperatorMenu {
       const action = button.dataset.menuAction;
       if (action === 'resume') this.actions.resume();
       if (action === 'restart') this.actions.restart();
+      if (action === 'debug') this.actions.debug?.();
       if (action === 'title') this.actions.title();
       if (action === 'mute') this.actions.mute();
       if (action === 'start') {
@@ -123,8 +125,6 @@ export class OperatorMenu {
     }
   }
 
-  get debugOpen(): boolean { return this.mode === 'pause' && this.page === 'debug'; }
-
   back(): void {
     if (this.page !== 'home') this.navigate('home');
     else if (this.mode === 'pause') this.actions.resume();
@@ -152,16 +152,14 @@ export class OperatorMenu {
     this.page = page;
     this.root.classList.toggle('title-open', this.mode === 'title' && page === 'home');
     this.root.querySelector<HTMLButtonElement>('[data-nav="back"]')!.hidden = page === 'home' || page === 'dispatch';
-    const titles = { home: this.mode === 'title' ? TITLE : 'Paused', dispatch: L.newGame, controls: L.controls, about: L.about, equipment: 'Equipment & Objective', debug: L.debug };
+    const titles = { home: this.mode === 'title' ? TITLE : 'Paused', dispatch: L.newGame, controls: L.controls, about: L.about, equipment: 'Equipment & Objective' };
     this.heading.textContent = titles[page];
     this.root.querySelector<HTMLElement>('.nameplate')!.hidden = !(this.mode === 'title' && page === 'home') && page !== 'about';
     if (page === 'home') this.body.innerHTML = `${this.mode === 'title'
       ? `${permitDocument()}<button class="ignition primary" data-nav="dispatch"><span class="ignition-symbol" aria-hidden="true">⏻</span><span>${L.play}</span><span aria-hidden="true">↗</span></button>`
-      : `<button class="primary" data-menu-action="resume">${L.resume}</button><div class="mobile-menu-links menu-grid"><button data-nav="equipment">Equipment & Objective</button><button data-nav="debug">${L.debug}</button></div><div class="menu-grid"><button data-menu-action="restart" aria-describedby="restart-help">${L.restart}</button><button data-nav="dispatch">${L.newGame}</button></div><p class="fine-print" id="restart-help">Start this site over with the same layout. Resets cash, demolition, upgrades, and the permit application.</p>`}
+      : `<button class="primary" data-menu-action="resume">${L.resume}</button><div class="mobile-menu-links menu-grid"><button data-nav="equipment">Equipment & Objective</button><button data-menu-action="debug">${L.debug}</button></div><div class="menu-grid"><button data-menu-action="restart" aria-describedby="restart-help">${L.restart}</button><button data-nav="dispatch">${L.newGame}</button></div><p class="fine-print" id="restart-help">Start this site over with the same layout. Resets cash, demolition, upgrades, and the permit application.</p>`}
       <nav class="menu-grid" aria-label="Game menu"><button data-nav="controls">${L.controls}</button><button data-menu-action="mute">${L.soundOn}</button><button data-nav="about">${L.about}</button>${facebookLink}${this.mode === 'pause' ? `<button data-menu-action="title" aria-describedby="main-menu-help">${L.mainMenu}</button>` : ''}</nav>${this.mode === 'pause' ? '<p class="fine-print" id="main-menu-help">Returning to the main menu ends this game. You cannot resume it.</p>' : ''}`;
     if (page === 'equipment') this.body.innerHTML = '<div class="equipment-details"></div><h2>Permit Application</h2><p class="fine-print">Resubmitting spends cash on a county processing fee.</p><div class="menu-permit-host"></div>';
-    if (page === 'debug') this.body.innerHTML = '<div class="menu-debug-host"></div>';
-    this.root.classList.toggle('debug-page', page === 'debug');
     if (page === 'dispatch') {
       this.body.innerHTML = `<div class="dispatch-fields"><label>Mode<select id="dispatch-mode">${Object.entries(MODE_LABELS).map(([id, label]) => `<option value="${id}">${label}</option>`).join('')}</select></label><label>Site Size<select id="dispatch-lot"></select></label></div><p class="fine-print" id="mode-description"></p>${this.mode === 'pause' ? '<p class="caution">Starting a new game replaces your current progress and upgrades.</p>' : ''}<button class="primary" data-menu-action="start">${L.start}</button><button data-nav="back">Back</button>`;
       this.syncSetup();

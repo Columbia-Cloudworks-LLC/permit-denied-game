@@ -1,3 +1,4 @@
+import { hitVehicle } from '../vehicle/runtime';
 import { hitObject, objectFragments } from './objectBehavior';
 import { EXPLODE } from "../game/constants";
 import { len, norm } from "../game/math";
@@ -69,6 +70,7 @@ export function applyExplosion(
   particles.burst("dust", x, y, 0.6, 1.4);
   particles.burst("metal", x, y, 0.8, 1.1);
   let cash = 0;
+  for(const v of town.vehicles){const dx=v.x-x,dy=v.y-y,dist=Math.hypot(dx,dy);if(dist<radius)hitVehicle(v,[{x:v.x,y:v.y,z:v.elev+.7,nx:dx/(dist||1),ny:dy/(dist||1),nz:0,impulse:impulse*(1-dist/radius),source:'explosion'}]);}
   for (const other of town.props) {
     if (other.broken) continue;
     const ox = other.x + other.w * 0.5;
