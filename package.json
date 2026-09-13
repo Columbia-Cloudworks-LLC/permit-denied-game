@@ -1,7 +1,7 @@
 {
   "name": "permit-denied",
   "private": true,
-  "version": "1.0.13",
+  "version": "1.0.14",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:mobile": "node scripts/verify-mobile.mjs",
+    "test:debug": "node scripts/verify-debug-binder.mjs",
     "capture:assets": "node scripts/capture-assets.mjs",
     "catalog:local": "npm run build && node scripts/catalog.mjs local",
     "catalog:generate": "node scripts/catalog.mjs generate",

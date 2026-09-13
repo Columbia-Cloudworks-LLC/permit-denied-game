@@ -1,0 +1,17 @@
+{
+  "id": "excavator",
+  "name": "Tracked excavator",
+  "family": "machine",
+  "body": "excavator",
+  "length": 2.85,
+  "width": 1.55,
+  "height": 1.8,
+  "mass": 7,
+  "cash": 50,
+  "paints": [
+    14200370,
+    12148793
+  ],
+  "speed": 2,
+  "steering": "tracks"
+}

@@ -38,7 +38,7 @@ async function fixture(run) {
 test('accepts complete coverage and emits a reviewable catalog summary', () => fixture(async ({ root, check }) => {
   const result = await check(); assert.equal(result.status, 0, result.stderr);
   const summary = JSON.parse(await readFile(join(root, 'verification.json'), 'utf8'));
-  assert.deepEqual(summary, { assets: 1, variants: 1, screenshots: 69, errors: 0 });
+  assert.deepEqual(summary, { scope: 'full catalog', assets: 1, variants: 1, screenshots: 69, errors: 0 });
 }));
 test('rejects a missing declared variant even when captured variants succeeded', () => fixture(async ({ data, check }) => {
   data.catalog[0].variants = 2;
@@ -52,7 +52,7 @@ test('rejects incomplete destruction or restoration and filtered coverage', () =
   data.assets[0].restorationVerified = false;
   assert.notEqual((await check()).status, 0);
   data.assets[0].restorationVerified = true; data.filter = 'building:';
-  const result = await check(); assert.notEqual(result.status, 0); assert.match(result.stderr, /filtered run/);
+  const result = await check(); assert.notEqual(result.status, 0); assert.match(result.stderr, /filter does not match the requested coverage/);
 }));
 
 test('accepts runtime vehicle motion only with an explicit destruction explanation', () => fixture(async ({ root, folder, data, check }) => {

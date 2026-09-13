@@ -1,0 +1,17 @@
+{
+  "id": "box-truck",
+  "name": "Box truck",
+  "family": "truck",
+  "body": "box",
+  "length": 3.8,
+  "width": 1.5,
+  "height": 1.85,
+  "mass": 5.5,
+  "cash": 40,
+  "paints": [
+    14730876,
+    9942722
+  ],
+  "speed": 4.2,
+  "steering": "front"
+}

@@ -1,0 +1,17 @@
+{
+  "id": "car",
+  "name": "Sedan",
+  "family": "passenger",
+  "body": "sedan",
+  "length": 2.25,
+  "width": 1.1,
+  "height": 1.12,
+  "mass": 2,
+  "cash": 28,
+  "paints": [
+    4750249,
+    11029568
+  ],
+  "speed": 7.1,
+  "steering": "front"
+}

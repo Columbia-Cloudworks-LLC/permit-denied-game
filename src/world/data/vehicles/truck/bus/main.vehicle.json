@@ -1,0 +1,17 @@
+{
+  "id": "bus",
+  "name": "Bus",
+  "family": "truck",
+  "body": "bus",
+  "length": 5.2,
+  "width": 1.55,
+  "height": 1.85,
+  "mass": 6,
+  "cash": 45,
+  "paints": [
+    14855224,
+    7769512
+  ],
+  "speed": 4,
+  "steering": "front"
+}

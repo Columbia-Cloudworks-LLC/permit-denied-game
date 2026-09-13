@@ -27,6 +27,9 @@ export function seriesFor(captures, unsupported) {
     add('cutaway', 'Destruction · cutaway', file => file.startsWith('destruction/') && file.includes('-cutaway'));
     add('no-effects', 'Destruction · effects hidden', file => file.startsWith('destruction/') && file.includes('-no-effects'));
   }
+  for(let heading=0;heading<4;heading++)add('vehicle-'+heading,'Vehicle damage · view '+(heading+1),file=>file.startsWith('vehicle/heading-'+heading+'-'));
+  add('vehicle-travel','Vehicle travel',file=>file.startsWith('vehicle/travel-'));
+  add('vehicle-wreck','Persistent wreck',file=>file.startsWith('vehicle/wreck-'));
   add('layers', 'Layer studies', file => file.startsWith('layers/'));
   add('floors', 'Floor studies', file => file.startsWith('floors/'));
   return result;

@@ -135,3 +135,17 @@ test('destruction views remain separate and vehicles expose motion', () => {
   assert.equal(series.find(s => s.id === 'cutaway').frames.length, 1);
   assert.equal(seriesFor([{ source: 'motion/frame-0015.png' }], 'Unsupported')[0].id, 'motion');
 });
+
+test('modular vehicles require every heading, directional failure, travel and persistent wreck sequence',()=>{
+  const required=requiredCaptures({category:'vehicle',destruction:'supported',floors:0});
+  assert.equal(new Set(required).size,87);
+  for(let view=0;view<4;view++)for(const action of ['front','side','rear','overhead']){
+    assert.ok(required.includes(`vehicle/heading-${view}-${action}-0.png`));
+    assert.ok(required.includes(`vehicle/heading-${view}-${action}-60.png`));
+  }
+  assert.ok(required.includes('vehicle/travel-180.png'));
+  assert.ok(required.includes('vehicle/wreck-pushed.png'));
+  const series=seriesFor(required.map(source=>({source})));
+  assert.equal(series.filter(s=>/^vehicle-[0-3]$/.test(s.id)).length,4);
+  assert.equal(series.find(s=>s.id==='vehicle-wreck').frames.length,3);
+});

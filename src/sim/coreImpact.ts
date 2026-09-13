@@ -1,3 +1,4 @@
+import { vehicleLoad } from '../vehicle/world';
 import type { CoreImpact } from '../structure/coreCollapse';
 import type { Material, WorldEvent } from '../structure/types';
 import type { Town } from '../world/town';
@@ -9,6 +10,7 @@ export function applyCoreImpact(town: Town, dozer: Dozer, particles: ParticlePoo
   const b = impact.building, cx = b.x + b.w * b.cellSize / 2, cy = b.y + b.d * b.cellSize / 2;
   const progress = (impact.pulse + 1) / b.floors;
   const radius = Math.max(b.w, b.d) * b.cellSize * (.48 + .35 * progress);
+  vehicleLoad(town,cx,cy,100,radius,5,`collapse:${b.id}:${impact.pulse}`);
   const owner = town.debrisOwnerAt?.(cx, cy);
   // Fixed 256 samples distribute each material into a widening, center-heavy mound.
   // The pile's own 3x3 kernel smooths samples; ownership follows the source building.

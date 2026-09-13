@@ -1,0 +1,17 @@
+{
+  "id": "forklift",
+  "name": "Forklift",
+  "family": "machine",
+  "body": "forklift",
+  "length": 1.85,
+  "width": 1.12,
+  "height": 1.5,
+  "mass": 4,
+  "cash": 30,
+  "paints": [
+    14659902,
+    14051892
+  ],
+  "speed": 2.5,
+  "steering": "rear"
+}

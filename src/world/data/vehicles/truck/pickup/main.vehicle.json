@@ -1,0 +1,17 @@
+{
+  "id": "pickup",
+  "name": "Pickup",
+  "family": "truck",
+  "body": "pickup",
+  "length": 2.9,
+  "width": 1.3,
+  "height": 1.4,
+  "mass": 3,
+  "cash": 28,
+  "paints": [
+    11753027,
+    4749970
+  ],
+  "speed": 5,
+  "steering": "front"
+}

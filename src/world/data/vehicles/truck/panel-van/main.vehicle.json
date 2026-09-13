@@ -1,0 +1,17 @@
+{
+  "id": "panel-van",
+  "name": "Panel van",
+  "family": "truck",
+  "body": "van",
+  "length": 3.05,
+  "width": 1.35,
+  "height": 1.65,
+  "mass": 3.5,
+  "cash": 30,
+  "paints": [
+    14013369,
+    6455419
+  ],
+  "speed": 4.7,
+  "steering": "front"
+}

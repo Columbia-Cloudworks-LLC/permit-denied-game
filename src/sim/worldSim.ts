@@ -1,3 +1,4 @@
+import { stepVehicleWorld, migrateVehicles } from '../vehicle/world';
 import { upgradeModifiers, type Upgrades } from '../game/upgrades';
 export type { Upgrades } from '../game/upgrades';
 import { applyCoreImpact } from './coreImpact';
@@ -16,14 +17,14 @@ import {
 import { applyFixtureDamage, fixtureSolid, fixtureWorldBox, interiorFloorCoverage, type FixtureFrag } from "../structure/interior";
 import { cellPresent, cellWorldBox, type Building, type Cell, type InteriorFixture, type Prop, type WorldEvent } from "../structure/types";
 import { bladePoints, clampDozer, dozerSpeed, resolveCircleSolid, type Dozer } from "../vehicle/dozer";
-import { clampRoadVehicle, resolveRoadSolid, stepRoadVehicle } from "../vehicle/roadVehicle";
+import { stepRoadVehicle } from "../vehicle/roadVehicle";
 import type { Town } from "../world/town";
 import { applyAssetHit, destroyProp, trackFromAsset } from "./assets";
 import { addDebrisBody, depositSettledParticles, spawnCollapseDebris, stepDebris } from "./debris";
 import { SpatialHash } from "./spatial";
 import { ensureCollapsedSite, siteContaining, siteFeel } from "../structure/site";
 import { getAsset } from "../world/catalog";
-import { roadSurfaceAt, terrainHeightAt } from "../world/roads";
+
 
 
 export interface SimMetrics {
@@ -160,6 +161,7 @@ export function stepWorld(
 
   resistCorePile(town, dozer, dt);
 
+  migrateVehicles(town);
   const rebuilt = rebuildHash(town);
   hash.query(dozer.x - 3, dozer.y - 3, 6, 6, nearby);
 
@@ -358,19 +360,8 @@ export function stepWorld(
 
   const debris = stepDebris(town, dozer, particles, events, engineMul, dt);
 
-  if (town.roadCar?.alive) {
-    stepRoadVehicle(town.roadCar, town, dt);
-    hash.query(town.roadCar.x - 2.2, town.roadCar.y - 2.2, 4.4, 4.4, nearby);
-    let blocked = false;
-    for (const ref of nearby) {
-      if (resolveRoadSolid(town.roadCar, ref.x, ref.y, ref.w, ref.d, 0.06) > 0.2) blocked = true;
-    }
-    if (blocked) town.roadCar.waitT += dt;
-    else town.roadCar.waitT = 0;
-    clampRoadVehicle(town.roadCar, town.minX + 0.6, town.minY + 0.6, town.maxX - 0.6, town.maxY - 0.6);
-    const surf = roadSurfaceAt(town.network, town.roadCar.x, town.roadCar.y, town.roadCar.layer);
-    town.roadCar.elev = surf.on ? surf.elev : terrainHeightAt(town.terrain, town.roadCar.x, town.roadCar.y);
-  }
+  if(town.roadCar?.roadDemo && town.roadCar.autonomous && !town.roadCar.waypoints.length && town.roadCar.status==='operational') stepRoadVehicle(town.roadCar,town,0);
+  cash += stepVehicleWorld(town,dozer,particles,events,dt,bladeMul);
 
   clampDozer(dozer, town.minX + 0.8, town.minY + 0.8, town.maxX - 0.8, town.maxY - 0.8);
   particles.step(dt);

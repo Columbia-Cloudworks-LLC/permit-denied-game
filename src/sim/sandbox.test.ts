@@ -54,8 +54,9 @@ describe("sandbox session rules", () => {
     expect(parseSessionFromSearch("?district=d100&sandbox=1").seed).toBe(0x100d15c);
     expect(parseSessionFromSearch("?ranch=1")).toMatchObject({
       kind: "sandbox",
-      district: "d10",
-      ranchFocus: true,
+      district: "classic",
+      ranchFocus: false,
+      testMap: { kind: 'asset', assetId: 'building:ranch', variant: 0 },
     });
   });
 

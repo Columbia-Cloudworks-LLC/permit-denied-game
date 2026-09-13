@@ -1,3 +1,4 @@
+import { vehicleDefinition } from '../vehicle/definitions';
 import { MATERIALS } from '../structure/materials';
 import { DEBRIS, DOZER } from "../game/constants";
 import { clamp, len } from "../game/math";
@@ -502,10 +503,9 @@ export function enforceDistanceCleanup(
   // Unattended destruction becomes the editable pile after a bounded grace.
   // Contact jitter must not keep distant bodies in the solver indefinitely.
   for (const r of [...town.rubble]) {
-    const car = town.roadCar;
     const protectedNow = touchingDozer(r, dozerX, dozerY, touching)
       || Math.hypot(r.x - dozerX, r.y - dozerY) <= DEBRIS.retireRadius
-      || (car?.alive && Math.hypot(r.x - car.x, r.y - car.y) <= DEBRIS.protectRadius);
+      || town.vehicles.some(car=>car.alive&&(car.autonomous||Math.hypot(car.vx,car.vy)>.05)&&Math.hypot(r.x-car.x,r.y-car.y)<=DEBRIS.protectRadius);
     if (protectedNow) { unattendedSince.delete(r); continue; }
     const since = unattendedSince.get(r);
     if (since === undefined) { unattendedSince.set(r, debrisClock); continue; }
@@ -1199,16 +1199,9 @@ export function stepDebris(
   if (load > 0.35) dozer.lastImpact = Math.max(dozer.lastImpact, 0.05);
   rebuildBodyHash(town);
 
-  if (town.roadCar && town.roadCar.alive) {
-    const car = town.roadCar;
-    const rp: VehicleProfile = {
-      mass: 1.35,
-      radius: 0.7,
-      pushForce: 2.4,
-      traction: 0.5,
-      clearance: 0.13,
-      resistanceMul: 2.55,
-    };
+  for (const car of town.vehicles.filter(v=>v.alive&&(v.autonomous||Math.hypot(v.vx,v.vy)>.01))) {
+    const def=vehicleDefinition(car.definitionId);
+    const rp: VehicleProfile = {mass:def.mass,radius:def.width*.5,pushForce:def.drive.push,traction:def.drive.traction,clearance:def.drive.clearance,resistanceMul:2.55};
     const cv: VehicleContact = {
       x: car.x,
       y: car.y,

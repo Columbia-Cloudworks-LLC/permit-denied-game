@@ -109,7 +109,7 @@ describe('authored tower core', () => {
   });
 
   it('opens the dedicated map independently of yard/demo query flags', () => {
-    expect(parseSessionFromSearch('?tower=1&demo=ranch&district=d100')).toMatchObject({ towerTest: true, kind: 'sandbox', district: 'classic', demo: undefined });
+    expect(parseSessionFromSearch('?tower=1&demo=ranch&district=d100')).toMatchObject({ testMap: { kind: 'asset', assetId: 'building:union-tower', variant: 0 }, kind: 'sandbox', district: 'classic' });
     expect(parseSessionFromSearch('?tower=1&job=brick').towerTest).toBe(false);
     expect(parseSessionFromSearch('?sandbox=1').towerTest).toBeUndefined();
   });

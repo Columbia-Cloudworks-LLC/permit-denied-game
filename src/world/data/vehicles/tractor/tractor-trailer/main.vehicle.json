@@ -1,0 +1,17 @@
+{
+  "id": "tractor-trailer",
+  "name": "Tractor with farm trailer",
+  "family": "tractor",
+  "body": "trailer",
+  "length": 2.35,
+  "width": 1.45,
+  "height": 1.5,
+  "mass": 8.5,
+  "cash": 50,
+  "paints": [
+    5609034,
+    12146241
+  ],
+  "speed": 2.7,
+  "steering": "front"
+}

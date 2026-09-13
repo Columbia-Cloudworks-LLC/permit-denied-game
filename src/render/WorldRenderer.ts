@@ -1,3 +1,4 @@
+import { drawVehicleAssembly, vehicleRenderGroups } from './modularVehicle';
 import { BowlingStrikes } from './bowlingStrikes';
 import { corePileAreas, drawCorePiles } from './corePileDraw';
 import { drawCoreFloor } from './coreCollapseDraw';
@@ -25,7 +26,7 @@ import {
   drawWallSpan,
 } from "./facadeDraw";
 import { roofSlopeLight } from "./lighting";
-import { drawDozer, drawRoadVehicle } from "./vehicles";
+import { drawDozer } from "./vehicles";
 import { facadeDetailCommand } from './facadeDetails';
 import { elevatedTankCommands } from './elevatedTank';
 import { siloCommands } from './silos';
@@ -103,7 +104,7 @@ export class WorldRenderer {
     );
   }
 
-  draw(town: Town, dozer: Dozer, particles: ParticlePool, birds: Bird[], dt = 1 / 60): void {
+  draw(town: Town, dozer: Dozer, particles: ParticlePool, birds: Bird[], dt = 1 / 60, showPlayer = true): void {
     const strikeAt = worldToScreen(dozer.x, dozer.y);
     this.bowlingStrikes.draw(dt, strikeAt.x, strikeAt.y, this.zoom);
     this.root.setChildIndex(this.bowlingStrikes.root, this.root.children.length - 1);
@@ -399,19 +400,15 @@ export class WorldRenderer {
       });
     }
 
-    if (view.vehicles && town.roadCar?.alive) {
-      const car = town.roadCar;
+    for(const load of town.yard?.loads??[]){const v=load.vehicle;this.cmds.push({depth:depthKey(v.x,v.y,load.z)+3000,run:g=>drawOrientedIsoBox(g,v.x,v.y,v.heading,3.5,2.2,load.z,.25,0x9da5a0,0x565d5a,0x7c8580)});}
+    for(const v of view.vehicles ? town.vehicles : []) for(const group of vehicleRenderGroups(v)) {
       total++;
-      if (this.visibleBox(car.x - 1, car.y - 1, 2, 2, 0, 0.6)) {
-        visible++;
-        this.cmds.push({
-          depth: depthKey(car.x, car.y, 0.35),
-          run: (g) => drawRoadVehicle(g, car),
-        });
-      }
+      if(!screenAabbVisible(group.bounds,this.viewW,this.viewH,this.camX,this.camY,this.zoom))continue;
+      visible++;
+      this.cmds.push({key:'vehicle:'+v.id+':'+group.roots.join(','),version:[v.revision,v.x,v.y,v.heading,v.elev,v.pitch,v.roll,v.steer,v.debugParts].join(':'),depth:group.depth,run:g=>drawVehicleAssembly(g,v,group.roots)});
     }
 
-    if (view.vehicles) {
+    if (view.vehicles && showPlayer) {
       total++;
       visible++;
       this.cmds.push({

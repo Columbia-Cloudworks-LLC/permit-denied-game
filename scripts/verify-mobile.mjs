@@ -44,16 +44,15 @@ try {
   await page.getByRole('checkbox',{name:'Freeze Simulation',exact:true}).check();
   await page.getByRole('button',{name:'Step One Frame',exact:true}).click();
   await page.getByRole('checkbox',{name:'Freeze Simulation',exact:true}).uncheck();
-  await page.getByRole('tab',{name:'Test Scenarios',exact:true}).click();
+  await page.getByRole('tab',{name:'Session',exact:true}).click();
   await page.getByRole('tab',{name:'Assets',exact:true}).click();
   await page.screenshot({path:`${output}/debug-menu.png`});
-  await page.getByRole('button',{name:'Back',exact:true}).click();
-  await page.getByRole('button',{name:'Resume',exact:true}).click();
+  await page.getByRole('button',{name:'Close Debug',exact:true}).click();
   await page.locator('.mobile-hud').waitFor({state:'visible'});
 
   await page.locator('#mobile-pause').click();
   await page.getByRole('button',{name:'Debug',exact:true}).click();
-  await page.getByRole('tab',{name:'Test Scenarios',exact:true}).click();
+  await page.getByRole('tab',{name:'Session',exact:true}).click();
   await page.getByRole('button',{name:'Brick Building Demolition',exact:true}).click();
   await page.locator('#mobile-job').waitFor({state:'visible'});
 
