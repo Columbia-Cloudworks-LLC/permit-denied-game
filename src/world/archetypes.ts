@@ -1,9 +1,16 @@
-import { validateConstruction, validateLayout, type ConstructionDef, type LayoutDef, type OpeningDef } from '../structure/construction';
+import { validateConstruction, validateLayout, stairLandingCells, type ConstructionDef, type LayoutDef, type OpeningDef } from '../structure/construction';
 import type { BuildingFeatureSpec, BuildingKind, FacadeTheme, LotZone, RoofAxis, RoofStyle } from '../structure/types';
+import { FACADE_DETAIL_KINDS, type FacadeDetailDef } from '../structure/facadeDetails';
 
 export type ArchetypeId = string;
 /** Fully resolved, serializable building definition consumed by the building compiler. */
 export interface Archetype {
+  silos?: import('../structure/silos').SiloDef[];
+  openDecks?: { columns: { x: number; y: number }[] };
+  canopy?: { columns: { x: number; y: number }[] };
+  floorVoids?: { floor:number; x:number; y:number; w:number; d:number }[];
+  elevatedTank?: import('../structure/elevatedTank').ElevatedTankDef;
+  facadeDetails?: FacadeDetailDef[];
   id: string;
   kind: BuildingKind;
   label: string;
@@ -48,18 +55,27 @@ export function checkShape(value: unknown, shape: Shape, path: string): void {
   }
 }
 const constructionShape: Shape = { id: 'string', walls: 'string', structure: 'string', skin: 'string', floor: 'string', roof: 'string', fallDuration: 'number', failureDelay: 'number' };
-const layoutShape: Shape = { partitions: 'boolean', 'connections?': [{ a: 'string', b: 'string', at: 'number', width: 'number' }], rooms: [{ id: 'string', kind: 'string', floor: 'number', x: 'number', y: 'number', w: 'number', d: 'number', finish: 'string',
+const stairShape: Shape = { a:'string', b:'string', x:'number', y:'number', w:'number', d:'number', 'kind?':'string', 'rotation?':'number' };
+const layoutShape: Shape = { partitions: 'boolean', 'stairs?': [stairShape], 'connections?': [{ a: 'string', b: 'string', at: 'number', width: 'number' }], rooms: [{ id: 'string', kind: 'string', floor: 'number', x: 'number', y: 'number', w: 'number', d: 'number', finish: 'string',
+  'floorDesigns?': [{ id: 'string', kind: 'string', x: 'number', y: 'number', w: 'number', d: 'number' }],
   contents: [{ id: 'string', kind: 'string', x: 'number', y: 'number', w: 'number', d: 'number', h: 'number', rotation: 'number' }] }] };
 const sectionShape: Shape = { id: 'string', role: 'string', x: 'number', y: 'number', w: 'number', d: 'number', floor: 'number', floors: 'number', layout: 'string' };
 const buildingShape: Shape = { version: 'number', id: 'string', kind: 'string', label: 'string', w: 'number', d: 'number', floors: 'number',
   construction: 'string', 'layout?': 'string', 'footprint?': [['string']], 'sections?': [sectionShape],
   'partitions?': 'boolean', 'connections?': [{ a: 'string', b: 'string', at: 'number', width: 'number' }],
+  'stairs?': [stairShape],
   openings: [{ floor: 'number', side: 'string', at: 'number', kind: 'string', 'cell?': { x: 'number', y: 'number' } }],
   roof: 'string', 'roofAxis?': 'string', theme: 'string', windowStride: 'number',
   'coreCollapse?': { supports: [{ x: 'number', y: 'number', weight: 'number' }], capacityThreshold: 'number', warningDuration: 'number', duration: 'number' },
+  'elevatedTank?': { radius: 'number', height: 'number', minimumLegs: 'number', warningDuration: 'number', fallDuration: 'number' },
+  'canopy?': { columns: [{ x: 'number', y: 'number' }] },
+  'silos?': [{ id:'string',gx:'number',gy:'number',diameter:'number',height:'number',minimumSupports:'number',feed:{gx:'number',gy:'number',floor:'number'} }],
+  'openDecks?': { columns: [{ x: 'number', y: 'number' }] },
+  'floorVoids?': [{ floor:'number', x:'number', y:'number', w:'number', d:'number' }],
   'cellSize?': 'number', 'generationOrder?': 'number',
   'traits?': { 'use?': ['string'], 'form?': ['string'], 'construction?': ['string'], 'style?': ['string'], 'era?': ['string'], 'scale?': ['string'] },
   features: { porch: 'boolean', awning: 'boolean', parapet: 'boolean', chimney: 'boolean', garage: 'boolean' },
+  'facadeDetails?': [{ id: 'string', kind: 'string', floor: 'number', gx: 'number', gy: 'number', side: 'string', width: 'number', 'text?': 'string' }],
   zones: { residential: 'number', commercial: 'number', industrial: 'number' } };
 
 export function validateBuildingDefinition(a: Archetype): string[] {
@@ -69,7 +85,7 @@ export function validateBuildingDefinition(a: Archetype): string[] {
   if (a.w * a.d * a.floors > 8192) return [...issues, 'Building exceeds 8192 grid slots; reduce cells or split the site'];
   if (a.cellSize !== undefined && (!Number.isFinite(a.cellSize) || a.cellSize < .5 || a.cellSize > 4)) issues.push('cellSize must be 0.5–4 world units');
   if (a.layout.rooms.length > 256 || a.layout.rooms.reduce((n, r) => n + r.contents.length, 0) > 512) return [...issues, 'Building exceeds 256 rooms or 512 contents'];
-  if (!['house', 'shop', 'industrial'].includes(a.kind) || !['gable', 'flat', 'shed'].includes(a.roof) ||
+  if (!['house', 'shop', 'industrial'].includes(a.kind) || !['gable', 'flat', 'shed', 'sawtooth'].includes(a.roof) ||
     (a.roofAxis !== undefined && !['x', 'y'].includes(a.roofAxis)) ||
     !['cottage', 'ranch', 'colonial', 'walkup', 'porch', 'storefront', 'corner', 'civic', 'warehouse'].includes(a.theme)) issues.push('Unknown building kind, roof, axis or theme');
   if (!Number.isInteger(a.windowStride) || a.windowStride < 1 || Object.values(a.zones).some(n => !Number.isFinite(n) || n < 0)) issues.push('Invalid window stride or zoning weight');
@@ -84,8 +100,95 @@ export function validateBuildingDefinition(a: Archetype): string[] {
     }
   }
   const mask = occupiedMask(a);
-  issues.push(...validateLayout(a.layout, a.w, a.d, a.floors, mask));
-  if (!a.openings.some(o => o.floor === 0)) issues.push('Building needs a ground-floor entrance');
+  if((a.floorVoids?.length??0)>16 || (a.floorVoids?.length && (a.coreCollapse || a.elevatedTank))) issues.push('Unsupported floor void configuration');
+  for(const v of a.floorVoids??[]) {
+    if(!Object.values(v).every(Number.isInteger) || v.floor<1 || v.floor>=a.floors || v.w<1 || v.d<1 ||
+      v.x<0 || v.y<0 || v.x+v.w>a.w || v.y+v.d>a.d) {issues.push('Invalid floor void');continue;}
+    for(let x=v.x;x<v.x+v.w;x++)for(let y=v.y;y<v.y+v.d;y++)
+      if(a.footprint[v.floor]?.[y]?.[x]!=='#')issues.push('Floor void crosses unoccupied envelope');
+    for(const r of a.layout.rooms.filter(r=>r.floor===v.floor))for(const s of r.contents) {
+      const x=(r.x+s.x*r.w)*a.w,y=(r.y+s.y*r.d)*a.d,w=s.w*r.w*a.w,d=s.d*r.d*a.d;
+      if(x<v.x+v.w && x+w>v.x && y<v.y+v.d && y+d>v.y)issues.push('Fixture overlaps floor void: '+s.id);
+    }
+  }
+  if(a.elevatedTank) {
+    const t=a.elevatedTank;
+    if(a.coreCollapse || a.roof !== 'flat' || a.construction.walls !== 'frame' || a.floors<2 || a.floors>6 ||
+      a.w<3 || a.d<3 || a.w>9 || a.d>9 || a.w%2!==1 || a.d%2!==1 ||
+      !(t.radius>=.5 && t.radius<=Math.min(a.w,a.d)*(a.cellSize??1.15)/2) || !(t.height>=.5 && t.height<=4) ||
+      ![3,4].includes(t.minimumLegs) || !(t.warningDuration>=.2 && t.warningDuration<=2) || !(t.fallDuration>=1 && t.fallDuration<=5) ||
+      a.layout.rooms.length || a.layout.partitions || a.layout.connections?.length || a.facadeDetails?.length || a.openings.length)
+      issues.push('Invalid elevated tank configuration');
+    if(a.footprint.some(layer=>layer.some((row,y)=>[...row].some((v,x)=> (v==='#')!==((x===0||x===a.w-1)&&(y===0||y===a.d-1))))))
+      issues.push('Elevated tank footprint must contain exactly four continuous corner legs');
+  }
+  const detailIds = new Set<string>();
+  for (const detail of a.facadeDetails ?? []) {
+    if (!detail.id.trim() || detailIds.has(detail.id) || !FACADE_DETAIL_KINDS.includes(detail.kind) ||
+      !['south', 'east'].includes(detail.side) || ![detail.floor, detail.gx, detail.gy, detail.width].every(Number.isInteger) ||
+      detail.width < 1 || detail.width > 4 || detail.floor < 0 || detail.floor >= a.floors ||
+      (detail.text !== undefined && !/^[A-Z0-9 ]{1,16}$/.test(detail.text))) {
+      issues.push('Invalid facade detail ' + detail.id); continue;
+    }
+    detailIds.add(detail.id);
+    if (detail.kind === 'roof-duct' && (a.roof !== 'flat' || detail.width !== 1 || detail.floor !== a.floors - 1))
+      issues.push('Roof ducts require a single mounting cell on the top flat roof');
+    if (detail.kind === 'dormer' && (a.roof !== 'gable' || detail.width !== 1 || detail.floor !== a.floors - 1))
+      issues.push('Dormers require a single mounting cell on the top gable roof');
+    if ((detail.kind === 'fire-escape' && detail.floor === 0) ||
+      (['entry-steps', 'porch', 'roll-up-door'].includes(detail.kind) && detail.floor !== 0))
+      issues.push('Invalid mounting floor for facade detail ' + detail.id);
+    for (let i = 0; i < detail.width; i++) {
+      const x = detail.gx + (detail.side === 'south' ? i : 0), y = detail.gy + (detail.side === 'east' ? i : 0);
+      if (a.footprint[detail.floor]?.[y]?.[x] !== '#' ||
+        a.footprint[detail.floor]?.[y + (detail.side === 'south' ? 1 : 0)]?.[x + (detail.side === 'east' ? 1 : 0)] === '#') {
+        issues.push('Facade detail requires exposed mounting cells: ' + detail.id); break;
+      }
+    }
+  }
+  if (!a.elevatedTank) issues.push(...validateLayout(a.layout, a.w, a.d, a.floors, mask, a.openings));
+  for (const stair of a.layout.stairs ?? []) {
+    const lower = a.layout.rooms.find(r => r.id === stair.a), upper = a.layout.rooms.find(r => r.id === stair.b);
+    if (!lower || !upper) continue;
+    if (!a.layout.partitions) issues.push('Stair access requires an explicit partitioned plan');
+    for (const {gx,gy:landingY} of stairLandingCells(stair,a.w,a.d,upper.floor))
+      if (a.footprint[upper.floor]?.[landingY]?.[gx] !== '#' || a.floorVoids?.some(v=>v.floor===upper.floor && gx>=v.x && gx<v.x+v.w && landingY>=v.y && landingY<v.y+v.d))
+        issues.push('Stairs require a solid landing at their upper end');
+    for (let gx=0;gx<a.w;gx++) for (let gy=0;gy<a.d;gy++) {
+      if (gx/a.w >= stair.x+stair.w || (gx+1)/a.w <= stair.x || gy/a.d >= stair.y+stair.d || (gy+1)/a.d <= stair.y) continue;
+      const voidAt = (floor:number) => a.floorVoids?.some(v=>v.floor===floor && gx>=v.x && gx<v.x+v.w && gy>=v.y && gy<v.y+v.d);
+      if (!voidAt(upper.floor) || voidAt(lower.floor)) issues.push('Stairs require a supporting lower slab and an open upper slab');
+    }
+  }
+  if (a.canopy) {
+    const columns = a.canopy.columns;
+    if (a.floors !== 1 || a.roof !== 'flat' || a.elevatedTank || a.coreCollapse || a.floorVoids?.length || a.openings.length || a.layout.partitions || a.layout.rooms.some(r => r.contents.length) ||
+      columns.length < 4 || columns.length > 8 || new Set(columns.map(p => `${p.x},${p.y}`)).size !== columns.length ||
+      columns.some(p => !Number.isInteger(p.x) || !Number.isInteger(p.y) || p.x < 0 || p.y < 0 || p.x >= a.w || p.y >= a.d || a.footprint[0]?.[p.y]?.[p.x] !== '#'))
+      issues.push('Canopies require a one-level flat roof, 4-8 distinct occupied column cells, empty unpartitioned space and no entrance panels');
+  }
+  if (a.openDecks) {
+    const columns=a.openDecks.columns;
+    if (a.floors<2 || a.floors>6 || a.roof!=='flat' || a.canopy || a.elevatedTank || a.coreCollapse || columns.length<4 || columns.length>16 ||
+      new Set(columns.map(p=>`${p.x},${p.y}`)).size!==columns.length || columns.some(p=>!Number.isInteger(p.x)||!Number.isInteger(p.y)||p.x<0||p.y<0||p.x>=a.w||p.y>=a.d || a.footprint.some(f=>f[p.y]?.[p.x]!=='#')))
+      issues.push('Open decks require 2-6 levels and 4-16 distinct continuous column cells');
+  }
+  if(a.silos) {
+    if(a.silos.length<1 || a.silos.length>4 || a.canopy || a.openDecks || a.elevatedTank || a.coreCollapse)issues.push('Silos require an ordinary headhouse and 1-4 bins');
+    const ids=new Set<string>();
+    for(const s of a.silos) {
+      if(!s.id || ids.has(s.id) || ![s.gx,s.gy,s.diameter,s.minimumSupports,s.feed.gx,s.feed.gy,s.feed.floor].every(Number.isInteger) ||
+        s.diameter<5 || s.diameter>9 || s.diameter%2!==1 || s.gx<0 || s.gy<0 || s.gx+s.diameter>a.w || s.gy+s.diameter>a.d ||
+        !Number.isFinite(s.height) || s.height<3 || s.height>a.floors*2.35 || s.minimumSupports<3 || s.minimumSupports>7 ||
+        a.footprint[s.feed.floor]?.[s.feed.gy]?.[s.feed.gx]!=='#')issues.push('Invalid silo dimensions, support threshold or feed mount');
+      ids.add(s.id);
+      for(let y=s.gy;y<s.gy+s.diameter;y++)for(let x=s.gx;x<s.gx+s.diameter;x++) {
+        if(a.footprint[0]?.[y]?.[x]!=='#' || a.footprint.slice(1).some(f=>f[y]?.[x]==='#'))issues.push('Silos require an occupied base without upper floor rooms');
+      }
+      for(const other of a.silos)if(other!==s && s.gx<other.gx+other.diameter && s.gx+s.diameter>other.gx && s.gy<other.gy+other.diameter && s.gy+s.diameter>other.gy)issues.push('Silo bins overlap');
+    }
+  }
+  if (!a.elevatedTank && !a.canopy && !a.openings.some(o => o.floor === 0)) issues.push('Building needs a ground-floor entrance');
   for (const opening of a.openings) {
     if (!Number.isInteger(opening.floor) || opening.floor < 0 || opening.floor >= a.floors || opening.side !== 'south' ||
       !Number.isFinite(opening.at) || opening.at < 0 || opening.at > 1 || !['door', 'loading'].includes(opening.kind)) issues.push('Invalid entrance (supported frontage: south)');
@@ -102,7 +205,7 @@ export interface SectionDef {
 }
 interface BuildingPackage extends Omit<Archetype, 'construction' | 'layout' | 'footprint'> {
   version: number; construction: string; layout?: string; footprint?: string[][];
-  partitions?: boolean; connections?: LayoutDef['connections'];
+  partitions?: boolean; connections?: LayoutDef['connections']; stairs?: LayoutDef['stairs'];
 }
 /** Pure seam also used by tests/tools. Layout references stay inside their owning directory. */
 export function parseBuildingPackages(files: Record<string, unknown>): readonly Archetype[] {
@@ -154,10 +257,10 @@ export function parseBuildingPackages(files: Record<string, unknown>): readonly 
         ({ layout, footprint } = compileSections(entry, readLayout));
       } else {
         if (!entry.layout || !entry.footprint) throw new Error('Building needs layout + footprint or sections');
-        if (entry.partitions !== undefined || entry.connections) throw new Error('Flat packages own partitions and connections in their layout');
+        if (entry.partitions !== undefined || entry.connections || entry.stairs) throw new Error('Flat packages own partitions, connections and stairs in their layout');
         layout = readLayout(entry.layout); footprint = entry.footprint;
       }
-      const { version: _version, partitions: _partitions, connections: _connections, ...definition } = entry;
+      const { version: _version, partitions: _partitions, connections: _connections, stairs: _stairs, ...definition } = entry;
       const a: Archetype = { ...definition, construction: structuredClone(construction.def), layout, footprint };
       const issues = validateBuildingDefinition(a);
       if (issues.length) throw new Error(`${entry.layout ?? entry.sections?.map(s => `${s.id}: ${s.layout}`).join(', ')}; construction ${construction.file}: ${issues.join('; ')}`);
@@ -178,6 +281,7 @@ function compileSections(entry: BuildingPackage, readLayout: (ref: string) => La
     ids.add(s.id);
     if (![s.x, s.y, s.w, s.d, s.floor, s.floors].every(Number.isInteger) || s.x < 0 || s.y < 0 || s.floor < 0 || s.w < 1 || s.d < 1 || s.floors < 1 || s.x + s.w > w || s.y + s.d > d || s.floor + s.floors > floors) throw new Error(`Section ${s.id}: invalid bounds`);
     const template = readLayout(s.layout);
+    if (template.stairs !== undefined) throw new Error('Section stair connections belong in the building package with expanded room IDs');
     const issues = validateLayout(template, s.w, s.d, 1, fullMask(1, s.w, s.d));
     if (issues.length) throw new Error(`Section ${s.id}, ${s.layout}: ${issues.join('; ')}`);
     for (let f = s.floor; f < s.floor + s.floors; f++) {
@@ -192,7 +296,7 @@ function compileSections(entry: BuildingPackage, readLayout: (ref: string) => La
       if (rooms.length > 256 || rooms.reduce((n, r) => n + r.contents.length, 0) > 512) throw new Error('Expanded sections exceed 256 rooms or 512 contents');
     }
   }
-  return { footprint: mask.map(layer => layer.map(row => row.join(''))), layout: { partitions: entry.partitions ?? false, rooms, connections: [...connections, ...entry.connections ?? []] } };
+  return { footprint: mask.map(layer => layer.map(row => row.join(''))), layout: { partitions: entry.partitions ?? false, rooms, connections: [...connections, ...entry.connections ?? []], ...(entry.stairs ? { stairs: entry.stairs } : {}) } };
 }
 export function parseContentFiles(raw: Record<string, string>): Record<string, unknown> {
   return Object.fromEntries(Object.entries(raw).map(([file, text]) => {

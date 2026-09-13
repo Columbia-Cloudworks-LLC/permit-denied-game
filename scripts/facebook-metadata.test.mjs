@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { facebookMetadata } from './facebook-metadata.mjs';
+import { facebookMetadata, facebookPageUrl } from './facebook-metadata.mjs';
 
 test('keeps a large public App ID exact and injects only the app-id meta tag', () => {
   assert.deepEqual(facebookMetadata(' 12345678901234567890 ', true), [
@@ -15,4 +15,11 @@ test('rejects malformed values instead of inserting markup into HTML', () => {
   for (const value of ['abc', '1.2', '12\" /><script>', '1 2']) {
     assert.throws(() => facebookMetadata(value), /digits/);
   }
+});
+
+test('accepts and preserves the configured public Facebook page query', () => {
+  assert.equal(facebookPageUrl(' https://www.facebook.com/profile.php?id=61593959596720 ', true),'https://www.facebook.com/profile.php?id=61593959596720');
+  assert.equal(facebookPageUrl(undefined),'');
+  assert.throws(()=>facebookPageUrl(undefined,true),/required/);
+  for(const value of ['javascript:alert(1)','https://facebook.com.example.org/page','http://facebook.com/page','https://user:password@facebook.com/page']) assert.throws(()=>facebookPageUrl(value),/HTTPS Facebook/);
 });

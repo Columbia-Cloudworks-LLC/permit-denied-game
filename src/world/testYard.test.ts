@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { FLOOR_Z } from '../game/constants';
 import { createTown } from './town';
 import { ASSET_CATALOG } from './catalog';
 import { ARCHETYPES } from './archetypes';
@@ -54,7 +55,9 @@ describe('generated asset test yard', () => {
     for (const a of ARCHETYPES) expect(t.buildings.some(b => b.archetypeId === a.id)).toBe(true);
     for (const a of CONTENT_ASSETS) {
       const host = t.yard!.bays.find(b => b.asset.id === `fixture:${a.id}`)!.building!;
-      expect(host.fixtures.map(f => f.floor)).toEqual([0, 1]);
+      expect(host.fixtures[0]!.floor).toBe(0);
+      expect(host.fixtures[1]!.floor).toBeGreaterThan(0);
+      expect(host.fixtures[1]!.floor*FLOOR_Z).toBeGreaterThanOrEqual(a.footprint.h+.2);
       expect(fixtureSolid(host, host.fixtures[0]!)).toBe(true);
       expect(fixtureSolid(host, host.fixtures[1]!)).toBe(false); // elevated fixtures do not block ground traffic
     }

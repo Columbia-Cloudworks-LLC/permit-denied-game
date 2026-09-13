@@ -1,0 +1,70 @@
+{
+  "version": 1,
+  "id": "contractor-workshop",
+  "label": "CONTRACTOR WORKSHOP",
+  "w": 11,
+  "d": 8,
+  "floors": 2,
+  "kind": "industrial",
+  "construction": "steel-hall",
+  "roof": "flat",
+  "theme": "warehouse",
+  "windowStride": 2,
+  "features": {
+    "porch": false,
+    "awning": false,
+    "parapet": true,
+    "chimney": false,
+    "garage": false
+  },
+  "zones": {
+    "residential": 0,
+    "commercial": 0,
+    "industrial": 0
+  },
+  "traits": {
+    "use": [
+      "contractor-workshop"
+    ],
+    "form": [
+      "B23"
+    ],
+    "style": [
+      "warehouse"
+    ]
+  },
+  "partitions": true,
+  "sections": [
+    {
+      "id": "work-floor",
+      "role": "work-floor",
+      "x": 0,
+      "y": 0,
+      "w": 11,
+      "d": 8,
+      "floor": 0,
+      "floors": 1,
+      "layout": "work-floor.layout.json"
+    },
+    {
+      "id": "office",
+      "role": "office",
+      "x": 0,
+      "y": 0,
+      "w": 4,
+      "d": 4,
+      "floor": 1,
+      "floors": 1,
+      "layout": "office.layout.json"
+    }
+  ],
+  "connections": [],
+  "openings": [
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.5,
+      "kind": "door"
+    }
+  ]
+}

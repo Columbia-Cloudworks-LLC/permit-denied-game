@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "id": "office-pair-plaza",
+  "label": "OFFICE PAIR PLAZA",
+  "w": 47,
+  "d": 32,
+  "buildings": [
+    {
+      "id": "west-tower",
+      "building": "twin-office-building",
+      "x": 3,
+      "y": 3
+    },
+    {
+      "id": "east-tower",
+      "building": "twin-office-building",
+      "x": 25,
+      "y": 3
+    },
+    {
+      "id": "operations",
+      "building": "campus-office",
+      "x": 3,
+      "y": 23
+    }
+  ],
+  "equipment": [
+    {
+      "id": "shrub-a",
+      "asset": "shrub",
+      "x": 18,
+      "y": 5
+    },
+    {
+      "id": "shrub-b",
+      "asset": "shrub",
+      "x": 18,
+      "y": 9
+    },
+    {
+      "id": "transformer",
+      "asset": "transformer",
+      "x": 39,
+      "y": 4
+    },
+    {
+      "id": "table",
+      "asset": "picnic-table",
+      "x": 26,
+      "y": 24
+    }
+  ]
+}

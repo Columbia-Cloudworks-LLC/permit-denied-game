@@ -1,0 +1,66 @@
+{
+  "version": 1,
+  "id": "elevated-water-tower",
+  "label": "ELEVATED WATER TOWER",
+  "w": 5,
+  "d": 5,
+  "floors": 3,
+  "kind": "industrial",
+  "construction": "steel-hall",
+  "roof": "flat",
+  "theme": "warehouse",
+  "windowStride": 8,
+  "features": {
+    "porch": false,
+    "awning": false,
+    "parapet": false,
+    "chimney": false,
+    "garage": false
+  },
+  "zones": {
+    "residential": 0,
+    "commercial": 0,
+    "industrial": 0
+  },
+  "traits": {
+    "use": [
+      "water-storage"
+    ],
+    "form": [
+      "B60",
+      "exposed-legs"
+    ]
+  },
+  "footprint": [
+    [
+      "#...#",
+      ".....",
+      ".....",
+      ".....",
+      "#...#"
+    ],
+    [
+      "#...#",
+      ".....",
+      ".....",
+      ".....",
+      "#...#"
+    ],
+    [
+      "#...#",
+      ".....",
+      ".....",
+      ".....",
+      "#...#"
+    ]
+  ],
+  "layout": "frame.layout.json",
+  "openings": [],
+  "elevatedTank": {
+    "radius": 2.35,
+    "height": 2.1,
+    "minimumLegs": 3,
+    "warningDuration": 0.6,
+    "fallDuration": 2.4
+  }
+}

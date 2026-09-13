@@ -1,0 +1,102 @@
+{
+  "partitions": true,
+  "rooms": [
+    {
+      "id": "hall",
+      "kind": "living",
+      "floor": 0,
+      "x": 0,
+      "y": 0,
+      "w": 0.6666666666666666,
+      "d": 0.5714285714285714,
+      "finish": "linoleum",
+      "contents": []
+    },
+    {
+      "id": "bath",
+      "kind": "bathroom",
+      "floor": 0,
+      "x": 0.6666666666666666,
+      "y": 0,
+      "w": 0.3333333333333333,
+      "d": 0.5714285714285714,
+      "finish": "tile",
+      "contents": [
+        {
+          "id": "toilet",
+          "kind": "toilet",
+          "x": 0.15,
+          "y": 0.1,
+          "w": 0.5,
+          "d": 0.22,
+          "h": 0.7,
+          "rotation": 0
+        }
+      ]
+    },
+    {
+      "id": "front",
+      "kind": "bedroom",
+      "floor": 0,
+      "x": 0,
+      "y": 0.5714285714285714,
+      "w": 0.6666666666666666,
+      "d": 0.42857142857142855,
+      "finish": "plank",
+      "contents": [
+        {
+          "id": "bed",
+          "kind": "bed",
+          "x": 0.12,
+          "y": 0.12,
+          "w": 0.7,
+          "d": 0.6,
+          "h": 0.7,
+          "rotation": 0
+        }
+      ]
+    },
+    {
+      "id": "side",
+      "kind": "storage",
+      "floor": 0,
+      "x": 0.6666666666666666,
+      "y": 0.5714285714285714,
+      "w": 0.3333333333333333,
+      "d": 0.42857142857142855,
+      "finish": "plank",
+      "contents": [
+        {
+          "id": "wardrobe",
+          "kind": "cabinet",
+          "x": 0.15,
+          "y": 0.15,
+          "w": 0.65,
+          "d": 0.3,
+          "h": 1.2,
+          "rotation": 0
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "a": "hall",
+      "b": "bath",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "hall",
+      "b": "front",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "front",
+      "b": "side",
+      "at": 0.5,
+      "width": 0.3
+    }
+  ]
+}

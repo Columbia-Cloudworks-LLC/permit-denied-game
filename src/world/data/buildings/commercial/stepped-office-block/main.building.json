@@ -1,0 +1,81 @@
+{
+  "version": 1,
+  "id": "stepped-office-block",
+  "label": "STEPPED OFFICE BLOCK",
+  "w": 12,
+  "d": 10,
+  "floors": 8,
+  "kind": "shop",
+  "construction": "concrete-bearing",
+  "roof": "flat",
+  "theme": "civic",
+  "windowStride": 2,
+  "features": {
+    "porch": false,
+    "awning": false,
+    "parapet": true,
+    "chimney": false,
+    "garage": false
+  },
+  "zones": {
+    "residential": 0,
+    "commercial": 0,
+    "industrial": 0
+  },
+  "traits": {
+    "use": [
+      "stepped-office-block"
+    ],
+    "form": [
+      "B52"
+    ],
+    "style": [
+      "civic"
+    ]
+  },
+  "partitions": true,
+  "sections": [
+    {
+      "id": "base",
+      "role": "base",
+      "x": 0,
+      "y": 0,
+      "w": 12,
+      "d": 10,
+      "floor": 0,
+      "floors": 3,
+      "layout": "base.layout.json"
+    },
+    {
+      "id": "middle",
+      "role": "middle",
+      "x": 1,
+      "y": 1,
+      "w": 10,
+      "d": 8,
+      "floor": 3,
+      "floors": 3,
+      "layout": "middle.layout.json"
+    },
+    {
+      "id": "top",
+      "role": "top",
+      "x": 3,
+      "y": 2,
+      "w": 6,
+      "d": 6,
+      "floor": 6,
+      "floors": 2,
+      "layout": "top.layout.json"
+    }
+  ],
+  "connections": [],
+  "openings": [
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.5,
+      "kind": "door"
+    }
+  ]
+}

@@ -1,14 +1,18 @@
 import { defineConfig } from "vitest/config";
-import { facebookMetadata } from "./scripts/facebook-metadata.mjs";
+import { facebookMetadata, facebookPageUrl } from "./scripts/facebook-metadata.mjs";
 
 export default defineConfig({
+  define: { "import.meta.env.VITE_FACEBOOK_PAGE_URL": JSON.stringify(facebookPageUrl(process.env.FACEBOOK_PAGE_URL, process.env.REQUIRE_FACEBOOK_APP_ID === "1")) },
   plugins: [{
     name: 'facebook-app-metadata',
     transformIndexHtml() {
       return facebookMetadata(process.env.FACEBOOK_APP_ID, process.env.REQUIRE_FACEBOOK_APP_ID === '1');
     },
   }],
+  // Generated capture galleries are not application entry points.
+  optimizeDeps: { entries: ["index.html"] },
   server: {
+    watch: { ignored: ["**/artifacts/**", "**/docs/visual-verification/**"] },
     host: true,
     port: 5173,
     strictPort: true,

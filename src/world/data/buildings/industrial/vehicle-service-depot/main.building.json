@@ -1,0 +1,70 @@
+{
+  "version": 1,
+  "id": "vehicle-service-depot",
+  "label": "VEHICLE SERVICE DEPOT",
+  "w": 15,
+  "d": 10,
+  "floors": 2,
+  "kind": "shop",
+  "construction": "concrete-bearing",
+  "roof": "flat",
+  "theme": "warehouse",
+  "windowStride": 2,
+  "features": {
+    "porch": false,
+    "awning": false,
+    "parapet": true,
+    "chimney": false,
+    "garage": false
+  },
+  "zones": {
+    "residential": 0,
+    "commercial": 0,
+    "industrial": 0
+  },
+  "traits": {
+    "use": [
+      "vehicle-service-depot"
+    ],
+    "form": [
+      "B29"
+    ],
+    "style": [
+      "warehouse"
+    ]
+  },
+  "partitions": true,
+  "sections": [
+    {
+      "id": "service",
+      "role": "service",
+      "x": 0,
+      "y": 0,
+      "w": 15,
+      "d": 10,
+      "floor": 0,
+      "floors": 1,
+      "layout": "service.layout.json"
+    },
+    {
+      "id": "offices",
+      "role": "offices",
+      "x": 0,
+      "y": 0,
+      "w": 15,
+      "d": 3,
+      "floor": 1,
+      "floors": 1,
+      "layout": "offices.layout.json"
+    }
+  ],
+  "connections": [],
+  "openings": [
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.5,
+      "kind": "door"
+    }
+  ]
+}

@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "id": "garden-center-shop",
+  "label": "GARDEN CENTER",
+  "w": 6,
+  "d": 8,
+  "floors": 1,
+  "kind": "house",
+  "construction": "timber-house",
+  "roof": "shed",
+  "theme": "storefront",
+  "windowStride": 2,
+  "features": {
+    "porch": false,
+    "awning": true,
+    "parapet": false,
+    "chimney": false,
+    "garage": false
+  },
+  "zones": {
+    "residential": 0,
+    "commercial": 0,
+    "industrial": 0
+  },
+  "traits": {
+    "use": [
+      "garden-center-shop"
+    ],
+    "form": [
+      "B20"
+    ],
+    "style": [
+      "storefront"
+    ]
+  },
+  "partitions": true,
+  "sections": [
+    {
+      "id": "shop",
+      "role": "shop",
+      "x": 0,
+      "y": 0,
+      "w": 6,
+      "d": 8,
+      "floor": 0,
+      "floors": 1,
+      "layout": "shop.layout.json"
+    }
+  ],
+  "connections": [],
+  "openings": [
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.5,
+      "kind": "door"
+    }
+  ]
+}

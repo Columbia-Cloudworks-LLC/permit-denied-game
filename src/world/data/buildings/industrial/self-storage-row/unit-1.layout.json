@@ -1,0 +1,38 @@
+{
+  "partitions": true,
+  "rooms": [
+    {
+      "id": "storage",
+      "kind": "storage",
+      "floor": 0,
+      "x": 0,
+      "y": 0,
+      "w": 1,
+      "d": 1,
+      "finish": "concrete",
+      "contents": [
+        {
+          "id": "storage-0",
+          "kind": "pallet",
+          "x": 0.1,
+          "y": 0.1,
+          "w": 0.35,
+          "d": 0.3,
+          "h": 0.8,
+          "rotation": 0
+        },
+        {
+          "id": "storage-1",
+          "kind": "shelf",
+          "x": 0.7,
+          "y": 0.1,
+          "w": 0.15,
+          "d": 0.55,
+          "h": 1.3,
+          "rotation": 0
+        }
+      ]
+    }
+  ],
+  "connections": []
+}

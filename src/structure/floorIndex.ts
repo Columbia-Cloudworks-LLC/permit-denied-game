@@ -7,6 +7,7 @@ function indexFloors(b: Building) {
   const columns = Array.from({ length: b.w * b.d }, () => [] as FloorTile[]);
   const tiles: (FloorTile | undefined)[] = new Array(b.floors * b.w * b.d);
   for (const tile of b.floorTiles) {
+    if(tile.void)continue;
     byFloor[tile.floor]!.push(tile);
     columns[tile.gx * b.d + tile.gy]!.push(tile);
     tiles[tile.floor * b.w * b.d + tile.gx * b.d + tile.gy] = tile;

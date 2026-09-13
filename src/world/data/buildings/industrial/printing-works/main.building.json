@@ -1,0 +1,83 @@
+{
+  "version": 1,
+  "id": "printing-works",
+  "label": "PRINTING WORKS",
+  "w": 12,
+  "d": 8,
+  "floors": 2,
+  "kind": "shop",
+  "construction": "brick-mixed-use",
+  "roof": "flat",
+  "theme": "warehouse",
+  "windowStride": 2,
+  "features": {
+    "porch": false,
+    "awning": false,
+    "parapet": true,
+    "chimney": false,
+    "garage": false
+  },
+  "zones": {
+    "residential": 0,
+    "commercial": 0,
+    "industrial": 0
+  },
+  "traits": {
+    "use": [
+      "printing-works"
+    ],
+    "form": [
+      "B26"
+    ],
+    "style": [
+      "warehouse"
+    ]
+  },
+  "partitions": true,
+  "sections": [
+    {
+      "id": "presses",
+      "role": "presses",
+      "x": 0,
+      "y": 0,
+      "w": 8,
+      "d": 8,
+      "floor": 0,
+      "floors": 2,
+      "layout": "presses.layout.json"
+    },
+    {
+      "id": "office",
+      "role": "office",
+      "x": 8,
+      "y": 3,
+      "w": 4,
+      "d": 5,
+      "floor": 0,
+      "floors": 2,
+      "layout": "office.layout.json"
+    }
+  ],
+  "connections": [
+    {
+      "a": "presses/0/work-floor",
+      "b": "office/0/workroom",
+      "at": 0.5,
+      "width": 0.35
+    },
+    {
+      "a": "presses/1/work-floor",
+      "b": "office/1/workroom",
+      "at": 0.5,
+      "width": 0.35
+    }
+  ],
+  "openings": [
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.5,
+      "kind": "door"
+    }
+  ]
+}

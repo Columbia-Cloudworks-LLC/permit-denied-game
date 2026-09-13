@@ -8,7 +8,7 @@ import { PermitLogo } from './permitLogo';
 import { OperatorMenu } from './operatorMenu';
 import type { PermitSound } from './permitIntro';
 import { DEBUG_GROUPS, type DebugView, type DebugToggle } from "../debug/view";
-import { type DistrictId, type SessionKind, type DemoAsset, type LayoutChoice } from "../game/session";
+import { type DistrictId, type SessionKind, type DemoAsset } from "../game/session";
 
 export type OverlayMode = "none" | "title" | "pause" | "upgrade" | "results";
 
@@ -55,7 +55,7 @@ export class Hud {
   onMute?: () => void;
   onMenu?: () => void;
   onTitle?: () => void;
-  onStart?: (kind: SessionKind, district: DistrictId, layout: LayoutChoice) => void;
+  onStart?: (kind: SessionKind, district: DistrictId) => void;
   onClick?: () => void;
   onUnlockSound?: () => Promise<void>;
   onTitleSound?: (kind: PermitSound, index: number) => void;
@@ -156,7 +156,7 @@ export class Hud {
         if (page === 'equipment') host!.querySelector('.menu-permit-host')!.append(this.permitLogo.root);
         if (page === 'debug') { host!.querySelector('.menu-debug-host')!.append(debug); debug.hidden = false; this.onDebugOpen?.(); }
       },
-      resume: () => this.onResume?.(), start: (kind, district, layout) => this.onStart?.(kind, district, layout),
+      resume: () => this.onResume?.(), start: (kind, district) => this.onStart?.(kind, district),
       restart: () => this.onRestart?.(),
       title: () => this.onTitle?.(), mute: () => this.onMute?.(), click: () => this.onClick?.(),
       unlockSound: () => this.onUnlockSound?.() ?? Promise.resolve(),
@@ -301,12 +301,11 @@ export class Hud {
     const bar = this.root.querySelector("#hud-session")!;
     bar.innerHTML = `
       <h3>Mode</h3>
-      <button type="button" data-session="challenge">${MODE_LABELS.challenge}</button>
       <button type="button" data-session="sandbox">${MODE_LABELS.sandbox}</button>
+      <button type="button" data-session="challenge">${MODE_LABELS.challenge}</button>
       <h3>Demolition Objective</h3>
       <button type="button" data-act="job">${L.brick}</button><p class="fine-print">${BRICK_DESCRIPTION}</p>
       <h3>Site Size / Layout</h3>
-      <button type="button" data-district="classic">${SITE_LABELS.classic}</button>
       <button type="button" data-district="d10">${SITE_LABELS.d10}</button>
       <button type="button" data-district="d30">${SITE_LABELS.d30}</button>
       <button type="button" data-district="d100">${SITE_LABELS.d100}</button>
@@ -369,7 +368,6 @@ export class Hud {
       this.root.querySelector<HTMLElement>('#tower-status')!.textContent = text;
       for (const action of ['facade', 'core']) this.root.querySelector<HTMLButtonElement>('[data-tower="' + action + '"]')!.disabled = s.tower.phase !== 'standing';
     }
-    this.root.querySelector<HTMLElement>('[data-district="classic"]')!.hidden = s.session === "sandbox";
     const job = this.root.querySelector<HTMLElement>("#hud-job")!;
     job.hidden = !s.job;
     if (s.job) job.textContent = s.job.paid

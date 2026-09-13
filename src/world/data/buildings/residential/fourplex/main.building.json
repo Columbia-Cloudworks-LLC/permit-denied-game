@@ -1,0 +1,125 @@
+{
+  "version": 1,
+  "id": "fourplex",
+  "label": "FOURPLEX",
+  "w": 10,
+  "d": 6,
+  "floors": 2,
+  "kind": "house",
+  "construction": "brick-mixed-use",
+  "roof": "flat",
+  "theme": "colonial",
+  "windowStride": 2,
+  "features": {
+    "porch": false,
+    "awning": false,
+    "parapet": true,
+    "chimney": false,
+    "garage": false
+  },
+  "zones": {
+    "residential": 0,
+    "commercial": 0,
+    "industrial": 0
+  },
+  "traits": {
+    "use": [
+      "fourplex"
+    ],
+    "form": [
+      "B03"
+    ],
+    "style": [
+      "colonial"
+    ]
+  },
+  "partitions": true,
+  "sections": [
+    {
+      "id": "west-units",
+      "role": "west-units",
+      "x": 0,
+      "y": 0,
+      "w": 4,
+      "d": 6,
+      "floor": 0,
+      "floors": 2,
+      "layout": "west-units.layout.json"
+    },
+    {
+      "id": "east-units",
+      "role": "east-units",
+      "x": 6,
+      "y": 0,
+      "w": 4,
+      "d": 6,
+      "floor": 0,
+      "floors": 2,
+      "layout": "east-units.layout.json"
+    },
+    {
+      "id": "stair-hall",
+      "role": "shared-circulation",
+      "x": 4,
+      "y": 0,
+      "w": 2,
+      "d": 6,
+      "floor": 0,
+      "floors": 2,
+      "layout": "stair-hall.layout.json"
+    }
+  ],
+  "connections": [
+    {
+      "a": "west-units/0/living",
+      "b": "stair-hall/0/hall",
+      "at": 0.55,
+      "width": 0.35
+    },
+    {
+      "a": "east-units/0/living",
+      "b": "stair-hall/0/hall",
+      "at": 0.55,
+      "width": 0.35
+    },
+    {
+      "a": "west-units/1/living",
+      "b": "stair-hall/1/hall",
+      "at": 0.55,
+      "width": 0.35
+    },
+    {
+      "a": "east-units/1/living",
+      "b": "stair-hall/1/hall",
+      "at": 0.55,
+      "width": 0.35
+    }
+  ],
+  "openings": [
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.55,
+      "kind": "door"
+    }
+  ],
+  "stairs": [
+    {
+      "a": "stair-hall/0/hall",
+      "b": "stair-hall/1/hall",
+      "x": 0.40499999999999997,
+      "y": 0.17500000000000002,
+      "w": 0.09,
+      "d": 0.48333333333333334
+    }
+  ],
+  "floorVoids": [
+    {
+      "floor": 1,
+      "x": 4,
+      "y": 1,
+      "w": 1,
+      "d": 3
+    }
+  ]
+}

@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "id": "poultry-house",
+  "label": "POULTRY HOUSE",
+  "w": 16,
+  "d": 3,
+  "floors": 1,
+  "kind": "house",
+  "construction": "timber-house",
+  "roof": "shed",
+  "theme": "ranch",
+  "windowStride": 2,
+  "features": {
+    "porch": false,
+    "awning": false,
+    "parapet": false,
+    "chimney": false,
+    "garage": false
+  },
+  "zones": {
+    "residential": 0,
+    "commercial": 0,
+    "industrial": 0
+  },
+  "traits": {
+    "use": [
+      "poultry-house"
+    ],
+    "form": [
+      "B36"
+    ],
+    "style": [
+      "ranch"
+    ]
+  },
+  "partitions": true,
+  "sections": [
+    {
+      "id": "pens",
+      "role": "pens",
+      "x": 0,
+      "y": 0,
+      "w": 16,
+      "d": 3,
+      "floor": 0,
+      "floors": 1,
+      "layout": "pens.layout.json"
+    }
+  ],
+  "connections": [],
+  "openings": [
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.5,
+      "kind": "loading"
+    }
+  ]
+}

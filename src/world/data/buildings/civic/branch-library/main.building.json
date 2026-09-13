@@ -1,0 +1,70 @@
+{
+  "version": 1,
+  "id": "branch-library",
+  "label": "BRANCH LIBRARY",
+  "w": 9,
+  "d": 7,
+  "floors": 2,
+  "kind": "shop",
+  "construction": "brick-mixed-use",
+  "roof": "flat",
+  "theme": "civic",
+  "windowStride": 2,
+  "features": {
+    "porch": false,
+    "awning": false,
+    "parapet": true,
+    "chimney": false,
+    "garage": false
+  },
+  "zones": {
+    "residential": 0,
+    "commercial": 0,
+    "industrial": 0
+  },
+  "traits": {
+    "use": [
+      "branch-library"
+    ],
+    "form": [
+      "B43"
+    ],
+    "style": [
+      "civic"
+    ]
+  },
+  "partitions": true,
+  "sections": [
+    {
+      "id": "public",
+      "role": "public",
+      "x": 0,
+      "y": 0,
+      "w": 9,
+      "d": 7,
+      "floor": 0,
+      "floors": 1,
+      "layout": "public.layout.json"
+    },
+    {
+      "id": "upper-reading",
+      "role": "upper-reading",
+      "x": 1,
+      "y": 0,
+      "w": 7,
+      "d": 4,
+      "floor": 1,
+      "floors": 1,
+      "layout": "upper-reading.layout.json"
+    }
+  ],
+  "connections": [],
+  "openings": [
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.5,
+      "kind": "door"
+    }
+  ]
+}

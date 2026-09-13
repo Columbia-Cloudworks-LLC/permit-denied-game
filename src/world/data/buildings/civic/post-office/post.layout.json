@@ -1,0 +1,111 @@
+{
+  "partitions": true,
+  "rooms": [
+    {
+      "id": "counter",
+      "kind": "retail",
+      "floor": 0,
+      "x": 0,
+      "y": 0.65,
+      "w": 1,
+      "d": 0.35,
+      "finish": "tile",
+      "contents": [
+        {
+          "id": "counter-0",
+          "kind": "counter",
+          "x": 0.1,
+          "y": 0.05,
+          "w": 0.8,
+          "d": 0.22,
+          "h": 0.8,
+          "rotation": 0
+        }
+      ]
+    },
+    {
+      "id": "sorting",
+      "kind": "production",
+      "floor": 0,
+      "x": 0,
+      "y": 0,
+      "w": 0.7,
+      "d": 0.65,
+      "finish": "linoleum",
+      "contents": [
+        {
+          "id": "sorting-0",
+          "kind": "table",
+          "x": 0.1,
+          "y": 0.1,
+          "w": 0.3,
+          "d": 0.25,
+          "h": 0.8,
+          "rotation": 0
+        },
+        {
+          "id": "sorting-1",
+          "kind": "table",
+          "x": 0.55,
+          "y": 0.55,
+          "w": 0.3,
+          "d": 0.25,
+          "h": 0.8,
+          "rotation": 0
+        }
+      ]
+    },
+    {
+      "id": "mail",
+      "kind": "storage",
+      "floor": 0,
+      "x": 0.7,
+      "y": 0,
+      "w": 0.3,
+      "d": 0.65,
+      "finish": "linoleum",
+      "contents": [
+        {
+          "id": "mail-0",
+          "kind": "shelf",
+          "x": 0.08,
+          "y": 0.1,
+          "w": 0.12,
+          "d": 0.7,
+          "h": 1.3,
+          "rotation": 0
+        },
+        {
+          "id": "mail-1",
+          "kind": "shelf",
+          "x": 0.505,
+          "y": 0.1,
+          "w": 0.12,
+          "d": 0.7,
+          "h": 1.3,
+          "rotation": 0
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "a": "counter",
+      "b": "sorting",
+      "at": 0.5,
+      "width": 0.35
+    },
+    {
+      "a": "counter",
+      "b": "mail",
+      "at": 0.5,
+      "width": 0.35
+    },
+    {
+      "a": "sorting",
+      "b": "mail",
+      "at": 0.5,
+      "width": 0.35
+    }
+  ]
+}

@@ -1,0 +1,89 @@
+{
+  "version": 1,
+  "id": "bakery",
+  "label": "NEIGHBORHOOD BAKERY",
+  "w": 5,
+  "d": 6,
+  "floors": 1,
+  "kind": "shop",
+  "construction": "brick-mixed-use",
+  "roof": "gable",
+  "theme": "storefront",
+  "windowStride": 2,
+  "features": {
+    "porch": false,
+    "awning": true,
+    "parapet": false,
+    "chimney": false,
+    "garage": false
+  },
+  "zones": {
+    "residential": 0,
+    "commercial": 0,
+    "industrial": 0
+  },
+  "traits": {
+    "use": [
+      "bakery"
+    ],
+    "form": [
+      "B15"
+    ],
+    "style": [
+      "storefront"
+    ]
+  },
+  "partitions": true,
+  "sections": [
+    {
+      "id": "bakery",
+      "role": "bakery",
+      "x": 0,
+      "y": 0,
+      "w": 5,
+      "d": 6,
+      "floor": 0,
+      "floors": 1,
+      "layout": "bakery.layout.json"
+    }
+  ],
+  "connections": [],
+  "openings": [
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.5,
+      "kind": "door"
+    }
+  ],
+  "facadeDetails": [
+    {
+      "id": "bakery-sign",
+      "kind": "signboard",
+      "floor": 0,
+      "gx": 1,
+      "gy": 5,
+      "side": "south",
+      "width": 3,
+      "text": "BAKERY"
+    },
+    {
+      "id": "west-display",
+      "kind": "display-glazing",
+      "floor": 0,
+      "gx": 0,
+      "gy": 5,
+      "side": "south",
+      "width": 2
+    },
+    {
+      "id": "east-display",
+      "kind": "display-glazing",
+      "floor": 0,
+      "gx": 3,
+      "gy": 5,
+      "side": "south",
+      "width": 2
+    }
+  ]
+}

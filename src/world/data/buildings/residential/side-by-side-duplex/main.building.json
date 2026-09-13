@@ -1,0 +1,111 @@
+{
+  "version": 1,
+  "id": "side-by-side-duplex",
+  "label": "SIDE BY SIDE DUPLEX",
+  "kind": "house",
+  "w": 8,
+  "d": 5,
+  "floors": 2,
+  "roof": "gable",
+  "theme": "colonial",
+  "windowStride": 2,
+  "features": {
+    "porch": false,
+    "awning": false,
+    "parapet": false,
+    "chimney": false,
+    "garage": false
+  },
+  "construction": "brick-mixed-use",
+  "zones": {
+    "residential": 0,
+    "commercial": 0,
+    "industrial": 0
+  },
+  "traits": {
+    "use": [
+      "side-by-side-duplex"
+    ],
+    "form": [
+      "B02",
+      "sectioned"
+    ],
+    "scale": [
+      "neighborhood"
+    ]
+  },
+  "partitions": true,
+  "connections": [],
+  "sections": [
+    {
+      "id": "west-home",
+      "role": "west-home",
+      "x": 0,
+      "y": 0,
+      "w": 4,
+      "d": 5,
+      "floor": 0,
+      "floors": 2,
+      "layout": "west-home.layout.json"
+    },
+    {
+      "id": "east-home",
+      "role": "east-home",
+      "x": 4,
+      "y": 0,
+      "w": 4,
+      "d": 5,
+      "floor": 0,
+      "floors": 2,
+      "layout": "east-home.layout.json"
+    }
+  ],
+  "openings": [
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.0625,
+      "kind": "door"
+    },
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.5625,
+      "kind": "door"
+    }
+  ],
+  "stairs": [
+    {
+      "a": "west-home/0/stair-hall",
+      "b": "west-home/1/stair-hall",
+      "x": 0.00625,
+      "y": 0.21000000000000002,
+      "w": 0.1125,
+      "d": 0.58
+    },
+    {
+      "a": "east-home/0/stair-hall",
+      "b": "east-home/1/stair-hall",
+      "x": 0.50625,
+      "y": 0.21000000000000002,
+      "w": 0.1125,
+      "d": 0.58
+    }
+  ],
+  "floorVoids": [
+    {
+      "floor": 1,
+      "x": 0,
+      "y": 1,
+      "w": 1,
+      "d": 3
+    },
+    {
+      "floor": 1,
+      "x": 4,
+      "y": 1,
+      "w": 1,
+      "d": 3
+    }
+  ]
+}

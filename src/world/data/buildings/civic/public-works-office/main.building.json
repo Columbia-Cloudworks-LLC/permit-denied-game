@@ -1,0 +1,83 @@
+{
+  "version": 1,
+  "id": "public-works-office",
+  "label": "PUBLIC WORKS OFFICE",
+  "w": 10,
+  "d": 8,
+  "floors": 2,
+  "kind": "shop",
+  "construction": "concrete-bearing",
+  "roof": "flat",
+  "theme": "civic",
+  "windowStride": 2,
+  "features": {
+    "porch": false,
+    "awning": false,
+    "parapet": true,
+    "chimney": false,
+    "garage": false
+  },
+  "zones": {
+    "residential": 0,
+    "commercial": 0,
+    "industrial": 0
+  },
+  "traits": {
+    "use": [
+      "public-works-office"
+    ],
+    "form": [
+      "B48"
+    ],
+    "style": [
+      "civic"
+    ]
+  },
+  "partitions": true,
+  "sections": [
+    {
+      "id": "main",
+      "role": "main",
+      "x": 0,
+      "y": 0,
+      "w": 6,
+      "d": 8,
+      "floor": 0,
+      "floors": 2,
+      "layout": "main.layout.json"
+    },
+    {
+      "id": "counter-wing",
+      "role": "counter-wing",
+      "x": 6,
+      "y": 4,
+      "w": 4,
+      "d": 4,
+      "floor": 0,
+      "floors": 1,
+      "layout": "counter-wing.layout.json"
+    }
+  ],
+  "connections": [
+    {
+      "a": "main/0/files",
+      "b": "counter-wing/0/counter",
+      "at": 0.5,
+      "width": 0.35
+    },
+    {
+      "a": "main/0/files",
+      "b": "counter-wing/0/sorting",
+      "at": 0.5,
+      "width": 0.35
+    }
+  ],
+  "openings": [
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.5,
+      "kind": "door"
+    }
+  ]
+}

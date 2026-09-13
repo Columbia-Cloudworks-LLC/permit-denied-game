@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "id": "orchard-packing-shed",
+  "label": "ORCHARD PACKING SHED",
+  "w": 10,
+  "d": 7,
+  "floors": 1,
+  "kind": "industrial",
+  "construction": "steel-hall",
+  "roof": "shed",
+  "theme": "warehouse",
+  "windowStride": 2,
+  "features": {
+    "porch": false,
+    "awning": false,
+    "parapet": false,
+    "chimney": false,
+    "garage": false
+  },
+  "zones": {
+    "residential": 0,
+    "commercial": 0,
+    "industrial": 0
+  },
+  "traits": {
+    "use": [
+      "orchard-packing-shed"
+    ],
+    "form": [
+      "B37"
+    ],
+    "style": [
+      "warehouse"
+    ]
+  },
+  "partitions": true,
+  "sections": [
+    {
+      "id": "packing",
+      "role": "packing",
+      "x": 0,
+      "y": 0,
+      "w": 10,
+      "d": 7,
+      "floor": 0,
+      "floors": 1,
+      "layout": "packing.layout.json"
+    }
+  ],
+  "connections": [],
+  "openings": [
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.5,
+      "kind": "loading"
+    }
+  ]
+}

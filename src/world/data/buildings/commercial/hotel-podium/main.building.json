@@ -1,0 +1,420 @@
+{
+  "version": 1,
+  "id": "hotel-podium",
+  "label": "HOTEL AND PODIUM",
+  "w": 12,
+  "d": 9,
+  "floors": 8,
+  "kind": "shop",
+  "construction": "concrete-bearing",
+  "roof": "flat",
+  "theme": "civic",
+  "windowStride": 2,
+  "features": {
+    "porch": false,
+    "awning": false,
+    "parapet": true,
+    "chimney": false,
+    "garage": false
+  },
+  "zones": {
+    "residential": 0,
+    "commercial": 0,
+    "industrial": 0
+  },
+  "traits": {
+    "use": [
+      "hotel-podium"
+    ],
+    "form": [
+      "B54"
+    ],
+    "style": [
+      "civic"
+    ]
+  },
+  "partitions": true,
+  "sections": [
+    {
+      "id": "lobby",
+      "role": "lobby",
+      "x": 0,
+      "y": 0,
+      "w": 12,
+      "d": 9,
+      "floor": 0,
+      "floors": 1,
+      "layout": "lobby.layout.json"
+    },
+    {
+      "id": "north-1",
+      "role": "guest-room",
+      "x": 2,
+      "y": 1,
+      "w": 4,
+      "d": 3,
+      "floor": 1,
+      "floors": 6,
+      "layout": "north-1.layout.json"
+    },
+    {
+      "id": "north-2",
+      "role": "guest-room",
+      "x": 6,
+      "y": 1,
+      "w": 4,
+      "d": 3,
+      "floor": 1,
+      "floors": 6,
+      "layout": "north-2.layout.json"
+    },
+    {
+      "id": "south-1",
+      "role": "guest-room",
+      "x": 2,
+      "y": 6,
+      "w": 4,
+      "d": 2,
+      "floor": 1,
+      "floors": 6,
+      "layout": "south-1.layout.json"
+    },
+    {
+      "id": "south-2",
+      "role": "guest-room",
+      "x": 6,
+      "y": 6,
+      "w": 4,
+      "d": 2,
+      "floor": 1,
+      "floors": 6,
+      "layout": "south-2.layout.json"
+    },
+    {
+      "id": "guest-hall",
+      "role": "shared-circulation",
+      "x": 2,
+      "y": 4,
+      "w": 8,
+      "d": 2,
+      "floor": 1,
+      "floors": 6,
+      "layout": "guest-hall.layout.json"
+    },
+    {
+      "id": "service-hall",
+      "role": "shared-circulation",
+      "x": 3,
+      "y": 4,
+      "w": 6,
+      "d": 2,
+      "floor": 7,
+      "floors": 1,
+      "layout": "service-hall.layout.json"
+    },
+    {
+      "id": "service-north",
+      "role": "service",
+      "x": 3,
+      "y": 2,
+      "w": 6,
+      "d": 2,
+      "floor": 7,
+      "floors": 1,
+      "layout": "service-north.layout.json"
+    },
+    {
+      "id": "service-south",
+      "role": "service",
+      "x": 3,
+      "y": 6,
+      "w": 6,
+      "d": 1,
+      "floor": 7,
+      "floors": 1,
+      "layout": "service-south.layout.json"
+    }
+  ],
+  "connections": [
+    {
+      "a": "north-1/1/bedroom",
+      "b": "guest-hall/1/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "north-2/1/bedroom",
+      "b": "guest-hall/1/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "south-1/1/bedroom",
+      "b": "guest-hall/1/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "south-2/1/bedroom",
+      "b": "guest-hall/1/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "north-1/2/bedroom",
+      "b": "guest-hall/2/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "north-2/2/bedroom",
+      "b": "guest-hall/2/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "south-1/2/bedroom",
+      "b": "guest-hall/2/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "south-2/2/bedroom",
+      "b": "guest-hall/2/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "north-1/3/bedroom",
+      "b": "guest-hall/3/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "north-2/3/bedroom",
+      "b": "guest-hall/3/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "south-1/3/bedroom",
+      "b": "guest-hall/3/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "south-2/3/bedroom",
+      "b": "guest-hall/3/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "north-1/4/bedroom",
+      "b": "guest-hall/4/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "north-2/4/bedroom",
+      "b": "guest-hall/4/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "south-1/4/bedroom",
+      "b": "guest-hall/4/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "south-2/4/bedroom",
+      "b": "guest-hall/4/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "north-1/5/bedroom",
+      "b": "guest-hall/5/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "north-2/5/bedroom",
+      "b": "guest-hall/5/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "south-1/5/bedroom",
+      "b": "guest-hall/5/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "south-2/5/bedroom",
+      "b": "guest-hall/5/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "north-1/6/bedroom",
+      "b": "guest-hall/6/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "north-2/6/bedroom",
+      "b": "guest-hall/6/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "south-1/6/bedroom",
+      "b": "guest-hall/6/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "south-2/6/bedroom",
+      "b": "guest-hall/6/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "service-north/7/stockroom",
+      "b": "service-hall/7/hall",
+      "at": 0.5,
+      "width": 0.4
+    },
+    {
+      "a": "service-south/7/stockroom",
+      "b": "service-hall/7/hall",
+      "at": 0.5,
+      "width": 0.4
+    }
+  ],
+  "openings": [
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.5,
+      "kind": "door"
+    }
+  ],
+  "stairs": [
+    {
+      "a": "lobby/0/common-room",
+      "b": "guest-hall/1/hall",
+      "x": 0.33749999999999997,
+      "y": 0.44999999999999996,
+      "w": 0.24166666666666667,
+      "d": 0.1,
+      "rotation": 90
+    },
+    {
+      "a": "guest-hall/1/hall",
+      "b": "guest-hall/2/hall",
+      "x": 0.33749999999999997,
+      "y": 0.5611111111111111,
+      "w": 0.24166666666666667,
+      "d": 0.1,
+      "rotation": 90
+    },
+    {
+      "a": "guest-hall/2/hall",
+      "b": "guest-hall/3/hall",
+      "x": 0.33749999999999997,
+      "y": 0.44999999999999996,
+      "w": 0.24166666666666667,
+      "d": 0.1,
+      "rotation": 90
+    },
+    {
+      "a": "guest-hall/3/hall",
+      "b": "guest-hall/4/hall",
+      "x": 0.33749999999999997,
+      "y": 0.5611111111111111,
+      "w": 0.24166666666666667,
+      "d": 0.1,
+      "rotation": 90
+    },
+    {
+      "a": "guest-hall/4/hall",
+      "b": "guest-hall/5/hall",
+      "x": 0.33749999999999997,
+      "y": 0.44999999999999996,
+      "w": 0.24166666666666667,
+      "d": 0.1,
+      "rotation": 90
+    },
+    {
+      "a": "guest-hall/5/hall",
+      "b": "guest-hall/6/hall",
+      "x": 0.33749999999999997,
+      "y": 0.5611111111111111,
+      "w": 0.24166666666666667,
+      "d": 0.1,
+      "rotation": 90
+    },
+    {
+      "a": "guest-hall/6/hall",
+      "b": "service-hall/7/hall",
+      "x": 0.33749999999999997,
+      "y": 0.44999999999999996,
+      "w": 0.24166666666666667,
+      "d": 0.1,
+      "rotation": 90
+    }
+  ],
+  "floorVoids": [
+    {
+      "floor": 1,
+      "x": 4,
+      "y": 4,
+      "w": 3,
+      "d": 1
+    },
+    {
+      "floor": 2,
+      "x": 4,
+      "y": 5,
+      "w": 3,
+      "d": 1
+    },
+    {
+      "floor": 3,
+      "x": 4,
+      "y": 4,
+      "w": 3,
+      "d": 1
+    },
+    {
+      "floor": 4,
+      "x": 4,
+      "y": 5,
+      "w": 3,
+      "d": 1
+    },
+    {
+      "floor": 5,
+      "x": 4,
+      "y": 4,
+      "w": 3,
+      "d": 1
+    },
+    {
+      "floor": 6,
+      "x": 4,
+      "y": 5,
+      "w": 3,
+      "d": 1
+    },
+    {
+      "floor": 7,
+      "x": 4,
+      "y": 4,
+      "w": 3,
+      "d": 1
+    }
+  ]
+}

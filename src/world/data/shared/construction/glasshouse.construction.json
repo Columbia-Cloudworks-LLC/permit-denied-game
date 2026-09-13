@@ -1,0 +1,10 @@
+{
+  "id": "glasshouse",
+  "walls": "frame",
+  "structure": "metal",
+  "skin": "glass",
+  "floor": "concrete",
+  "roof": "glass",
+  "fallDuration": 0.3,
+  "failureDelay": 0.2
+}

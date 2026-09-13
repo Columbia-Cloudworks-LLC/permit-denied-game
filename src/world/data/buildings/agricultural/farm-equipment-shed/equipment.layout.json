@@ -1,0 +1,48 @@
+{
+  "partitions": true,
+  "rooms": [
+    {
+      "id": "machinery",
+      "kind": "production",
+      "floor": 0,
+      "x": 0,
+      "y": 0,
+      "w": 1,
+      "d": 1,
+      "finish": "concrete",
+      "contents": [
+        {
+          "id": "machinery-0",
+          "kind": "machine",
+          "x": 0.12,
+          "y": 0.2,
+          "w": 0.16,
+          "d": 0.3,
+          "h": 1.3,
+          "rotation": 0
+        },
+        {
+          "id": "machinery-1",
+          "kind": "machine",
+          "x": 0.5,
+          "y": 0.15,
+          "w": 0.22,
+          "d": 0.3,
+          "h": 1.4,
+          "rotation": 0
+        },
+        {
+          "id": "machinery-2",
+          "kind": "rack",
+          "x": 0.05,
+          "y": 0.02,
+          "w": 0.8,
+          "d": 0.08,
+          "h": 1.6,
+          "rotation": 0
+        }
+      ]
+    }
+  ],
+  "connections": []
+}

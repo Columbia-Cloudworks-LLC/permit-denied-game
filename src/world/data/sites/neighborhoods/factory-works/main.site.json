@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "id": "factory-works",
+  "label": "FACTORY WORKS",
+  "w": 53,
+  "d": 35,
+  "buildings": [
+    {
+      "id": "mill",
+      "building": "textile-mill",
+      "x": 3,
+      "y": 3
+    },
+    {
+      "id": "workshop",
+      "building": "steel-warehouse",
+      "x": 30,
+      "y": 3
+    },
+    {
+      "id": "operations",
+      "building": "campus-office",
+      "x": 3,
+      "y": 23
+    }
+  ],
+  "equipment": [
+    {
+      "id": "transformer",
+      "asset": "transformer",
+      "x": 23,
+      "y": 5
+    },
+    {
+      "id": "hvac",
+      "asset": "hvac",
+      "x": 23,
+      "y": 10
+    },
+    {
+      "id": "stock",
+      "asset": "crate-stack",
+      "x": 32,
+      "y": 24
+    },
+    {
+      "id": "dumpster",
+      "asset": "dumpster",
+      "x": 43,
+      "y": 24
+    }
+  ]
+}

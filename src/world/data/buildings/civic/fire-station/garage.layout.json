@@ -1,0 +1,38 @@
+{
+  "partitions": true,
+  "rooms": [
+    {
+      "id": "apparatus-bay",
+      "kind": "production",
+      "floor": 0,
+      "x": 0,
+      "y": 0,
+      "w": 1,
+      "d": 1,
+      "finish": "concrete",
+      "contents": [
+        {
+          "id": "apparatus-bay-0",
+          "kind": "rack",
+          "x": 0.08,
+          "y": 0.05,
+          "w": 0.8,
+          "d": 0.12,
+          "h": 1.5,
+          "rotation": 0
+        },
+        {
+          "id": "apparatus-bay-1",
+          "kind": "machine",
+          "x": 0.7,
+          "y": 0.45,
+          "w": 0.2,
+          "d": 0.2,
+          "h": 1,
+          "rotation": 0
+        }
+      ]
+    }
+  ],
+  "connections": []
+}

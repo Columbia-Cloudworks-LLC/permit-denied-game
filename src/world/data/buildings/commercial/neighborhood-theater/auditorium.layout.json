@@ -1,0 +1,88 @@
+{
+  "partitions": true,
+  "rooms": [
+    {
+      "id": "auditorium",
+      "kind": "living",
+      "floor": 0,
+      "x": 0,
+      "y": 0,
+      "w": 1,
+      "d": 1,
+      "finish": "plank",
+      "contents": [
+        {
+          "id": "screen",
+          "kind": "theater-screen",
+          "x": 0.2,
+          "y": 0.025,
+          "w": 0.6,
+          "d": 0.05,
+          "h": 3.2,
+          "rotation": 0
+        },
+        {
+          "id": "auditorium-0",
+          "kind": "theater-seats",
+          "x": 0.08,
+          "y": 0.2,
+          "w": 0.35,
+          "d": 0.15,
+          "h": 0.9,
+          "rotation": 0
+        },
+        {
+          "id": "auditorium-1",
+          "kind": "theater-seats",
+          "x": 0.57,
+          "y": 0.2,
+          "w": 0.35,
+          "d": 0.15,
+          "h": 0.9,
+          "rotation": 0
+        },
+        {
+          "id": "auditorium-2",
+          "kind": "theater-seats",
+          "x": 0.08,
+          "y": 0.45,
+          "w": 0.35,
+          "d": 0.15,
+          "h": 0.9,
+          "rotation": 0
+        },
+        {
+          "id": "auditorium-3",
+          "kind": "theater-seats",
+          "x": 0.57,
+          "y": 0.45,
+          "w": 0.35,
+          "d": 0.15,
+          "h": 0.9,
+          "rotation": 0
+        },
+        {
+          "id": "auditorium-4",
+          "kind": "theater-seats",
+          "x": 0.08,
+          "y": 0.7,
+          "w": 0.35,
+          "d": 0.15,
+          "h": 0.9,
+          "rotation": 0
+        },
+        {
+          "id": "auditorium-5",
+          "kind": "theater-seats",
+          "x": 0.57,
+          "y": 0.7,
+          "w": 0.35,
+          "d": 0.15,
+          "h": 0.9,
+          "rotation": 0
+        }
+      ]
+    }
+  ],
+  "connections": []
+}

@@ -1,0 +1,81 @@
+{
+  "version": 1,
+  "id": "roadside-diner",
+  "label": "ROADSIDE DINER",
+  "kind": "shop",
+  "w": 10,
+  "d": 4,
+  "floors": 1,
+  "roof": "flat",
+  "theme": "storefront",
+  "windowStride": 2,
+  "features": {
+    "porch": false,
+    "awning": true,
+    "parapet": true,
+    "chimney": false,
+    "garage": false
+  },
+  "construction": "brick-mixed-use",
+  "zones": {
+    "residential": 0,
+    "commercial": 0,
+    "industrial": 0
+  },
+  "traits": {
+    "use": [
+      "roadside-diner"
+    ],
+    "form": [
+      "B11",
+      "single-volume"
+    ],
+    "scale": [
+      "broad"
+    ]
+  },
+  "partitions": true,
+  "connections": [],
+  "sections": [
+    {
+      "id": "diner",
+      "role": "diner",
+      "x": 0,
+      "y": 0,
+      "w": 10,
+      "d": 4,
+      "floor": 0,
+      "floors": 1,
+      "layout": "diner.layout.json"
+    }
+  ],
+  "openings": [
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.45,
+      "kind": "door"
+    }
+  ],
+  "facadeDetails": [
+    {
+      "id": "diner-sign",
+      "kind": "signboard",
+      "floor": 0,
+      "gx": 1,
+      "gy": 3,
+      "side": "south",
+      "width": 3,
+      "text": "CLOVER DINER"
+    },
+    {
+      "id": "kitchen-exhaust",
+      "kind": "roof-duct",
+      "floor": 0,
+      "gx": 8,
+      "gy": 3,
+      "side": "south",
+      "width": 1
+    }
+  ]
+}

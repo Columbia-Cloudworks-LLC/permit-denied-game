@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "id": "civic-block",
+  "label": "CIVIC BLOCK",
+  "w": 55,
+  "d": 28,
+  "buildings": [
+    {
+      "id": "permit",
+      "building": "permit-office",
+      "x": 3,
+      "y": 3
+    },
+    {
+      "id": "library",
+      "building": "branch-library",
+      "x": 20,
+      "y": 3
+    },
+    {
+      "id": "post",
+      "building": "post-office",
+      "x": 39,
+      "y": 3
+    }
+  ],
+  "equipment": [
+    {
+      "id": "table-west",
+      "asset": "picnic-table",
+      "x": 12,
+      "y": 20
+    },
+    {
+      "id": "table-east",
+      "asset": "picnic-table",
+      "x": 33,
+      "y": 20
+    },
+    {
+      "id": "light",
+      "asset": "light",
+      "x": 25,
+      "y": 23
+    },
+    {
+      "id": "tree",
+      "asset": "mature-tree",
+      "x": 45,
+      "y": 20
+    }
+  ]
+}

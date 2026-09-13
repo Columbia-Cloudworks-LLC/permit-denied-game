@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "id": "civic-records-tower",
+  "label": "CIVIC RECORDS TOWER",
+  "w": 6,
+  "d": 8,
+  "floors": 7,
+  "kind": "shop",
+  "construction": "concrete-bearing",
+  "roof": "flat",
+  "theme": "civic",
+  "windowStride": 2,
+  "features": {
+    "porch": false,
+    "awning": false,
+    "parapet": true,
+    "chimney": false,
+    "garage": false
+  },
+  "zones": {
+    "residential": 0,
+    "commercial": 0,
+    "industrial": 0
+  },
+  "traits": {
+    "use": [
+      "civic-records-tower"
+    ],
+    "form": [
+      "B56"
+    ],
+    "style": [
+      "civic"
+    ]
+  },
+  "partitions": true,
+  "sections": [
+    {
+      "id": "archives",
+      "role": "archives",
+      "x": 0,
+      "y": 0,
+      "w": 6,
+      "d": 8,
+      "floor": 0,
+      "floors": 7,
+      "layout": "archives.layout.json"
+    }
+  ],
+  "connections": [],
+  "openings": [
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.5,
+      "kind": "door"
+    }
+  ]
+}

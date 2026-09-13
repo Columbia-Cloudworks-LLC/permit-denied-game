@@ -1,0 +1,218 @@
+{
+  "version": 1,
+  "id": "frank-grimes-bowling",
+  "label": "FRANK GRIMES — BETWEEN THE LANES",
+  "w": 10,
+  "d": 18,
+  "floors": 3,
+  "kind": "industrial",
+  "construction": "steel-hall",
+  "roof": "flat",
+  "theme": "storefront",
+  "windowStride": 2,
+  "features": {
+    "porch": false,
+    "awning": false,
+    "parapet": true,
+    "chimney": false,
+    "garage": false
+  },
+  "zones": {
+    "residential": 0,
+    "commercial": 0,
+    "industrial": 0
+  },
+  "traits": {
+    "use": [
+      "bowling-alley",
+      "apartment"
+    ],
+    "form": [
+      "stacked-bowling-variant"
+    ],
+    "style": [
+      "storefront"
+    ]
+  },
+  "partitions": true,
+  "sections": [
+    {
+      "id": "lanes-0",
+      "role": "bowling-floor",
+      "x": 0,
+      "y": 0,
+      "w": 8,
+      "d": 14,
+      "floor": 0,
+      "floors": 1,
+      "layout": "lanes.layout.json"
+    },
+    {
+      "id": "desk-0",
+      "role": "bowling-lobby",
+      "x": 0,
+      "y": 14,
+      "w": 8,
+      "d": 4,
+      "floor": 0,
+      "floors": 1,
+      "layout": "front-desk.layout.json"
+    },
+    {
+      "id": "lanes-2",
+      "role": "bowling-floor",
+      "x": 0,
+      "y": 0,
+      "w": 8,
+      "d": 14,
+      "floor": 2,
+      "floors": 1,
+      "layout": "lanes.layout.json"
+    },
+    {
+      "id": "desk-2",
+      "role": "bowling-lobby",
+      "x": 0,
+      "y": 14,
+      "w": 8,
+      "d": 4,
+      "floor": 2,
+      "floors": 1,
+      "layout": "front-desk.layout.json"
+    },
+    {
+      "id": "apartment",
+      "role": "frank-grimes-apartment",
+      "x": 0,
+      "y": 0,
+      "w": 8,
+      "d": 18,
+      "floor": 1,
+      "floors": 1,
+      "layout": "apartment.layout.json"
+    },
+    {
+      "id": "hall",
+      "role": "shared-stairs",
+      "x": 8,
+      "y": 0,
+      "w": 2,
+      "d": 18,
+      "floor": 0,
+      "floors": 3,
+      "layout": "hall.layout.json"
+    }
+  ],
+  "connections": [
+    {
+      "a": "lanes-0/0/work-floor",
+      "b": "desk-0/0/common-room",
+      "at": 0.5,
+      "width": 0.35
+    },
+    {
+      "a": "desk-0/0/common-room",
+      "b": "hall/0/hall",
+      "at": 0.5,
+      "width": 0.4
+    },
+    {
+      "a": "lanes-2/2/work-floor",
+      "b": "desk-2/2/common-room",
+      "at": 0.5,
+      "width": 0.35
+    },
+    {
+      "a": "desk-2/2/common-room",
+      "b": "hall/2/hall",
+      "at": 0.5,
+      "width": 0.4
+    },
+    {
+      "a": "apartment/1/living",
+      "b": "hall/1/hall",
+      "at": 0.8,
+      "width": 0.12
+    }
+  ],
+  "openings": [
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.4,
+      "kind": "door"
+    },
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.9,
+      "kind": "door"
+    }
+  ],
+  "stairs": [
+    {
+      "a": "hall/0/hall",
+      "b": "hall/1/hall",
+      "x": 0.81,
+      "y": 0.2222222222222222,
+      "w": 0.08,
+      "d": 0.16666666666666666
+    },
+    {
+      "a": "hall/1/hall",
+      "b": "hall/2/hall",
+      "x": 0.91,
+      "y": 0.2222222222222222,
+      "w": 0.08,
+      "d": 0.16666666666666666
+    }
+  ],
+  "floorVoids": [
+    {
+      "floor": 1,
+      "x": 8,
+      "y": 4,
+      "w": 1,
+      "d": 3
+    },
+    {
+      "floor": 2,
+      "x": 9,
+      "y": 4,
+      "w": 1,
+      "d": 3
+    }
+  ],
+  "facadeDetails": [
+    {
+      "id": "floor-sign-0",
+      "kind": "signboard",
+      "floor": 0,
+      "gx": 2,
+      "gy": 17,
+      "side": "south",
+      "width": 4,
+      "text": "BOWL"
+    },
+    {
+      "id": "floor-sign-1",
+      "kind": "signboard",
+      "floor": 1,
+      "gx": 2,
+      "gy": 17,
+      "side": "south",
+      "width": 4,
+      "text": "GRIMES"
+    },
+    {
+      "id": "floor-sign-2",
+      "kind": "signboard",
+      "floor": 2,
+      "gx": 2,
+      "gy": 17,
+      "side": "south",
+      "width": 4,
+      "text": "BOWL"
+    }
+  ]
+}

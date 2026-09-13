@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "id": "furniture-showroom",
+  "label": "FURNITURE SHOWROOM",
+  "w": 11,
+  "d": 8,
+  "floors": 1,
+  "kind": "industrial",
+  "construction": "steel-hall",
+  "roof": "flat",
+  "theme": "storefront",
+  "windowStride": 2,
+  "features": {
+    "porch": false,
+    "awning": false,
+    "parapet": true,
+    "chimney": false,
+    "garage": false
+  },
+  "zones": {
+    "residential": 0,
+    "commercial": 0,
+    "industrial": 0
+  },
+  "traits": {
+    "use": [
+      "furniture-showroom"
+    ],
+    "form": [
+      "B17"
+    ],
+    "style": [
+      "storefront"
+    ]
+  },
+  "partitions": true,
+  "sections": [
+    {
+      "id": "showroom",
+      "role": "showroom",
+      "x": 0,
+      "y": 0,
+      "w": 11,
+      "d": 8,
+      "floor": 0,
+      "floors": 1,
+      "layout": "showroom.layout.json"
+    }
+  ],
+  "connections": [],
+  "openings": [
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.5,
+      "kind": "door"
+    }
+  ]
+}

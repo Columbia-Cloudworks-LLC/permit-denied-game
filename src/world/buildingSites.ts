@@ -1,4 +1,4 @@
-import { CELL } from '../game/constants';
+import { CELL, FLOOR_Z } from '../game/constants';
 import { createBuildingFromDefinition } from '../structure/building';
 import { ASSET_CATALOG, spawnAssetDefinition, type AssetDef } from './catalog';
 import { ARCHETYPES, checkShape, freezeDefinition, parseContentFiles, type Archetype } from './archetypes';
@@ -21,24 +21,31 @@ export function parseBuildingSites(files: Record<string, unknown>, buildings: re
     if (!site.id.trim() || !site.label.trim() || seen.has(site.id)) fail(`Duplicate or missing site id ${site.id}; first defined in ${seen.get(site.id)}`);
     seen.set(site.id, file);
     if (site.w <= 0 || site.d <= 0 || site.w > 256 || site.d > 256 || !site.buildings.length || site.buildings.length > 16 || site.equipment.length > 64) fail('Site needs dimensions up to 256, 1–16 buildings and at most 64 equipment items');
-    const ids = new Set<string>(), boxes: { x: number; y: number; w: number; d: number }[] = [];
+    const ids = new Set<string>(), boxes: { x: number; y: number; w: number; d: number; z: number; h: number }[] = [];
     let slots = 0;
     for (const member of [...site.buildings, ...site.equipment]) {
       if (!member.id.trim() || ids.has(member.id)) fail(`Duplicate or missing member id ${member.id}`);
       ids.add(member.id);
-      let w: number, d: number;
+      let w: number, d: number, h: number;
+      let columns: Archetype['canopy'], cellSize = CELL;
       if ('building' in member) {
         const def = buildings.find(b => b.id === member.building) ?? fail(`${member.id}: unknown building reference ${member.building}`);
         w = def.w * (def.cellSize ?? CELL); d = def.d * (def.cellSize ?? CELL);
         slots += def.w * def.d * def.floors;
+        h = def.floors * FLOOR_Z + 1.5;
+        columns = def.canopy; cellSize = def.cellSize ?? CELL;
       } else {
         const def = assets.find(a => a.id === member.asset) ?? fail(`${member.id}: unknown equipment reference ${member.asset}`);
         w = Math.max(def.footprint.w, def.collision.w); d = Math.max(def.footprint.d, def.collision.d);
+        h = def.footprint.h;
       }
-      const box = { ...member, w, d };
+      const volumes = columns ? [
+        { ...member, w, d, z: FLOOR_Z, h: .25 },
+        ...columns.columns.map(p => ({ x: member.x + (p.x + .5) * cellSize - .16, y: member.y + (p.y + .5) * cellSize - .16, w: .32, d: .32, z: 0, h: FLOOR_Z })),
+      ] : [{ ...member, w, d, z: 0, h }];
       if (member.x < 0 || member.y < 0 || member.x + w > site.w || member.y + d > site.d) fail(`${member.id}: outside site bounds`);
-      if (boxes.some(b => box.x < b.x + b.w && box.x + w > b.x && box.y < b.y + b.d && box.y + d > b.y)) fail(`${member.id}: overlaps another site member`);
-      boxes.push(box);
+      if (volumes.some(box => boxes.some(b => box.x < b.x + b.w && box.x + box.w > b.x && box.y < b.y + b.d && box.y + box.d > b.y && box.z < b.z + b.h && box.z + box.h > b.z))) fail(`${member.id}: overlaps another site member`);
+      boxes.push(...volumes);
     }
     if (slots > 16384) fail('Site exceeds 16384 grid slots');
     return freezeDefinition(site);

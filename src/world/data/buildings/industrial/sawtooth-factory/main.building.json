@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "id": "sawtooth-factory",
+  "label": "SAWTOOTH FACTORY",
+  "kind": "industrial",
+  "w": 14,
+  "d": 12,
+  "floors": 1,
+  "construction": "steel-hall",
+  "roof": "sawtooth",
+  "roofAxis": "y",
+  "theme": "warehouse",
+  "windowStride": 3,
+  "features": { "porch": false, "awning": false, "parapet": false, "chimney": false, "garage": false },
+  "zones": { "residential": 0, "commercial": 0, "industrial": 0 },
+  "traits": { "use": ["factory"], "form": ["B30", "sawtooth-roof", "clerestory"], "construction": ["steel-frame"] },
+  "sections": [
+    { "id": "factory", "role": "production", "x": 0, "y": 0, "w": 14, "d": 12, "floor": 0, "floors": 1, "layout": "production.layout.json" }
+  ],
+  "partitions": false,
+  "openings": [
+    { "floor": 0, "side": "south", "at": 0.2, "kind": "loading" },
+    { "floor": 0, "side": "south", "at": 0.65, "kind": "loading" },
+    { "floor": 0, "side": "south", "at": 0.9, "kind": "door" }
+  ]
+}

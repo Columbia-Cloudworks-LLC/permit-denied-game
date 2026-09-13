@@ -1,0 +1,16 @@
+{
+  "partitions": false,
+  "rooms": [
+    {
+      "id": "bin-base",
+      "kind": "storage",
+      "floor": 0,
+      "x": 0,
+      "y": 0,
+      "w": 1,
+      "d": 1,
+      "finish": "concrete",
+      "contents": []
+    }
+  ]
+}

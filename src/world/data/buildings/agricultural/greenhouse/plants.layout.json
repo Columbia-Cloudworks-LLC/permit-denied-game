@@ -1,0 +1,15 @@
+{
+  "partitions": false,
+  "rooms": [{
+    "id": "growing-room", "kind": "production", "floor": 0,
+    "x": 0, "y": 0, "w": 1, "d": 1, "finish": "concrete",
+    "contents": [
+      { "id": "west-a", "kind": "nursery-bench", "x": 0.1, "y": 0.1, "w": 0.25, "d": 0.22, "h": 1.1, "rotation": 0 },
+      { "id": "east-a", "kind": "nursery-bench", "x": 0.65, "y": 0.1, "w": 0.25, "d": 0.22, "h": 1.1, "rotation": 0 },
+      { "id": "west-b", "kind": "nursery-bench", "x": 0.1, "y": 0.4, "w": 0.25, "d": 0.22, "h": 1.1, "rotation": 0 },
+      { "id": "east-b", "kind": "nursery-bench", "x": 0.65, "y": 0.4, "w": 0.25, "d": 0.22, "h": 1.1, "rotation": 0 },
+      { "id": "west-c", "kind": "nursery-bench", "x": 0.1, "y": 0.7, "w": 0.25, "d": 0.2, "h": 1.1, "rotation": 0 },
+      { "id": "east-c", "kind": "nursery-bench", "x": 0.65, "y": 0.7, "w": 0.25, "d": 0.2, "h": 1.1, "rotation": 0 }
+    ]
+  }]
+}

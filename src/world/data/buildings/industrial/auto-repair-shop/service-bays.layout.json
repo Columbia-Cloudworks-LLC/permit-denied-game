@@ -1,0 +1,48 @@
+{
+  "partitions": true,
+  "rooms": [
+    {
+      "id": "workshop",
+      "kind": "production",
+      "floor": 0,
+      "x": 0,
+      "y": 0,
+      "w": 1,
+      "d": 1,
+      "finish": "concrete",
+      "contents": [
+        {
+          "id": "workshop-0",
+          "kind": "repair-lift",
+          "x": 0.1,
+          "y": 0.2,
+          "w": 0.2,
+          "d": 0.3,
+          "h": 1.2,
+          "rotation": 0
+        },
+        {
+          "id": "workshop-1",
+          "kind": "repair-lift",
+          "x": 0.55,
+          "y": 0.2,
+          "w": 0.2,
+          "d": 0.3,
+          "h": 1.2,
+          "rotation": 0
+        },
+        {
+          "id": "workshop-2",
+          "kind": "shelf",
+          "x": 0.08,
+          "y": 0.05,
+          "w": 0.75,
+          "d": 0.08,
+          "h": 1.3,
+          "rotation": 0
+        }
+      ]
+    }
+  ],
+  "connections": []
+}

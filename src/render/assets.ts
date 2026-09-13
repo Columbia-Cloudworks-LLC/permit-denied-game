@@ -51,6 +51,7 @@ export function drawCatalogProp(g: Graphics, p: Prop): void {
       shade(box.left, tint),
       shade(box.right, tint),
       1,
+      'slope' in box && box.slope === true,
     );
   }
 }

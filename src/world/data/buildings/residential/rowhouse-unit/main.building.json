@@ -1,0 +1,105 @@
+{
+  "version": 1,
+  "id": "rowhouse-unit",
+  "label": "BRICK ROWHOUSE",
+  "kind": "house",
+  "w": 3,
+  "d": 7,
+  "floors": 3,
+  "roof": "flat",
+  "theme": "corner",
+  "windowStride": 2,
+  "features": {
+    "porch": false,
+    "awning": false,
+    "parapet": true,
+    "chimney": false,
+    "garage": false
+  },
+  "construction": "brick-mixed-use",
+  "zones": {
+    "residential": 0,
+    "commercial": 0,
+    "industrial": 0
+  },
+  "traits": {
+    "use": [
+      "rowhouse-unit"
+    ],
+    "form": [
+      "B04",
+      "single-volume"
+    ],
+    "scale": [
+      "neighborhood"
+    ]
+  },
+  "partitions": true,
+  "connections": [],
+  "sections": [
+    {
+      "id": "ground",
+      "role": "living-floor",
+      "x": 0,
+      "y": 0,
+      "w": 3,
+      "d": 7,
+      "floor": 0,
+      "floors": 1,
+      "layout": "ground.layout.json"
+    },
+    {
+      "id": "upper",
+      "role": "bedroom-floors",
+      "x": 0,
+      "y": 0,
+      "w": 3,
+      "d": 7,
+      "floor": 1,
+      "floors": 2,
+      "layout": "upper.layout.json"
+    }
+  ],
+  "openings": [
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.3,
+      "kind": "door"
+    }
+  ],
+  "stairs": [
+    {
+      "a": "ground/0/hall",
+      "b": "upper/1/hall",
+      "x": 0.016666666666666666,
+      "y": 0.15,
+      "w": 0.3,
+      "d": 0.41428571428571426
+    },
+    {
+      "a": "upper/1/hall",
+      "b": "upper/2/hall",
+      "x": 0.35000000000000003,
+      "y": 0.15,
+      "w": 0.3,
+      "d": 0.41428571428571426
+    }
+  ],
+  "floorVoids": [
+    {
+      "floor": 1,
+      "x": 0,
+      "y": 1,
+      "w": 1,
+      "d": 3
+    },
+    {
+      "floor": 2,
+      "x": 1,
+      "y": 1,
+      "w": 1,
+      "d": 3
+    }
+  ]
+}

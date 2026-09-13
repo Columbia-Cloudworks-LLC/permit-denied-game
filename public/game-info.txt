@@ -14,12 +14,12 @@ The title screen looks like a demolition application stamped PERMIT DENIED.
 It is the game's start menu. Select PLAY to choose a mode and site.
 
 GAME MODES
-County Clock: Earn $1,800 in in-game cash within three minutes. Demolition
+Time Challenge: Earn $1,800 in in-game cash within three minutes. Demolition
 earns cash. Watch engine heat and track stress: overheating or
 overloading the tracks can end the run. Upgrade the blade, engine, or push
 power as you reach cash milestones.
 
-Sandbox: Explore and demolish without a deadline or breakdowns. Engine heat
+Sandbox (default): Explore and demolish without a deadline or breakdowns. Engine heat
 and track stress remain visible as guides. Try different approaches to
 breaking structures and moving debris.
 
@@ -27,7 +27,7 @@ Brick Contract: Take on a focused job to demolish a brick building. Bring down
 its structural sections and let them settle to complete the job.
 
 SITES AND CONTROLS
-Choose the classic site or a larger site with 10, 30, or 100 buildings.
+Choose a site with 10, 30, or 100 buildings, using connected roads and lots.
 Use W/S or the up/down arrows to drive forward and reverse. Use A/D or the
 left/right arrows to steer. Hold Space to power the blade. Press Escape to
 pause. Touch controls provide a driving stick and a POWER BLADE button.

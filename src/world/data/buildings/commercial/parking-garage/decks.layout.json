@@ -1,0 +1,79 @@
+{
+  "partitions": true,
+  "rooms": [
+    {
+      "id": "deck-0",
+      "kind": "storage",
+      "floor": 0,
+      "x": 0,
+      "y": 0,
+      "w": 1,
+      "d": 1,
+      "finish": "concrete",
+      "contents": []
+    },
+    {
+      "id": "deck-1",
+      "kind": "storage",
+      "floor": 1,
+      "x": 0,
+      "y": 0,
+      "w": 1,
+      "d": 1,
+      "finish": "concrete",
+      "contents": []
+    },
+    {
+      "id": "deck-2",
+      "kind": "storage",
+      "floor": 2,
+      "x": 0,
+      "y": 0,
+      "w": 1,
+      "d": 1,
+      "finish": "concrete",
+      "contents": []
+    },
+    {
+      "id": "deck-3",
+      "kind": "storage",
+      "floor": 3,
+      "x": 0,
+      "y": 0,
+      "w": 1,
+      "d": 1,
+      "finish": "concrete",
+      "contents": []
+    }
+  ],
+  "connections": [],
+  "stairs": [
+    {
+      "a": "deck-0",
+      "b": "deck-1",
+      "kind": "ramp",
+      "x": 0.1708333333333333,
+      "y": 0.205,
+      "w": 0.15833333333333333,
+      "d": 0.5900000000000001
+    },
+    {
+      "a": "deck-1",
+      "b": "deck-2",
+      "kind": "ramp",
+      "x": 0.5875,
+      "y": 0.205,
+      "w": 0.15833333333333333,
+      "d": 0.5900000000000001
+    },
+    {
+      "a": "deck-2",
+      "b": "deck-3",
+      "kind": "ramp",
+      "x": 0.1708333333333333,
+      "y": 0.205,
+      "w": 0.15833333333333333,
+      "d": 0.5900000000000001
+    }
+  ]
+}

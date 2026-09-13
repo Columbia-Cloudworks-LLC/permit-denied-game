@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "id": "pump-house",
+  "label": "PUMP HOUSE",
+  "w": 4,
+  "d": 5,
+  "floors": 1,
+  "kind": "shop",
+  "construction": "concrete-bearing",
+  "roof": "flat",
+  "theme": "warehouse",
+  "windowStride": 2,
+  "features": {
+    "porch": false,
+    "awning": false,
+    "parapet": true,
+    "chimney": false,
+    "garage": false
+  },
+  "zones": {
+    "residential": 0,
+    "commercial": 0,
+    "industrial": 0
+  },
+  "traits": {
+    "use": [
+      "pump-house"
+    ],
+    "form": [
+      "B50"
+    ],
+    "style": [
+      "warehouse"
+    ]
+  },
+  "partitions": true,
+  "sections": [
+    {
+      "id": "pumps",
+      "role": "pumps",
+      "x": 0,
+      "y": 0,
+      "w": 4,
+      "d": 5,
+      "floor": 0,
+      "floors": 1,
+      "layout": "pumps.layout.json"
+    }
+  ],
+  "connections": [],
+  "openings": [
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.5,
+      "kind": "door"
+    }
+  ]
+}

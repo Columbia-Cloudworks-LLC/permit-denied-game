@@ -1,0 +1,77 @@
+{
+  "version": 1,
+  "id": "community-hall",
+  "label": "COMMUNITY HALL",
+  "w": 9,
+  "d": 8,
+  "floors": 1,
+  "kind": "house",
+  "construction": "timber-house",
+  "roof": "gable",
+  "theme": "porch",
+  "windowStride": 2,
+  "features": {
+    "porch": true,
+    "awning": false,
+    "parapet": false,
+    "chimney": false,
+    "garage": false
+  },
+  "zones": {
+    "residential": 0,
+    "commercial": 0,
+    "industrial": 0
+  },
+  "traits": {
+    "use": [
+      "community-hall"
+    ],
+    "form": [
+      "B47"
+    ],
+    "style": [
+      "porch"
+    ]
+  },
+  "partitions": true,
+  "sections": [
+    {
+      "id": "meeting",
+      "role": "meeting",
+      "x": 0,
+      "y": 0,
+      "w": 7,
+      "d": 8,
+      "floor": 0,
+      "floors": 1,
+      "layout": "meeting.layout.json"
+    },
+    {
+      "id": "service",
+      "role": "service",
+      "x": 7,
+      "y": 0,
+      "w": 2,
+      "d": 8,
+      "floor": 0,
+      "floors": 1,
+      "layout": "service.layout.json"
+    }
+  ],
+  "connections": [
+    {
+      "a": "meeting/0/hall",
+      "b": "service/0/stockroom",
+      "at": 0.5,
+      "width": 0.35
+    }
+  ],
+  "openings": [
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.5,
+      "kind": "door"
+    }
+  ]
+}

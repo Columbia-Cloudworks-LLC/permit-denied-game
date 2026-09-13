@@ -1,0 +1,88 @@
+{
+  "version": 1,
+  "id": "farmhouse-rear-wing",
+  "label": "FARMHOUSE AND REAR WING",
+  "w": 7,
+  "d": 9,
+  "floors": 2,
+  "kind": "house",
+  "construction": "timber-house",
+  "roof": "gable",
+  "theme": "porch",
+  "windowStride": 2,
+  "features": {
+    "porch": true,
+    "awning": false,
+    "parapet": false,
+    "chimney": true,
+    "garage": false
+  },
+  "zones": {
+    "residential": 0,
+    "commercial": 0,
+    "industrial": 0
+  },
+  "traits": {
+    "use": [
+      "farmhouse-rear-wing"
+    ],
+    "form": [
+      "B38"
+    ],
+    "style": [
+      "porch"
+    ]
+  },
+  "partitions": true,
+  "sections": [
+    {
+      "id": "front-home",
+      "role": "front-home",
+      "x": 0,
+      "y": 4,
+      "w": 7,
+      "d": 5,
+      "floor": 0,
+      "floors": 2,
+      "layout": "front-home.layout.json"
+    },
+    {
+      "id": "rear-wing",
+      "role": "rear-wing",
+      "x": 0,
+      "y": 0,
+      "w": 4,
+      "d": 4,
+      "floor": 0,
+      "floors": 1,
+      "layout": "rear-wing.layout.json"
+    }
+  ],
+  "connections": [
+    {
+      "a": "front-home/0/sleep",
+      "b": "rear-wing/0/kitchen",
+      "at": 0.5,
+      "width": 0.35
+    }
+  ],
+  "openings": [
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.5,
+      "kind": "door"
+    }
+  ],
+  "facadeDetails": [
+    {
+      "id": "farm-porch",
+      "kind": "porch",
+      "floor": 0,
+      "gx": 2,
+      "gy": 8,
+      "side": "south",
+      "width": 3
+    }
+  ]
+}

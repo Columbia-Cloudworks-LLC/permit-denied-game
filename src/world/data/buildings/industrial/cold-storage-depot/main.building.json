@@ -1,0 +1,77 @@
+{
+  "version": 1,
+  "id": "cold-storage-depot",
+  "label": "COLD STORAGE DEPOT",
+  "w": 12,
+  "d": 9,
+  "floors": 1,
+  "kind": "industrial",
+  "construction": "steel-hall",
+  "roof": "flat",
+  "theme": "warehouse",
+  "windowStride": 2,
+  "features": {
+    "porch": false,
+    "awning": false,
+    "parapet": true,
+    "chimney": false,
+    "garage": false
+  },
+  "zones": {
+    "residential": 0,
+    "commercial": 0,
+    "industrial": 0
+  },
+  "traits": {
+    "use": [
+      "cold-storage-depot"
+    ],
+    "form": [
+      "B24"
+    ],
+    "style": [
+      "warehouse"
+    ]
+  },
+  "partitions": true,
+  "sections": [
+    {
+      "id": "freezers",
+      "role": "freezers",
+      "x": 0,
+      "y": 0,
+      "w": 9,
+      "d": 9,
+      "floor": 0,
+      "floors": 1,
+      "layout": "freezers.layout.json"
+    },
+    {
+      "id": "receiving",
+      "role": "receiving",
+      "x": 9,
+      "y": 0,
+      "w": 3,
+      "d": 9,
+      "floor": 0,
+      "floors": 1,
+      "layout": "receiving.layout.json"
+    }
+  ],
+  "connections": [
+    {
+      "a": "freezers/0/cold-room",
+      "b": "receiving/0/stockroom",
+      "at": 0.5,
+      "width": 0.35
+    }
+  ],
+  "openings": [
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.5,
+      "kind": "door"
+    }
+  ]
+}

@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "id": "main-street",
+  "label": "MAIN STREET",
+  "w": 60,
+  "d": 24,
+  "buildings": [
+    {
+      "id": "corner",
+      "building": "corner-shop",
+      "x": 3,
+      "y": 3
+    },
+    {
+      "id": "diner",
+      "building": "roadside-diner",
+      "x": 12,
+      "y": 3
+    },
+    {
+      "id": "hardware",
+      "building": "hardware-store",
+      "x": 29,
+      "y": 3
+    },
+    {
+      "id": "post-office",
+      "building": "post-office",
+      "x": 40,
+      "y": 3
+    }
+  ],
+  "equipment": [
+    {
+      "id": "bin",
+      "asset": "dumpster",
+      "x": 36,
+      "y": 19
+    },
+    {
+      "id": "light-west",
+      "asset": "light",
+      "x": 8,
+      "y": 19
+    },
+    {
+      "id": "light-east",
+      "asset": "light",
+      "x": 48,
+      "y": 19
+    },
+    {
+      "id": "car",
+      "asset": "car",
+      "x": 21,
+      "y": 18
+    }
+  ]
+}

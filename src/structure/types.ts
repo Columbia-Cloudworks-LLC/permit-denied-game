@@ -1,7 +1,7 @@
 import { MATERIALS, type Material } from './materials';
 export type { Material } from './materials';
 export type BuildingKind = "house" | "shop" | "industrial";
-export type RoofStyle = "gable" | "flat" | "shed";
+export type RoofStyle = "gable" | "flat" | "shed" | "sawtooth";
 export type CellState = "intact" | "cracked" | "breached" | "falling" | "gone";
 export type RoofSectionState = "intact" | "sagging" | "falling" | "gone";
 export type RoofAxis = "x" | "y";
@@ -10,7 +10,10 @@ export type LotZone = "residential" | "commercial" | "industrial";
 export type LotIdentity = "residence" | "farm" | "service" | "contractor" | "utility" | "shop";
 export type FloorFinish = "plank" | "tile" | "linoleum" | "concrete";
 export type RoomKind = "kitchen" | "bathroom" | "living" | "retail" | "storage" | "bedroom" | "production";
-export type FixtureKind = "cabinet" | "counter" | "toilet" | "sofa" | "table" | "radiator" | "shelf" | "rack" | "pallet" | "fridge" | "bed" | "machine" | "partition";
+export type FixtureKind = "cabinet" | "counter" | "toilet" | "sofa" | "table" | "radiator" | "shelf" | "rack" | "pallet" | "fridge" | "bed" | "machine" | "partition"
+  | "diner-booth" | "washer-dryer" | "commercial-oven" | "office-desk" | "filing-cabinet" | "checkout-register"
+  | "theater-seats" | "repair-lift" | "display-fridge" | "school-desks" | "examination-table" | "nursery-bench"
+  | "bowling-pins" | "pinsetter" | "printing-press" | "dairy-vat" | "bottling-line" | "theater-screen" | "staircase" | "vehicle-ramp";
 export type SiteMarkKind = "slab" | "dirt" | "crack" | "ridge" | "remnant" | "outline";
 export type CoverKind =
   | "grass"
@@ -56,6 +59,7 @@ export type JunctionType = "none" | "end" | "T" | "cross" | "Y";
 export type VehicleRole = "civilian" | "police";
 
 export interface Cell {
+  silo?: {id:string;cx:number;cy:number;radius:number;angle:number};
   coreSupport?: boolean;
   transferSupport?: { gx: number; gy: number }[];
   exterior: { north: boolean; south: boolean; east: boolean; west: boolean };
@@ -93,6 +97,8 @@ export interface RoofVertex {
 }
 
 export interface RoofSection {
+  /** Original tooth boundaries survive structural/panel clipping. */
+  tooth?: { axis: RoofAxis; minX: number; maxX: number; minY: number; maxY: number; eaveZ: number };
   /** Industrial panels share a bearing bay, but have independent covering/animation. */
   bay?: { id: number; minX: number; maxX: number; minY: number; maxY: number };
   /** Generated once, indexed by actual shared coverage edges. Values are roof array indices. */
@@ -138,6 +144,7 @@ export interface DecorBox {
 }
 
 export interface InteriorFixture {
+  landingSupport?: { floor:number; gx:number; gy:number }[];
   pose: PropPose;
   id: number;
   kind: FixtureKind;
@@ -159,6 +166,11 @@ export interface InteriorFixture {
 }
 
 export interface Building {
+  silos?: import('./silos').SiloState[];
+  openDecks?: boolean;
+  canopy?: boolean;
+  elevatedTank?: import('./elevatedTank').ElevatedTankState;
+  facadeDetails: import('./facadeDetails').FacadeDetailDef[];
   coreCollapse?: import("./coreCollapse").CoreCollapseState;
   visualRevision: number;
   retired: boolean;
@@ -198,6 +210,8 @@ export interface Building {
 }
 
 export interface FloorTile {
+  /** Envelope occupancy retained for roof generation; this location has no physical slab. */
+  void?: boolean;
   roomId: string;
   gx: number;
   gy: number;
@@ -423,7 +437,7 @@ export interface Particle {
 }
 
 export interface WorldEvent {
-  kind: "chip" | "breach" | "collapse" | "impact" | "cash" | "snap" | "bird" | "scrape" | "crush" | "spark" | "blast";
+  kind: "bowling-strike" | "chip" | "breach" | "collapse" | "impact" | "cash" | "snap" | "bird" | "scrape" | "crush" | "spark" | "blast";
   x: number;
   y: number;
   z: number;
@@ -444,9 +458,16 @@ export function cellSolid(cell: Cell): boolean {
 }
 
 export function cellWorldBox(b: Building, cell: Cell): { x: number; y: number; w: number; d: number } {
+  if(cell.silo) {
+    const s=cell.silo,angles=[s.angle-Math.PI/8,s.angle,s.angle+Math.PI/8];
+    const xs=angles.map(a=>b.x+s.cx+Math.cos(a)*s.radius),ys=angles.map(a=>b.y+s.cy+Math.sin(a)*s.radius);
+    const x=Math.min(...xs)-.09,y=Math.min(...ys)-.09;
+    return {x,y,w:Math.max(...xs)+.09-x,d:Math.max(...ys)+.09-y};
+  }
   {
     const cs = b.cellSize, thick = .18;
     let x = b.x + cell.gx * cs, y = b.y + cell.gy * cs;
+    if (b.elevatedTank || b.canopy || b.openDecks) return { x: x + cs * .5 - .16, y: y + cs * .5 - .16, w: .32, d: .32 };
     if (cell.coreSupport) return { x: x + cs * .5 - .3, y: y + cs * .5 - .3, w: .6, d: .6 };
     if (cell.role === "column" && cell.cladding?.hp === 0) {
       x += cs * .5 - thick;

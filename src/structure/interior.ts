@@ -1,7 +1,8 @@
+import { DETAILED_FLOORS } from './coreCollapse';
 import { hitObject, objectFragments } from '../sim/objectBehavior';
 import { FLOOR_Z } from "../game/constants";
 import { floorIndex, releaseFloorIndex } from './floorIndex';
-import { roomAt, sharedRoomEdge } from "./construction";
+import { roomAt, sharedRoomEdge, stairLandingCells } from "./construction";
 import { roofCoverage } from "./roof";
 import { getAsset } from "../world/catalog";
 import { contentFinish } from "../world/contents";
@@ -97,6 +98,7 @@ export function generateInteriors(building: Building): InteriorFixture[] {
   const fixtures: InteriorFixture[] = [];
   const bw = building.w * building.cellSize, bd = building.d * building.cellSize;
   for (const room of building.layout.rooms) {
+    if (room.floor >= DETAILED_FLOORS) continue;
     for (const slot of room.contents) {
       const x = building.x + (room.x + slot.x * room.w) * bw;
       const y = building.y + (room.y + slot.y * room.d) * bd;
@@ -105,7 +107,14 @@ export function generateInteriors(building: Building): InteriorFixture[] {
     }
   }
   if (building.layout.partitions) {
-    const rooms = building.layout.rooms.filter(r => r.floor < building.floors);
+    for (const stair of building.layout.stairs ?? []) {
+      const room = building.layout.rooms.find(r => r.id === stair.a)!;
+      if (room.floor >= DETAILED_FLOORS) continue;
+      fixtures.push(makeFixture(building, fixtures.length + 1, stair.kind === 'ramp' ? 'vehicle-ramp' : 'staircase', room.kind, room.floor,
+        building.x + stair.x * bw, building.y + stair.y * bd, stair.w * bw, stair.d * bd, FLOOR_Z, room.id, `stairs-${stair.a}-${stair.b}`, stair.rotation??0));
+      fixtures[fixtures.length-1]!.landingSupport = stairLandingCells(stair,building.w,building.d,room.floor+1);
+    }
+    const rooms = building.layout.rooms.filter(r => r.floor < Math.min(building.floors, DETAILED_FLOORS));
     for (let i = 0; i < rooms.length; i++) for (let j = i + 1; j < rooms.length; j++) {
       const a = rooms[i]!, b = rooms[j]!;
       const edge = sharedRoomEdge(a, b);
@@ -312,6 +321,7 @@ export function interiorFloorSpans(building: Building): InteriorFloorSpan[] {
 
 export function fixtureSupported(building: Building, fixture: InteriorFixture): boolean {
   const index = floorIndex(building);
+  if (fixture.landingSupport && !fixture.landingSupport.some(s => index.at(s.floor,s.gx,s.gy)?.state === 'intact')) return false;
   return fixture.support.some(s => index.at(fixture.floor, s.gx, s.gy)?.state === 'intact');
 }
 
@@ -389,12 +399,15 @@ export function applyFixtureDamage(
   ny: number,
   particles: ParticlePool,
   events: WorldEvent[],
+  directDozer = false,
 ): { cash: number; frags: FixtureFrag[] } {
   if (amount <= 0 || fixture.broken) return { cash: 0, frags: [] };
   building.visualRevision++;
   hitObject(fixture, fixtureCatalog(fixture.kind), amount, nx, ny);
   if (fixture.hp > 0) return { cash: 0, frags: [] };
-  return breakFixture(building, fixture, particles, events, nx, ny);
+  const result = breakFixture(building, fixture, particles, events, nx, ny);
+  if (directDozer && fixture.kind === 'bowling-pins') events.push({ kind: 'bowling-strike', x: fixture.x, y: fixture.y, z: .5, mag: 1 });
+  return result;
 }
 
 export function stepInteriors(

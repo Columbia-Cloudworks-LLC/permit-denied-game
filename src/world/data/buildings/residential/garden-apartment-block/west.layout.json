@@ -1,0 +1,94 @@
+{
+  "partitions": true,
+  "rooms": [
+    {
+      "id": "bedroom",
+      "kind": "bedroom",
+      "floor": 0,
+      "x": 0.2250000000000001,
+      "y": 0,
+      "w": 0.5249999999999999,
+      "d": 1,
+      "finish": "plank",
+      "contents": [
+        {
+          "id": "bedroom-0",
+          "kind": "bed",
+          "x": 0.1,
+          "y": 0.15,
+          "w": 0.6,
+          "d": 0.55,
+          "h": 0.7,
+          "rotation": 0
+        },
+        {
+          "id": "studio-counter",
+          "kind": "counter",
+          "x": 0.02,
+          "y": 0.75,
+          "w": 0.25,
+          "d": 0.18,
+          "h": 0.8,
+          "rotation": 0
+        },
+        {
+          "id": "studio-fridge",
+          "kind": "fridge",
+          "x": 0.65,
+          "y": 0.75,
+          "w": 0.18,
+          "d": 0.18,
+          "h": 1.2,
+          "rotation": 0
+        }
+      ]
+    },
+    {
+      "id": "bath",
+      "kind": "bathroom",
+      "floor": 0,
+      "x": 4.163336342344337e-17,
+      "y": 0,
+      "w": 0.22499999999999998,
+      "d": 1,
+      "finish": "tile",
+      "contents": [
+        {
+          "id": "bath-0",
+          "kind": "toilet",
+          "x": 0.1,
+          "y": 0.2,
+          "w": 0.45,
+          "d": 0.3,
+          "h": 0.7,
+          "rotation": 0
+        }
+      ]
+    },
+    {
+      "id": "hall",
+      "kind": "living",
+      "floor": 0,
+      "x": 0.75,
+      "y": 0,
+      "w": 0.25,
+      "d": 1,
+      "finish": "linoleum",
+      "contents": []
+    }
+  ],
+  "connections": [
+    {
+      "a": "bedroom",
+      "b": "bath",
+      "at": 0.5,
+      "width": 0.35
+    },
+    {
+      "a": "hall",
+      "b": "bedroom",
+      "at": 0.5,
+      "width": 0.35
+    }
+  ]
+}

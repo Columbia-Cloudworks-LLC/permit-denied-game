@@ -1,0 +1,67 @@
+{
+  "version": 1,
+  "id": "service-station-canopy",
+  "label": "SERVICE STATION CANOPY",
+  "w": 8,
+  "d": 7,
+  "floors": 1,
+  "kind": "industrial",
+  "construction": "steel-hall",
+  "roof": "flat",
+  "theme": "warehouse",
+  "windowStride": 8,
+  "features": {
+    "porch": false,
+    "awning": false,
+    "parapet": false,
+    "chimney": false,
+    "garage": false
+  },
+  "zones": {
+    "residential": 0,
+    "commercial": 0,
+    "industrial": 0
+  },
+  "traits": {
+    "use": [
+      "fuel-canopy"
+    ],
+    "form": [
+      "D11",
+      "open-frame"
+    ]
+  },
+  "footprint": [
+    [
+      "########",
+      "########",
+      "########",
+      "########",
+      "########",
+      "########",
+      "########"
+    ]
+  ],
+  "layout": "canopy.layout.json",
+  "openings": [],
+  "canopy": {
+    "columns": [
+      {
+        "x": 0,
+        "y": 0
+      },
+      {
+        "x": 7,
+        "y": 0
+      },
+      {
+        "x": 0,
+        "y": 6
+      },
+      {
+        "x": 7,
+        "y": 6
+      }
+    ]
+  }
+}

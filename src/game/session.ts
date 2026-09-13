@@ -1,13 +1,12 @@
 export type SessionKind = "challenge" | "sandbox";
-export type LayoutChoice = 'standard' | 'randomized';
 
-export function playableDistrict(kind: SessionKind, district: DistrictId): DistrictId {
-  return kind === 'sandbox' && district === 'classic' ? 'd10' : district;
+export function playableDistrict(_kind: SessionKind, district: DistrictId): DistrictId {
+  return district === 'classic' ? 'd10' : district;
 }
 
-export function gameSetupRules(kind: SessionKind, district: DistrictId, layout: LayoutChoice, currentSeed: number): SessionRules {
+export function gameSetupRules(kind: SessionKind, district: DistrictId, currentSeed: number): SessionRules {
   district = playableDistrict(kind, district);
-  return { kind, district, seed: layout === 'randomized' ? nextSeed(currentSeed) : DEFAULT_DISTRICT_SEEDS[district], ranchFocus: false };
+  return { kind, district, seed: nextSeed(currentSeed), ranchFocus: false };
 }
 export type DemoAsset = "ranch" | "rivertown" | "steel-warehouse";
 export type DistrictId = "classic" | "d10" | "d30" | "d100";
@@ -39,9 +38,9 @@ export interface SessionRules {
 
 function defaultSessionRules(): SessionRules {
   return {
-    kind: "challenge",
-    district: "classic",
-    seed: DEFAULT_DISTRICT_SEEDS.classic,
+    kind: "sandbox",
+    district: "d10",
+    seed: DEFAULT_DISTRICT_SEEDS.d10,
     ranchFocus: false,
   };
 }
@@ -50,10 +49,11 @@ export function parseSessionFromSearch(search: string): SessionRules {
   const rules = defaultSessionRules();
   const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
   if (params.get("sandbox") === "1" || params.get("mode") === "sandbox") rules.kind = "sandbox";
+  if (params.get('mode') === 'challenge' || params.get('sandbox') === '0') rules.kind = 'challenge';
   const district = params.get("district");
   if (district === "classic" || district === "d10" || district === "d30" || district === "d100") {
-    rules.district = district;
-    rules.seed = DEFAULT_DISTRICT_SEEDS[district];
+    rules.district = playableDistrict(rules.kind, district);
+    rules.seed = DEFAULT_DISTRICT_SEEDS[rules.district];
   }
   if (params.get("ranch") === "1") {
     rules.kind = "sandbox";
@@ -62,6 +62,10 @@ export function parseSessionFromSearch(search: string): SessionRules {
       rules.district = "d10";
       rules.seed = DEFAULT_DISTRICT_SEEDS.d10;
     }
+  }
+  // Asset diagnostics are explicit and are not offered as a playable map size.
+  if (params.get('yard') === '1') {
+    rules.kind = 'sandbox'; rules.district = 'classic'; rules.seed = DEFAULT_DISTRICT_SEEDS.classic;
   }
   const rawSeed = params.get("seed");
   const demo = params.get("demo");
@@ -107,5 +111,5 @@ export function canPickUpgrade(rules: SessionRules, mode: PlayMode, earned: bool
 /** Explicit scenario links retain their immediate-play behavior. */
 export function startsAtTitle(search: string): boolean {
   const params = new URLSearchParams(search);
-  return !['sandbox', 'mode', 'district', 'seed', 'ranch', 'demo', 'tower', 'job', 'perf', 'nhood'].some(key => params.has(key));
+  return !['yard', 'sandbox', 'mode', 'district', 'seed', 'ranch', 'demo', 'tower', 'job', 'perf', 'nhood'].some(key => params.has(key));
 }

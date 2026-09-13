@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "id": "roadside-motel",
+  "label": "ROADSIDE MOTEL",
+  "w": 42,
+  "d": 27,
+  "buildings": [
+    {
+      "id": "west-rooms",
+      "building": "motel-room-block",
+      "x": 3,
+      "y": 3
+    },
+    {
+      "id": "east-rooms",
+      "building": "motel-room-block",
+      "x": 23,
+      "y": 3
+    },
+    {
+      "id": "reception",
+      "building": "campus-office",
+      "x": 3,
+      "y": 18
+    }
+  ],
+  "equipment": [
+    {
+      "id": "car-a",
+      "asset": "car",
+      "x": 15,
+      "y": 16
+    },
+    {
+      "id": "car-b",
+      "asset": "car",
+      "x": 24,
+      "y": 16
+    },
+    {
+      "id": "vending",
+      "asset": "vending",
+      "x": 13,
+      "y": 21
+    },
+    {
+      "id": "sign",
+      "asset": "billboard",
+      "x": 29,
+      "y": 22
+    },
+    {
+      "id": "ice",
+      "asset": "interior-display-fridge",
+      "x": 13,
+      "y": 18
+    }
+  ]
+}

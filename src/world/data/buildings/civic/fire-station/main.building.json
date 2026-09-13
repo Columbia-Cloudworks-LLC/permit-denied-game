@@ -1,0 +1,82 @@
+{
+  "version": 1,
+  "id": "fire-station",
+  "label": "FIRE STATION",
+  "w": 10,
+  "d": 6,
+  "floors": 2,
+  "kind": "shop",
+  "construction": "concrete-bearing",
+  "roof": "flat",
+  "theme": "civic",
+  "windowStride": 2,
+  "features": {
+    "porch": false,
+    "awning": false,
+    "parapet": true,
+    "chimney": false,
+    "garage": false
+  },
+  "zones": {
+    "residential": 0,
+    "commercial": 0,
+    "industrial": 0
+  },
+  "traits": {
+    "use": [
+      "fire-station"
+    ],
+    "form": [
+      "B44"
+    ],
+    "style": [
+      "civic"
+    ]
+  },
+  "partitions": true,
+  "sections": [
+    {
+      "id": "garage",
+      "role": "garage",
+      "x": 0,
+      "y": 0,
+      "w": 10,
+      "d": 6,
+      "floor": 0,
+      "floors": 1,
+      "layout": "garage.layout.json"
+    },
+    {
+      "id": "staff",
+      "role": "staff",
+      "x": 2,
+      "y": 0,
+      "w": 6,
+      "d": 4,
+      "floor": 1,
+      "floors": 1,
+      "layout": "staff.layout.json"
+    }
+  ],
+  "connections": [],
+  "openings": [
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.2,
+      "kind": "loading"
+    },
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.55,
+      "kind": "loading"
+    },
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.85,
+      "kind": "loading"
+    }
+  ]
+}

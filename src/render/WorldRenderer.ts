@@ -1,3 +1,4 @@
+import { BowlingStrikes } from './bowlingStrikes';
 import { corePileAreas, drawCorePiles } from './corePileDraw';
 import { drawCoreFloor } from './coreCollapseDraw';
 import { cellWorldBox, cellPresent } from '../structure/types';
@@ -10,7 +11,7 @@ import { DOZER, FLOOR_Z } from "../game/constants";
 import { Rng } from "../game/rng";
 import { depthKey, screenAabbVisible, worldBoundsToScreen, worldToScreen } from "../world/iso";
 import type { ParticlePool } from "../fx/particles";
-import { applyBrokenRoofEdge, displacedRoofVerts, roofHeightAt, sectionOwnsRidge } from "../structure/roof";
+import { applyBrokenRoofEdge, displacedRoofVerts, roofHeightAt, sectionOwnsRidge, sawtoothClosures } from "../structure/roof";
 import type { Bird, Building, CollapsedSite, CoverKind, GroundMark, GroundPatch, Particle, RoofSection, Rubble } from "../structure/types";
 import type { Dozer } from "../vehicle/dozer";
 import type { Town } from "../world/town";
@@ -25,10 +26,14 @@ import {
 } from "./facadeDraw";
 import { roofSlopeLight } from "./lighting";
 import { drawDozer, drawRoadVehicle } from "./vehicles";
+import { facadeDetailCommand } from './facadeDetails';
+import { elevatedTankCommands } from './elevatedTank';
+import { siloCommands } from './silos';
 import { drawNhoodOverlay } from "./nhoodOverlay";
 import { objectOcclusionFade, VisibilityFades, wallSpanFadeRuns } from "./occlusion";
 
 interface Cmd {
+  floor?: number;
   key?: string;
   version?: string | number;
   depth: number;
@@ -37,6 +42,7 @@ interface Cmd {
 
 export class WorldRenderer {
   readonly root = new Container();
+  readonly bowlingStrikes = new BowlingStrikes();
   yardPreview: YardBay[] = [];
   yardPreviewValid = true;
   private yardLabels: Text[] = [];
@@ -68,6 +74,7 @@ export class WorldRenderer {
 
   constructor() {
     this.root.addChild(this.ground, this.sites, this.overlay, this.groundOverlays, this.drawing.root, this.world, this.nhood, this.debugOverlay);
+    this.root.addChild(this.bowlingStrikes.root);
     this.root.sortableChildren = false;
   }
 
@@ -97,6 +104,9 @@ export class WorldRenderer {
   }
 
   draw(town: Town, dozer: Dozer, particles: ParticlePool, birds: Bird[], dt = 1 / 60): void {
+    const strikeAt = worldToScreen(dozer.x, dozer.y);
+    this.bowlingStrikes.draw(dt, strikeAt.x, strikeAt.y, this.zoom);
+    this.root.setChildIndex(this.bowlingStrikes.root, this.root.children.length - 1);
     this.fades.begin();
     const view = this.debug;
     this.sites.visible = view.sites;
@@ -196,10 +206,14 @@ export class WorldRenderer {
       const fadeValues: number[] = [];
       const bw = b.w * b.cellSize;
       const bd = b.d * b.cellSize;
-      const z1 = b.floors * FLOOR_Z + 0.8;
+      const z1 = b.floors * FLOOR_Z + (b.elevatedTank ? b.elevatedTank.definition.height + .5 : .8);
       const fall = 1.4;
       total += b.cells.length;
       if (!this.visibleBox(b.x - fall, b.y - fall, bw + fall * 2, bd + fall * 2, -0.4, z1)) continue;
+      if(b.elevatedTank) {
+        const commands=elevatedTankCommands(b,view);visible+=commands.length;this.cmds.push(...commands);continue;
+      }
+      if(b.silos){const commands=siloCommands(b,view);visible+=commands.length;this.cmds.push(...commands);}
       // The aggregate mound owns the finished visual; a ground slab must not paint over it.
       if (b.coreCollapse?.phase === 'settled') continue;
       if (b.coreCollapse?.phase === 'falling') {
@@ -217,6 +231,7 @@ export class WorldRenderer {
         this.cmds.push({ depth: depthKey(box.x + .3, box.y + .3, .1), run: g => drawIsoBox(g, box.x, box.y, box.w, box.d, 0, FLOOR_Z, 0xb6a784, 0x827754, 0x9c8d68, alpha) });
       }
       const surfaces = getBuildingSurfaces(b);
+
       surfaceGeometry += surfaces.geometryCount;
       const fadeBox = (key: string, x: number, y: number, w: number, d: number, z: number, top: number) => {
         const alpha = this.fades.sample(`${b.id}:${key}`, objectOcclusionFade(dozer, x, y, w, d, z, top), dt);
@@ -242,6 +257,15 @@ export class WorldRenderer {
           run: (g) => drawBuildingFootprintShadow(g, surfaces.footprint, 1),
         });
       }
+      for (const detail of view.details ? b.facadeDetails : []) {
+        if (detail.floor > view.maxFloor) continue;
+        const command = facadeDetailCommand(b, detail, fadeBox(`detail:${detail.id}`,
+          b.x + detail.gx * b.cellSize, b.y + detail.gy * b.cellSize,
+          (detail.side === 'south' ? detail.width : 1) * b.cellSize,
+          (detail.side === 'east' ? detail.width : 1) * b.cellSize,
+          detail.floor * FLOOR_Z, (detail.floor + 1) * FLOOR_Z));
+        if (command) { visible++; this.cmds.push(command); }
+      }
       const near = dozer.x > b.x - 6 && dozer.x < b.x + bw + 6 && dozer.y > b.y - 6 && dozer.y < b.y + bd + 6;
       const walls = near ? surfaces.walls.flatMap(s => {
         const count = s.dir === "south" ? s.gx1 - s.gx0 + 1 : s.gy1 - s.gy0 + 1;
@@ -249,7 +273,26 @@ export class WorldRenderer {
           gx0: s.gx0 + (s.dir === "south" ? i : 0), gx1: s.gx0 + (s.dir === "south" ? i : 0),
           gy0: s.gy0 + (s.dir === "east" ? i : 0), gy1: s.gy0 + (s.dir === "east" ? i : 0) }));
       }) : surfaces.walls;
-      for (const span of view.walls ? walls : []) {
+      if ((b.canopy || b.openDecks) && view.walls) for (const c of b.cells) {
+        if (c.state === 'gone' || c.state === 'falling' || c.floor > view.maxFloor) continue;
+        const box = cellWorldBox(b, c);
+        this.cmds.push({ floor:c.floor, depth: depthKey(box.x + box.w / 2, box.y + box.d / 2, c.floor * FLOOR_Z),
+          run: g => drawIsoBox(g, box.x, box.y, box.w, box.d, c.floor * FLOOR_Z, FLOOR_Z, 0xb7bab0, 0x697a70, 0x8d9c91) });
+      }
+      if (b.openDecks) for (const tile of b.floorTiles) {
+        if (tile.void || tile.state === 'gone' || tile.floor > view.maxFloor) continue;
+        const cs=b.cellSize, x=b.x+tile.gx*cs, y=b.y+tile.gy*cs;
+        const z=tile.floor*FLOOR_Z*(1-tile.fallT)+.18;
+        // Low barriers belong to their deck tile and descend with it.
+        if (view.walls && tile.floor>0) for (const [bx,by,bw,bd] of [
+          ...(tile.gx===0 ? [[x,y,.12,cs]] : []), ...(tile.gx===b.w-1 ? [[x+cs-.12,y,.12,cs]] : []),
+          ...(tile.gy===0 ? [[x,y,cs,.12]] : []), ...(tile.gy===b.d-1 ? [[x,y+cs-.12,cs,.12]] : []),
+        ]) this.cmds.push({floor:tile.floor,depth:depthKey(bx!+bw!/2,by!+bd!/2,z),run:g=>drawIsoBox(g,bx!,by!,bw!,bd!,z,.45*(1-tile.fallT),0xb9b7a8,0x777f75,0x929b8e)});
+        // Short end-of-deck parking bays stay clear of the alternating ramp lanes.
+        if(view.details && tile.gx>=b.w-3 && tile.gx<b.w-1 && [2,5,8].includes(tile.gy))
+          this.cmds.push({floor:tile.floor,depth:depthKey(x+cs/2,y+.02,z+.01),run:g=>drawIsoBox(g,x,y,cs,.055,z,.012,0xe0dfc7,0xe0dfc7,0xe0dfc7)});
+      }
+      for (const span of view.walls && !b.canopy && !b.openDecks ? walls : []) {
         if (span.floor > view.maxFloor) continue;
         for (const run of wallSpanFadeRuns(b, span, dozer)) {
           const s = run.span, cs = b.cellSize;
@@ -270,7 +313,7 @@ export class WorldRenderer {
         }
       }
       {
-        const interiors = interiorCmds(b, 1, { fadeBox, reveal: view.reveal || !view.roofs || !view.walls || view.maxFloor < b.floors - 1, maxFloor: view.maxFloor })
+        const interiors = interiorCmds(b, 1, { fadeBox, reveal: view.reveal || b.openDecks || b.construction.skin === 'glass' || !view.roofs || !view.walls || view.maxFloor < b.floors - 1, maxFloor: view.maxFloor })
           .filter(c => c.kind === "floor" ? view.floors : c.kind === "fixture" ? view.contents : view.walls);
         visible += interiors.length;
         this.cmds.push(...interiors);
@@ -320,6 +363,10 @@ export class WorldRenderer {
         }
       }
       // Whole-building culling keeps command identities stable while the camera moves.
+      if (b.openDecks) {
+        const decks = this.cmds.splice(commandStart).sort((a,c)=>(a.floor??-1)-(c.floor??-1)||a.depth-c.depth);
+        if(decks.length) this.cmds.push({depth:Math.max(...decks.map(c=>c.depth)),run:g=>{for(const c of decks)c.run(g);}});
+      }
       const version = [b.visualRevision, near ? dozer.x : 0, near ? dozer.y : 0, fadeValues.join(","), JSON.stringify(view)].join(':');
       for (let j = commandStart; j < this.cmds.length; j++) {
         this.cmds[j]!.key = 'building:' + b.id + ':' + (j - commandStart);
@@ -352,7 +399,7 @@ export class WorldRenderer {
       });
     }
 
-    if (town.roadCar?.alive) {
+    if (view.vehicles && town.roadCar?.alive) {
       const car = town.roadCar;
       total++;
       if (this.visibleBox(car.x - 1, car.y - 1, 2, 2, 0, 0.6)) {
@@ -364,12 +411,14 @@ export class WorldRenderer {
       }
     }
 
-    total++;
-    visible++;
-    this.cmds.push({
-      depth: depthKey(dozer.x, dozer.y, 0.4),
-      run: (g) => drawDozer(g, dozer),
-    });
+    if (view.vehicles) {
+      total++;
+      visible++;
+      this.cmds.push({
+        depth: depthKey(dozer.x, dozer.y, 0.4),
+        run: (g) => drawDozer(g, dozer),
+      });
+    }
 
     for (const p of view.effects ? particles.items : []) {
       if (!p.alive) continue;
@@ -439,6 +488,7 @@ function drawChimney(g: Graphics, ch: { x: number; y: number; z: number }, alpha
 }
 
 function roofColors(b: Building, roof: RoofSection, verts: { x: number; y: number; z: number }[]): { top: number; edge: number } {
+  if (roof.material === 'glass') return { top: PAL.glassLit, edge: PAL.glass };
   if (roof.material === "metal" || b.roof === "shed") return { top: PAL.roofMetal, edge: PAL.metalDark };
   if (b.roof === "flat") return { top: PAL.roofFelt, edge: PAL.metalDark };
   const lit = roofSlopeLight(verts);
@@ -453,7 +503,7 @@ function ridgeKey(ridge: NonNullable<RoofSection["ridge"]>): string {
 function drawRoofBay(g: Graphics, b: Building, roof: RoofSection, alpha: number): void {
   const drawn = new Set<string>();
   drawRoofSection(g, b, roof, alpha, drawn, () => {
-    if (roofShowsFrame(b, roof)) {
+    if (roof.material === 'glass' || roofShowsFrame(b, roof)) {
       drawRoofFrame(g, b, roof, alpha * 0.92);
     }
   });
@@ -470,8 +520,19 @@ function drawRoofSection(
   const raw = roofVerts(roof);
   const verts = applyBrokenRoofEdge(b, roof, raw);
   const cols = roofColors(b, roof, verts);
-  const faded = roof.state === "falling" ? alpha * 0.9 : alpha;
+  const faded = (roof.state === "falling" ? alpha * 0.9 : alpha) * (roof.material === 'glass' ? .28 : 1);
   const thick = 0.14;
+  for (const closure of sawtoothClosures(roof)) {
+    drawWorldPoly(g, closure.verts, closure.glass ? PAL.glassLit : cols.edge, faded);
+    if (closure.glass) {
+      const [a, b0, c, d] = closure.verts;
+      for (const t of [.25, .5, .75]) {
+        const p = worldToScreen(a!.x + (b0!.x - a!.x) * t, a!.y + (b0!.y - a!.y) * t, a!.z + (b0!.z - a!.z) * t);
+        const q = worldToScreen(d!.x + (c!.x - d!.x) * t, d!.y + (c!.y - d!.y) * t, d!.z + (c!.z - d!.z) * t);
+        g.moveTo(p.x, p.y).lineTo(q.x, q.y).stroke({ color: PAL.frame, width: 1, alpha: faded });
+      }
+    }
+  }
   if (!roof.bay) {
     const under = verts.map((v) => ({ x: v.x, y: v.y, z: v.z - thick }));
     drawSlopedQuad(g, under.slice().reverse(), cols.edge, cols.edge, faded * 0.95);

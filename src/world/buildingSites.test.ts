@@ -9,6 +9,17 @@ import { applyCellDamage, stepStructures } from '../structure/building';
 import { ParticlePool } from '../fx/particles';
 
 describe('building sites', () => {
+  it('allows pumps below a canopy but rejects collisions with its columns and roof', () => {
+    const site = structuredClone(BUILDING_SITES.find(s => s.id === 'service-station')!);
+    const parse = () => parseBuildingSites({ 'canopy.site.json': site }, ARCHETYPES, ASSET_CATALOG);
+    expect(parse).not.toThrow();
+    const pump = site.equipment.find(p => p.id === 'pump-a')!;
+    pump.x = 4.9; pump.y = 16.4;
+    expect(parse).toThrow('overlaps');
+    pump.x = 6; pump.y = 17;
+    const tallAssets = ASSET_CATALOG.map(a => a.id === pump.asset ? { ...a, footprint: { ...a.footprint, h: 3 } } : a);
+    expect(() => parseBuildingSites({ 'canopy.site.json': site }, ARCHETYPES, tallAssets)).toThrow('overlaps');
+  });
   it('discovers a campus with separate buildings and exterior equipment', () => {
     const site = BUILDING_SITES[0]!, a = instantiateBuildingSite(site, 2, 3), b = instantiateBuildingSite(site, 2, 3);
     expect(a.buildings).toHaveLength(3); expect(a.props).toHaveLength(4);

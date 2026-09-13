@@ -1,3 +1,4 @@
+import { isCoreBearing } from '../structure/coreCollapse';
 import { upgradeModifiers } from './upgrades';
 import { applyFixtureDamage } from '../structure/interior';
 import { Resubmission } from './resubmission';
@@ -137,8 +138,8 @@ export class Game {
     };
     this.hud.onMenu = () => { this.releaseControls(); if (this.mode === 'play') this.mode = 'pause'; };
     this.hud.onTitle = () => { this.releaseControls(); this.mode = 'title'; };
-    this.hud.onStart = (kind, district, layout) => {
-      this.rules = gameSetupRules(kind, district, layout, this.rules.seed);
+    this.hud.onStart = (kind, district) => {
+      this.rules = gameSetupRules(kind, district, this.rules.seed);
       this.reset('same');
     };
     this.hud.onTestYard = () => {
@@ -171,7 +172,7 @@ export class Game {
         this.syncDebug(); return;
       }
       if (b.coreCollapse?.phase !== 'standing') return;
-      for (const c of b.cells) if (c.floor === 0 && (action === 'core' ? c.coreSupport : c.exterior.south))
+      for (const c of b.cells) if (c.floor === 0 && (action === 'core' ? isCoreBearing(b, c.gx, c.gy) : c.exterior.south))
         applyCellDamage(b, c, 10000, 0, -1, this.particles, []);
       if (action === 'core') { this.towerOverview = true; this.renderer.debug.maxFloor = 99; this.renderer.debug.reveal = false; this.syncDebug(); }
     };
@@ -299,6 +300,7 @@ export class Game {
     this.particles.ownerAt = this.town.debrisOwnerAt;
     this.yardPanel?.reset();
     this.shake.reset();
+    this.renderer.bowlingStrikes.clear();
     this.renderer.invalidate();
     this.birds = [];
     this.cash = 0;
@@ -524,6 +526,7 @@ export class Game {
 
   private react(events: WorldEvent[]): void {
     for (const e of events) {
+      if (e.kind === "bowling-strike") { this.renderer.bowlingStrikes.add(); this.audio.bowlingPins(); }
       if (e.kind === "impact" || e.kind === "breach") {
         this.shake.punch(e.mag);
         this.audio.impact(e.mag);

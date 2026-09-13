@@ -1,0 +1,87 @@
+{
+  "partitions": true,
+  "rooms": [
+    {
+      "id": "plants",
+      "kind": "retail",
+      "floor": 0,
+      "x": 0,
+      "y": 0,
+      "w": 0.75,
+      "d": 1,
+      "finish": "concrete",
+      "contents": [
+        {
+          "id": "plants-0",
+          "kind": "nursery-bench",
+          "x": 0.08,
+          "y": 0.1,
+          "w": 0.12,
+          "d": 0.55,
+          "h": 1,
+          "rotation": 0
+        },
+        {
+          "id": "plants-1",
+          "kind": "nursery-bench",
+          "x": 0.36333333333333334,
+          "y": 0.1,
+          "w": 0.12,
+          "d": 0.55,
+          "h": 1,
+          "rotation": 0
+        },
+        {
+          "id": "plants-2",
+          "kind": "nursery-bench",
+          "x": 0.6466666666666666,
+          "y": 0.1,
+          "w": 0.12,
+          "d": 0.55,
+          "h": 1,
+          "rotation": 0
+        }
+      ]
+    },
+    {
+      "id": "supplies",
+      "kind": "storage",
+      "floor": 0,
+      "x": 0.75,
+      "y": 0,
+      "w": 0.25,
+      "d": 1,
+      "finish": "concrete",
+      "contents": [
+        {
+          "id": "supplies-0",
+          "kind": "shelf",
+          "x": 0.08,
+          "y": 0.1,
+          "w": 0.12,
+          "d": 0.7,
+          "h": 1.3,
+          "rotation": 0
+        },
+        {
+          "id": "supplies-1",
+          "kind": "shelf",
+          "x": 0.505,
+          "y": 0.1,
+          "w": 0.12,
+          "d": 0.7,
+          "h": 1.3,
+          "rotation": 0
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "a": "plants",
+      "b": "supplies",
+      "at": 0.5,
+      "width": 0.35
+    }
+  ]
+}

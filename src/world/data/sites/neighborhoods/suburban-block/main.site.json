@@ -1,0 +1,83 @@
+{
+  "version": 1,
+  "id": "suburban-block",
+  "label": "SUBURBAN BLOCK",
+  "w": 38,
+  "d": 27,
+  "buildings": [
+    {
+      "id": "ranch",
+      "building": "ranch",
+      "x": 3,
+      "y": 4
+    },
+    {
+      "id": "ranch-garage",
+      "building": "detached-garage",
+      "x": 3,
+      "y": 13
+    },
+    {
+      "id": "duplex",
+      "building": "side-by-side-duplex",
+      "x": 15,
+      "y": 4
+    },
+    {
+      "id": "duplex-garage",
+      "building": "detached-garage",
+      "x": 17,
+      "y": 15
+    },
+    {
+      "id": "cottage",
+      "building": "cottage",
+      "x": 29,
+      "y": 4
+    }
+  ],
+  "equipment": [
+    {
+      "id": "ranch-mail",
+      "asset": "mailbox",
+      "x": 3,
+      "y": 21
+    },
+    {
+      "id": "duplex-mail",
+      "asset": "mailbox",
+      "x": 17,
+      "y": 22
+    },
+    {
+      "id": "cottage-mail",
+      "asset": "mailbox",
+      "x": 30,
+      "y": 16
+    },
+    {
+      "id": "yard-tree",
+      "asset": "mature-tree",
+      "x": 29,
+      "y": 21
+    },
+    {
+      "id": "picnic",
+      "asset": "picnic-table",
+      "x": 11,
+      "y": 16
+    },
+    {
+      "id": "fence-a",
+      "asset": "fence",
+      "x": 11,
+      "y": 4
+    },
+    {
+      "id": "fence-b",
+      "asset": "fence",
+      "x": 11,
+      "y": 6
+    }
+  ]
+}

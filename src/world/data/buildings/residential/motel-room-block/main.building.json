@@ -1,0 +1,172 @@
+{
+  "version": 1,
+  "id": "motel-room-block",
+  "label": "MOTEL ROOM BLOCK",
+  "kind": "house",
+  "w": 12,
+  "d": 7,
+  "floors": 2,
+  "roof": "flat",
+  "theme": "walkup",
+  "windowStride": 2,
+  "features": {
+    "porch": false,
+    "awning": false,
+    "parapet": true,
+    "chimney": false,
+    "garage": false
+  },
+  "construction": "brick-mixed-use",
+  "zones": {
+    "residential": 0,
+    "commercial": 0,
+    "industrial": 0
+  },
+  "traits": {
+    "use": [
+      "motel-room-block"
+    ],
+    "form": [
+      "B06",
+      "sectioned"
+    ],
+    "scale": [
+      "broad"
+    ]
+  },
+  "partitions": true,
+  "connections": [
+    {
+      "a": "room-1/0/sleeping",
+      "b": "corridor/0/hall",
+      "at": 0.55,
+      "width": 0.4
+    },
+    {
+      "a": "room-2/0/sleeping",
+      "b": "corridor/0/hall",
+      "at": 0.55,
+      "width": 0.4
+    },
+    {
+      "a": "room-3/0/sleeping",
+      "b": "corridor/0/hall",
+      "at": 0.55,
+      "width": 0.4
+    },
+    {
+      "a": "room-4/0/sleeping",
+      "b": "corridor/0/hall",
+      "at": 0.55,
+      "width": 0.4
+    },
+    {
+      "a": "room-1/1/sleeping",
+      "b": "corridor/1/hall",
+      "at": 0.55,
+      "width": 0.4
+    },
+    {
+      "a": "room-2/1/sleeping",
+      "b": "corridor/1/hall",
+      "at": 0.55,
+      "width": 0.4
+    },
+    {
+      "a": "room-3/1/sleeping",
+      "b": "corridor/1/hall",
+      "at": 0.55,
+      "width": 0.4
+    },
+    {
+      "a": "room-4/1/sleeping",
+      "b": "corridor/1/hall",
+      "at": 0.55,
+      "width": 0.4
+    }
+  ],
+  "sections": [
+    {
+      "id": "room-1",
+      "role": "room-1",
+      "x": 0,
+      "y": 0,
+      "w": 3,
+      "d": 4,
+      "floor": 0,
+      "floors": 2,
+      "layout": "room-1.layout.json"
+    },
+    {
+      "id": "room-2",
+      "role": "room-2",
+      "x": 3,
+      "y": 0,
+      "w": 3,
+      "d": 4,
+      "floor": 0,
+      "floors": 2,
+      "layout": "room-2.layout.json"
+    },
+    {
+      "id": "room-3",
+      "role": "room-3",
+      "x": 6,
+      "y": 0,
+      "w": 3,
+      "d": 4,
+      "floor": 0,
+      "floors": 2,
+      "layout": "room-3.layout.json"
+    },
+    {
+      "id": "room-4",
+      "role": "room-4",
+      "x": 9,
+      "y": 0,
+      "w": 3,
+      "d": 4,
+      "floor": 0,
+      "floors": 2,
+      "layout": "room-4.layout.json"
+    },
+    {
+      "id": "corridor",
+      "role": "shared-circulation",
+      "x": 0,
+      "y": 4,
+      "w": 12,
+      "d": 3,
+      "floor": 0,
+      "floors": 2,
+      "layout": "corridor.layout.json"
+    }
+  ],
+  "openings": [
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.5,
+      "kind": "door"
+    }
+  ],
+  "stairs": [
+    {
+      "a": "corridor/0/hall",
+      "b": "corridor/1/hall",
+      "x": 0.004166666666666667,
+      "y": 0.5785714285714285,
+      "w": 0.075,
+      "d": 0.41428571428571426
+    }
+  ],
+  "floorVoids": [
+    {
+      "floor": 1,
+      "x": 0,
+      "y": 4,
+      "w": 1,
+      "d": 3
+    }
+  ]
+}

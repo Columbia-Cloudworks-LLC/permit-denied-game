@@ -1,0 +1,77 @@
+{
+  "version": 1,
+  "id": "dairy-building",
+  "label": "DAIRY BUILDING",
+  "w": 11,
+  "d": 5,
+  "floors": 1,
+  "kind": "shop",
+  "construction": "concrete-bearing",
+  "roof": "gable",
+  "theme": "warehouse",
+  "windowStride": 2,
+  "features": {
+    "porch": false,
+    "awning": false,
+    "parapet": false,
+    "chimney": false,
+    "garage": false
+  },
+  "zones": {
+    "residential": 0,
+    "commercial": 0,
+    "industrial": 0
+  },
+  "traits": {
+    "use": [
+      "dairy-building"
+    ],
+    "form": [
+      "B34"
+    ],
+    "style": [
+      "warehouse"
+    ]
+  },
+  "partitions": true,
+  "sections": [
+    {
+      "id": "processing",
+      "role": "processing",
+      "x": 0,
+      "y": 0,
+      "w": 8,
+      "d": 5,
+      "floor": 0,
+      "floors": 1,
+      "layout": "processing.layout.json"
+    },
+    {
+      "id": "cold-store",
+      "role": "cold-store",
+      "x": 8,
+      "y": 0,
+      "w": 3,
+      "d": 5,
+      "floor": 0,
+      "floors": 1,
+      "layout": "cold-store.layout.json"
+    }
+  ],
+  "connections": [
+    {
+      "a": "processing/0/work-floor",
+      "b": "cold-store/0/cold-room",
+      "at": 0.5,
+      "width": 0.35
+    }
+  ],
+  "openings": [
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.5,
+      "kind": "door"
+    }
+  ]
+}

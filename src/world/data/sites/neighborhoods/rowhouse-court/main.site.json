@@ -1,0 +1,71 @@
+{
+  "version": 1,
+  "id": "rowhouse-court",
+  "label": "ROWHOUSE COURT",
+  "w": 30,
+  "d": 22,
+  "buildings": [
+    {
+      "id": "home-0",
+      "building": "rowhouse-unit",
+      "x": 3,
+      "y": 3
+    },
+    {
+      "id": "home-1",
+      "building": "rowhouse-unit",
+      "x": 8,
+      "y": 3
+    },
+    {
+      "id": "home-2",
+      "building": "rowhouse-unit",
+      "x": 13,
+      "y": 3
+    },
+    {
+      "id": "home-3",
+      "building": "rowhouse-unit",
+      "x": 18,
+      "y": 3
+    },
+    {
+      "id": "home-4",
+      "building": "rowhouse-unit",
+      "x": 23,
+      "y": 3
+    }
+  ],
+  "equipment": [
+    {
+      "id": "bin-0",
+      "asset": "trash-can",
+      "x": 3,
+      "y": 15
+    },
+    {
+      "id": "bin-1",
+      "asset": "trash-can",
+      "x": 8,
+      "y": 15
+    },
+    {
+      "id": "bin-2",
+      "asset": "trash-can",
+      "x": 13,
+      "y": 15
+    },
+    {
+      "id": "bin-3",
+      "asset": "trash-can",
+      "x": 18,
+      "y": 15
+    },
+    {
+      "id": "bin-4",
+      "asset": "trash-can",
+      "x": 23,
+      "y": 15
+    }
+  ]
+}

@@ -1,0 +1,71 @@
+{
+  "version": 1,
+  "id": "permit-office",
+  "label": "PERMIT OFFICE",
+  "kind": "shop",
+  "w": 8,
+  "d": 6,
+  "floors": 2,
+  "roof": "flat",
+  "theme": "civic",
+  "windowStride": 2,
+  "features": {
+    "porch": false,
+    "awning": false,
+    "parapet": true,
+    "chimney": false,
+    "garage": false
+  },
+  "construction": "concrete-bearing",
+  "zones": {
+    "residential": 0,
+    "commercial": 0,
+    "industrial": 0
+  },
+  "traits": {
+    "use": [
+      "permit-office"
+    ],
+    "form": [
+      "B41",
+      "sectioned"
+    ],
+    "scale": [
+      "neighborhood"
+    ]
+  },
+  "partitions": true,
+  "connections": [],
+  "sections": [
+    {
+      "id": "public",
+      "role": "public",
+      "x": 0,
+      "y": 0,
+      "w": 8,
+      "d": 6,
+      "floor": 0,
+      "floors": 1,
+      "layout": "public.layout.json"
+    },
+    {
+      "id": "offices",
+      "role": "offices",
+      "x": 1,
+      "y": 0,
+      "w": 6,
+      "d": 3,
+      "floor": 1,
+      "floors": 1,
+      "layout": "offices.layout.json"
+    }
+  ],
+  "openings": [
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.5,
+      "kind": "door"
+    }
+  ]
+}

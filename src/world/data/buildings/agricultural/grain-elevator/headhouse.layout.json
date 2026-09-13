@@ -1,0 +1,37 @@
+{
+  "partitions": false,
+  "rooms": [
+    {
+      "id": "machinery",
+      "kind": "production",
+      "floor": 0,
+      "x": 0,
+      "y": 0,
+      "w": 1,
+      "d": 1,
+      "finish": "concrete",
+      "contents": [
+        {
+          "id": "elevator-drive",
+          "kind": "machine",
+          "x": 0.15,
+          "y": 0.1,
+          "w": 0.45,
+          "d": 0.3,
+          "h": 1.5,
+          "rotation": 0
+        },
+        {
+          "id": "service-rack",
+          "kind": "rack",
+          "x": 0.7,
+          "y": 0.55,
+          "w": 0.15,
+          "d": 0.3,
+          "h": 1.6,
+          "rotation": 0
+        }
+      ]
+    }
+  ]
+}

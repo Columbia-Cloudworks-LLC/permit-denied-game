@@ -1,0 +1,70 @@
+{
+  "version": 1,
+  "id": "hardware-store",
+  "label": "HARDWARE STORE",
+  "w": 5,
+  "d": 9,
+  "floors": 2,
+  "kind": "shop",
+  "construction": "brick-mixed-use",
+  "roof": "flat",
+  "theme": "corner",
+  "windowStride": 2,
+  "features": {
+    "porch": false,
+    "awning": false,
+    "parapet": true,
+    "chimney": false,
+    "garage": false
+  },
+  "zones": {
+    "residential": 0,
+    "commercial": 0,
+    "industrial": 0
+  },
+  "traits": {
+    "use": [
+      "hardware-store"
+    ],
+    "form": [
+      "B14"
+    ],
+    "style": [
+      "corner"
+    ]
+  },
+  "partitions": true,
+  "sections": [
+    {
+      "id": "store",
+      "role": "store",
+      "x": 0,
+      "y": 0,
+      "w": 5,
+      "d": 9,
+      "floor": 0,
+      "floors": 1,
+      "layout": "store.layout.json"
+    },
+    {
+      "id": "stock",
+      "role": "stock",
+      "x": 0,
+      "y": 0,
+      "w": 5,
+      "d": 9,
+      "floor": 1,
+      "floors": 1,
+      "layout": "stock.layout.json"
+    }
+  ],
+  "connections": [],
+  "openings": [
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.5,
+      "kind": "door"
+    }
+  ]
+}

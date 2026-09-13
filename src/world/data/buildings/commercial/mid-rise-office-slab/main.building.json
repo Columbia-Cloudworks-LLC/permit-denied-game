@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "id": "mid-rise-office-slab",
+  "label": "MID RISE OFFICE SLAB",
+  "kind": "shop",
+  "w": 9,
+  "d": 6,
+  "floors": 6,
+  "roof": "flat",
+  "theme": "civic",
+  "windowStride": 2,
+  "features": {
+    "porch": false,
+    "awning": false,
+    "parapet": true,
+    "chimney": false,
+    "garage": false
+  },
+  "construction": "concrete-bearing",
+  "zones": {
+    "residential": 0,
+    "commercial": 0,
+    "industrial": 0
+  },
+  "traits": {
+    "use": [
+      "mid-rise-office-slab"
+    ],
+    "form": [
+      "B51",
+      "single-volume"
+    ],
+    "scale": [
+      "neighborhood"
+    ]
+  },
+  "partitions": true,
+  "connections": [],
+  "sections": [
+    {
+      "id": "offices",
+      "role": "offices",
+      "x": 0,
+      "y": 0,
+      "w": 9,
+      "d": 6,
+      "floor": 0,
+      "floors": 6,
+      "layout": "offices.layout.json"
+    }
+  ],
+  "openings": [
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.5,
+      "kind": "door"
+    }
+  ]
+}
