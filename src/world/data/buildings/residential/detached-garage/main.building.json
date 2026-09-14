@@ -56,5 +56,14 @@
       "at": 0.5,
       "kind": "loading"
     }
-  ]
+  ],
+  "campaign": {
+    "levels": {
+      "county": 2,
+      "village": 2,
+      "township": 1,
+      "suburb": 2,
+      "governors-mansion": 1
+    }
+  }
 }

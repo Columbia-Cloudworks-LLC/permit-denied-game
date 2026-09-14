@@ -59,6 +59,10 @@ export class WorldRenderer {
   private readonly cmds: Cmd[] = [];
   readonly debug = defaultDebugView();
   jobTarget?: Building;
+  landmarkTarget?: Building;
+  readonly hudOverlay = new Container();
+  private readonly landmarkPin = new Graphics();
+  private readonly landmarkArrow = new Graphics();
   private readonly fades = new VisibilityFades();
   private readonly debugOverlay = new Graphics();
   get showNhood(): boolean { return this.debug.overview; }
@@ -75,7 +79,8 @@ export class WorldRenderer {
 
   constructor() {
     this.root.addChild(this.ground, this.sites, this.overlay, this.groundOverlays, this.drawing.root, this.world, this.nhood, this.debugOverlay);
-    this.root.addChild(this.bowlingStrikes.root);
+    this.root.addChild(this.bowlingStrikes.root, this.landmarkPin);
+    this.hudOverlay.addChild(this.landmarkArrow);
     this.root.sortableChildren = false;
   }
 
@@ -453,8 +458,34 @@ export class WorldRenderer {
       this.world.stroke({ color: 0xffe39a, width: 1.5, alpha: .75 });
     }
     drawDebugOverlay(this.debugOverlay, town, dozer, view);
+    this.drawLandmarkMarkers();
     this.fades.end();
     this.stats = { total, visible, surfaceGeometry, cached: this.drawing.size, rebuilt: this.drawing.rebuilt };
+  }
+
+  private drawLandmarkMarkers(): void {
+    this.landmarkPin.clear();
+    this.landmarkArrow.clear();
+    const target = this.landmarkTarget;
+    if (!target || target.fullyDown) return;
+    const cx = target.x + target.w * target.cellSize * 0.5;
+    const cy = target.y + target.d * target.cellSize * 0.5;
+    const top = target.floors * FLOOR_Z + 1.2;
+    const peak = worldToScreen(cx, cy, top);
+    this.landmarkPin.circle(peak.x, peak.y - 10, 7).fill({ color: 0xf0c14b, alpha: 0.95 });
+    this.landmarkPin.circle(peak.x, peak.y - 10, 3).fill(0x1b211f);
+    this.landmarkPin.moveTo(peak.x, peak.y - 3).lineTo(peak.x - 5, peak.y + 6).lineTo(peak.x + 5, peak.y + 6).fill({ color: 0xf0c14b, alpha: 0.95 });
+    const screenX = peak.x * this.zoom - this.camX + this.viewW / 2;
+    const screenY = peak.y * this.zoom - this.camY + this.viewH / 2;
+    const pad = 36;
+    const onScreen = screenX > pad && screenX < this.viewW - pad && screenY > pad && screenY < this.viewH - pad;
+    if (onScreen) return;
+    const x = Math.max(pad, Math.min(this.viewW - pad, screenX));
+    const y = Math.max(pad, Math.min(this.viewH - 140, screenY));
+    const angle = Math.atan2(screenY - y, screenX - x);
+    this.landmarkArrow.position.set(x, y);
+    this.landmarkArrow.rotation = angle;
+    this.landmarkArrow.moveTo(12, 0).lineTo(-8, -7).lineTo(-8, 7).fill({ color: 0xf0c14b, alpha: 0.92 });
   }
 }
 

@@ -95,5 +95,11 @@
       "side": "east",
       "width": 4
     }
-  ]
+  ],
+  "campaign": {
+    "levels": {
+      "city-downtown": 1
+    },
+    "maxRepeats": 1
+  }
 }

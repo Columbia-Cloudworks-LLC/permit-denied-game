@@ -1,5 +1,6 @@
 import { CELL, FLOOR_Z } from '../game/constants';
 import { createBuildingFromDefinition } from '../structure/building';
+import { parseCampaignPlacement, validateSiteCampaignRules, type CampaignPlacement } from './campaignPlacement';
 import { ASSET_CATALOG, spawnAssetDefinition, type AssetDef } from './catalog';
 import { ARCHETYPES, checkShape, freezeDefinition, parseContentFiles, type Archetype } from './archetypes';
 
@@ -7,6 +8,7 @@ export interface BuildingSite {
   version: number; id: string; label: string; w: number; d: number;
   buildings: { id: string; building: string; x: number; y: number }[];
   equipment: { id: string; asset: string; x: number; y: number }[];
+  campaign?: CampaignPlacement;
 }
 export function parseBuildingSites(files: Record<string, unknown>, buildings: readonly Archetype[], assets: readonly AssetDef[]): readonly BuildingSite[] {
   const seen = new Map<string, string>();
@@ -14,9 +16,11 @@ export function parseBuildingSites(files: Record<string, unknown>, buildings: re
     const context = `${file} (site ${(input as { id?: string } | null)?.id ?? '?'})`;
     checkShape(input, { version: 'number', id: 'string', label: 'string', w: 'number', d: 'number',
       buildings: [{ id: 'string', building: 'string', x: 'number', y: 'number' }],
-      equipment: [{ id: 'string', asset: 'string', x: 'number', y: 'number' }] }, context);
+      equipment: [{ id: 'string', asset: 'string', x: 'number', y: 'number' }],
+      'campaign?': { levels: { '*': 'number' }, 'maxRepeats?': 'number', 'landmarkOnly?': 'boolean', 'zones?': ['string'] } }, context);
     const site = structuredClone(input) as BuildingSite;
     const fail = (message: string): never => { throw new Error(`${context}: ${message}`); };
+    if (site.campaign) site.campaign = parseCampaignPlacement(site.campaign, `${context}.campaign`);
     if (site.version !== 1) fail('Unsupported site version');
     if (!site.id.trim() || !site.label.trim() || seen.has(site.id)) fail(`Duplicate or missing site id ${site.id}; first defined in ${seen.get(site.id)}`);
     seen.set(site.id, file);
@@ -48,6 +52,7 @@ export function parseBuildingSites(files: Record<string, unknown>, buildings: re
       boxes.push(...volumes);
     }
     if (slots > 16384) fail('Site exceeds 16384 grid slots');
+    for (const issue of validateSiteCampaignRules(site, buildings, assets, context)) fail(issue.detail);
     return freezeDefinition(site);
   }));
 }

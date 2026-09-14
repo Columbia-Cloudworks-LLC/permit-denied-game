@@ -80,9 +80,9 @@ HUD shows **BLADE UP** / **BLADE DOWN**. Deaths: **ENGINE COOKED** (heat from gr
 
 ## How it plays
 
-Clock mode is three minutes. Cash target is on the top bar. Chip walls, breach rooms, collapse floors. The ranch house is the demolition benchmark — open `?sandbox=1&ranch=1` and see **Run** above. Full building bonuses pay more. Cash milestones pause the clock run for one upgrade: stronger blade, more engine, or a faster powered push.
+Time Challenge is seven timed levels on the same town. Each level shows its cash target and landmark on the top bar. Chip walls, breach rooms, collapse floors. The ranch house is the demolition benchmark — open `?sandbox=1&ranch=1` and see **Run** above. Full building bonuses pay more. Cash milestones pause the clock run for one upgrade: stronger blade, more engine, or a faster powered push. Clear a level to carry upgrades forward; retry restores the upgrades you had when you entered that level.
 
-Sandbox mode has no county clock and does not end from heat or thrown tracks. Restart (R) rebuilds the same layout and seed. New Lot / N rolls a new seed. Play / Change Site selects County Clock or Sandbox and district size (classic 7, 10, 30, or 100 buildings). Optional BLADE+ / ENGINE+ / PUSH+ never force a pause in sandbox. Technical timings stay off the normal HUD; add `?perf=1` or press ` to inspect frame, sim, and debris budgets.
+Sandbox mode has no county clock and does not end from heat or thrown tracks. Restart (R) rebuilds the same layout and seed. New Lot / N rolls a new seed. Play / Change Site selects Time Challenge or Sandbox. Time Challenge is a seven-level campaign (County through Governor's Mansion): demolish the marked landmark and earn that level's dollar target before the county clock expires. It does not pick a site size. Sandbox still chooses district size (10, 30, or 100 buildings). Optional BLADE+ / ENGINE+ / PUSH+ never force a pause in sandbox. See [docs/campaign.md](docs/campaign.md) for level settings, landmarks, and how to add an asset to selected levels. Technical timings stay off the normal HUD; add `?perf=1` or press ` to inspect frame, sim, and debris budgets.
 
 Same seed plus the same inputs reproduce a run within ordinary floating-point drift (tests allow about 5–8% mass tolerance through crush/aggregation).
 

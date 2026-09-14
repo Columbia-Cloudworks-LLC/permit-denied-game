@@ -55,5 +55,11 @@
       "at": 0.5,
       "kind": "door"
     }
-  ]
+  ],
+  "campaign": {
+    "levels": {
+      "county": 1,
+      "governors-mansion": 1
+    }
+  }
 }

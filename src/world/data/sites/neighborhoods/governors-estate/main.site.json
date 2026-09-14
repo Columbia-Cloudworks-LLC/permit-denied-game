@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "id": "governors-estate",
+  "label": "GOVERNOR'S ESTATE",
+  "w": 72,
+  "d": 56,
+  "campaign": {
+    "levels": { "governors-mansion": 1 },
+    "landmarkOnly": true
+  },
+  "buildings": [
+    { "id": "mansion", "building": "governors-mansion", "x": 28, "y": 16 },
+    { "id": "admin-west", "building": "mansion-admin-wing", "x": 8, "y": 18 },
+    { "id": "admin-east", "building": "mansion-admin-wing", "x": 46, "y": 18 },
+    { "id": "gate-south", "building": "mansion-gatehouse", "x": 33, "y": 42 },
+    { "id": "gate-north", "building": "mansion-gatehouse", "x": 33, "y": 4 },
+    { "id": "garage", "building": "mansion-garage", "x": 8, "y": 36 },
+    { "id": "service", "building": "mansion-service", "x": 56, "y": 36 }
+  ],
+  "equipment": [
+    { "id": "court-tree-w", "asset": "mature-tree", "x": 24, "y": 28 },
+    { "id": "court-tree-e", "asset": "mature-tree", "x": 44, "y": 28 },
+    { "id": "lamp-s", "asset": "light", "x": 35, "y": 38 },
+    { "id": "lamp-n", "asset": "light", "x": 35, "y": 12 },
+    { "id": "car-west", "asset": "car", "x": 16, "y": 42 },
+    { "id": "hedge-w", "asset": "shrub", "x": 26, "y": 40 },
+    { "id": "hedge-e", "asset": "shrub", "x": 42, "y": 40 }
+  ]
+}

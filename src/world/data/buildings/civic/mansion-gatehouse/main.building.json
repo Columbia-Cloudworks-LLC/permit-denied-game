@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "id": "mansion-gatehouse",
+  "label": "ESTATE GATEHOUSE",
+  "w": 4,
+  "d": 4,
+  "floors": 2,
+  "kind": "house",
+  "construction": "brick-mixed-use",
+  "roof": "gable",
+  "theme": "colonial",
+  "windowStride": 1,
+  "features": {
+    "porch": false,
+    "awning": false,
+    "parapet": false,
+    "chimney": true,
+    "garage": false
+  },
+  "zones": { "residential": 0, "commercial": 0, "industrial": 0 },
+  "traits": { "use": ["gatehouse"], "form": ["square-tower"], "style": ["colonial"], "scale": ["estate"] },
+  "campaign": { "levels": { "governors-mansion": 2 }, "maxRepeats": 2 },
+  "partitions": true,
+  "sections": [
+    { "id": "watch", "role": "watch", "x": 0, "y": 0, "w": 4, "d": 4, "floor": 0, "floors": 2, "layout": "gate.layout.json" }
+  ],
+  "connections": [],
+  "openings": [
+    { "floor": 0, "side": "south", "at": 0.5, "kind": "door" }
+  ],
+  "facadeDetails": [
+    { "id": "gate-steps", "kind": "entry-steps", "floor": 0, "gx": 1, "gy": 3, "side": "south", "width": 2 }
+  ]
+}

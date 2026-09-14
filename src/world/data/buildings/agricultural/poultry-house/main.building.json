@@ -55,5 +55,10 @@
       "at": 0.5,
       "kind": "loading"
     }
-  ]
+  ],
+  "campaign": {
+    "levels": {
+      "county": 1
+    }
+  }
 }

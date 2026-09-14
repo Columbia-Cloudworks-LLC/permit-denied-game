@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "id": "governors-mansion",
+  "label": "GOVERNOR'S MANSION",
+  "w": 8,
+  "d": 7,
+  "floors": 3,
+  "kind": "house",
+  "construction": "timber-house",
+  "roof": "gable",
+  "theme": "colonial",
+  "windowStride": 2,
+  "features": {
+    "porch": true,
+    "awning": false,
+    "parapet": false,
+    "chimney": true,
+    "garage": false
+  },
+  "zones": { "residential": 0, "commercial": 0, "industrial": 0 },
+  "traits": { "use": ["governors-mansion", "landmark"], "form": ["estate-house"], "style": ["colonial"], "scale": ["estate"] },
+  "campaign": { "levels": { "governors-mansion": 1 }, "landmarkOnly": true },
+  "partitions": true,
+  "sections": [
+    { "id": "commons", "role": "commons", "x": 0, "y": 0, "w": 8, "d": 7, "floor": 0, "floors": 1, "layout": "commons.layout.json" },
+    { "id": "west-north", "role": "suite", "x": 0, "y": 0, "w": 3, "d": 3, "floor": 1, "floors": 2, "layout": "west-north.layout.json" },
+    { "id": "west-south", "role": "suite", "x": 0, "y": 3, "w": 3, "d": 4, "floor": 1, "floors": 2, "layout": "west-south.layout.json" },
+    { "id": "east-north", "role": "suite", "x": 5, "y": 0, "w": 3, "d": 3, "floor": 1, "floors": 2, "layout": "east-north.layout.json" },
+    { "id": "east-south", "role": "suite", "x": 5, "y": 3, "w": 3, "d": 4, "floor": 1, "floors": 2, "layout": "east-south.layout.json" },
+    { "id": "stair-hall", "role": "shared-circulation", "x": 3, "y": 0, "w": 2, "d": 7, "floor": 1, "floors": 2, "layout": "stair-hall.layout.json" }
+  ],
+  "connections": [
+    { "a": "west-north/1/bedroom", "b": "stair-hall/1/hall", "at": 0.5, "width": 0.3 },
+    { "a": "west-south/1/bedroom", "b": "stair-hall/1/hall", "at": 0.5, "width": 0.3 },
+    { "a": "east-north/1/bedroom", "b": "stair-hall/1/hall", "at": 0.5, "width": 0.3 },
+    { "a": "east-south/1/bedroom", "b": "stair-hall/1/hall", "at": 0.5, "width": 0.3 },
+    { "a": "west-north/2/bedroom", "b": "stair-hall/2/hall", "at": 0.5, "width": 0.3 },
+    { "a": "west-south/2/bedroom", "b": "stair-hall/2/hall", "at": 0.5, "width": 0.3 },
+    { "a": "east-north/2/bedroom", "b": "stair-hall/2/hall", "at": 0.5, "width": 0.3 },
+    { "a": "east-south/2/bedroom", "b": "stair-hall/2/hall", "at": 0.5, "width": 0.3 }
+  ],
+  "openings": [
+    { "floor": 0, "side": "south", "at": 0.5, "kind": "door" }
+  ],
+  "facadeDetails": [
+    { "id": "front-porch", "kind": "porch", "floor": 0, "gx": 2, "gy": 6, "side": "south", "width": 4 },
+    { "id": "hall-steps", "kind": "entry-steps", "floor": 0, "gx": 3, "gy": 6, "side": "south", "width": 2 },
+    { "id": "front-dormer-1", "kind": "dormer", "floor": 2, "gx": 2, "gy": 6, "side": "south", "width": 1 },
+    { "id": "front-dormer-2", "kind": "dormer", "floor": 2, "gx": 5, "gy": 6, "side": "south", "width": 1 }
+  ],
+  "stairs": [
+    { "a": "commons/0/common-room", "b": "stair-hall/1/hall", "x": 0.38125, "y": 0.15, "w": 0.1125, "d": 0.41428571428571426 },
+    { "a": "stair-hall/1/hall", "b": "stair-hall/2/hall", "x": 0.50625, "y": 0.15, "w": 0.1125, "d": 0.41428571428571426 }
+  ],
+  "floorVoids": [
+    { "floor": 1, "x": 3, "y": 1, "w": 1, "d": 3 },
+    { "floor": 2, "x": 4, "y": 1, "w": 1, "d": 3 }
+  ]
+}

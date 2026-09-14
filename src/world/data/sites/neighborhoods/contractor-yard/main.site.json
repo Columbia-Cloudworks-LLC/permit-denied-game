@@ -33,13 +33,13 @@
     },
     {
       "id": "equipment",
-      "asset": "farm-implement",
+      "asset": "dumpster",
       "x": 31,
       "y": 21
     },
     {
       "id": "fuel",
-      "asset": "propane-tank",
+      "asset": "utility-cabinet",
       "x": 44,
       "y": 21
     },
@@ -49,5 +49,11 @@
       "x": 34,
       "y": 9
     }
-  ]
+  ],
+  "campaign": {
+    "levels": {
+      "township": 1
+    },
+    "maxRepeats": 1
+  }
 }

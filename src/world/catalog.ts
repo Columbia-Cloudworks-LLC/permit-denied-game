@@ -1,4 +1,6 @@
 import { CONTENT_ASSETS } from "./contents";
+import { CAMPAIGN_LEVEL_IDS, type CampaignLevelId } from "../game/campaign";
+import type { CampaignPlacement } from "./campaignPlacement";
 import type {
   AssetFamily,
   AssetTag,
@@ -60,6 +62,7 @@ export interface AssetDef {
   explodeImpulse: number;
   explodeDamage: number;
   yawResist: number;
+  campaign?: CampaignPlacement;
 }
 
 const emptyPose = (): PropPose => ({ lean: 0, leanX: 0, leanY: 0, crush: 0, roll: 0 });
@@ -89,8 +92,52 @@ function debris(
   return { remnants, fragments, particles, remnantScale, pileMass, shape };
 }
 
+const ALL_CAMPAIGN_LEVELS = Object.fromEntries(CAMPAIGN_LEVEL_IDS.map(id => [id, 1])) as Record<CampaignLevelId, number>;
+const RURAL_CAMPAIGN_LEVELS = { county: 2, village: 1, 'governors-mansion': 1 } satisfies Partial<Record<CampaignLevelId, number>>;
+
+const PROP_CAMPAIGN: Record<string, CampaignPlacement> = {
+  fence: { levels: ALL_CAMPAIGN_LEVELS },
+  light: { levels: ALL_CAMPAIGN_LEVELS },
+  mailbox: { levels: ALL_CAMPAIGN_LEVELS },
+  'trash-can': { levels: ALL_CAMPAIGN_LEVELS },
+  'picnic-table': { levels: ALL_CAMPAIGN_LEVELS },
+  shrub: { levels: ALL_CAMPAIGN_LEVELS },
+  sapling: { levels: ALL_CAMPAIGN_LEVELS },
+  'mature-tree': { levels: ALL_CAMPAIGN_LEVELS },
+  'fire-hydrant': { levels: ALL_CAMPAIGN_LEVELS },
+  'stop-sign': { levels: ALL_CAMPAIGN_LEVELS },
+  'power-pole': { levels: ALL_CAMPAIGN_LEVELS },
+  guardrail: { levels: ALL_CAMPAIGN_LEVELS },
+  'traffic-barrel': { levels: ALL_CAMPAIGN_LEVELS },
+  dumpster: { levels: ALL_CAMPAIGN_LEVELS },
+  barricade: { levels: ALL_CAMPAIGN_LEVELS },
+  car: { levels: ALL_CAMPAIGN_LEVELS },
+  camera: { levels: ALL_CAMPAIGN_LEVELS },
+  vending: { levels: ALL_CAMPAIGN_LEVELS },
+  hvac: { levels: ALL_CAMPAIGN_LEVELS },
+  'utility-cabinet': { levels: ALL_CAMPAIGN_LEVELS },
+  'pallet-stack': { levels: ALL_CAMPAIGN_LEVELS },
+  'crate-stack': { levels: ALL_CAMPAIGN_LEVELS },
+  'hay-bale-square': { levels: RURAL_CAMPAIGN_LEVELS },
+  'hay-bale-round': { levels: RURAL_CAMPAIGN_LEVELS },
+  'water-trough': { levels: RURAL_CAMPAIGN_LEVELS },
+  tractor: { levels: RURAL_CAMPAIGN_LEVELS },
+  'farm-implement': { levels: RURAL_CAMPAIGN_LEVELS },
+  'grain-bin': { levels: RURAL_CAMPAIGN_LEVELS },
+  shed: { levels: RURAL_CAMPAIGN_LEVELS },
+  woodpile: { levels: { county: 2, village: 1, township: 1, 'governors-mansion': 1 } },
+  doghouse: { levels: { county: 1, village: 1, township: 1, suburb: 1 } },
+  clothesline: { levels: { county: 1, village: 1, township: 1, suburb: 1 } },
+  'swing-set': { levels: { village: 1, township: 1, suburb: 2 } },
+  'propane-tank': { levels: { county: 1, village: 1, township: 1 } },
+  'fuel-pump': { levels: { county: 1, village: 1, township: 1, suburb: 1 } },
+  billboard: { levels: { township: 1, suburb: 1, 'city-borough': 1, 'city-downtown': 1 } },
+  'loading-dock-bumpers': { levels: { township: 1, suburb: 1, 'city-borough': 1, 'city-downtown': 1 } },
+  transformer: { levels: { township: 1, suburb: 1, 'city-borough': 1, 'city-downtown': 1 } },
+};
+
 function asset(partial: AssetDef): AssetDef {
-  return partial;
+  return { ...partial, campaign: partial.campaign ?? PROP_CAMPAIGN[partial.id] };
 }
 
 const MET = { t: 0x8b908c, l: 0x3e4240, r: 0x6d7270 };

@@ -103,5 +103,11 @@
         "floor": 4
       }
     }
-  ]
+  ],
+  "campaign": {
+    "levels": {
+      "county": 1
+    },
+    "maxRepeats": 1
+  }
 }

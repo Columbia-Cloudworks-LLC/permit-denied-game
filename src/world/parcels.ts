@@ -3,7 +3,7 @@ import { aabbOverlap, clamp } from "../game/math";
 import { Rng } from "../game/rng";
 import type { Building, Lot, LotFrontage, LotIdentity, LotSetbacks, LotSide, LotZone } from "../structure/types";
 import { createBuildingFromArchetype } from "../structure/building";
-import { ARCHETYPES, pickArchetype } from "./archetypes";
+import { ARCHETYPES, pickArchetype, type Archetype } from "./archetypes";
 import {
   linePoints,
   offsetPoint,
@@ -28,6 +28,48 @@ export const PARCEL = {
   maxExpand: 16,
 } as const;
 
+export type ParcelMetrics = {
+  minFront: number;
+  maxFront: number;
+  minDepth: number;
+  maxDepth: number;
+  junctionClear: number;
+  roadGap: number;
+  lotGap: number;
+  driveWidth: number;
+  maxExpand: number;
+};
+
+export interface ParcelSetbackRange {
+  setbackFront: [number, number];
+  setbackSide: [number, number];
+  setbackRear: [number, number];
+}
+
+let parcelOverride: ParcelMetrics | null = null;
+let setbackOverride: ParcelSetbackRange | null = null;
+
+export function currentParcel(): ParcelMetrics {
+  return parcelOverride ?? PARCEL;
+}
+
+export function runWithParcelProfile<T>(
+  parcel: ParcelMetrics | undefined,
+  setbacks: ParcelSetbackRange | undefined,
+  fn: () => T,
+): T {
+  const prevParcel = parcelOverride;
+  const prevSetbacks = setbackOverride;
+  if (parcel) parcelOverride = parcel;
+  if (setbacks) setbackOverride = setbacks;
+  try {
+    return fn();
+  } finally {
+    parcelOverride = prevParcel;
+    setbackOverride = prevSetbacks;
+  }
+}
+
 export interface NhoodReject {
   kind: "lot" | "building" | "driveway" | "junction";
   reason: string;
@@ -39,6 +81,20 @@ export interface NhoodDebug {
 }
 
 function defaultSetbacks(rng?: Rng): LotSetbacks {
+  if (setbackOverride) {
+    if (!rng) {
+      return {
+        front: (setbackOverride.setbackFront[0] + setbackOverride.setbackFront[1]) / 2,
+        side: (setbackOverride.setbackSide[0] + setbackOverride.setbackSide[1]) / 2,
+        rear: (setbackOverride.setbackRear[0] + setbackOverride.setbackRear[1]) / 2,
+      };
+    }
+    return {
+      front: rng.range(setbackOverride.setbackFront[0], setbackOverride.setbackFront[1]),
+      side: rng.range(setbackOverride.setbackSide[0], setbackOverride.setbackSide[1]),
+      rear: rng.range(setbackOverride.setbackRear[0], setbackOverride.setbackRear[1]),
+    };
+  }
   if (!rng) return { front: 1.45, side: 0.85, rear: 1.15 };
   return {
     front: rng.range(1.25, 1.85),
@@ -200,7 +256,7 @@ export function parcelFromFrontage(
 ): { boundary: { x: number; y: number }[]; heading: number } {
   const a = samplePolyline(seg.points, t0);
   const b = samplePolyline(seg.points, t1);
-  const inset = seg.width * 0.5 + seg.shoulder + PARCEL.roadGap;
+  const inset = seg.width * 0.5 + seg.shoulder + currentParcel().roadGap;
   const f0 = offsetPoint(a.x, a.y, a.heading, inset * side);
   const f1 = offsetPoint(b.x, b.y, b.heading, inset * side);
   const r0 = offsetPoint(a.x, a.y, a.heading, (inset + depth) * side);
@@ -259,21 +315,22 @@ export function allocateFrontage(
   for (const seg of ordered) {
     if (lots.length >= safety) break;
     const path = polylineLength(seg.points);
-    if (path < PARCEL.minFront + 2) continue;
-    const startClear = nodeDegree(nodes, seg.startId, publicIds) >= 3 ? PARCEL.junctionClear : 1.4;
-    const endClear = nodeDegree(nodes, seg.endId, publicIds) >= 3 ? PARCEL.junctionClear : 1.4;
+    const parcel = currentParcel();
+    if (path < parcel.minFront + 2) continue;
+    const startClear = nodeDegree(nodes, seg.startId, publicIds) >= 3 ? parcel.junctionClear : 1.4;
+    const endClear = nodeDegree(nodes, seg.endId, publicIds) >= 3 ? parcel.junctionClear : 1.4;
     let cursor = startClear;
     const usable = path - endClear;
     let slot = 0;
     const side0: LotSide = rng.chance(0.5) ? 1 : -1;
-    while (cursor + PARCEL.minFront <= usable && lots.length < safety) {
-      const front = clamp(rng.range(PARCEL.minFront, PARCEL.maxFront), PARCEL.minFront, usable - cursor);
-      const depth = rng.range(PARCEL.minDepth, PARCEL.maxDepth);
+    while (cursor + parcel.minFront <= usable && lots.length < safety) {
+      const front = clamp(rng.range(parcel.minFront, parcel.maxFront), parcel.minFront, usable - cursor);
+      const depth = rng.range(parcel.minDepth, parcel.maxDepth);
       const t0 = cursor / path;
       const t1 = (cursor + front) / path;
       const side: LotSide = slot % 2 === 0 ? side0 : side0 === 1 ? -1 : 1;
       slot++;
-      cursor += front + PARCEL.lotGap;
+      cursor += front + parcel.lotGap;
       const made = tryParcel(seg, side, t0, t1, depth, lots, rng, rejected, checkRoads);
       if (made) lots.push(made);
       const other: LotSide = side === 1 ? -1 : 1;
@@ -418,23 +475,75 @@ function remapLotFrontage(lot: Lot, oldId: string, first: RoadSegment, second: R
   }
 }
 
+export function archetypeFootprint(archetype: Pick<Archetype, "w" | "d" | "cellSize">): { w: number; d: number } {
+  const cell = archetype.cellSize ?? CELL;
+  return { w: archetype.w * cell, d: archetype.d * cell };
+}
+
+/** Widen and deepen a frontage lot so a landmark can sit inside the buildable envelope. */
+export function expandLotToFit(
+  lot: Lot,
+  neededW: number,
+  neededD: number,
+  publicSegs: readonly RoadSegment[],
+  others: readonly Lot[],
+): string[] | null {
+  const seg = publicSegs.find((s) => s.id === lot.frontage.segmentId);
+  if (!seg) return null;
+  const path = polylineLength(seg.points);
+  if (path < 6) return null;
+  const setbacks = lot.setbacks;
+  const depth = neededD + setbacks.front + setbacks.rear + 0.4;
+  const width = neededW + setbacks.side * 2 + 0.4;
+  const mid = clamp((lot.frontage.t0 + lot.frontage.t1) * 0.5, 0.08, 0.92);
+  const halfT = (width * 0.5) / path;
+  const t0 = clamp(mid - halfT, 0.02, 0.9);
+  const t1 = clamp(mid + halfT, t0 + 0.05, 0.98);
+  const geom = parcelFromFrontage(seg, lot.frontage.side, t0, t1, depth);
+  if (geom.boundary.some((p) => Number.isNaN(p.x)) || parcelHitsRoad(geom.boundary, publicSegs)) return null;
+  const buildable = buildableFromParcel(geom.boundary, geom.heading, setbacks);
+  if (buildable.w + 0.05 < neededW || buildable.d + 0.05 < neededD) return null;
+  const evicted: string[] = [];
+  for (const other of others) {
+    if (other.id === lot.id) continue;
+    if (convexOverlap(geom.boundary, other.boundary)) evicted.push(other.id);
+  }
+  const box = aabbOfPoints(geom.boundary);
+  lot.frontage.t0 = t0;
+  lot.frontage.t1 = t1;
+  lot.boundary = geom.boundary;
+  lot.heading = geom.heading;
+  lot.buildable = buildable;
+  lot.x = box.x;
+  lot.y = box.y;
+  lot.w = box.w;
+  lot.d = box.d;
+  return evicted;
+}
+
 export function placeBuildingInLot(
   lot: Lot,
   rng: Rng,
   buildings: readonly Building[],
   publicSegs: readonly RoadSegment[],
   corridors: readonly { x: number; y: number }[][],
+  pick?: (lot: Lot, rng: Rng, tried: ReadonlySet<string>) => Archetype | undefined,
 ): Building | null {
   const tried = new Set<string>();
   const ranked = [...ARCHETYPES.filter((a) => a.zones[lot.zone] > 0)].sort(
     (a, c) => a.w * a.d - c.w * c.d || pickArchetype(lot.zone, rng).w - 0,
   );
-  for (let attempt = 0; attempt < ranked.length; attempt++) {
-    const archetype = attempt === 0 ? pickArchetype(lot.zone, rng) : ranked[attempt]!;
+  const attempts = pick ? ARCHETYPES.length : ranked.length;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    const archetype = pick
+      ? pick(lot, rng, tried)
+      : attempt === 0 ? pickArchetype(lot.zone, rng) : ranked[attempt]!;
+    if (!archetype) break;
     if (tried.has(archetype.id)) continue;
     tried.add(archetype.id);
-    const bw = archetype.w * CELL;
-    const bd = archetype.d * CELL;
+    const cell = archetype.cellSize ?? CELL;
+    const bw = archetype.w * cell;
+    const bd = archetype.d * cell;
     const env = lot.buildable;
     const probe = createBuildingFromArchetype(archetype.id, "probe", 0, 0);
     const extras = probe.decorBoxes.map((d) => ({ x: d.x, y: d.y, w: d.w, d: d.d }));
@@ -512,7 +621,7 @@ export function attachDriveway(
   const arrivalX = building.x + bw * 0.5 + towardStreetX * (Math.abs(towardStreetX) > 0.5 ? bw * 0.5 + 0.55 : 0.2);
   const arrivalY = building.y + bd * 0.5 + towardStreetY * (Math.abs(towardStreetY) > 0.5 ? bd * 0.5 + 0.55 : 0.2);
   const arrival = b.node(arrivalX, arrivalY, curb.elev, undefined, seg.layer);
-  const corridor = corridorPoly(join.x, join.y, arrival.x, arrival.y, PARCEL.driveWidth);
+  const corridor = corridorPoly(join.x, join.y, arrival.x, arrival.y, currentParcel().driveWidth);
   for (const o of others) {
     if (o.id === lot.id) continue;
     if (convexOverlap(corridor, o.boundary)) {
@@ -521,7 +630,7 @@ export function attachDriveway(
   }
   const drive = b.segment(join, arrival, linePoints(pt(join), pt(arrival), 1.2), {
     roadClass: "driveway",
-    width: PARCEL.driveWidth,
+    width: currentParcel().driveWidth,
     shoulder: 0.12,
     layer: seg.layer,
   });

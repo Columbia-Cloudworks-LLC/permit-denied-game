@@ -31,6 +31,20 @@ import { pickVerificationRoute } from "../world/routing";
 import { worldBoundsToScreen, worldToScreen } from "../world/iso";
 import { createTown } from "../world/town";
 import {
+  applyCampaignOutcome,
+  advanceCampaignLevel,
+  campaignBriefingText,
+  creditCampaignEarnings,
+  currentLevel,
+  dollarsReady,
+  evaluateCampaignStep,
+  landmarkDemolitionStatus,
+  retryCampaignLevel,
+  spendCampaignCash,
+  startCampaign,
+  type CampaignRun,
+} from "./campaignRun";
+import {
   CASH_TARGET,
   COPY,
   MATCH_SECONDS,
@@ -88,6 +102,7 @@ export class Game {
   private dozer = createDozer(this.town.spawnX, this.town.spawnY, this.town.spawnHeading);
   private birds: Bird[] = [];
   private cash = 0;
+  private campaign: CampaignRun | null = null;
   private resubmission = new Resubmission();
   private timeLeft = MATCH_SECONDS;
   private elapsed = 0;
@@ -119,7 +134,7 @@ export class Game {
     root.appendChild(this.app.canvas);
     this.app.canvas.tabIndex = 0;
     this.app.canvas.setAttribute('aria-label', 'Demolition site. W and S drive, A and D steer, Space powers the blade, Escape opens the menu.');
-    this.app.stage.addChild(this.renderer.root);
+    this.app.stage.addChild(this.renderer.root, this.renderer.hudOverlay);
     this.hud = new Hud(hudRoot);
     this.hud.onMute = () => {
       void this.audio.unlock();
@@ -129,8 +144,9 @@ export class Game {
     this.hud.onUnlockSound = () => this.audio.unlock();
     this.hud.onResubmit = () => {
       if (this.mode !== 'play' && this.mode !== 'pause') return null;
-      const fee = this.resubmission.charge(this.cash);
+      const fee = this.resubmission.charge(this.campaign?.spendable ?? this.cash);
       if (fee !== null) {
+        if (this.campaign) spendCampaignCash(this.campaign, fee);
         this.cash -= fee;
         this.releaseControls();
       }
@@ -141,9 +157,32 @@ export class Game {
       else this.audio.typewriterKey(index);
     };
     this.hud.onMenu = () => { this.releaseControls(); if (this.mode === 'play') this.mode = 'pause'; };
-    this.hud.onTitle = () => { this.releaseControls(); this.mode = 'title'; };
+    this.hud.onTitle = () => { this.releaseControls(); this.campaign = null; this.mode = 'title'; };
     this.hud.onStart = (kind, district) => {
       this.rules = gameSetupRules(kind, district, this.rules.seed);
+      this.campaign = kind === 'challenge' ? startCampaign(this.rules.seed) : null;
+      this.reset('same');
+      this.syncSessionUrl();
+    };
+    this.hud.onBeginLevel = () => {
+      if (this.campaign) this.campaign.briefing = false;
+      if (this.mode === 'briefing') this.mode = 'play';
+    };
+    this.hud.onNextLevel = () => {
+      if (!this.campaign || !this.campaign.complete) return;
+      this.campaign = advanceCampaignLevel(this.campaign, nextSeed(this.campaign.levelSeed));
+      this.rules.seed = this.campaign.levelSeed;
+      this.reset('same');
+    };
+    this.hud.onRetryLevel = () => {
+      if (!this.campaign) return;
+      this.campaign = retryCampaignLevel(this.campaign);
+      this.rules.seed = this.campaign.levelSeed;
+      this.reset('same');
+    };
+    this.hud.onNewCampaign = () => {
+      this.rules = gameSetupRules('challenge', this.rules.district, this.rules.seed);
+      this.campaign = startCampaign(this.rules.seed);
       this.reset('same');
       this.syncSessionUrl();
     };
@@ -154,7 +193,13 @@ export class Game {
       this.releaseControls();
       if (this.mode === "pause") this.mode = "play";
     };
-    this.hud.onRestart = () => this.reset("same");
+    this.hud.onRestart = () => {
+      if (this.campaign) {
+        this.campaign = retryCampaignLevel(this.campaign);
+        this.rules.seed = this.campaign.levelSeed;
+      }
+      this.reset("same");
+    };
     this.hud.onNewSeed = () => this.reset("new");
     this.hud.onSession = (kind) => this.setSession(kind);
     this.hud.onDistrict = (id) => this.setDistrict(id);
@@ -198,6 +243,7 @@ export class Game {
     this.renderer.showNhood = new URLSearchParams(window.location.search).get("nhood") === "1";
     this.renderer.debug.perf = this.perf.enabled;
     this.syncDebug();
+    if (this.rules.kind === 'challenge' && !this.rules.job) this.campaign = startCampaign(this.rules.seed);
     this.reset("same");
     if (this.rules.testMap) this.hud.openDebug();
     if (startsAtTitle(window.location.search)) this.mode = "title";
@@ -251,6 +297,7 @@ export class Game {
     this.rules.kind = kind;
     this.rules.district = playableDistrict(kind, this.rules.district);
     this.rules.ranchFocus = false;
+    this.campaign = kind === 'challenge' ? startCampaign(this.rules.seed) : null;
     this.reset("same");
     this.syncSessionUrl();
   }
@@ -276,8 +323,17 @@ export class Game {
     const followKey = this.followRoadCamera ? this.town.roadCar?.yardOwner : undefined;
     this.releaseControls();
     this.followRoadCamera = true;
-    if (kind === "new" && !keepSetup) this.rules.seed = nextSeed(this.rules.seed);
-    this.town = createTown({ towerTest: this.rules.towerTest, district: this.rules.district, seed: this.rules.seed, showcase: !!this.rules.demo, testMap: this.rules.testMap });
+    if (kind === "new" && !keepSetup && !this.campaign) this.rules.seed = nextSeed(this.rules.seed);
+    if (this.campaign && kind === "new") this.campaign = retryCampaignLevel(this.campaign);
+    if (this.campaign) this.rules.seed = this.campaign.levelSeed;
+    this.town = createTown({
+      towerTest: this.rules.towerTest,
+      district: this.rules.district,
+      seed: this.rules.seed,
+      showcase: !!this.rules.demo,
+      testMap: this.rules.testMap,
+      campaign: this.campaign ? currentLevel(this.campaign) : undefined,
+    });
     const ranch = this.rules.demo || this.rules.ranchFocus
       ? this.town.buildings.find((b) => b.archetypeId === (this.rules.demo ?? "ranch"))
       : undefined;
@@ -299,20 +355,26 @@ export class Game {
     this.renderer.bowlingStrikes.clear();
     this.renderer.invalidate();
     this.birds = [];
-    this.cash = 0;
+    this.cash = this.campaign?.spendable ?? 0;
     this.resubmission = new Resubmission();
     this.hud.permitLogo.reset();
     this.hud.resetCash();
-    this.timeLeft = MATCH_SECONDS;
+    this.timeLeft = this.campaign ? currentLevel(this.campaign).timeLimit : MATCH_SECONDS;
     this.elapsed = 0;
     this.hint = 1;
-    this.mode = "play";
+    this.mode = this.campaign?.briefing ? "briefing" : "play";
     this.death = null;
-    if (!keepSetup) this.upgrades = { blade: 0, engine: 0, push: 0 };
-    this.nextUpgrade = 0;
+    if (this.campaign) {
+      this.upgrades = { ...this.campaign.upgrades };
+      this.nextUpgrade = this.campaign.nextUpgrade;
+    } else if (!keepSetup) this.upgrades = { blade: 0, engine: 0, push: 0 };
+    if (!this.campaign) this.nextUpgrade = 0;
     this.earnedChoice = false;
     this.job = this.rules.job && ranch ? new DemolitionJob(ranch) : undefined;
     this.renderer.jobTarget = this.job?.target;
+    this.renderer.landmarkTarget = this.campaign
+      ? this.town.buildings.find(building => building.campaignLandmark)
+      : undefined;
     this.acc = 0;
     this.grindAud = 0;
     this.scrapeCd = 0;
@@ -363,7 +425,10 @@ export class Game {
     if (this.job && !this.job.takeChoice()) return;
     this.earnedChoice = false;
     this.upgrades[id] += 1;
-    if (this.mode === "upgrade") this.mode = "play";
+    if (this.campaign) {
+      this.campaign.upgrades[id] += 1;
+    }
+    if (this.mode === "upgrade") this.mode = this.campaign?.briefing ? "briefing" : "play";
   }
 
   private frame(realDt: number): void {
@@ -399,7 +464,8 @@ export class Game {
       this.releaseControls();
       if (!this.hud.closeDebug(true)) {
         if (this.mode === "play") this.mode = "pause";
-        else if (this.mode === "pause") this.mode = "play";
+        else if (this.mode === "briefing") this.mode = "pause";
+        else if (this.mode === "pause") this.mode = this.campaign?.briefing ? "briefing" : "play";
       }
     }
     if (this.input.down.size > 0) void this.audio.unlock();
@@ -475,7 +541,10 @@ export class Game {
     const beforeHeat = this.dozer.heat;
     const out = stepWorld(this.town, this.dozer, this.particles, this.upgrades, dt);
     this.lastMetrics = out.metrics;
-    this.cash += out.cash;
+    if (this.campaign) {
+      creditCampaignEarnings(this.campaign, out.cash);
+      this.cash = this.campaign.spendable;
+    } else this.cash += out.cash;
     this.react(out.events);
     for (const b of out.birds) {
       this.birds.push({
@@ -513,20 +582,42 @@ export class Game {
 
     const payout = this.job?.settle() ?? 0;
     if (payout) {
-      this.cash += payout;
+      if (this.campaign) {
+        creditCampaignEarnings(this.campaign, payout);
+        this.cash = this.campaign.spendable;
+      } else this.cash += payout;
       this.audio.cash();
       this.earnedChoice = true;
       this.mode = "upgrade";
       return;
     }
+    const milestoneCash = this.campaign?.campaignEarned ?? this.cash;
     if (
       sessionForcesUpgrade(this.rules) &&
       this.nextUpgrade < UPGRADE_MILESTONES.length &&
-      this.cash >= UPGRADE_MILESTONES[this.nextUpgrade]!
+      milestoneCash >= UPGRADE_MILESTONES[this.nextUpgrade]!
     ) {
       this.nextUpgrade += 1;
+      if (this.campaign) this.campaign.nextUpgrade = this.nextUpgrade;
       this.earnedChoice = true;
       this.mode = "upgrade";
+      return;
+    }
+
+    if (this.campaign) {
+      const level = currentLevel(this.campaign);
+      const landmark = landmarkDemolitionStatus(this.town.buildings, level);
+      const outcome = evaluateCampaignStep({
+        timeLeft: this.timeLeft,
+        heat: this.dozer.heat,
+        track: this.dozer.track,
+        landmarkReady: landmark.ready,
+        dollarsReady: dollarsReady(this.campaign, level),
+        expired: this.campaign.expired,
+        alreadyComplete: this.campaign.complete,
+      });
+      const death = applyCampaignOutcome(this.campaign, outcome);
+      if (outcome !== 'continue') this.finish(death ?? '', outcome === 'win');
       return;
     }
 
@@ -683,7 +774,25 @@ export class Game {
       track: this.dozer.track,
       overlay: this.mode === "play" ? "none" : this.mode,
       death: this.death,
-      won: this.mode === "results" && this.cash >= CASH_TARGET && !this.death,
+      won: this.mode === "results" && (this.campaign ? this.campaign.complete : this.cash >= CASH_TARGET && !this.death),
+      campaign: this.campaign ? (() => {
+        const level = currentLevel(this.campaign);
+        const landmark = landmarkDemolitionStatus(this.town.buildings, level);
+        return {
+          levelIndex: level.index,
+          levelName: level.name,
+          landmarkName: level.landmark.label,
+          dollarTarget: level.dollarTarget,
+          levelEarned: this.campaign.levelEarned,
+          campaignEarned: this.campaign.campaignEarned,
+          landmarkProgress: landmark.progress,
+          landmarkReady: landmark.ready,
+          dollarsReady: dollarsReady(this.campaign, level),
+          briefing: campaignBriefingText(level),
+          victory: this.campaign.victory,
+          complete: this.campaign.complete,
+        };
+      })() : undefined,
     });
   }
 

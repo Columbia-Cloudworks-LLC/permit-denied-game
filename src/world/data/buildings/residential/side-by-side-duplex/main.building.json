@@ -107,5 +107,11 @@
       "w": 1,
       "d": 3
     }
-  ]
+  ],
+  "campaign": {
+    "levels": {
+      "township": 2,
+      "suburb": 3
+    }
+  }
 }

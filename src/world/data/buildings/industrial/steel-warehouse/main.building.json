@@ -41,5 +41,11 @@
       "kind": "loading"
     }
   ],
-  "generationOrder": 1
+  "generationOrder": 1,
+  "campaign": {
+    "levels": {
+      "city-borough": 1,
+      "city-downtown": 1
+    }
+  }
 }

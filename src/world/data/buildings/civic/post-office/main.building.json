@@ -55,5 +55,11 @@
       "at": 0.5,
       "kind": "door"
     }
-  ]
+  ],
+  "campaign": {
+    "levels": {
+      "village": 1,
+      "township": 1
+    }
+  }
 }

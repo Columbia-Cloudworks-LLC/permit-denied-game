@@ -148,5 +148,11 @@
       "w": 2,
       "d": 6
     }
-  ]
+  ],
+  "campaign": {
+    "levels": {
+      "city-borough": 1,
+      "city-downtown": 1
+    }
+  }
 }

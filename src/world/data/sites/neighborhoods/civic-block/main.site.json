@@ -49,5 +49,12 @@
       "x": 45,
       "y": 20
     }
-  ]
+  ],
+  "campaign": {
+    "levels": {
+      "village": 1,
+      "township": 1
+    },
+    "maxRepeats": 1
+  }
 }

@@ -51,5 +51,11 @@
       "kind": "door"
     }
   ],
-  "generationOrder": 9
+  "generationOrder": 9,
+  "campaign": {
+    "levels": {
+      "city-downtown": 1
+    },
+    "maxRepeats": 1
+  }
 }

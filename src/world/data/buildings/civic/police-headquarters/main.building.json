@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "id": "police-headquarters",
+  "label": "POLICE HEADQUARTERS",
+  "w": 8,
+  "d": 8,
+  "floors": 5,
+  "kind": "shop",
+  "construction": "concrete-bearing",
+  "roof": "flat",
+  "theme": "civic",
+  "windowStride": 2,
+  "features": {
+    "porch": false,
+    "awning": false,
+    "parapet": true,
+    "chimney": false,
+    "garage": false
+  },
+  "zones": { "residential": 0, "commercial": 0, "industrial": 0 },
+  "traits": { "use": ["police-headquarters", "landmark"], "form": ["civic-slab"], "style": ["civic"], "scale": ["city"] },
+  "campaign": { "levels": { "city-borough": 1 }, "landmarkOnly": true },
+  "partitions": true,
+  "sections": [
+    { "id": "public", "role": "public", "x": 0, "y": 0, "w": 8, "d": 8, "floor": 0, "floors": 1, "layout": "public.layout.json" },
+    { "id": "archives", "role": "offices", "x": 0, "y": 0, "w": 8, "d": 8, "floor": 1, "floors": 4, "layout": "archives.layout.json" }
+  ],
+  "connections": [],
+  "openings": [
+    { "floor": 0, "side": "south", "at": 0.5, "kind": "door" }
+  ],
+  "facadeDetails": [
+    { "id": "entry-steps", "kind": "entry-steps", "floor": 0, "gx": 3, "gy": 7, "side": "south", "width": 3 },
+    { "id": "hq-sign", "kind": "signboard", "floor": 1, "gx": 2, "gy": 7, "side": "south", "width": 4, "text": "HQ" },
+    { "id": "escape-1", "kind": "fire-escape", "floor": 2, "gx": 0, "gy": 7, "side": "south", "width": 2 },
+    { "id": "escape-2", "kind": "fire-escape", "floor": 3, "gx": 0, "gy": 7, "side": "south", "width": 2 }
+  ]
+}

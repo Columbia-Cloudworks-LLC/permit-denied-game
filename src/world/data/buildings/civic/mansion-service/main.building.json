@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "id": "mansion-service",
+  "label": "ESTATE SERVICE HOUSE",
+  "w": 4,
+  "d": 5,
+  "floors": 1,
+  "kind": "shop",
+  "construction": "concrete-bearing",
+  "roof": "shed",
+  "theme": "warehouse",
+  "windowStride": 2,
+  "features": {
+    "porch": false,
+    "awning": false,
+    "parapet": false,
+    "chimney": false,
+    "garage": false
+  },
+  "zones": { "residential": 0, "commercial": 0, "industrial": 0 },
+  "traits": { "use": ["service-house"], "form": ["utility-block"], "style": ["warehouse"], "scale": ["estate"] },
+  "campaign": { "levels": { "governors-mansion": 1 }, "maxRepeats": 1 },
+  "partitions": true,
+  "sections": [
+    { "id": "service", "role": "service", "x": 0, "y": 0, "w": 4, "d": 5, "floor": 0, "floors": 1, "layout": "service.layout.json" }
+  ],
+  "connections": [],
+  "openings": [
+    { "floor": 0, "side": "south", "at": 0.5, "kind": "door" }
+  ]
+}

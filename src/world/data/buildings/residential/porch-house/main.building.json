@@ -43,5 +43,11 @@
       "kind": "door"
     }
   ],
-  "generationOrder": 6
+  "generationOrder": 6,
+  "campaign": {
+    "levels": {
+      "village": 3,
+      "township": 2
+    }
+  }
 }

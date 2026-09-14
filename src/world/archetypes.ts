@@ -1,3 +1,4 @@
+import { parseCampaignPlacement } from './campaignPlacement';
 import { validateConstruction, validateLayout, stairLandingCells, type ConstructionDef, type LayoutDef, type OpeningDef } from '../structure/construction';
 import type { BuildingFeatureSpec, BuildingKind, FacadeTheme, LotZone, RoofAxis, RoofStyle } from '../structure/types';
 import { FACADE_DETAIL_KINDS, type FacadeDetailDef } from '../structure/facadeDetails';
@@ -25,6 +26,7 @@ export interface Archetype {
   windowStride: number;
   features: BuildingFeatureSpec;
   zones: Record<LotZone, number>;
+  campaign?: import('./campaignPlacement').CampaignPlacement;
   /** Independent authoring/search dimensions, not simulation dispatch keys. */
   traits?: { use?: string[]; form?: string[]; construction?: string[]; style?: string[]; era?: string[]; scale?: string[] };
   cellSize?: number;
@@ -76,7 +78,8 @@ const buildingShape: Shape = { version: 'number', id: 'string', kind: 'string', 
   'traits?': { 'use?': ['string'], 'form?': ['string'], 'construction?': ['string'], 'style?': ['string'], 'era?': ['string'], 'scale?': ['string'] },
   features: { porch: 'boolean', awning: 'boolean', parapet: 'boolean', chimney: 'boolean', garage: 'boolean' },
   'facadeDetails?': [{ id: 'string', kind: 'string', floor: 'number', gx: 'number', gy: 'number', side: 'string', width: 'number', 'text?': 'string' }],
-  zones: { residential: 'number', commercial: 'number', industrial: 'number' } };
+  zones: { residential: 'number', commercial: 'number', industrial: 'number' },
+  'campaign?': { levels: { '*': 'number' }, 'maxRepeats?': 'number', 'landmarkOnly?': 'boolean', 'zones?': ['string'] } };
 
 export function validateBuildingDefinition(a: Archetype): string[] {
   const issues = validateConstruction(a.construction);
@@ -232,6 +235,7 @@ export function parseBuildingPackages(files: Record<string, unknown>): readonly 
     try {
       checkShape(input, buildingShape, label);
       const entry = input as BuildingPackage;
+      if (entry.campaign) entry.campaign = parseCampaignPlacement(entry.campaign, `${label}.campaign`);
       if (entry.version !== 1) throw new Error('Unsupported building package version');
       if (seen.has(entry.id)) throw new Error(`Duplicate building id ${entry.id}, first defined in ${seen.get(entry.id)}`);
       seen.set(entry.id, file);

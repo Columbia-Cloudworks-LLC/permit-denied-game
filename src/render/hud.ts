@@ -4,6 +4,7 @@ import { EquipmentClock } from './equipmentClock';
 import { upgradePercent, type UpgradeModifiers } from '../game/upgrades';
 import { MENU_LABELS as L, MODE_LABELS, SITE_LABELS, BRICK_DESCRIPTION } from '../game/menuLabels';
 import { COPY, CASH_TARGET, MATCH_SECONDS } from "../game/constants";
+import type { CampaignLevelId } from "../game/campaign";
 import { PermitLogo } from './permitLogo';
 import { OperatorMenu } from './operatorMenu';
 import type { PermitSound } from './permitIntro';
@@ -11,7 +12,23 @@ import { DEBUG_GROUPS, type DebugView, type DebugToggle } from "../debug/view";
 import { type DistrictId, type SessionKind } from "../game/session";
 import { createDebugBinderState, type BinderTab } from '../debug/binderState';
 
-export type OverlayMode = "none" | "title" | "pause" | "upgrade" | "results";
+export type OverlayMode = "none" | "title" | "pause" | "upgrade" | "results" | "briefing";
+
+export interface CampaignHud {
+  levelIndex: number;
+  levelName: string;
+  landmarkName: string;
+  dollarTarget: number;
+  levelEarned: number;
+  campaignEarned: number;
+  landmarkProgress: number;
+  landmarkReady: boolean;
+  dollarsReady: boolean;
+  briefing: string;
+  victory: boolean;
+  complete: boolean;
+  levelId?: CampaignLevelId;
+}
 
 export interface HudState {
   hasYard: boolean;
@@ -34,6 +51,7 @@ export interface HudState {
   overlay: OverlayMode;
   death: string | null;
   won: boolean;
+  campaign?: CampaignHud;
 }
 
 export class Hud {
@@ -62,6 +80,10 @@ export class Hud {
   onMenu?: () => void;
   onTitle?: () => void;
   onStart?: (kind: SessionKind, district: DistrictId) => void;
+  onBeginLevel?: () => void;
+  onNextLevel?: () => void;
+  onRetryLevel?: () => void;
+  onNewCampaign?: () => void;
   onClick?: () => void;
   onUnlockSound?: () => Promise<void>;
   onTitleSound?: (kind: PermitSound, index: number) => void;
@@ -86,6 +108,11 @@ export class Hud {
       <div class="top">
         <div id="hud-permit"></div>
         <div class="stat cash-stat"><span class="instrument-label">Cash</span><div id="hud-cash"></div><span id="cash-target" class="cash-target">Target $${CASH_TARGET.toLocaleString('en-US')}</span></div>
+        <div class="stat campaign-stat" id="hud-campaign" hidden>
+          <span class="instrument-label" id="hud-level-name">Level</span>
+          <strong id="hud-campaign-dollars"></strong>
+          <span id="hud-landmark" class="cash-target"></span>
+        </div>
         <div class="stat clock-stat"><span class="instrument-label" id="hud-clock-label">County Clock</span><div id="hud-time"></div></div>
         <div class="hud-actions"><button type="button" id="debug-toggle" aria-expanded="false" aria-controls="debug-panel">${L.debug}</button><button type="button" id="hud-menu">${L.pause}</button></div>
       </div>
@@ -187,7 +214,9 @@ export class Hud {
     const cash = '$' + Math.max(0, Math.floor(s.cash)).toLocaleString('en-US');
     text('#mobile-cash', cash);
     this.root.querySelector('#mobile-cash')!.classList.toggle('long-value', cash.length > 10);
-    text('#mobile-target', elapsedClock ? 'Cash' : `of $${CASH_TARGET.toLocaleString('en-US')}`);
+    text('#mobile-target', s.campaign
+      ? `${s.campaign.levelIndex}/7 ${s.campaign.dollarsReady ? 'CASH DONE' : `of $${s.campaign.dollarTarget.toLocaleString('en-US')}`}`
+      : elapsedClock ? 'Cash' : `of $${CASH_TARGET.toLocaleString('en-US')}`);
     const time = clockValue(elapsedClock ? s.elapsed : s.timeLeft, elapsedClock);
     text('#mobile-clock', time.display);
     this.root.querySelector('#mobile-clock')!.setAttribute('aria-label', time.accessible);
@@ -202,15 +231,18 @@ export class Hud {
     }
     text('#mobile-warning', advisory);
     this.root.querySelector<HTMLElement>('#mobile-warning')!.hidden = !advisory;
-    text('#mobile-job', s.job ? s.job.paid ? `Demolition complete · +$${s.job.payout}` : `Demolition · ${Math.floor(s.job.progress * 100)}% / 90%` : '');
-    this.root.querySelector<HTMLElement>('#mobile-job')!.hidden = !s.job;
+    const mobileJob = s.campaign
+      ? `${s.campaign.landmarkName} ${Math.floor(s.campaign.landmarkProgress * 100)}%${s.campaign.landmarkReady ? ' DOWN' : ''}`
+      : s.job ? s.job.paid ? `Demolition complete · +$${s.job.payout}` : `Demolition · ${Math.floor(s.job.progress * 100)}% / 90%` : '';
+    text('#mobile-job', mobileJob);
+    this.root.querySelector<HTMLElement>('#mobile-job')!.hidden = !mobileJob;
     const blade = this.root.querySelector<HTMLButtonElement>('.touch-blade');
     if (blade) {
       blade.classList.toggle('engaged', s.bladeDown);
       blade.setAttribute('aria-label', s.bladeDown ? 'Powered blade engaged; release to finish push' : 'Hold powered blade');
       text('.touch-blade', s.bladeDown ? 'BLADE DOWN' : 'POWER BLADE');
     }
-    text('.equipment-details', `Blade ${s.upgradeModifiers.bladeMul.toFixed(2)}× · Engine ${s.upgradeModifiers.engineMul.toFixed(2)}× · Push ${s.upgradeModifiers.pushMul.toFixed(2)}×\n\n${s.job ? s.job.instruction + '\nRemove 90% of the structure.' : s.session === 'challenge' ? `Earn $${CASH_TARGET.toLocaleString('en-US')} before the county clock expires.` : 'Sandbox · demolish freely.'}`);
+    text('.equipment-details', `Blade ${s.upgradeModifiers.bladeMul.toFixed(2)}× · Engine ${s.upgradeModifiers.engineMul.toFixed(2)}× · Push ${s.upgradeModifiers.pushMul.toFixed(2)}×\n\n${s.job ? s.job.instruction + '\nRemove 90% of the structure.' : s.campaign ? `${s.campaign.levelName}: demolish ${s.campaign.landmarkName} and earn $${s.campaign.dollarTarget.toLocaleString('en-US')}.` : s.session === 'challenge' ? `Earn $${CASH_TARGET.toLocaleString('en-US')} before the county clock expires.` : 'Sandbox · demolish freely.'}`);
   }
 
   private bindDebugMenu(): void {
@@ -402,8 +434,19 @@ export class Hud {
       el.hidden = s.session !== "sandbox";
     });
     const elapsedClock = s.session === 'sandbox' || !!s.job;
-    this.cashCounter.update(s.cash);
-    this.cashTarget.hidden = elapsedClock;
+    this.cashCounter.update(s.campaign ? Math.floor(s.campaign.levelEarned) : s.cash);
+    this.cashTarget.hidden = elapsedClock && !s.campaign;
+    const campaignEl = this.root.querySelector<HTMLElement>('#hud-campaign')!;
+    campaignEl.hidden = !s.campaign;
+    if (s.campaign) {
+      this.cashTarget.textContent = `of $${s.campaign.dollarTarget.toLocaleString('en-US')} ${s.campaign.dollarsReady ? 'DONE' : ''}`;
+      this.root.querySelector('#hud-level-name')!.textContent = `${s.campaign.levelIndex}/7 ${s.campaign.levelName}`;
+      this.root.querySelector('#hud-campaign-dollars')!.textContent = `$${Math.floor(s.campaign.levelEarned).toLocaleString('en-US')}`;
+      this.root.querySelector('#hud-landmark')!.textContent =
+        `${s.campaign.landmarkName} ${Math.floor(s.campaign.landmarkProgress * 100)}%${s.campaign.landmarkReady ? ' DOWN' : ''}`;
+    } else if (!elapsedClock) {
+      this.cashTarget.textContent = `Target $${CASH_TARGET.toLocaleString('en-US')}`;
+    }
     this.clock.update(elapsedClock ? s.elapsed : s.timeLeft, elapsedClock);
     this.paintSessionBar(s.session, s.district);
     this.bladeEl.textContent = s.bladeDown ? COPY.bladeDown : COPY.bladeUp;
@@ -430,7 +473,7 @@ export class Hud {
     resetTest.hidden = !s.hasYard;
     resetTest.textContent = s.focusedTest ? 'Reset Test' : 'Reset Entire Yard';
     this.root.querySelector<HTMLButtonElement>('[data-act="restart"]')!.textContent = s.hasYard ? resetTest.textContent : L.restart;
-    this.root.querySelector<HTMLElement>('[data-act="newseed"]')!.hidden = s.hasYard;
+    this.root.querySelector<HTMLElement>('[data-act="newseed"]')!.hidden = s.hasYard || !!s.campaign;
     this.root.classList.toggle('modal-open', modal);
     document.querySelector<HTMLElement>('#game-root')!.inert = modal;
     for (const selector of ['.top', '.mobile-hud', '.instrument-deck', '#touch-controls']) {
@@ -470,14 +513,30 @@ export class Hud {
           <button type="button" data-up="engine">2 · ${L.engine} ${upgradePercent('engine')}</button>
           <button type="button" data-up="push">3 · ${L.push} ${upgradePercent('push')}</button>
         </div>`;
+    } else if (s.overlay === "briefing" && s.campaign) {
+      this.panel.innerHTML = `
+        <h2 id="result-heading">${s.campaign.levelName}</h2>
+        <p class="campaign-briefing">${s.campaign.briefing.replaceAll('\n', '<br>')}</p>
+        <div class="choices">
+          <button class="primary" type="button" data-act="begin">${L.beginLevel}</button>
+        </div>`;
     } else {
-      const headline = s.won ? "PERMIT DENIED" : (s.death ?? "COUNTY CLOCK");
+      const campaign = s.campaign;
+      const headline = campaign?.victory ? "COUNTY CLOSED" : s.won ? "LEVEL CLEARED" : (s.death ?? "COUNTY CLOCK");
+      const body = campaign
+        ? `${campaign.levelName} · $${Math.floor(campaign.levelEarned).toLocaleString('en-US')} / $${campaign.dollarTarget.toLocaleString('en-US')}<br>${campaign.landmarkName} ${campaign.landmarkReady ? 'DOWN' : `${Math.floor(campaign.landmarkProgress * 100)}%`}${campaign.victory ? `<br>Campaign total $${Math.floor(campaign.campaignEarned).toLocaleString('en-US')}` : ''}`
+        : `CASH $${Math.floor(s.cash)} &nbsp; TIME ${formatTime(MATCH_SECONDS - s.timeLeft)}`;
+      const actions = campaign?.victory
+        ? `<button class="primary" type="button" data-act="new-campaign">${L.newCampaign}</button><button type="button" data-act="title">${L.mainMenu}</button>`
+        : campaign && s.won
+          ? `<button class="primary" type="button" data-act="next">${L.nextLevel}</button><button type="button" data-act="title">${L.mainMenu}</button>`
+          : campaign
+            ? `<button class="primary" type="button" data-act="retry">${L.retryLevel}</button><button type="button" data-act="title">${L.mainMenu}</button>`
+            : `<button class="primary" type="button" data-act="restart">${L.restart}</button><button type="button" data-act="title">${L.mainMenu}</button>`;
       this.panel.innerHTML = `
         <h2 id="result-heading">${headline}</h2>
-        <p>CASH $${Math.floor(s.cash)} &nbsp; TIME ${formatTime(MATCH_SECONDS - s.timeLeft)}</p>
-        <div class="choices">
-          <button class="primary" type="button" data-act="restart">${L.restart}</button><button type="button" data-act="title">${L.mainMenu}</button>
-        </div>`;
+        <p>${body}</p>
+        <div class="choices">${actions}</div>`;
     }
     this.panel.focus();
     this.panel.querySelectorAll("button").forEach((btn) => {
@@ -490,6 +549,10 @@ export class Hud {
         if (act === "resume") this.onResume?.();
         if (act === "restart") this.onRestart?.();
         if (act === "newseed") this.onNewSeed?.();
+        if (act === "begin") this.onBeginLevel?.();
+        if (act === "next") this.onNextLevel?.();
+        if (act === "retry") this.onRetryLevel?.();
+        if (act === "new-campaign") this.onNewCampaign?.();
       });
     });
   }

@@ -82,5 +82,14 @@
       "side": "south",
       "width": 3
     }
-  ]
+  ],
+  "campaign": {
+    "levels": {
+      "village": 2,
+      "township": 2,
+      "suburb": 2,
+      "city-borough": 2,
+      "city-downtown": 2
+    }
+  }
 }

@@ -364,6 +364,10 @@ dt { color: #d9b96f; font: bold 11px/1.5 var(--mono); } dd { margin: 0; color: #
 .cash-symbol { margin-right: 3px; }
 .cash-comma { width: .32em; }
 .cash-target { display: block; margin-top: 4px; font: 10px/1.3 var(--mono); color: #c0bea3; }
+.campaign-stat { min-width: 140px; }
+.campaign-stat strong { font-size: 16px; }
+.campaign-briefing { white-space: pre-line; }
+#landmark-pointer { position: absolute; width: 0; height: 0; pointer-events: none; }
 .equipment-clock { gap: 3px; padding: 5px 8px; color: #efbb59; }
 .clock-digit { display: block; width: 16px; height: 30px; flex: none; }
 .clock-colon { width: 6px; height: 30px; flex: none; fill: currentColor; }
