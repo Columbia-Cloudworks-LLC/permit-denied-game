@@ -8,6 +8,9 @@ export async function staticDeploymentFiles(directory) {
   const files = [{ file: '.vercel/output/config.json', data: Buffer.from(JSON.stringify({
     version: 3,
     routes: [
+      { src: '/(.*)', headers: { 'referrer-policy': 'no-referrer' }, continue: true },
+      { src: '/privacy/?', dest: '/privacy/index.html', headers: { 'cache-control': 'no-cache' } },
+      { src: '/terms/?', dest: '/terms/index.html', headers: { 'cache-control': 'no-cache' } },
       { src: '/assets/(.*)', headers: { 'cache-control': 'public, max-age=31536000, immutable' }, continue: true },
       { src: '/catalog', status: 308, headers: { Location: '/catalog/' } },
       { src: '/catalog/', dest: '/catalog/index.html', headers: { 'cache-control': 'no-cache' } },

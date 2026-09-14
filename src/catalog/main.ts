@@ -1,4 +1,6 @@
 import './style.css';
+import { initPrivacy, analyticsEvent } from '../privacy/privacy';
+initPrivacy(true);
 import { searchPage, type Card, type Tree } from './search';
 
 interface Frame { file: string; width: number; height: number; label: string; seconds: number }
@@ -99,6 +101,7 @@ async function openAsset(card: Card, params?: URLSearchParams) {
   const epoch = ++viewerEpoch;
   try {
     const data = await load<Detail>(card.detail); if (epoch !== viewerEpoch) return;
+    analyticsEvent('catalog_asset_opened', { asset: data.id });
     detail = data; element('viewer-title').textContent = data.name; element('asset-id').textContent = data.id;
     variantSelect.replaceChildren(); data.variants.forEach(v => addOption(variantSelect, String(v.variant), `Variant ${v.variant + 1}`));
     if (data.variants.some(v => String(v.variant) === params?.get('variant'))) variantSelect.value = params!.get('variant')!;

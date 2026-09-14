@@ -1,3 +1,4 @@
+import { privacyTestSetup } from './privacy-test-setup.mjs';
 import { chromium } from 'playwright';
 import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
@@ -8,6 +9,7 @@ await mkdir(output, { recursive: true });
 const browser = await chromium.launch({ headless: true });
 const errors = [], results = [];
 const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+await privacyTestSetup(page);
 page.on('pageerror', e => errors.push(e.message));
 const button = name => page.getByRole('button', { name, exact: true });
 const tab = name => page.getByRole('tab', { name, exact: true });
@@ -139,6 +141,7 @@ try {
   for (const [width, height] of [[390, 844], [844, 390], [360, 640], [640, 360]]) {
     const mobile = await browser.newPage({ viewport: { width, height }, isMobile: true, hasTouch: true });
     mobile.on('pageerror', e => errors.push(e.message));
+    await privacyTestSetup(mobile);
     await mobile.goto(base + '/?testAsset=vehicle:bus&controls=1'); await mobile.waitForFunction(() => window.__pd);
     const geometry = await mobile.evaluate(() => {
       const rect = s => { const r = document.querySelector(s).getBoundingClientRect(); return { x: r.x, y: r.y, right: r.right, bottom: r.bottom }; };

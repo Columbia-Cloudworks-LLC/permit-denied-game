@@ -21,6 +21,13 @@ for (let attempt = 0; attempt < 12; attempt++) {
     if (!script.ok || !client.includes(`"${version}"`)) throw new Error('Production version does not match this release');
     if (!process.env.DEPLOY_SHA) throw new Error('DEPLOY_SHA is required to verify the catalog release');
     await verifyCatalogProduction('https://permitdenied.app', { version, commit: process.env.DEPLOY_SHA });
+    for (const [path, title] of [['privacy', 'Privacy Policy'], ['terms', 'Terms of Use']]) {
+      const policy = await fetch(`https://permitdenied.app/${path}`, { cache: 'no-store', signal: AbortSignal.timeout(15000) });
+      const body = await policy.text();
+      if (!policy.ok || !body.includes(`<h1>${title}</h1>`) || body.includes('id="game-root"')) throw new Error(`Production ${path} route is not the legal page`);
+    }
+    const analytics = await fetch('https://permitdenied.app/_vercel/insights/script.js', { signal: AbortSignal.timeout(15000) });
+    if (!analytics.ok || !(analytics.headers.get('content-type') || '').includes('javascript') || !(await analytics.text()).includes('beforeSend')) throw new Error('Production analytics script route is unavailable');
     console.log(`Production ${version} and Facebook App ID verified`);
     process.exit(0);
   } catch (error) { lastError = error; }

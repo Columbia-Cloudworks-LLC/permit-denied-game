@@ -1,4 +1,5 @@
 import { testVehicleImpact } from '../world/testYard';
+import { ensureTerms, privacyOpen, termsAccepted, setAnalyticsTestSession, RunAnalytics } from '../privacy/privacy';
 import { testMapSearch, type TestMapRequest } from '../world/testMapRequest';
 import { boxBounds, vehicleBoxes } from '../vehicle/world';
 import { upgradeModifiers } from './upgrades';
@@ -59,6 +60,7 @@ import {
 export type GameMode = PlayMode;
 
 export class Game {
+  private readonly analytics = new RunAnalytics();
   private app!: Application;
   private readonly input = new Input();
   private touch?: TouchControls;
@@ -266,6 +268,8 @@ export class Game {
   }
 
   reset(kind: "same" | "new" = "same"): void {
+    setAnalyticsTestSession(!!this.rules.testMap || !!this.rules.towerTest || this.perf.enabled);
+    this.analytics.reset(this.elapsed > 0);
     this.towerOverview = true;
     const keepSetup = !!this.rules.testMap;
     const frameKey = this.yardFocus?.key;
@@ -363,6 +367,12 @@ export class Game {
   }
 
   private frame(realDt: number): void {
+    if (!termsAccepted() && this.mode !== 'title' && !privacyOpen()) {
+      void ensureTerms().then(yes => { if (!yes) this.mode = 'title'; });
+    }
+    if (privacyOpen() || (!termsAccepted() && this.mode !== 'title')) {
+      this.releaseControls(); this.touch?.setBlocked(true); this.audio.hush(); this.acc = 0; this.draw(0); return;
+    }
     this.touch?.setBlocked(this.mode !== 'play' || this.renderer.debug.freeze);
     const now = performance.now();
     const frameMs = this.perf.markFrameStart(now);
@@ -447,6 +457,9 @@ export class Game {
   private lastMetrics = { buildingsStepped: 0, buildingsSkipped: 0, collisionRebuilds: 0 };
 
   private step(dt: number): void {
+    if (!termsAccepted() || privacyOpen()) return;
+    setAnalyticsTestSession(!!this.rules.testMap || !!this.rules.towerTest || this.perf.enabled || this.renderer.debug.freeze);
+    this.analytics.step(dt, this.rules.job ? 'brick-job' : this.rules.kind, this.rules.district);
     const drive = this.input.axis();
     stepDozer(
       this.dozer,
@@ -524,6 +537,7 @@ export class Game {
   }
 
   private finish(death: string, won: boolean): void {
+    this.analytics.finish(won);
     this.mode = "results";
     this.death = won ? null : death;
     if (won) this.death = null;
