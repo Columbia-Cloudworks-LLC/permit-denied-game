@@ -244,8 +244,7 @@
   ],
   "campaign": {
     "levels": {
-      "city-borough": 2,
-      "city-downtown": 2
+      "suburb": 2
     }
   }
 }

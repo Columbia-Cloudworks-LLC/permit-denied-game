@@ -58,8 +58,7 @@
   ],
   "campaign": {
     "levels": {
-      "township": 1,
-      "city-borough": 1
+      "township": 1
     }
   }
 }

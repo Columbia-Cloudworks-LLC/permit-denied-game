@@ -1,0 +1,92 @@
+{
+  "version": 1,
+  "id": "office-stepped-ten",
+  "label": "OFFICE STEPPED TEN",
+  "w": 10,
+  "d": 7,
+  "floors": 10,
+  "kind": "shop",
+  "construction": "concrete-bearing",
+  "roof": "flat",
+  "theme": "civic",
+  "windowStride": 3,
+  "features": {
+    "porch": false,
+    "awning": false,
+    "parapet": true,
+    "chimney": false,
+    "garage": false
+  },
+  "zones": {
+    "residential": 0,
+    "commercial": 0,
+    "industrial": 0
+  },
+  "traits": {
+    "use": [
+      "midrise-office"
+    ],
+    "form": [
+      "stepped",
+      "setback"
+    ],
+    "style": [
+      "civic"
+    ],
+    "scale": [
+      "mid-rise"
+    ]
+  },
+  "partitions": true,
+  "campaign": {
+    "family": "midrise-office",
+    "levels": {
+      "city-borough": 2,
+      "city-downtown": 2
+    }
+  },
+  "openings": [
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.5,
+      "kind": "door"
+    }
+  ],
+  "sections": [
+    {
+      "id": "base",
+      "role": "base",
+      "x": 0,
+      "y": 0,
+      "w": 10,
+      "d": 7,
+      "floor": 0,
+      "floors": 4,
+      "layout": "base.layout.json"
+    },
+    {
+      "id": "middle",
+      "role": "middle",
+      "x": 1,
+      "y": 1,
+      "w": 8,
+      "d": 5,
+      "floor": 4,
+      "floors": 3,
+      "layout": "middle.layout.json"
+    },
+    {
+      "id": "top",
+      "role": "top",
+      "x": 2,
+      "y": 2,
+      "w": 6,
+      "d": 3,
+      "floor": 7,
+      "floors": 3,
+      "layout": "top.layout.json"
+    }
+  ],
+  "connections": []
+}

@@ -1,0 +1,266 @@
+{
+  "version": 1,
+  "id": "terrace-apartments",
+  "label": "TERRACE APARTMENTS",
+  "w": 6,
+  "d": 8,
+  "floors": 8,
+  "kind": "house",
+  "construction": "concrete-bearing",
+  "roof": "flat",
+  "theme": "walkup",
+  "windowStride": 2,
+  "features": {
+    "porch": false,
+    "awning": false,
+    "parapet": true,
+    "chimney": true,
+    "garage": false
+  },
+  "zones": {
+    "residential": 0,
+    "commercial": 0,
+    "industrial": 0
+  },
+  "traits": {
+    "use": [
+      "urban-apartment"
+    ],
+    "form": [
+      "side-stair",
+      "deep-stack"
+    ],
+    "style": [
+      "walkup"
+    ],
+    "scale": [
+      "mid-rise"
+    ]
+  },
+  "partitions": true,
+  "campaign": {
+    "family": "urban-apartment",
+    "levels": {
+      "city-borough": 2,
+      "city-downtown": 2
+    }
+  },
+  "openings": [
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.16,
+      "kind": "door"
+    }
+  ],
+  "facadeDetails": [
+    {
+      "id": "escape-1",
+      "kind": "fire-escape",
+      "floor": 1,
+      "gx": 4,
+      "gy": 7,
+      "side": "south",
+      "width": 2
+    },
+    {
+      "id": "escape-2",
+      "kind": "fire-escape",
+      "floor": 3,
+      "gx": 4,
+      "gy": 7,
+      "side": "south",
+      "width": 2
+    }
+  ],
+  "sections": [
+    {
+      "id": "stair-hall",
+      "role": "shared-circulation",
+      "x": 0,
+      "y": 0,
+      "w": 2,
+      "d": 8,
+      "floor": 0,
+      "floors": 8,
+      "layout": "stair-hall.layout.json"
+    },
+    {
+      "id": "home",
+      "role": "apartments",
+      "x": 2,
+      "y": 0,
+      "w": 4,
+      "d": 8,
+      "floor": 0,
+      "floors": 8,
+      "layout": "home.layout.json"
+    }
+  ],
+  "connections": [
+    {
+      "a": "home/0/living",
+      "b": "stair-hall/0/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "home/1/living",
+      "b": "stair-hall/1/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "home/2/living",
+      "b": "stair-hall/2/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "home/3/living",
+      "b": "stair-hall/3/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "home/4/living",
+      "b": "stair-hall/4/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "home/5/living",
+      "b": "stair-hall/5/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "home/6/living",
+      "b": "stair-hall/6/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "home/7/living",
+      "b": "stair-hall/7/hall",
+      "at": 0.5,
+      "width": 0.3
+    }
+  ],
+  "stairs": [
+    {
+      "a": "stair-hall/0/hall",
+      "b": "stair-hall/1/hall",
+      "x": 0.008333333333333333,
+      "y": 0.00625,
+      "w": 0.15,
+      "d": 0.1125,
+      "rotation": 90
+    },
+    {
+      "a": "stair-hall/1/hall",
+      "b": "stair-hall/2/hall",
+      "x": 0.008333333333333333,
+      "y": 0.13125,
+      "w": 0.15,
+      "d": 0.1125,
+      "rotation": 90
+    },
+    {
+      "a": "stair-hall/2/hall",
+      "b": "stair-hall/3/hall",
+      "x": 0.008333333333333333,
+      "y": 0.00625,
+      "w": 0.15,
+      "d": 0.1125,
+      "rotation": 90
+    },
+    {
+      "a": "stair-hall/3/hall",
+      "b": "stair-hall/4/hall",
+      "x": 0.008333333333333333,
+      "y": 0.13125,
+      "w": 0.15,
+      "d": 0.1125,
+      "rotation": 90
+    },
+    {
+      "a": "stair-hall/4/hall",
+      "b": "stair-hall/5/hall",
+      "x": 0.008333333333333333,
+      "y": 0.00625,
+      "w": 0.15,
+      "d": 0.1125,
+      "rotation": 90
+    },
+    {
+      "a": "stair-hall/5/hall",
+      "b": "stair-hall/6/hall",
+      "x": 0.008333333333333333,
+      "y": 0.13125,
+      "w": 0.15,
+      "d": 0.1125,
+      "rotation": 90
+    },
+    {
+      "a": "stair-hall/6/hall",
+      "b": "stair-hall/7/hall",
+      "x": 0.008333333333333333,
+      "y": 0.00625,
+      "w": 0.15,
+      "d": 0.1125,
+      "rotation": 90
+    }
+  ],
+  "floorVoids": [
+    {
+      "floor": 1,
+      "x": 0,
+      "y": 0,
+      "w": 1,
+      "d": 1
+    },
+    {
+      "floor": 2,
+      "x": 0,
+      "y": 1,
+      "w": 1,
+      "d": 1
+    },
+    {
+      "floor": 3,
+      "x": 0,
+      "y": 0,
+      "w": 1,
+      "d": 1
+    },
+    {
+      "floor": 4,
+      "x": 0,
+      "y": 1,
+      "w": 1,
+      "d": 1
+    },
+    {
+      "floor": 5,
+      "x": 0,
+      "y": 0,
+      "w": 1,
+      "d": 1
+    },
+    {
+      "floor": 6,
+      "x": 0,
+      "y": 1,
+      "w": 1,
+      "d": 1
+    },
+    {
+      "floor": 7,
+      "x": 0,
+      "y": 0,
+      "w": 1,
+      "d": 1
+    }
+  ]
+}

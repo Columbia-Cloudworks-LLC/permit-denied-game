@@ -47,9 +47,7 @@
   "campaign": {
     "levels": {
       "village": 2,
-      "township": 1,
-      "city-borough": 2,
-      "city-downtown": 2
+      "township": 1
     }
   }
 }

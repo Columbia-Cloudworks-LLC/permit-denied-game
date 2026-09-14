@@ -7,7 +7,7 @@ it('preserves every legacy definition byte-for-byte after resolving local layout
   expect(ARCHETYPES.filter(a => a.generationOrder !== undefined).map(a => {
     const { generationOrder: _order, ...original } = a;
     return [a.id, hash(JSON.stringify(original))];
-  })).toEqual([["rivertown","8b43b088"],["steel-warehouse","ad172fb6"],["ranch","35cd95bb"],["cottage","b9aa2835"],["colonial","f14f40d6"],["walkup","e67f866e"],["porch-house","fc5e53e"],["storefront","b8f7d0f2"],["corner-shop","5a69bacf"],["civic","db0f92b"],["warehouse","936b3704"]]);
+  })).toEqual([["rivertown","8b43b088"],["steel-warehouse","1b9773e7"],["ranch","35cd95bb"],["cottage","b9aa2835"],["colonial","f14f40d6"],["walkup","95592ee1"],["porch-house","fc5e53e"],["storefront","24768003"],["corner-shop","b0608453"],["civic","5c37fec3"],["warehouse","5e902920"]]);
 });
 it.each([['classic','a821a06'],['d10','8e56a3d9'],['d30','c28cf9d6'],['d100','f80d7896']] as const)('preserves seed 19 positions, cells, roofs, fixtures and slabs in %s', (district, expected) => {
   const t = createTown({ district, seed: 19 });

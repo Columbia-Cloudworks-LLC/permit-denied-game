@@ -17,6 +17,15 @@ export function isCampaignLevelId(value: string): value is CampaignLevelId {
   return (CAMPAIGN_LEVEL_IDS as readonly string[]).includes(value);
 }
 
+export interface CampaignLotClass {
+  id: string;
+  weight: number;
+  minFront: number;
+  maxFront: number;
+  minDepth: number;
+  maxDepth: number;
+}
+
 export interface CampaignParcelProfile {
   minFront: number;
   maxFront: number;
@@ -32,6 +41,23 @@ export interface CampaignParcelProfile {
   setbackRear: [number, number];
   blockW: number;
   blockD: number;
+  lotClasses?: readonly CampaignLotClass[];
+}
+
+export interface CampaignBandRule {
+  minFloors: number;
+  maxFloors: number;
+  minShare?: number;
+  maxShare?: number;
+  forbid?: boolean;
+}
+
+export interface CampaignComposition {
+  minDistinctVariants: number;
+  maxVariantShare: number;
+  maxFamilyShare: number;
+  placementAttempts: number;
+  bands: readonly CampaignBandRule[];
 }
 
 export interface CampaignGenerationProfile {
@@ -57,6 +83,7 @@ export interface CampaignLevelDef {
   dollarTarget: number;
   timeLimit: number;
   generation: CampaignGenerationProfile;
+  composition?: CampaignComposition;
 }
 
 function parcel(
@@ -67,6 +94,7 @@ function parcel(
   lotGap: number,
   setbacks: { front: [number, number]; side: [number, number]; rear: [number, number] },
   block: { w: number; d: number },
+  lotClasses?: readonly CampaignLotClass[],
 ): CampaignParcelProfile {
   return {
     minFront,
@@ -83,8 +111,16 @@ function parcel(
     setbackRear: setbacks.rear,
     blockW: block.w,
     blockD: block.d,
+    lotClasses,
   };
 }
+
+const CITY_COMPOSITION_BASE = {
+  minDistinctVariants: 6,
+  maxVariantShare: 0.2,
+  maxFamilyShare: 0.4,
+  placementAttempts: 8,
+} as const;
 
 export const CAMPAIGN_LEVELS: readonly CampaignLevelDef[] = [
   {
@@ -157,9 +193,20 @@ export const CAMPAIGN_LEVELS: readonly CampaignLevelDef[] = [
     generation: {
       buildingCount: 32,
       topology: 'tjunction',
-      parcel: parcel(7.6, 10.2, 9.2, 12.0, 0.28, { front: [0.7, 1.05], side: [0.35, 0.6], rear: [0.6, 0.95] }, { w: 34, d: 30 }),
+      parcel: parcel(8.2, 14.2, 9.6, 14.6, 0.28, { front: [0.7, 1.05], side: [0.35, 0.6], rear: [0.6, 0.95] }, { w: 38, d: 34 }, [
+        { id: 'compact', weight: 5, minFront: 8.4, maxFront: 10.0, minDepth: 10.4, maxDepth: 12.0 },
+        { id: 'standard', weight: 5, minFront: 10.0, maxFront: 12.2, minDepth: 11.2, maxDepth: 13.2 },
+        { id: 'tower', weight: 2, minFront: 12.2, maxFront: 14.4, minDepth: 12.6, maxDepth: 14.8 },
+      ]),
       dressingBudget: 360,
       propsPerLot: 5,
+    },
+    composition: {
+      ...CITY_COMPOSITION_BASE,
+      bands: [
+        { minFloors: 5, maxFloors: 12, minShare: 0.8 },
+        { minFloors: 20, maxFloors: 64, forbid: true },
+      ],
     },
   },
   {
@@ -172,9 +219,20 @@ export const CAMPAIGN_LEVELS: readonly CampaignLevelDef[] = [
     generation: {
       buildingCount: 36,
       topology: 'crossroads',
-      parcel: parcel(6.8, 9.2, 8.4, 11.0, 0.22, { front: [0.45, 0.75], side: [0.22, 0.42], rear: [0.4, 0.7] }, { w: 34, d: 30 }),
+      parcel: parcel(8.4, 14.6, 9.4, 14.8, 0.22, { front: [0.45, 0.75], side: [0.22, 0.42], rear: [0.4, 0.7] }, { w: 40, d: 36 }, [
+        { id: 'compact', weight: 3, minFront: 8.6, maxFront: 10.2, minDepth: 10.2, maxDepth: 11.8 },
+        { id: 'standard', weight: 3, minFront: 10.2, maxFront: 12.0, minDepth: 11.0, maxDepth: 13.0 },
+        { id: 'tower', weight: 5, minFront: 12.4, maxFront: 14.8, minDepth: 12.8, maxDepth: 15.0 },
+      ]),
       dressingBudget: 480,
       propsPerLot: 4,
+    },
+    composition: {
+      ...CITY_COMPOSITION_BASE,
+      bands: [
+        { minFloors: 5, maxFloors: 64, minShare: 0.95 },
+        { minFloors: 20, maxFloors: 64, minShare: 0.3 },
+      ],
     },
   },
   {

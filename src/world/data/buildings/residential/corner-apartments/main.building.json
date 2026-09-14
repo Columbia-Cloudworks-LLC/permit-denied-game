@@ -1,0 +1,305 @@
+{
+  "version": 1,
+  "id": "corner-apartments",
+  "label": "CORNER APARTMENTS",
+  "w": 8,
+  "d": 8,
+  "floors": 8,
+  "kind": "house",
+  "construction": "brick-mixed-use",
+  "roof": "flat",
+  "theme": "walkup",
+  "windowStride": 2,
+  "features": {
+    "porch": false,
+    "awning": false,
+    "parapet": true,
+    "chimney": false,
+    "garage": false
+  },
+  "zones": {
+    "residential": 0,
+    "commercial": 0,
+    "industrial": 0
+  },
+  "traits": {
+    "use": [
+      "courtyard-apartment"
+    ],
+    "form": [
+      "l-plan",
+      "corner-entry"
+    ],
+    "style": [
+      "walkup"
+    ],
+    "scale": [
+      "mid-rise"
+    ]
+  },
+  "partitions": true,
+  "campaign": {
+    "family": "courtyard-apartment",
+    "levels": {
+      "city-borough": 2,
+      "city-downtown": 2
+    }
+  },
+  "openings": [
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.82,
+      "kind": "door"
+    }
+  ],
+  "sections": [
+    {
+      "id": "south",
+      "role": "south-wing",
+      "x": 0,
+      "y": 5,
+      "w": 5,
+      "d": 3,
+      "floor": 0,
+      "floors": 8,
+      "layout": "south.layout.json"
+    },
+    {
+      "id": "stair-hall",
+      "role": "shared-circulation",
+      "x": 5,
+      "y": 5,
+      "w": 3,
+      "d": 3,
+      "floor": 0,
+      "floors": 8,
+      "layout": "stair-hall.layout.json"
+    },
+    {
+      "id": "east",
+      "role": "east-wing",
+      "x": 5,
+      "y": 0,
+      "w": 3,
+      "d": 5,
+      "floor": 0,
+      "floors": 8,
+      "layout": "east.layout.json"
+    }
+  ],
+  "connections": [
+    {
+      "a": "south/0/kitchen",
+      "b": "stair-hall/0/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "east/0/living",
+      "b": "stair-hall/0/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "south/1/kitchen",
+      "b": "stair-hall/1/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "east/1/living",
+      "b": "stair-hall/1/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "south/2/kitchen",
+      "b": "stair-hall/2/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "east/2/living",
+      "b": "stair-hall/2/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "south/3/kitchen",
+      "b": "stair-hall/3/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "east/3/living",
+      "b": "stair-hall/3/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "south/4/kitchen",
+      "b": "stair-hall/4/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "east/4/living",
+      "b": "stair-hall/4/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "south/5/kitchen",
+      "b": "stair-hall/5/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "east/5/living",
+      "b": "stair-hall/5/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "south/6/kitchen",
+      "b": "stair-hall/6/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "east/6/living",
+      "b": "stair-hall/6/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "south/7/kitchen",
+      "b": "stair-hall/7/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "east/7/living",
+      "b": "stair-hall/7/hall",
+      "at": 0.5,
+      "width": 0.3
+    }
+  ],
+  "stairs": [
+    {
+      "a": "stair-hall/0/hall",
+      "b": "stair-hall/1/hall",
+      "x": 0.63125,
+      "y": 0.63125,
+      "w": 0.1125,
+      "d": 0.1125,
+      "rotation": 90
+    },
+    {
+      "a": "stair-hall/1/hall",
+      "b": "stair-hall/2/hall",
+      "x": 0.63125,
+      "y": 0.75625,
+      "w": 0.1125,
+      "d": 0.1125,
+      "rotation": 90
+    },
+    {
+      "a": "stair-hall/2/hall",
+      "b": "stair-hall/3/hall",
+      "x": 0.63125,
+      "y": 0.63125,
+      "w": 0.1125,
+      "d": 0.1125,
+      "rotation": 90
+    },
+    {
+      "a": "stair-hall/3/hall",
+      "b": "stair-hall/4/hall",
+      "x": 0.63125,
+      "y": 0.75625,
+      "w": 0.1125,
+      "d": 0.1125,
+      "rotation": 90
+    },
+    {
+      "a": "stair-hall/4/hall",
+      "b": "stair-hall/5/hall",
+      "x": 0.63125,
+      "y": 0.63125,
+      "w": 0.1125,
+      "d": 0.1125,
+      "rotation": 90
+    },
+    {
+      "a": "stair-hall/5/hall",
+      "b": "stair-hall/6/hall",
+      "x": 0.63125,
+      "y": 0.75625,
+      "w": 0.1125,
+      "d": 0.1125,
+      "rotation": 90
+    },
+    {
+      "a": "stair-hall/6/hall",
+      "b": "stair-hall/7/hall",
+      "x": 0.63125,
+      "y": 0.63125,
+      "w": 0.1125,
+      "d": 0.1125,
+      "rotation": 90
+    }
+  ],
+  "floorVoids": [
+    {
+      "floor": 1,
+      "x": 5,
+      "y": 5,
+      "w": 1,
+      "d": 1
+    },
+    {
+      "floor": 2,
+      "x": 5,
+      "y": 6,
+      "w": 1,
+      "d": 1
+    },
+    {
+      "floor": 3,
+      "x": 5,
+      "y": 5,
+      "w": 1,
+      "d": 1
+    },
+    {
+      "floor": 4,
+      "x": 5,
+      "y": 6,
+      "w": 1,
+      "d": 1
+    },
+    {
+      "floor": 5,
+      "x": 5,
+      "y": 5,
+      "w": 1,
+      "d": 1
+    },
+    {
+      "floor": 6,
+      "x": 5,
+      "y": 6,
+      "w": 1,
+      "d": 1
+    },
+    {
+      "floor": 7,
+      "x": 5,
+      "y": 5,
+      "w": 1,
+      "d": 1
+    }
+  ]
+}

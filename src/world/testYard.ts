@@ -17,7 +17,7 @@ export function populateTestYard(town: Town, request: TestMapRequest = { kind: '
   const assets = discoverYardAssets(), bays = layoutYard(assets);
   const maxX = Math.max(...bays.map(b => b.x + b.w)) + 12;
   const baselineEnd = Math.max(...bays.map(b => b.y + b.d)) + 10;
-  const maxY = baselineEnd + 140;
+  const maxY = baselineEnd + 280;
   town.vehicles = []; town.roadCar=null; town.buildings = []; town.props = []; town.lots = []; town.ground = [];
   town.minX = 0; town.minY = 0; town.maxX = maxX; town.maxY = maxY;
   town.pile = new PileField(0, 0, maxX + 2, maxY + 2);
@@ -107,7 +107,7 @@ export function placementError(town: Town, plan: YardBay[], dozer?: { x: number;
     const issue = yardAssetIssue(b.asset); if (issue) return issue;
     if (plan.slice(index + 1).some(other => overlap(b, other))) return "Batch bays overlap each other.";
     if (![b.x, b.y, b.w, b.d].every(Number.isFinite)) return 'Coordinates must be finite numbers.';
-    if (b.x < 0 || b.y < 8 || b.x + b.w > town.maxX || b.y + b.d > 2000) return 'Outside yard bounds; use the experiment area or a smaller batch.';
+    if (b.x < 0 || b.y < 8 || b.x + b.w > town.maxX || b.y + b.d > 3200) return 'Outside yard bounds; use the experiment area or a smaller batch.';
     if (town.yard?.bays.some(other => overlap(b, other))) return 'Overlaps a reserved test bay. Move into an empty area.';
     if (dozer && overlap(b, { x: dozer.x - 1.5, y: dozer.y - 1.5, w: 3, d: 3 })) return 'Move the dozer out of the placement area.';
     if(town.vehicles.some(v=>vehicleBoxes(v).some(q=>overlap(b,boxBounds(q))))) return 'Vehicle or wreck obstructs this area.';

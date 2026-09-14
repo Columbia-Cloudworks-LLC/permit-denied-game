@@ -1,0 +1,70 @@
+{
+  "version": 1,
+  "id": "office-compact-twelve",
+  "label": "OFFICE COMPACT TWELVE",
+  "w": 6,
+  "d": 6,
+  "floors": 12,
+  "kind": "shop",
+  "construction": "concrete-bearing",
+  "roof": "flat",
+  "theme": "civic",
+  "windowStride": 3,
+  "features": {
+    "porch": false,
+    "awning": false,
+    "parapet": true,
+    "chimney": false,
+    "garage": false
+  },
+  "zones": {
+    "residential": 0,
+    "commercial": 0,
+    "industrial": 0
+  },
+  "traits": {
+    "use": [
+      "midrise-office"
+    ],
+    "form": [
+      "point-tower",
+      "square"
+    ],
+    "style": [
+      "civic"
+    ],
+    "scale": [
+      "mid-rise"
+    ]
+  },
+  "partitions": true,
+  "campaign": {
+    "family": "midrise-office",
+    "levels": {
+      "city-borough": 2,
+      "city-downtown": 2
+    }
+  },
+  "openings": [
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.5,
+      "kind": "door"
+    }
+  ],
+  "sections": [
+    {
+      "id": "tower",
+      "role": "tower",
+      "x": 0,
+      "y": 0,
+      "w": 6,
+      "d": 6,
+      "floor": 0,
+      "floors": 12,
+      "layout": "tower.layout.json"
+    }
+  ],
+  "connections": []
+}

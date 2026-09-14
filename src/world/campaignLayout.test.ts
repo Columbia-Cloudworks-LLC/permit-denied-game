@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { CAMPAIGN_LEVELS } from '../game/campaign';
+import { CAMPAIGN_LEVELS, campaignLevelById } from '../game/campaign';
 import { landmarkDemolitionStatus } from '../game/campaignRun';
 import { availableTownValue, landmarkShare } from '../game/campaignValue';
 import { campaignEligible } from './campaignPlacement';
+import { campaignFamily, evaluateCampaignComposition, heightClass } from './campaignComposition';
 import { generateCampaignLayout } from './campaignLayout';
 import { getAsset } from './catalog';
 import { createTown } from './town';
@@ -63,5 +64,75 @@ describe('campaign generation', () => {
     }
     expect(footprints[0]!.coverage).toBeLessThan(footprints[5]!.coverage);
     expect(footprints[0]!.setback).toBeGreaterThan(footprints[5]!.setback);
+  });
+
+  it('places mid-rise Borough and skyscraper Downtown maps on eight seeds', () => {
+    const seeds = [19, 0x51a11, 77, 1001, 42, 2026, 7, 31415];
+    for (const id of ['city-borough', 'city-downtown'] as const) {
+      const level = campaignLevelById(id);
+      for (const seed of seeds) {
+        const a = generateCampaignLayout(level, seed);
+        const b = generateCampaignLayout(level, seed);
+        expect(a.buildings.map(building => `${building.archetypeId}:${building.x}:${building.y}`))
+          .toEqual(b.buildings.map(building => `${building.archetypeId}:${building.x}:${building.y}`));
+        expect(a.buildings.filter(building => building.campaignLandmark)).toHaveLength(1);
+        expect(a.buildings).toHaveLength(level.generation.buildingCount);
+        const report = evaluateCampaignComposition(a.buildings, level, ARCHETYPES);
+        expect(report.ok, `${id} seed ${seed}: ${report.issues.join('; ')}`).toBe(true);
+        expect(report.ordinary).toBe(level.generation.buildingCount - 1);
+        if (id === 'city-borough') {
+          expect(report.byClass.skyscraper).toBe(0);
+          expect(report.byClass['mid-rise'] / report.ordinary).toBeGreaterThanOrEqual(0.8);
+        } else {
+          const tall = a.buildings.filter(building => !building.campaignLandmark && heightClass(
+            ARCHETYPES.find(entry => entry.id === building.archetypeId)?.floors ?? building.floors,
+          ) !== 'low-rise').length;
+          expect(tall / report.ordinary).toBeGreaterThanOrEqual(0.95);
+          expect(report.byClass.skyscraper / report.ordinary).toBeGreaterThanOrEqual(0.3);
+        }
+        const families = new Set(a.buildings.filter(building => !building.campaignLandmark).map(building => {
+          const def = ARCHETYPES.find(entry => entry.id === building.archetypeId)!;
+          return campaignFamily(def);
+        }));
+        expect(families.size, `${id} seed ${seed} families`).toBeGreaterThanOrEqual(3);
+        const town = createTown({ district: 'd30', seed, campaign: level });
+        expect(validateTown(town).ok, `${id} seed ${seed} ${validateTown(town).issues.map(issue => issue.detail).join('; ')}`).toBe(true);
+        expect(availableTownValue(town)).toBeGreaterThan(level.dollarTarget);
+        expect(landmarkShare(town, level.landmark.structureIds)).toBeLessThan(level.dollarTarget);
+      }
+    }
+  }, 180_000);
+
+  it('keeps city public streets next to the lot cluster', () => {
+    for (const id of ['city-borough', 'city-downtown'] as const) {
+      const level = campaignLevelById(id);
+      const town = createTown({ district: 'd30', seed: 19, campaign: level });
+      const pad = 16;
+      const far = town.network.segments.filter((seg) => {
+        if (seg.roadClass === 'driveway' || seg.roadClass === 'ramp') return false;
+        return [0, 0.25, 0.5, 0.75, 1].every((t) => {
+          const i = Math.min(seg.points.length - 1, Math.round(t * (seg.points.length - 1)));
+          const p = seg.points[i]!;
+          return town.lots.every((lot) => {
+            const dx = Math.max(lot.x - p.x, 0, p.x - lot.x - lot.w);
+            const dy = Math.max(lot.y - p.y, 0, p.y - lot.y - lot.d);
+            return dx * dx + dy * dy > pad * pad;
+          });
+        });
+      });
+      expect(far.length, `${id} unused outer roads`).toBeLessThanOrEqual(1);
+      const bMinX = Math.min(...town.buildings.map((building) => building.x));
+      const bMinY = Math.min(...town.buildings.map((building) => building.y));
+      const bMaxX = Math.max(...town.buildings.map((building) => building.x + building.w * building.cellSize));
+      const bMaxY = Math.max(...town.buildings.map((building) => building.y + building.d * building.cellSize));
+      const rMinX = Math.min(...town.network.nodes.map((node) => node.x));
+      const rMinY = Math.min(...town.network.nodes.map((node) => node.y));
+      const rMaxX = Math.max(...town.network.nodes.map((node) => node.x));
+      const rMaxY = Math.max(...town.network.nodes.map((node) => node.y));
+      expect(rMinX, id).toBeGreaterThan(bMinX - 40);
+      expect(rMinY, id).toBeGreaterThan(bMinY - 40);
+      expect(rMaxX, id).toBeLessThan(bMaxX + 40);
+      expect(rMaxY, id).toBeLessThan(bMaxY + 40);
+    }
   });
 });

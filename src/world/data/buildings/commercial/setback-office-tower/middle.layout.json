@@ -1,0 +1,97 @@
+{
+  "partitions": true,
+  "rooms": [
+    {
+      "id": "workroom",
+      "kind": "production",
+      "floor": 0,
+      "x": 0,
+      "y": 0,
+      "w": 0.75,
+      "d": 1,
+      "finish": "linoleum",
+      "contents": [
+        {
+          "id": "workroom-0",
+          "kind": "office-desk",
+          "x": 0.1,
+          "y": 0.12,
+          "w": 0.3,
+          "d": 0.2,
+          "h": 0.8,
+          "rotation": 0
+        },
+        {
+          "id": "workroom-1",
+          "kind": "office-desk",
+          "x": 0.1,
+          "y": 0.62,
+          "w": 0.3,
+          "d": 0.2,
+          "h": 0.8,
+          "rotation": 0
+        },
+        {
+          "id": "workroom-2",
+          "kind": "office-desk",
+          "x": 0.57,
+          "y": 0.12,
+          "w": 0.3,
+          "d": 0.2,
+          "h": 0.8,
+          "rotation": 0
+        },
+        {
+          "id": "workroom-3",
+          "kind": "office-desk",
+          "x": 0.57,
+          "y": 0.62,
+          "w": 0.3,
+          "d": 0.2,
+          "h": 0.8,
+          "rotation": 0
+        }
+      ]
+    },
+    {
+      "id": "files",
+      "kind": "storage",
+      "floor": 0,
+      "x": 0.75,
+      "y": 0,
+      "w": 0.25,
+      "d": 1,
+      "finish": "linoleum",
+      "contents": [
+        {
+          "id": "files-0",
+          "kind": "filing-cabinet",
+          "x": 0.08,
+          "y": 0.1,
+          "w": 0.12,
+          "d": 0.7,
+          "h": 1.3,
+          "rotation": 0
+        },
+        {
+          "id": "files-1",
+          "kind": "filing-cabinet",
+          "x": 0.48000000000000004,
+          "y": 0.1,
+          "w": 0.12,
+          "d": 0.7,
+          "h": 1.3,
+          "rotation": 0
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "a": "workroom",
+      "b": "files",
+      "at": 0.5,
+      "width": 0.35
+    }
+  ]
+}

@@ -685,16 +685,58 @@ export class Game {
     return this.perf.summary();
   }
 
+  lookAtTown(mode: 'overview' | 'street' | 'open' = 'overview'): void {
+    this.followRoadCamera = false;
+    this.yardFocus = undefined;
+    if (mode === 'street') {
+      this.renderer.showNhood = false;
+      const target = [...this.town.buildings]
+        .filter(building => !building.campaignLandmark)
+        .sort((a, b) => b.floors - a.floors)[0] ?? this.town.buildings[0];
+      if (!target) return;
+      this.dozer = createDozer(
+        target.x + target.w * target.cellSize * 0.55,
+        target.y + 1.1,
+        Math.PI / 2,
+      );
+      return;
+    }
+    if (mode === 'open') {
+      this.renderer.showNhood = false;
+      const buildings = this.town.buildings;
+      if (!buildings.length) return;
+      const maxX = Math.max(...buildings.map(building => building.x + building.w * building.cellSize));
+      const maxY = Math.max(...buildings.map(building => building.y + building.d * building.cellSize));
+      this.dozer = createDozer(maxX + 6, maxY + 6, -Math.PI / 2);
+      return;
+    }
+    this.renderer.showNhood = true;
+  }
+
+  get dozerHidden(): boolean {
+    return this.renderer.dozerHidden;
+  }
+
   private frameNhood(dt: number): void {
     void dt;
-    const pad = 10;
+    const pad = 8;
+    const buildings = this.town.buildings;
+    const minX = buildings.length ? Math.min(...buildings.map(building => building.x)) - pad : this.town.minX - pad;
+    const minY = buildings.length ? Math.min(...buildings.map(building => building.y)) - pad : this.town.minY - pad;
+    const maxX = buildings.length
+      ? Math.max(...buildings.map(building => building.x + building.w * building.cellSize)) + pad
+      : this.town.maxX + pad;
+    const maxY = buildings.length
+      ? Math.max(...buildings.map(building => building.y + building.d * building.cellSize)) + pad
+      : this.town.maxY + pad;
+    const tallest = Math.max(2, ...buildings.map(building => building.floors * 0.45 + 1.5));
     const box = worldBoundsToScreen(
-      this.town.minX - pad,
-      this.town.minY - pad,
-      this.town.maxX - this.town.minX + pad * 2,
-      this.town.maxY - this.town.minY + pad * 2,
+      minX,
+      minY,
+      Math.max(8, maxX - minX),
+      Math.max(8, maxY - minY),
       0,
-      2,
+      tallest,
     );
     const spanX = Math.max(1, box.maxX - box.minX);
     const spanY = Math.max(1, box.maxY - box.minY);

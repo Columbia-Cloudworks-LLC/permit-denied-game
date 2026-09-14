@@ -1,0 +1,277 @@
+{
+  "version": 1,
+  "id": "avenue-apartments",
+  "label": "AVENUE APARTMENTS",
+  "w": 9,
+  "d": 6,
+  "floors": 7,
+  "kind": "house",
+  "construction": "concrete-bearing",
+  "roof": "flat",
+  "theme": "civic",
+  "windowStride": 3,
+  "features": {
+    "porch": false,
+    "awning": false,
+    "parapet": true,
+    "chimney": false,
+    "garage": false
+  },
+  "zones": {
+    "residential": 0,
+    "commercial": 0,
+    "industrial": 0
+  },
+  "traits": {
+    "use": [
+      "urban-apartment"
+    ],
+    "form": [
+      "wide-bar",
+      "center-stair"
+    ],
+    "style": [
+      "civic"
+    ],
+    "scale": [
+      "mid-rise"
+    ]
+  },
+  "partitions": true,
+  "campaign": {
+    "family": "urban-apartment",
+    "levels": {
+      "city-borough": 2,
+      "city-downtown": 2
+    }
+  },
+  "openings": [
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.5,
+      "kind": "door"
+    }
+  ],
+  "sections": [
+    {
+      "id": "west-home",
+      "role": "apartments",
+      "x": 0,
+      "y": 0,
+      "w": 3,
+      "d": 6,
+      "floor": 0,
+      "floors": 7,
+      "layout": "west-home.layout.json"
+    },
+    {
+      "id": "stair-hall",
+      "role": "shared-circulation",
+      "x": 3,
+      "y": 0,
+      "w": 3,
+      "d": 6,
+      "floor": 0,
+      "floors": 7,
+      "layout": "stair-hall.layout.json"
+    },
+    {
+      "id": "east-home",
+      "role": "apartments",
+      "x": 6,
+      "y": 0,
+      "w": 3,
+      "d": 6,
+      "floor": 0,
+      "floors": 7,
+      "layout": "east-home.layout.json"
+    }
+  ],
+  "connections": [
+    {
+      "a": "west-home/0/kitchen",
+      "b": "stair-hall/0/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "east-home/0/living",
+      "b": "stair-hall/0/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "west-home/1/kitchen",
+      "b": "stair-hall/1/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "east-home/1/living",
+      "b": "stair-hall/1/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "west-home/2/kitchen",
+      "b": "stair-hall/2/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "east-home/2/living",
+      "b": "stair-hall/2/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "west-home/3/kitchen",
+      "b": "stair-hall/3/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "east-home/3/living",
+      "b": "stair-hall/3/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "west-home/4/kitchen",
+      "b": "stair-hall/4/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "east-home/4/living",
+      "b": "stair-hall/4/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "west-home/5/kitchen",
+      "b": "stair-hall/5/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "east-home/5/living",
+      "b": "stair-hall/5/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "west-home/6/kitchen",
+      "b": "stair-hall/6/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "east-home/6/living",
+      "b": "stair-hall/6/hall",
+      "at": 0.5,
+      "width": 0.3
+    }
+  ],
+  "stairs": [
+    {
+      "a": "stair-hall/0/hall",
+      "b": "stair-hall/1/hall",
+      "x": 0.33888888888888885,
+      "y": 0.008333333333333333,
+      "w": 0.1,
+      "d": 0.15,
+      "rotation": 90
+    },
+    {
+      "a": "stair-hall/1/hall",
+      "b": "stair-hall/2/hall",
+      "x": 0.33888888888888885,
+      "y": 0.17500000000000002,
+      "w": 0.1,
+      "d": 0.15,
+      "rotation": 90
+    },
+    {
+      "a": "stair-hall/2/hall",
+      "b": "stair-hall/3/hall",
+      "x": 0.33888888888888885,
+      "y": 0.008333333333333333,
+      "w": 0.1,
+      "d": 0.15,
+      "rotation": 90
+    },
+    {
+      "a": "stair-hall/3/hall",
+      "b": "stair-hall/4/hall",
+      "x": 0.33888888888888885,
+      "y": 0.17500000000000002,
+      "w": 0.1,
+      "d": 0.15,
+      "rotation": 90
+    },
+    {
+      "a": "stair-hall/4/hall",
+      "b": "stair-hall/5/hall",
+      "x": 0.33888888888888885,
+      "y": 0.008333333333333333,
+      "w": 0.1,
+      "d": 0.15,
+      "rotation": 90
+    },
+    {
+      "a": "stair-hall/5/hall",
+      "b": "stair-hall/6/hall",
+      "x": 0.33888888888888885,
+      "y": 0.17500000000000002,
+      "w": 0.1,
+      "d": 0.15,
+      "rotation": 90
+    }
+  ],
+  "floorVoids": [
+    {
+      "floor": 1,
+      "x": 3,
+      "y": 0,
+      "w": 1,
+      "d": 1
+    },
+    {
+      "floor": 2,
+      "x": 3,
+      "y": 1,
+      "w": 1,
+      "d": 1
+    },
+    {
+      "floor": 3,
+      "x": 3,
+      "y": 0,
+      "w": 1,
+      "d": 1
+    },
+    {
+      "floor": 4,
+      "x": 3,
+      "y": 1,
+      "w": 1,
+      "d": 1
+    },
+    {
+      "floor": 5,
+      "x": 3,
+      "y": 0,
+      "w": 1,
+      "d": 1
+    },
+    {
+      "floor": 6,
+      "x": 3,
+      "y": 1,
+      "w": 1,
+      "d": 1
+    }
+  ]
+}

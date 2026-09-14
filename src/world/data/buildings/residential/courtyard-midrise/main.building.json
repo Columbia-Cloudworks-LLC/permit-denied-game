@@ -1,0 +1,440 @@
+{
+  "version": 1,
+  "id": "courtyard-midrise",
+  "label": "COURTYARD MIDRISE",
+  "w": 9,
+  "d": 9,
+  "floors": 7,
+  "kind": "house",
+  "construction": "brick-mixed-use",
+  "roof": "flat",
+  "theme": "walkup",
+  "windowStride": 2,
+  "features": {
+    "porch": false,
+    "awning": false,
+    "parapet": true,
+    "chimney": false,
+    "garage": false
+  },
+  "zones": {
+    "residential": 0,
+    "commercial": 0,
+    "industrial": 0
+  },
+  "traits": {
+    "use": [
+      "courtyard-apartment"
+    ],
+    "form": [
+      "u-court",
+      "shared-hall"
+    ],
+    "style": [
+      "walkup"
+    ],
+    "scale": [
+      "mid-rise"
+    ]
+  },
+  "partitions": true,
+  "campaign": {
+    "family": "courtyard-apartment",
+    "levels": {
+      "city-borough": 2,
+      "city-downtown": 2
+    }
+  },
+  "openings": [
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.18,
+      "kind": "door",
+      "cell": {
+        "x": 1,
+        "y": 8
+      }
+    }
+  ],
+  "sections": [
+    {
+      "id": "rear-1",
+      "role": "rear",
+      "x": 0,
+      "y": 0,
+      "w": 3,
+      "d": 3,
+      "floor": 0,
+      "floors": 7,
+      "layout": "rear-1.layout.json"
+    },
+    {
+      "id": "rear-2",
+      "role": "rear",
+      "x": 3,
+      "y": 0,
+      "w": 3,
+      "d": 3,
+      "floor": 0,
+      "floors": 7,
+      "layout": "rear-2.layout.json"
+    },
+    {
+      "id": "rear-3",
+      "role": "rear",
+      "x": 6,
+      "y": 0,
+      "w": 3,
+      "d": 3,
+      "floor": 0,
+      "floors": 7,
+      "layout": "rear-3.layout.json"
+    },
+    {
+      "id": "shared-hall",
+      "role": "shared-circulation",
+      "x": 0,
+      "y": 3,
+      "w": 9,
+      "d": 2,
+      "floor": 0,
+      "floors": 7,
+      "layout": "shared-hall.layout.json"
+    },
+    {
+      "id": "west",
+      "role": "west",
+      "x": 0,
+      "y": 5,
+      "w": 3,
+      "d": 4,
+      "floor": 0,
+      "floors": 7,
+      "layout": "west.layout.json"
+    },
+    {
+      "id": "east",
+      "role": "east",
+      "x": 6,
+      "y": 5,
+      "w": 3,
+      "d": 4,
+      "floor": 0,
+      "floors": 7,
+      "layout": "east.layout.json"
+    }
+  ],
+  "connections": [
+    {
+      "a": "rear-1/0/living",
+      "b": "shared-hall/0/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "rear-2/0/living",
+      "b": "shared-hall/0/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "rear-3/0/living",
+      "b": "shared-hall/0/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "west/0/sleep",
+      "b": "shared-hall/0/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "east/0/sleep",
+      "b": "shared-hall/0/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "rear-1/1/living",
+      "b": "shared-hall/1/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "rear-2/1/living",
+      "b": "shared-hall/1/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "rear-3/1/living",
+      "b": "shared-hall/1/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "west/1/sleep",
+      "b": "shared-hall/1/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "east/1/sleep",
+      "b": "shared-hall/1/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "rear-1/2/living",
+      "b": "shared-hall/2/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "rear-2/2/living",
+      "b": "shared-hall/2/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "rear-3/2/living",
+      "b": "shared-hall/2/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "west/2/sleep",
+      "b": "shared-hall/2/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "east/2/sleep",
+      "b": "shared-hall/2/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "rear-1/3/living",
+      "b": "shared-hall/3/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "rear-2/3/living",
+      "b": "shared-hall/3/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "rear-3/3/living",
+      "b": "shared-hall/3/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "west/3/sleep",
+      "b": "shared-hall/3/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "east/3/sleep",
+      "b": "shared-hall/3/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "rear-1/4/living",
+      "b": "shared-hall/4/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "rear-2/4/living",
+      "b": "shared-hall/4/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "rear-3/4/living",
+      "b": "shared-hall/4/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "west/4/sleep",
+      "b": "shared-hall/4/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "east/4/sleep",
+      "b": "shared-hall/4/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "rear-1/5/living",
+      "b": "shared-hall/5/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "rear-2/5/living",
+      "b": "shared-hall/5/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "rear-3/5/living",
+      "b": "shared-hall/5/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "west/5/sleep",
+      "b": "shared-hall/5/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "east/5/sleep",
+      "b": "shared-hall/5/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "rear-1/6/living",
+      "b": "shared-hall/6/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "rear-2/6/living",
+      "b": "shared-hall/6/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "rear-3/6/living",
+      "b": "shared-hall/6/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "west/6/sleep",
+      "b": "shared-hall/6/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "east/6/sleep",
+      "b": "shared-hall/6/hall",
+      "at": 0.5,
+      "width": 0.3
+    }
+  ],
+  "stairs": [
+    {
+      "a": "shared-hall/0/hall",
+      "b": "shared-hall/1/hall",
+      "x": 0.11666666666666667,
+      "y": 0.33888888888888885,
+      "w": 0.3222222222222222,
+      "d": 0.1,
+      "rotation": 90
+    },
+    {
+      "a": "shared-hall/1/hall",
+      "b": "shared-hall/2/hall",
+      "x": 0.11666666666666667,
+      "y": 0.44999999999999996,
+      "w": 0.3222222222222222,
+      "d": 0.1,
+      "rotation": 90
+    },
+    {
+      "a": "shared-hall/2/hall",
+      "b": "shared-hall/3/hall",
+      "x": 0.11666666666666667,
+      "y": 0.33888888888888885,
+      "w": 0.3222222222222222,
+      "d": 0.1,
+      "rotation": 90
+    },
+    {
+      "a": "shared-hall/3/hall",
+      "b": "shared-hall/4/hall",
+      "x": 0.11666666666666667,
+      "y": 0.44999999999999996,
+      "w": 0.3222222222222222,
+      "d": 0.1,
+      "rotation": 90
+    },
+    {
+      "a": "shared-hall/4/hall",
+      "b": "shared-hall/5/hall",
+      "x": 0.11666666666666667,
+      "y": 0.33888888888888885,
+      "w": 0.3222222222222222,
+      "d": 0.1,
+      "rotation": 90
+    },
+    {
+      "a": "shared-hall/5/hall",
+      "b": "shared-hall/6/hall",
+      "x": 0.11666666666666667,
+      "y": 0.44999999999999996,
+      "w": 0.3222222222222222,
+      "d": 0.1,
+      "rotation": 90
+    }
+  ],
+  "floorVoids": [
+    {
+      "floor": 1,
+      "x": 1,
+      "y": 3,
+      "w": 3,
+      "d": 1
+    },
+    {
+      "floor": 2,
+      "x": 1,
+      "y": 4,
+      "w": 3,
+      "d": 1
+    },
+    {
+      "floor": 3,
+      "x": 1,
+      "y": 3,
+      "w": 3,
+      "d": 1
+    },
+    {
+      "floor": 4,
+      "x": 1,
+      "y": 4,
+      "w": 3,
+      "d": 1
+    },
+    {
+      "floor": 5,
+      "x": 1,
+      "y": 3,
+      "w": 3,
+      "d": 1
+    },
+    {
+      "floor": 6,
+      "x": 1,
+      "y": 4,
+      "w": 3,
+      "d": 1
+    }
+  ]
+}

@@ -10,6 +10,7 @@ import {
   allocateFrontage,
   archetypeFootprint,
   attachDriveway,
+  currentParcel,
   expandLotToFit,
   expandStreets,
   placeBuildingInLot,
@@ -18,7 +19,13 @@ import {
   type NhoodReject,
 } from "./parcels";
 import { campaignEligible, campaignWeight, pickWeighted } from "./campaignPlacement";
-import { ARCHETYPES, archetypeById } from "./archetypes";
+import {
+  evaluateCampaignComposition,
+  legalOrdinaryCandidates,
+  planCampaignComposition,
+  sameBandCandidates,
+} from "./campaignComposition";
+import { ARCHETYPES, archetypeById, type Archetype } from "./archetypes";
 import {
   curvePoints,
   derivedRoadBoxes,
@@ -82,9 +89,30 @@ export function generateRuralLayout(
   topologyOverride?: TopologyFamily,
   campaign?: CampaignLevelDef,
 ): RuralLayout {
-  const generate = (): RuralLayout => generateRuralLayoutInner(id, seed, topologyOverride, campaign);
-  if (!campaign) return generate();
-  return runWithParcelProfile(campaign.generation.parcel, campaign.generation.parcel, generate);
+  const generate = (attemptSeed: number): RuralLayout => generateRuralLayoutInner(id, attemptSeed, topologyOverride, campaign);
+  if (!campaign) return generate(seed);
+  return runWithParcelProfile(campaign.generation.parcel, campaign.generation.parcel, () => {
+    if (!campaign.composition) return withCampaignSeed(generate(seed), seed);
+    const attempts = campaign.composition.placementAttempts;
+    const errors: string[] = [];
+    for (let attempt = 0; attempt < attempts; attempt++) {
+      const attemptSeed = seed ^ (attempt * 0x9e3779b9);
+      try {
+        const layout = withCampaignSeed(generate(attemptSeed), seed);
+        const report = evaluateCampaignComposition(layout.buildings, campaign, ARCHETYPES);
+        if (report.ok && layout.buildings.filter(building => building.campaignLandmark).length === 1) return layout;
+        errors.push(`attempt ${attempt}: ${report.issues.join('; ') || 'landmark or count failed'}`);
+      } catch (err) {
+        errors.push(`attempt ${attempt}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+    throw new Error(`Campaign composition failed for ${campaign.id} seed ${seed}. ${errors.join(' | ')}`);
+  });
+}
+
+function withCampaignSeed(layout: RuralLayout, seed: number): RuralLayout {
+  layout.seed = seed;
+  return layout;
 }
 
 function generateRuralLayoutInner(
@@ -132,25 +160,27 @@ function generateRuralLayoutInner(
 
   if (campaign) placeCampaignLandmark(campaign, pool, rng, buildings, kept, corridors, publicSegs, b, used);
 
-  for (const lot of pool) {
+  let ordinaryLots = pool.filter(lot => !kept.some(keptLot => keptLot.id === lot.id));
+  let assignedId = new Map<string, string>();
+  if (campaign?.composition) {
+    const plan = planCampaignComposition(campaign, ordinaryLots, count - buildings.length, ARCHETYPES, rng);
+    for (const detail of plan.issues.filter(text => !text.includes('planned'))) {
+      issues.push({ code: 'composition-plan', detail });
+    }
+    assignedId = new Map(plan.assignments.map(entry => [entry.lotId, entry.buildingId]));
+    ordinaryLots = [...ordinaryLots].sort((a, c) => {
+      const ai = plan.assignments.findIndex(entry => entry.lotId === a.id);
+      const bi = plan.assignments.findIndex(entry => entry.lotId === c.id);
+      return (ai < 0 ? 1e9 : ai) - (bi < 0 ? 1e9 : bi);
+    });
+  }
+
+  for (const lot of ordinaryLots) {
     if (kept.length >= count) break;
     if (kept.some(k => k.id === lot.id)) continue;
-    lot.zone = zoneForIndex(kept.length, count, lot.frontage.segmentId, b.segments);
-    lot.identity = identityForIndex(kept.length, count, lot.frontage.segmentId, b.segments, rng);
-    const building = placeBuildingInLot(lot, rng, buildings, publicSegs(), corridors, pick);
-    if (!building) {
-      rejected.push({ kind: "building", reason: "no-fit", points: lot.boundary });
+    if (!placeCampaignLot(campaign, lot, rng, buildings, kept, corridors, publicSegs, b, used, pick, assignedId.get(lot.id), pool, rejected, count)) {
       continue;
     }
-    const drive = attachDriveway(b, lot, building, [...kept, ...pool]);
-    if (!drive || drive.reject) {
-      rejected.push(drive?.reject ?? { kind: "driveway", reason: "failed", points: lot.boundary });
-      continue;
-    }
-    buildings.push(building);
-    kept.push(lot);
-    corridors.push(drive.corridor);
-    used.set(building.archetypeId, (used.get(building.archetypeId) ?? 0) + 1);
   }
 
   if (kept.length < count) {
@@ -160,22 +190,9 @@ function generateRuralLayoutInner(
     for (const lot of extra.lots) {
       if (kept.length >= count) break;
       if (kept.some((k) => k.id === lot.id)) continue;
-      lot.zone = zoneForIndex(kept.length, count, lot.frontage.segmentId, b.segments);
-      lot.identity = identityForIndex(kept.length, count, lot.frontage.segmentId, b.segments, rng);
-      const building = placeBuildingInLot(lot, rng, buildings, publicSegs(), corridors, pick);
-      if (!building) {
-        rejected.push({ kind: "building", reason: "no-fit", points: lot.boundary });
+      if (!placeCampaignLot(campaign, lot, rng, buildings, kept, corridors, publicSegs, b, used, pick, undefined, extra.lots, rejected, count)) {
         continue;
       }
-      const drive = attachDriveway(b, lot, building, [...kept, ...extra.lots]);
-      if (!drive || drive.reject) {
-        rejected.push(drive?.reject ?? { kind: "driveway", reason: "failed", points: lot.boundary });
-        continue;
-      }
-      buildings.push(building);
-      kept.push(lot);
-      corridors.push(drive.corridor);
-      used.set(building.archetypeId, (used.get(building.archetypeId) ?? 0) + 1);
     }
   }
 
@@ -187,6 +204,7 @@ function generateRuralLayoutInner(
   }
 
   b.dropAccessesForLots(new Set(kept.map((l) => l.id)));
+  if (campaign?.composition) b.dropPublicRoadsAwayFromLots(kept, 14);
   const network = b.finish({ normalize: false });
   for (const lot of kept) {
     const acc = network.accesses.find((a) => a.id === lot.accessId || a.lotId === lot.id);
@@ -239,8 +257,14 @@ function generateRuralLayoutInner(
   ground.unshift(...fillWorldGround(minX - 1, minY - 1, maxX + 1, maxY + 1, seed));
 
   const roads = derivedRoadBoxes(network);
-  const spawn = pickSpawn(network, buildings, props, 0);
-  const roadSpawn = pickSpawn(network, buildings, props, 1, spawn);
+  const cluster = buildings.length
+    ? {
+      x: buildings.reduce((sum, building) => sum + building.x + building.w * building.cellSize * 0.5, 0) / buildings.length,
+      y: buildings.reduce((sum, building) => sum + building.y + building.d * building.cellSize * 0.5, 0) / buildings.length,
+    }
+    : undefined;
+  const spawn = pickSpawn(network, buildings, props, 0, undefined, campaign ? cluster : undefined);
+  const roadSpawn = pickSpawn(network, buildings, props, 1, spawn, campaign ? cluster : undefined);
 
   return {
     buildings,
@@ -447,7 +471,9 @@ function estimateSlots(segments: readonly RoadSegment[], nodes: readonly { id: s
     const path = polylineLength(seg.points);
     const start = (nodes.find((x) => x.id === seg.startId)?.segmentIds.filter((id) => publicIds.has(id)).length ?? 1) >= 3 ? 3.6 : 1.4;
     const end = (nodes.find((x) => x.id === seg.endId)?.segmentIds.filter((id) => publicIds.has(id)).length ?? 1) >= 3 ? 3.6 : 1.4;
-    n += Math.max(0, Math.floor((path - start - end) / 9)) * 2;
+    const parcel = currentParcel();
+    const pitch = parcel === PARCEL ? 9 : Math.max(6, parcel.minFront + parcel.lotGap);
+    n += Math.max(0, Math.floor((path - start - end) / pitch)) * 2;
   }
   return n;
 }
@@ -494,7 +520,7 @@ function buildSkeleton(
   const branch = Math.max(pairPitch * 0.6, 20 + count * 0.14);
 
   if (count >= 8) {
-    buildBlockGrid(b, count, ox, oy, rng, campaign?.generation.parcel.blockW, campaign?.generation.parcel.blockD);
+    buildBlockGrid(b, campaign?.composition ? count + 18 : count, ox, oy, rng, campaign?.generation.parcel.blockW, campaign?.generation.parcel.blockD);
     addTopologyFlavor(b, topology, ox, oy, rng);
     return b.segments.filter((s) => s.roadClass !== "driveway");
   }
@@ -681,20 +707,24 @@ function pickSpawn(
   props: Prop[],
   pick: number,
   avoid?: { x: number; y: number },
+  prefer?: { x: number; y: number },
 ): { x: number; y: number; heading: number } {
   const segs = network.segments.filter((s) => s.roadClass === "rural" || s.roadClass === "residential");
   const pool = segs.length ? segs : network.segments.filter((s) => s.roadClass !== "driveway");
   const tries = [0.2, 0.35, 0.5, 0.65, 0.8];
+  const candidates: { x: number; y: number; heading: number }[] = [];
   for (const seg of pool) {
     for (const t of tries) {
       const p = samplePolyline(seg.points, t);
       if (avoid && len(p.x - avoid.x, p.y - avoid.y) < 6) continue;
-      if (clear(buildings, props, p.x, p.y)) {
-        if (pick === 0) return { x: p.x, y: p.y, heading: p.heading };
-        pick--;
-      }
+      if (clear(buildings, props, p.x, p.y)) candidates.push(p);
     }
   }
+  if (prefer && candidates.length) {
+    candidates.sort((a, b) => len(a.x - prefer.x, a.y - prefer.y) - len(b.x - prefer.x, b.y - prefer.y));
+  }
+  const chosen = candidates[Math.min(pick, Math.max(0, candidates.length - 1))];
+  if (chosen) return chosen;
   const fallback = samplePolyline(pool[0]!.points, 0.4);
   return { x: fallback.x, y: fallback.y, heading: fallback.heading };
 }
@@ -710,9 +740,104 @@ function clear(buildings: Building[], props: Prop[], x: number, y: number): bool
   return true;
 }
 
+function assignedPicker(
+  campaign: CampaignLevelDef,
+  used: Map<string, number>,
+  assignedId: string,
+  ordinaryTarget: number,
+) {
+  const assigned = archetypeById(assignedId);
+  return (lot: Lot, rng: Rng, tried: ReadonlySet<string>) => {
+    if (!tried.has(assigned.id) && campaignEligible(assigned.campaign, campaign.id, { used: used.get(assigned.id) ?? 0 })) {
+      const size = archetypeFootprint(assigned);
+      if (size.w + 0.08 <= lot.buildable.w && size.d + 0.08 <= lot.buildable.d) return assigned;
+    }
+    const fallbacks = sameBandCandidates(assigned, campaign, ARCHETYPES, used, ordinaryTarget).filter(entry => !tried.has(entry.id));
+    const fitting = fallbacks.filter(entry => {
+      const size = archetypeFootprint(entry);
+      return size.w + 0.08 <= lot.buildable.w && size.d + 0.08 <= lot.buildable.d;
+    });
+    return pickWeighted(fitting, entry => campaignWeight(entry.campaign, campaign.id) || 1, (min, max) => rng.range(min, max));
+  };
+}
+
+function placeCampaignLot(
+  campaign: CampaignLevelDef | undefined,
+  lot: Lot,
+  rng: Rng,
+  buildings: Building[],
+  kept: Lot[],
+  corridors: { x: number; y: number }[][],
+  publicSegs: () => RoadSegment[],
+  b: RoadBuilder,
+  used: Map<string, number>,
+  pick: ((lot: Lot, rng: Rng, tried: ReadonlySet<string>) => Archetype | undefined) | undefined,
+  assignedId: string | undefined,
+  neighbors: Lot[],
+  rejected: NhoodReject[],
+  targetCount: number,
+): boolean {
+  lot.zone = zoneForIndex(kept.length, targetCount, lot.frontage.segmentId, b.segments);
+  lot.identity = identityForIndex(kept.length, targetCount, lot.frontage.segmentId, b.segments, rng);
+  if (campaign && assignedId) {
+    const assigned = archetypeById(assignedId);
+    const size = archetypeFootprint(assigned);
+    if (lot.buildable.w + 0.08 < size.w || lot.buildable.d + 0.08 < size.d) {
+      const snapshot = {
+        frontage: { ...lot.frontage },
+        boundary: lot.boundary.map(point => ({ ...point })),
+        buildable: { ...lot.buildable },
+        x: lot.x,
+        y: lot.y,
+        w: lot.w,
+        d: lot.d,
+        heading: lot.heading,
+      };
+      const evicted = expandLotToFit(lot, size.w, size.d, publicSegs(), [...neighbors, ...kept]);
+      const hitsKept = !!evicted?.some(id => kept.some(entry => entry.id === id));
+      if (!evicted || hitsKept) {
+        lot.frontage = snapshot.frontage;
+        lot.boundary = snapshot.boundary;
+        lot.buildable = snapshot.buildable;
+        lot.x = snapshot.x;
+        lot.y = snapshot.y;
+        lot.w = snapshot.w;
+        lot.d = snapshot.d;
+        lot.heading = snapshot.heading;
+      } else {
+        for (const id of evicted) {
+          const index = neighbors.findIndex(entry => entry.id === id);
+          if (index >= 0) neighbors.splice(index, 1);
+        }
+      }
+    }
+  }
+  const ordinaryTarget = campaign ? campaign.generation.buildingCount - 1 : 0;
+  const picker = campaign && assignedId ? assignedPicker(campaign, used, assignedId, ordinaryTarget) : pick;
+  const building = placeBuildingInLot(lot, rng, buildings, publicSegs(), corridors, picker);
+  if (!building) {
+    rejected.push({ kind: "building", reason: assignedId ? `no-fit:${assignedId}` : "no-fit", points: lot.boundary });
+    return false;
+  }
+  const drive = attachDriveway(b, lot, building, [...kept, ...neighbors]);
+  if (!drive || drive.reject) {
+    rejected.push(drive?.reject ?? { kind: "driveway", reason: "failed", points: lot.boundary });
+    return false;
+  }
+  buildings.push(building);
+  kept.push(lot);
+  corridors.push(drive.corridor);
+  used.set(building.archetypeId, (used.get(building.archetypeId) ?? 0) + 1);
+  return true;
+}
+
 function campaignPicker(campaign: CampaignLevelDef, used: Map<string, number>) {
   return (lot: Lot, rng: Rng, tried: ReadonlySet<string>) => {
-    const pool = ARCHETYPES.filter(a =>
+    const ordinaryTarget = campaign.generation.buildingCount - 1;
+    const legal = campaign.composition
+      ? legalOrdinaryCandidates(campaign, ARCHETYPES, used, ordinaryTarget)
+      : ARCHETYPES.filter(a => campaignEligible(a.campaign, campaign.id, { zone: lot.zone, used: used.get(a.id) ?? 0 }));
+    const pool = legal.filter(a =>
       !tried.has(a.id) &&
       campaignEligible(a.campaign, campaign.id, { zone: lot.zone, used: used.get(a.id) ?? 0 }),
     );

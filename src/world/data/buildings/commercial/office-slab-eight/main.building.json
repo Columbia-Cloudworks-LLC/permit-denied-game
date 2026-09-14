@@ -1,0 +1,70 @@
+{
+  "version": 1,
+  "id": "office-slab-eight",
+  "label": "OFFICE SLAB EIGHT",
+  "w": 8,
+  "d": 5,
+  "floors": 8,
+  "kind": "shop",
+  "construction": "concrete-bearing",
+  "roof": "flat",
+  "theme": "civic",
+  "windowStride": 2,
+  "features": {
+    "porch": false,
+    "awning": false,
+    "parapet": true,
+    "chimney": false,
+    "garage": false
+  },
+  "zones": {
+    "residential": 0,
+    "commercial": 0,
+    "industrial": 0
+  },
+  "traits": {
+    "use": [
+      "midrise-office"
+    ],
+    "form": [
+      "slab",
+      "compact"
+    ],
+    "style": [
+      "civic"
+    ],
+    "scale": [
+      "mid-rise"
+    ]
+  },
+  "partitions": true,
+  "campaign": {
+    "family": "midrise-office",
+    "levels": {
+      "city-borough": 2,
+      "city-downtown": 2
+    }
+  },
+  "openings": [
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.5,
+      "kind": "door"
+    }
+  ],
+  "sections": [
+    {
+      "id": "offices",
+      "role": "offices",
+      "x": 0,
+      "y": 0,
+      "w": 8,
+      "d": 5,
+      "floor": 0,
+      "floors": 8,
+      "layout": "offices.layout.json"
+    }
+  ],
+  "connections": []
+}

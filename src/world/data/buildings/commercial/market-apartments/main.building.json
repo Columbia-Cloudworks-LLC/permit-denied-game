@@ -1,0 +1,340 @@
+{
+  "version": 1,
+  "id": "market-apartments",
+  "label": "MARKET APARTMENTS",
+  "w": 8,
+  "d": 7,
+  "floors": 8,
+  "kind": "shop",
+  "construction": "brick-mixed-use",
+  "roof": "flat",
+  "theme": "storefront",
+  "windowStride": 2,
+  "features": {
+    "porch": false,
+    "awning": true,
+    "parapet": true,
+    "chimney": false,
+    "garage": false
+  },
+  "zones": {
+    "residential": 0,
+    "commercial": 0,
+    "industrial": 0
+  },
+  "traits": {
+    "use": [
+      "mixed-use"
+    ],
+    "form": [
+      "shop-base",
+      "dual-stack"
+    ],
+    "style": [
+      "storefront"
+    ],
+    "scale": [
+      "mid-rise"
+    ]
+  },
+  "partitions": true,
+  "campaign": {
+    "family": "mixed-use",
+    "levels": {
+      "city-borough": 2,
+      "city-downtown": 2
+    }
+  },
+  "openings": [
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.4,
+      "kind": "door"
+    }
+  ],
+  "facadeDetails": [
+    {
+      "id": "market-sign",
+      "kind": "signboard",
+      "floor": 0,
+      "gx": 2,
+      "gy": 6,
+      "side": "south",
+      "width": 4,
+      "text": "MARKET"
+    },
+    {
+      "id": "west-display",
+      "kind": "display-glazing",
+      "floor": 0,
+      "gx": 0,
+      "gy": 6,
+      "side": "south",
+      "width": 2
+    },
+    {
+      "id": "east-display",
+      "kind": "display-glazing",
+      "floor": 0,
+      "gx": 6,
+      "gy": 6,
+      "side": "south",
+      "width": 2
+    }
+  ],
+  "sections": [
+    {
+      "id": "shop",
+      "role": "retail",
+      "x": 0,
+      "y": 0,
+      "w": 8,
+      "d": 5,
+      "floor": 0,
+      "floors": 1,
+      "layout": "shop.layout.json"
+    },
+    {
+      "id": "stair-hall",
+      "role": "shared-circulation",
+      "x": 0,
+      "y": 5,
+      "w": 8,
+      "d": 2,
+      "floor": 0,
+      "floors": 8,
+      "layout": "stair-hall.layout.json"
+    },
+    {
+      "id": "west-home",
+      "role": "apartments",
+      "x": 0,
+      "y": 0,
+      "w": 4,
+      "d": 5,
+      "floor": 1,
+      "floors": 7,
+      "layout": "west-home.layout.json"
+    },
+    {
+      "id": "east-home",
+      "role": "apartments",
+      "x": 4,
+      "y": 0,
+      "w": 4,
+      "d": 5,
+      "floor": 1,
+      "floors": 7,
+      "layout": "east-home.layout.json"
+    }
+  ],
+  "connections": [
+    {
+      "a": "shop/0/sales",
+      "b": "stair-hall/0/hall",
+      "at": 0.5,
+      "width": 0.35
+    },
+    {
+      "a": "west-home/1/living",
+      "b": "stair-hall/1/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "east-home/1/living",
+      "b": "stair-hall/1/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "west-home/2/living",
+      "b": "stair-hall/2/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "east-home/2/living",
+      "b": "stair-hall/2/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "west-home/3/living",
+      "b": "stair-hall/3/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "east-home/3/living",
+      "b": "stair-hall/3/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "west-home/4/living",
+      "b": "stair-hall/4/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "east-home/4/living",
+      "b": "stair-hall/4/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "west-home/5/living",
+      "b": "stair-hall/5/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "east-home/5/living",
+      "b": "stair-hall/5/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "west-home/6/living",
+      "b": "stair-hall/6/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "east-home/6/living",
+      "b": "stair-hall/6/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "west-home/7/living",
+      "b": "stair-hall/7/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "east-home/7/living",
+      "b": "stair-hall/7/hall",
+      "at": 0.5,
+      "width": 0.3
+    }
+  ],
+  "stairs": [
+    {
+      "a": "stair-hall/0/hall",
+      "b": "stair-hall/1/hall",
+      "x": 0.13125,
+      "y": 0.7214285714285714,
+      "w": 0.3625,
+      "d": 0.1285714285714286,
+      "rotation": 90
+    },
+    {
+      "a": "stair-hall/1/hall",
+      "b": "stair-hall/2/hall",
+      "x": 0.13125,
+      "y": 0.8642857142857142,
+      "w": 0.3625,
+      "d": 0.1285714285714286,
+      "rotation": 90
+    },
+    {
+      "a": "stair-hall/2/hall",
+      "b": "stair-hall/3/hall",
+      "x": 0.13125,
+      "y": 0.7214285714285714,
+      "w": 0.3625,
+      "d": 0.1285714285714286,
+      "rotation": 90
+    },
+    {
+      "a": "stair-hall/3/hall",
+      "b": "stair-hall/4/hall",
+      "x": 0.13125,
+      "y": 0.8642857142857142,
+      "w": 0.3625,
+      "d": 0.1285714285714286,
+      "rotation": 90
+    },
+    {
+      "a": "stair-hall/4/hall",
+      "b": "stair-hall/5/hall",
+      "x": 0.13125,
+      "y": 0.7214285714285714,
+      "w": 0.3625,
+      "d": 0.1285714285714286,
+      "rotation": 90
+    },
+    {
+      "a": "stair-hall/5/hall",
+      "b": "stair-hall/6/hall",
+      "x": 0.13125,
+      "y": 0.8642857142857142,
+      "w": 0.3625,
+      "d": 0.1285714285714286,
+      "rotation": 90
+    },
+    {
+      "a": "stair-hall/6/hall",
+      "b": "stair-hall/7/hall",
+      "x": 0.13125,
+      "y": 0.7214285714285714,
+      "w": 0.3625,
+      "d": 0.1285714285714286,
+      "rotation": 90
+    }
+  ],
+  "floorVoids": [
+    {
+      "floor": 1,
+      "x": 1,
+      "y": 5,
+      "w": 3,
+      "d": 1
+    },
+    {
+      "floor": 2,
+      "x": 1,
+      "y": 6,
+      "w": 3,
+      "d": 1
+    },
+    {
+      "floor": 3,
+      "x": 1,
+      "y": 5,
+      "w": 3,
+      "d": 1
+    },
+    {
+      "floor": 4,
+      "x": 1,
+      "y": 6,
+      "w": 3,
+      "d": 1
+    },
+    {
+      "floor": 5,
+      "x": 1,
+      "y": 5,
+      "w": 3,
+      "d": 1
+    },
+    {
+      "floor": 6,
+      "x": 1,
+      "y": 6,
+      "w": 3,
+      "d": 1
+    },
+    {
+      "floor": 7,
+      "x": 1,
+      "y": 5,
+      "w": 3,
+      "d": 1
+    }
+  ]
+}

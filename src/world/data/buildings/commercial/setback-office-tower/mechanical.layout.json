@@ -1,0 +1,28 @@
+{
+  "partitions": true,
+  "rooms": [
+    {
+      "id": "plant",
+      "kind": "storage",
+      "floor": 0,
+      "x": 0,
+      "y": 0,
+      "w": 1,
+      "d": 1,
+      "finish": "concrete",
+      "contents": [
+        {
+          "id": "plant-0",
+          "kind": "filing-cabinet",
+          "x": 0.1,
+          "y": 0.1,
+          "w": 0.3,
+          "d": 0.75,
+          "h": 1.3,
+          "rotation": 0
+        }
+      ]
+    }
+  ],
+  "connections": []
+}

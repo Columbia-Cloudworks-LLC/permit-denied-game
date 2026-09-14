@@ -28,6 +28,58 @@ export function objectOcclusionFade(d: OccludeDozer, x: number, y: number, w: nu
   return aabbOverlap(worldBoundsToScreen(x, y, w, h, z, top), dozerScreenAabb(d), 12) ? .14 : 1;
 }
 
+/**
+ * True when a piece is drawn in front of the dozer and covers it on screen.
+ * Unlike fade, this has no world-distance cap — a mid-rise roof can hide the
+ * vehicle from the street even when the fade radius does not reach it.
+ */
+export function pieceHidesDozer(d: OccludeDozer, x: number, y: number, w: number, h: number, z: number, top: number): boolean {
+  if (top < .65) return false;
+  if (depthKey(x + w, y + h, z) <= depthKey(d.x, d.y, 0.4)) return false;
+  return aabbOverlap(worldBoundsToScreen(x, y, w, h, z, top), dozerScreenAabb(d), 12);
+}
+
+export function standingHeight(b: Building): number {
+  let top = 0;
+  for (const cell of b.cells) {
+    if (cell.state === "gone" || cell.state === "falling") continue;
+    top = Math.max(top, (cell.floor + 1) * FLOOR_Z);
+  }
+  for (const roof of b.roofs) {
+    if (roof.state === "gone") continue;
+    top = Math.max(top, (roof.floor + 1) * FLOOR_Z);
+  }
+  return top;
+}
+
+function screenCenterIn(d: OccludeDozer, x: number, y: number, w: number, h: number, z: number, top: number): boolean {
+  const box = worldBoundsToScreen(x, y, w, h, z, top);
+  const p = worldToScreen(d.x, d.y, 0.55);
+  return p.x >= box.minX - 6 && p.x <= box.maxX + 6 && p.y >= box.minY - 6 && p.y <= box.maxY + 6;
+}
+
+/** South and east faces are the camera-facing walls that can cover a street dozer. */
+export function buildingHidesDozer(d: OccludeDozer, b: Building): boolean {
+  const top = standingHeight(b);
+  if (top < 0.65) return false;
+  const bw = b.w * b.cellSize;
+  const bd = b.d * b.cellSize;
+  const southY = b.y + bd;
+  const eastX = b.x + bw;
+  const along = 1.1;
+  const south = d.y < southY - 0.2
+    && d.x >= b.x - along
+    && d.x <= eastX + along
+    && pieceHidesDozer(d, b.x, southY - 0.1, bw, 0.2, 0, top)
+    && screenCenterIn(d, b.x, southY - 0.1, bw, 0.2, 0, top);
+  const east = d.x < eastX - 0.2
+    && d.y >= b.y - along
+    && d.y <= southY + along
+    && pieceHidesDozer(d, eastX - 0.1, b.y, 0.2, bd, 0, top)
+    && screenCenterIn(d, eastX - 0.1, b.y, 0.2, bd, 0, top);
+  return south || east;
+}
+
 /** Only touched visible objects remain cached. No simulation state is stored or mutated. */
 export class VisibilityFades {
   private values = new Map<string, number>();
@@ -47,7 +99,7 @@ function aabbOverlap(a: ScreenAabb, b: ScreenAabb, pad: number): boolean {
   return a.minX <= b.maxX + pad && a.maxX >= b.minX - pad && a.minY <= b.maxY + pad && a.maxY >= b.minY - pad;
 }
 
-function dozerScreenAabb(d: OccludeDozer): ScreenAabb {
+export function dozerScreenAabb(d: OccludeDozer): ScreenAabb {
   const fx = Math.cos(d.heading);
   const fy = Math.sin(d.heading);
   const hl = DOZER.length * 0.5;

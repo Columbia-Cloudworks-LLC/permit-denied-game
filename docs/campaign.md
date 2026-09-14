@@ -39,7 +39,7 @@ Clear **Governor's Mansion** and the campaign is over (**COUNTY CLOSED**). **New
 
 ## Levels
 
-Density rises from County through City Downtown by tightening lots and setbacks, not only by adding buildings. Governor's Mansion is a smaller estate with a site-placed landmark.
+Density rises from County through City Downtown by tightening lots and setbacks, not only by adding buildings. City Borough and City Downtown also use **composition rules**: height-band quotas, variant caps, and mixed parcel classes so later maps read as urban instead of a dense village of one-story shops. Governor's Mansion is a smaller estate with a site-placed landmark. The exact mid-rise and skyscraper roster is in [urban-variant-roster](urban-variant-roster.md).
 
 | # | Level | Landmark | Target | Clock | Buildings | Roads |
 | --- | --- | --- | ---: | ---: | ---: | --- |
@@ -89,6 +89,17 @@ Add a `campaign` object on the `*.building.json`:
 ```
 
 Weights are relative odds among eligible buildings on that level. Use only these level IDs: `county`, `village`, `township`, `suburb`, `city-borough`, `city-downtown`, `governors-mansion`. Invalid IDs or negative weights fail discovery.
+
+Optional `family` groups visually related variants for diversity caps. Optional `exception` marks a deliberate low-rise that may appear in a city pool without counting as the default fabric (Borough/Downtown: `parking-garage` only). Missing `campaign` is still opt-out.
+
+City composition is configured on the level in `src/game/campaign.ts`, not hoped-for from weights:
+
+| Level | Ordinary buildings | Height rule | Variant / family caps |
+| --- | ---: | --- | --- |
+| City Borough | 31 | ≥80% mid-rise (5–12). No skyscrapers. | ≥6 IDs, none >20%, family ≤40% |
+| City Downtown | 35 | ≥95% five stories or taller, ≥30% skyscrapers (20+) | ≥6 IDs, none >20%, family ≤40% |
+
+Generation plans those slots, reserves larger lots for taller footprints, expands a lot when needed, and retries the seed a bounded number of times. If the map still cannot meet the rule, layout throws instead of filling with leftover bakeries.
 
 Ranch, cottage, colonial, storefront, and the rest of the catalog already list the levels they belong on. Copy a nearby package’s `campaign` block when you add a new house or shop.
 

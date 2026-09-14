@@ -1,0 +1,500 @@
+{
+  "version": 1,
+  "id": "twin-residence",
+  "label": "TWIN RESIDENCE",
+  "w": 9,
+  "d": 7,
+  "floors": 22,
+  "kind": "house",
+  "construction": "concrete-bearing",
+  "roof": "flat",
+  "theme": "walkup",
+  "windowStride": 2,
+  "features": {
+    "porch": false,
+    "awning": false,
+    "parapet": true,
+    "chimney": false,
+    "garage": false
+  },
+  "zones": {
+    "residential": 0,
+    "commercial": 0,
+    "industrial": 0
+  },
+  "traits": {
+    "use": [
+      "residential-skyscraper"
+    ],
+    "form": [
+      "triple-stack",
+      "wide-bar"
+    ],
+    "style": [
+      "walkup"
+    ],
+    "scale": [
+      "skyscraper"
+    ]
+  },
+  "partitions": true,
+  "campaign": {
+    "family": "residential-skyscraper",
+    "levels": {
+      "city-downtown": 2
+    },
+    "maxRepeats": 3
+  },
+  "openings": [
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.5,
+      "kind": "door"
+    }
+  ],
+  "sections": [
+    {
+      "id": "west",
+      "role": "apartments",
+      "x": 0,
+      "y": 0,
+      "w": 3,
+      "d": 5,
+      "floor": 0,
+      "floors": 22,
+      "layout": "west.layout.json"
+    },
+    {
+      "id": "mid",
+      "role": "apartments",
+      "x": 3,
+      "y": 0,
+      "w": 3,
+      "d": 5,
+      "floor": 0,
+      "floors": 22,
+      "layout": "mid.layout.json"
+    },
+    {
+      "id": "east",
+      "role": "apartments",
+      "x": 6,
+      "y": 0,
+      "w": 3,
+      "d": 5,
+      "floor": 0,
+      "floors": 22,
+      "layout": "east.layout.json"
+    },
+    {
+      "id": "stair-hall",
+      "role": "shared-circulation",
+      "x": 0,
+      "y": 5,
+      "w": 9,
+      "d": 2,
+      "floor": 0,
+      "floors": 22,
+      "layout": "stair-hall.layout.json"
+    }
+  ],
+  "connections": [
+    {
+      "a": "west/0/living",
+      "b": "stair-hall/0/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "mid/0/living",
+      "b": "stair-hall/0/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "east/0/living",
+      "b": "stair-hall/0/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "west/1/living",
+      "b": "stair-hall/1/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "mid/1/living",
+      "b": "stair-hall/1/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "east/1/living",
+      "b": "stair-hall/1/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "west/2/living",
+      "b": "stair-hall/2/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "mid/2/living",
+      "b": "stair-hall/2/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "east/2/living",
+      "b": "stair-hall/2/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "west/3/living",
+      "b": "stair-hall/3/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "mid/3/living",
+      "b": "stair-hall/3/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "east/3/living",
+      "b": "stair-hall/3/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "west/4/living",
+      "b": "stair-hall/4/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "mid/4/living",
+      "b": "stair-hall/4/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "east/4/living",
+      "b": "stair-hall/4/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "west/5/living",
+      "b": "stair-hall/5/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "mid/5/living",
+      "b": "stair-hall/5/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "east/5/living",
+      "b": "stair-hall/5/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "west/6/living",
+      "b": "stair-hall/6/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "mid/6/living",
+      "b": "stair-hall/6/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "east/6/living",
+      "b": "stair-hall/6/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "west/7/living",
+      "b": "stair-hall/7/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "mid/7/living",
+      "b": "stair-hall/7/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "east/7/living",
+      "b": "stair-hall/7/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "west/8/living",
+      "b": "stair-hall/8/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "mid/8/living",
+      "b": "stair-hall/8/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "east/8/living",
+      "b": "stair-hall/8/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "west/9/living",
+      "b": "stair-hall/9/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "mid/9/living",
+      "b": "stair-hall/9/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "east/9/living",
+      "b": "stair-hall/9/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "west/10/living",
+      "b": "stair-hall/10/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "mid/10/living",
+      "b": "stair-hall/10/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "east/10/living",
+      "b": "stair-hall/10/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "west/11/living",
+      "b": "stair-hall/11/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "mid/11/living",
+      "b": "stair-hall/11/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "east/11/living",
+      "b": "stair-hall/11/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "west/12/living",
+      "b": "stair-hall/12/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "mid/12/living",
+      "b": "stair-hall/12/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "east/12/living",
+      "b": "stair-hall/12/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "west/13/living",
+      "b": "stair-hall/13/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "mid/13/living",
+      "b": "stair-hall/13/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "east/13/living",
+      "b": "stair-hall/13/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "west/14/living",
+      "b": "stair-hall/14/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "mid/14/living",
+      "b": "stair-hall/14/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "east/14/living",
+      "b": "stair-hall/14/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "west/15/living",
+      "b": "stair-hall/15/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "mid/15/living",
+      "b": "stair-hall/15/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "east/15/living",
+      "b": "stair-hall/15/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "west/16/living",
+      "b": "stair-hall/16/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "mid/16/living",
+      "b": "stair-hall/16/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "east/16/living",
+      "b": "stair-hall/16/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "west/17/living",
+      "b": "stair-hall/17/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "mid/17/living",
+      "b": "stair-hall/17/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "east/17/living",
+      "b": "stair-hall/17/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "west/18/living",
+      "b": "stair-hall/18/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "mid/18/living",
+      "b": "stair-hall/18/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "east/18/living",
+      "b": "stair-hall/18/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "west/19/living",
+      "b": "stair-hall/19/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "mid/19/living",
+      "b": "stair-hall/19/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "east/19/living",
+      "b": "stair-hall/19/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "west/20/living",
+      "b": "stair-hall/20/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "mid/20/living",
+      "b": "stair-hall/20/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "east/20/living",
+      "b": "stair-hall/20/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "west/21/living",
+      "b": "stair-hall/21/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "mid/21/living",
+      "b": "stair-hall/21/hall",
+      "at": 0.5,
+      "width": 0.3
+    },
+    {
+      "a": "east/21/living",
+      "b": "stair-hall/21/hall",
+      "at": 0.5,
+      "width": 0.3
+    }
+  ]
+}
