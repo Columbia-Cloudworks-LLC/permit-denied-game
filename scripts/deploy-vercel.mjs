@@ -2,12 +2,15 @@ import { readdir, readFile, appendFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-// Use the same Build Output API format and prebuilt endpoint as Vercel CLI,
-// without its unrelated user-profile lookup. Only compiled static files upload.
+// Upload only compiled files in Build Output API format. Let Vercel process
+// that output normally so project integrations, including analytics, get routes.
 export async function staticDeploymentFiles(directory) {
   const files = [{ file: '.vercel/output/config.json', data: Buffer.from(JSON.stringify({
     version: 3,
     routes: [
+      { src: '/(.*)', headers: { 'referrer-policy': 'no-referrer' }, continue: true },
+      { src: '/privacy/?', dest: '/privacy/index.html', headers: { 'cache-control': 'no-cache' } },
+      { src: '/terms/?', dest: '/terms/index.html', headers: { 'cache-control': 'no-cache' } },
       { src: '/assets/(.*)', headers: { 'cache-control': 'public, max-age=31536000, immutable' }, continue: true },
       { src: '/catalog', status: 308, headers: { Location: '/catalog/' } },
       { src: '/catalog/', dest: '/catalog/index.html', headers: { 'cache-control': 'no-cache' } },
@@ -53,8 +56,8 @@ export async function deploy() {
   }
   const project = await api(`/v9/projects/${projectId}`);
   const files = await staticDeploymentFiles('dist');
-  const deployment = await api('/v13/deployments?prebuilt=1', {
-    name: project.name, project: projectId, files,
+  const deployment = await api('/v13/deployments', {
+    version: 2, name: project.name, project: projectId, files,
     ...(target === 'production' ? { target: 'production' } : {}),
     meta: { githubCommitSha: process.env.DEPLOY_SHA || '', githubCommitRef: process.env.DEPLOY_BRANCH || '' },
   });

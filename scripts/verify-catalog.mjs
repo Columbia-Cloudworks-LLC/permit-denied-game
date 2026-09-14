@@ -1,3 +1,4 @@
+import { privacyTestSetup } from './privacy-test-setup.mjs';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { mkdir, readFile } from 'node:fs/promises';
@@ -53,6 +54,7 @@ try {
       const key = new URL(route.request().url()).pathname.slice(1), body = files.get(key);
       return route.fulfill({ status: body ? 200 : 404, headers: { 'access-control-allow-origin': '*' }, contentType: key.endsWith('webp') ? 'image/webp' : 'application/json', body: body || '' });
     });
+    await privacyTestSetup(context);
     await page.goto(`${origin}/catalog/`); await page.locator('.card').first().waitFor();
     assert.equal(await page.locator('.card').count(), 24);
     assert.ok(!requests.some(url => frames.some(frame => url.endsWith(frame.file))), 'Frames loaded before opening an asset');

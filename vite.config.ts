@@ -10,7 +10,7 @@ export default defineConfig({
       this.emitFile({ type: 'asset', fileName: 'build.json', source: JSON.stringify({ version, commit: process.env.DEPLOY_SHA || 'local' }) });
     },
     transformIndexHtml(_html, context) {
-      if (context.path.startsWith('/catalog/')) return [];
+      if (context.path.startsWith('/catalog/') || context.path.startsWith('/privacy/') || context.path.startsWith('/terms/')) return [];
       return facebookMetadata(process.env.FACEBOOK_APP_ID, process.env.REQUIRE_FACEBOOK_APP_ID === '1');
     },
   }],
@@ -28,7 +28,7 @@ export default defineConfig({
   },
   build: {
     target: "es2022",
-    rollupOptions: { input: { game: 'index.html', catalog: 'catalog/index.html' } },
+    rollupOptions: { input: { game: 'index.html', catalog: 'catalog/index.html', privacy: 'privacy/index.html', terms: 'terms/index.html' } },
   },
   test: {
     environment: "node",

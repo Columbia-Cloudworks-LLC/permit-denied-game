@@ -16,7 +16,7 @@ export class Input {
 
   attach(target: Window = window): () => void {
     const onDown = (e: KeyboardEvent) => {
-      if (e.target instanceof Element && (e.target.closest(".operator-menu, #hud-overlay, #debug-panel, .yard-panel, input, select, textarea") ||
+      if (e.target instanceof Element && (e.target.closest(".privacy-dialog, .operator-menu, #hud-overlay, #debug-panel, .yard-panel, input, select, textarea") ||
         (e.target.closest("button, a, .debug-menu") && [" ", "Enter"].includes(e.key)))) return;
       const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
       if ([" ", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {

@@ -1,3 +1,4 @@
+import { privacyTestSetup } from './privacy-test-setup.mjs';
 import { chromium } from 'playwright';
 import assert from 'node:assert/strict';
 import { mkdir } from 'node:fs/promises';
@@ -8,6 +9,7 @@ await mkdir(output, { recursive: true });
 const browser = await chromium.launch({ headless: true });
 const errors = [];
 const page = await browser.newPage({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+await privacyTestSetup(page);
 page.on('pageerror', error => errors.push(error.message));
 try {
   await page.goto(`${base}/?controls=1`);
