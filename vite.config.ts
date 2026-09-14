@@ -36,5 +36,9 @@ export default defineConfig({
     testTimeout: 180_000,
     hookTimeout: 180_000,
     teardownTimeout: 180_000,
+    // Vitest 3.2 birpc ACKs time out at 60s. Windows CI plus the 20-minute
+    // sandbox bench starves the host and fails a green run with
+    // Timeout calling "onTaskUpdate".
+    ...(process.env.CI && process.platform === "win32" ? { maxWorkers: 1 } : {}),
   },
 });

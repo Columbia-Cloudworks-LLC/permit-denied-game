@@ -48,8 +48,6 @@
     "levels": {
       "village": 2,
       "township": 2,
-      "city-borough": 2,
-      "city-downtown": 3,
       "county": 1
     }
   }

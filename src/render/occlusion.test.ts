@@ -5,10 +5,13 @@ import { getBuildingSurfaces } from "./buildingSurfaces";
 import {
   WALL_OCCLUDE_ALPHA,
   WALL_OCCLUDE_NEAR,
+  buildingHidesDozer,
+  pieceHidesDozer,
   wallCellOcclusionFade,
   wallSpanFadeRuns,
   type OccludeDozer,
 } from "./occlusion";
+import { FLOOR_Z } from "../game/constants";
 
 function ranchAt(x = 20, y = 8) {
   return createBuildingFromArchetype("ranch", "RANCH", x, y);
@@ -102,5 +105,41 @@ describe("wall cell occlusion fade", () => {
   it("keeps the near radius tight enough that a house-depth gap does not fade", () => {
     const b = ranchAt();
     expect(b.d * b.cellSize).toBeGreaterThan(WALL_OCCLUDE_NEAR);
+  });
+});
+
+describe("dozer hidden by in-front geometry", () => {
+  it("marks a mid-rise roof that stands between the dozer and the camera", () => {
+    const b = createBuildingFromArchetype("walkup-block", "WALKUP", 20, 20);
+    const bw = b.w * b.cellSize;
+    const bd = b.d * b.cellSize;
+    const roofTop = b.floors * FLOOR_Z;
+    const behind = dozer(b.x + bw * 0.5, b.y - 1.4, Math.PI / 2);
+    expect(pieceHidesDozer(behind, b.x, b.y, bw, bd, roofTop - FLOOR_Z, roofTop)).toBe(true);
+  });
+
+  it("stays off when the dozer is on the camera side of the same mid-rise", () => {
+    const b = createBuildingFromArchetype("walkup-block", "WALKUP", 20, 20);
+    const bw = b.w * b.cellSize;
+    const bd = b.d * b.cellSize;
+    const roofTop = b.floors * FLOOR_Z;
+    const lawn = dozer(b.x + bw * 0.5, b.y + bd + 3.2, -Math.PI / 2);
+    expect(pieceHidesDozer(lawn, b.x, b.y, bw, bd, roofTop - FLOOR_Z, roofTop)).toBe(false);
+    expect(buildingHidesDozer(lawn, b)).toBe(false);
+  });
+
+  it("does not treat a distant block as hiding the dozer", () => {
+    const d = dozer(4, 4);
+    expect(pieceHidesDozer(d, 80, 80, 8, 8, 10, 16)).toBe(false);
+  });
+
+  it("marks a street-side dozer tucked behind a deep mid-rise", () => {
+    const b = createBuildingFromArchetype("walkup-block", "WALKUP", 20, 20);
+    const street = dozer(b.x + b.w * b.cellSize * 0.55, b.y + 1.1, Math.PI / 2);
+    expect(buildingHidesDozer(street, b)).toBe(true);
+    const compact = createBuildingFromArchetype("office-compact-twelve", "SLAB", 40, 20);
+    expect(buildingHidesDozer(dozer(compact.x + compact.w * compact.cellSize * 0.55, compact.y + 1.1, Math.PI / 2), compact)).toBe(true);
+    const beside = dozer(b.x + b.w * b.cellSize + 4, b.y + b.d * b.cellSize * 0.5, Math.PI);
+    expect(buildingHidesDozer(beside, b)).toBe(false);
   });
 });

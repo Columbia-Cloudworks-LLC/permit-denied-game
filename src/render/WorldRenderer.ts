@@ -31,7 +31,7 @@ import { facadeDetailCommand } from './facadeDetails';
 import { elevatedTankCommands } from './elevatedTank';
 import { siloCommands } from './silos';
 import { drawNhoodOverlay } from "./nhoodOverlay";
-import { objectOcclusionFade, VisibilityFades, wallSpanFadeRuns } from "./occlusion";
+import { buildingHidesDozer, objectOcclusionFade, pieceHidesDozer, VisibilityFades, wallSpanFadeRuns } from "./occlusion";
 
 interface Cmd {
   floor?: number;
@@ -76,6 +76,7 @@ export class WorldRenderer {
   private overlayKey = "";
   private siteKey = "";
   stats = { total: 0, visible: 0, surfaceGeometry: 0, cached: 0, rebuilt: 0 };
+  dozerHidden = false;
 
   constructor() {
     this.root.addChild(this.ground, this.sites, this.overlay, this.groundOverlays, this.drawing.root, this.world, this.nhood, this.debugOverlay);
@@ -216,6 +217,7 @@ export class WorldRenderer {
       const fall = 1.4;
       total += b.cells.length;
       if (!this.visibleBox(b.x - fall, b.y - fall, bw + fall * 2, bd + fall * 2, -0.4, z1)) continue;
+      if (buildingHidesDozer(dozer, b)) occluded = true;
       if(b.elevatedTank) {
         const commands=elevatedTankCommands(b,view);visible+=commands.length;this.cmds.push(...commands);continue;
       }
@@ -242,7 +244,7 @@ export class WorldRenderer {
       const fadeBox = (key: string, x: number, y: number, w: number, d: number, z: number, top: number) => {
         const alpha = this.fades.sample(`${b.id}:${key}`, objectOcclusionFade(dozer, x, y, w, d, z, top), dt);
         fadeValues.push(Math.round(alpha * 1000));
-        if (alpha < .6) occluded = true;
+        if (alpha < .6 || pieceHidesDozer(dozer, x, y, w, d, z, top)) occluded = true;
         return alpha;
       };
       if (this.jobTarget === b) {
@@ -302,15 +304,16 @@ export class WorldRenderer {
         if (span.floor > view.maxFloor) continue;
         for (const run of wallSpanFadeRuns(b, span, dozer)) {
           const s = run.span, cs = b.cellSize;
+          const wallX = b.x + (s.dir === "east" ? s.gx0 + 1 : s.gx0) * cs;
+          const wallY = b.y + (s.dir === "south" ? s.gy0 + 1 : s.gy0) * cs;
+          const wallW = s.dir === "east" ? .08 : (s.gx1 - s.gx0 + 1) * cs;
+          const wallD = s.dir === "south" ? .08 : (s.gy1 - s.gy0 + 1) * cs;
+          const wallZ = s.floor * FLOOR_Z;
+          const wallTop = (s.floor + 1) * FLOOR_Z;
           const alpha = this.fades.sample(`${b.id}:wall:${s.dir}:${s.floor}:${s.gx0}:${s.gy0}`,
-            Math.min(run.fade, objectOcclusionFade(dozer,
-              b.x + (s.dir === "east" ? s.gx0 + 1 : s.gx0) * cs,
-              b.y + (s.dir === "south" ? s.gy0 + 1 : s.gy0) * cs,
-              s.dir === "east" ? .08 : (s.gx1 - s.gx0 + 1) * cs,
-              s.dir === "south" ? .08 : (s.gy1 - s.gy0 + 1) * cs,
-              s.floor * FLOOR_Z, (s.floor + 1) * FLOOR_Z)), dt);
+            Math.min(run.fade, objectOcclusionFade(dozer, wallX, wallY, wallW, wallD, wallZ, wallTop)), dt);
           fadeValues.push(Math.round(alpha * 1000));
-        if (alpha < .6) occluded = true;
+          if (alpha < .6 || pieceHidesDozer(dozer, wallX, wallY, wallW, wallD, wallZ, wallTop)) occluded = true;
           visible++;
           this.cmds.push({
             depth: run.span.depth,
@@ -445,17 +448,20 @@ export class WorldRenderer {
 
     this.cmds.sort((a, b) => a.depth - b.depth);
     this.drawing.draw(this.cmds);
-    if (occluded && !view.overview) {
+    const hidden = occluded && !view.overview;
+    this.dozerHidden = hidden;
+    if (hidden) {
       const fx = Math.cos(dozer.heading), fy = Math.sin(dozer.heading);
       const point = (along: number, across: number) => {
         const p = worldToScreen(dozer.x + fx * along - fy * across, dozer.y + fy * along + fx * across, .5);
         return [p.x, p.y];
       };
-      // Open chevron and blade edge, never an opaque vehicle drawn through the building.
+      // Same open chevron and blade edge as before; stroke scales with zoom so street camera keeps it readable.
+      const stroke = 6 / Math.max(0.4, this.zoom);
       this.world.poly([...point(-.4, -.4), ...point(.5, 0), ...point(-.4, .4)], false);
-      this.world.stroke({ color: 0xffe39a, width: 1.5, alpha: .75 });
+      this.world.stroke({ color: 0xffe39a, width: stroke, alpha: .75 });
       this.world.poly([...point(DOZER.bladeReach, -DOZER.bladeHalf), ...point(DOZER.bladeReach, DOZER.bladeHalf)], false);
-      this.world.stroke({ color: 0xffe39a, width: 1.5, alpha: .75 });
+      this.world.stroke({ color: 0xffe39a, width: stroke, alpha: .75 });
     }
     drawDebugOverlay(this.debugOverlay, town, dozer, view);
     this.drawLandmarkMarkers();

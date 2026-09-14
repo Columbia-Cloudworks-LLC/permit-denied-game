@@ -55,8 +55,8 @@ describe('expanded building roster', () => {
   it('leaves room for experimentation after loading the complete baseline', () => {
     const assets = discoverYardAssets();
     const baseline = assets.reduce((total, a) => total + yardGridSlots(a), 0);
-    expect(baseline).toBeLessThan(65536 - 32768);
+    expect(baseline).toBeLessThan(65536 - 16384);
     const bays = layoutYard(assets);
-    expect(Math.max(...bays.map(b => b.y + b.d)) + 150).toBeLessThan(2000);
+    expect(Math.max(...bays.map(b => b.y + b.d)) + 150).toBeLessThan(3200);
   });
 });

@@ -408,6 +408,7 @@
       "city-borough": 1,
       "city-downtown": 2
     },
-    "maxRepeats": 1
+    "maxRepeats": 1,
+    "family": "urban-apartment"
   }
 }

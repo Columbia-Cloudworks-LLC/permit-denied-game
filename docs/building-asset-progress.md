@@ -13,6 +13,8 @@ The full authorized objective remains **60 new buildings, 12 sites, 24 supportin
 
 All new buildings have zero zoning weights and are available through the test yard. Existing district selection is preserved. Generated packages are ordinary owned JSON layouts, not a runtime name/shape substitution mechanism. Authoring helpers in `scripts/author-*.mjs` are explicit opt-in utilities; builds do not run them, and existing packages are not overwritten by default.
 
+An additional **urban variety** pass adds eighteen mid-rise and skyscraper variants for Time Challenge City Borough / City Downtown. They keep zero Sandbox zone weights. See [urban-variant-roster](urban-variant-roster.md) and [campaign](campaign.md).
+
 ## Remaining building and detail work
 
 - **Multi-unit access:** storage, retail, duplex, motel, fourplex, garden/courtyard apartments, tower, hotel, rowhouse and boarding-house layouts now have deliberate entrances and circulation. Each revised residential package has targeted production captures and access checks; see the checkpoints below.

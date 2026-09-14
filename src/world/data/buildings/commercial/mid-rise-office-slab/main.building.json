@@ -61,6 +61,7 @@
     "levels": {
       "city-borough": 1,
       "city-downtown": 2
-    }
+    },
+    "family": "midrise-office"
   }
 }

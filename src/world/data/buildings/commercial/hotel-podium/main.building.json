@@ -421,6 +421,7 @@
     "levels": {
       "city-downtown": 1
     },
-    "maxRepeats": 1
+    "maxRepeats": 1,
+    "family": "hotel"
   }
 }

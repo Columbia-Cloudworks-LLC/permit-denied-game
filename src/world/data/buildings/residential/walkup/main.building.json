@@ -47,8 +47,8 @@
   "generationOrder": 5,
   "campaign": {
     "levels": {
-      "city-borough": 3,
-      "city-downtown": 2
+      "township": 2,
+      "suburb": 3
     }
   }
 }

@@ -28,6 +28,15 @@ export const PARCEL = {
   maxExpand: 16,
 } as const;
 
+export type ParcelLotClass = {
+  id: string;
+  weight: number;
+  minFront: number;
+  maxFront: number;
+  minDepth: number;
+  maxDepth: number;
+};
+
 export type ParcelMetrics = {
   minFront: number;
   maxFront: number;
@@ -38,6 +47,7 @@ export type ParcelMetrics = {
   lotGap: number;
   driveWidth: number;
   maxExpand: number;
+  lotClasses?: readonly ParcelLotClass[];
 };
 
 export interface ParcelSetbackRange {
@@ -324,21 +334,38 @@ export function allocateFrontage(
     let slot = 0;
     const side0: LotSide = rng.chance(0.5) ? 1 : -1;
     while (cursor + parcel.minFront <= usable && lots.length < safety) {
-      const front = clamp(rng.range(parcel.minFront, parcel.maxFront), parcel.minFront, usable - cursor);
-      const depth = rng.range(parcel.minDepth, parcel.maxDepth);
+      const lotClass = pickLotClass(parcel, rng);
+      const minFront = lotClass?.minFront ?? parcel.minFront;
+      const maxFront = lotClass?.maxFront ?? parcel.maxFront;
+      const minDepth = lotClass?.minDepth ?? parcel.minDepth;
+      const maxDepth = lotClass?.maxDepth ?? parcel.maxDepth;
+      if (cursor + minFront > usable) break;
+      const front = clamp(rng.range(minFront, maxFront), minFront, usable - cursor);
+      const depth = rng.range(minDepth, maxDepth);
       const t0 = cursor / path;
       const t1 = (cursor + front) / path;
       const side: LotSide = slot % 2 === 0 ? side0 : side0 === 1 ? -1 : 1;
       slot++;
       cursor += front + parcel.lotGap;
-      const made = tryParcel(seg, side, t0, t1, depth, lots, rng, rejected, checkRoads);
+      const made = tryParcel(seg, side, t0, t1, depth, lots, rng, rejected, checkRoads, lotClass?.id);
       if (made) lots.push(made);
       const other: LotSide = side === 1 ? -1 : 1;
-      const twin = tryParcel(seg, other, t0, t1, depth * rng.range(0.92, 1.06), lots, rng, rejected, checkRoads);
+      const twin = tryParcel(seg, other, t0, t1, depth * rng.range(0.92, 1.06), lots, rng, rejected, checkRoads, lotClass?.id);
       if (twin) lots.push(twin);
     }
   }
   return { lots, rejected };
+}
+
+function pickLotClass(parcel: ParcelMetrics, rng: Rng): ParcelLotClass | undefined {
+  const classes = parcel.lotClasses;
+  if (!classes?.length) return undefined;
+  let pick = rng.range(0, classes.reduce((sum, entry) => sum + entry.weight, 0));
+  for (const entry of classes) {
+    pick -= entry.weight;
+    if (pick <= 0) return entry;
+  }
+  return classes[classes.length - 1];
 }
 
 function tryParcel(
@@ -351,6 +378,7 @@ function tryParcel(
   rng: Rng,
   rejected: NhoodReject[],
   publicSegs: readonly RoadSegment[] = [seg],
+  classId?: string,
 ): Lot | null {
   const geom = parcelFromFrontage(seg, side, t0, t1, depth);
   if (geom.boundary.some((p) => Number.isNaN(p.x))) return null;
@@ -386,7 +414,7 @@ function tryParcel(
     zone: zoneForLot(n, 100, seg.roadClass),
     identity: identityFor(n, 100, seg.roadClass, rng),
     accessId: "",
-    templateId: "",
+    templateId: classId ?? "",
     frontage,
     boundary: geom.boundary,
     buildable,

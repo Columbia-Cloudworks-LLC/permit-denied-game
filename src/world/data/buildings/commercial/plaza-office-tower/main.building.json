@@ -1,0 +1,129 @@
+{
+  "version": 1,
+  "id": "plaza-office-tower",
+  "label": "PLAZA OFFICE TOWER",
+  "w": 10,
+  "d": 8,
+  "floors": 22,
+  "kind": "shop",
+  "construction": "concrete-bearing",
+  "roof": "flat",
+  "theme": "civic",
+  "windowStride": 2,
+  "features": {
+    "porch": false,
+    "awning": false,
+    "parapet": true,
+    "chimney": false,
+    "garage": false
+  },
+  "zones": {
+    "residential": 0,
+    "commercial": 0,
+    "industrial": 0
+  },
+  "traits": {
+    "use": [
+      "office-skyscraper"
+    ],
+    "form": [
+      "podium",
+      "shaft"
+    ],
+    "style": [
+      "civic"
+    ],
+    "scale": [
+      "skyscraper"
+    ]
+  },
+  "partitions": true,
+  "campaign": {
+    "family": "office-skyscraper",
+    "levels": {
+      "city-downtown": 2
+    },
+    "maxRepeats": 3
+  },
+  "openings": [
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.5,
+      "kind": "door"
+    }
+  ],
+  "coreCollapse": {
+    "supports": [
+      {
+        "x": 3,
+        "y": 2,
+        "weight": 1
+      },
+      {
+        "x": 3,
+        "y": 5,
+        "weight": 1
+      },
+      {
+        "x": 5,
+        "y": 2,
+        "weight": 2
+      },
+      {
+        "x": 5,
+        "y": 5,
+        "weight": 1
+      },
+      {
+        "x": 7,
+        "y": 2,
+        "weight": 1
+      },
+      {
+        "x": 7,
+        "y": 5,
+        "weight": 1
+      }
+    ],
+    "capacityThreshold": 0.45,
+    "warningDuration": 1.1,
+    "duration": 5
+  },
+  "sections": [
+    {
+      "id": "podium",
+      "role": "podium",
+      "x": 0,
+      "y": 0,
+      "w": 10,
+      "d": 8,
+      "floor": 0,
+      "floors": 3,
+      "layout": "podium.layout.json"
+    },
+    {
+      "id": "tower",
+      "role": "tower",
+      "x": 2,
+      "y": 1,
+      "w": 6,
+      "d": 6,
+      "floor": 3,
+      "floors": 18,
+      "layout": "tower.layout.json"
+    },
+    {
+      "id": "mechanical",
+      "role": "mechanical",
+      "x": 2,
+      "y": 1,
+      "w": 6,
+      "d": 6,
+      "floor": 21,
+      "floors": 1,
+      "layout": "mechanical.layout.json"
+    }
+  ],
+  "connections": []
+}

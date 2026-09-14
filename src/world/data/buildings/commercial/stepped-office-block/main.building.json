@@ -80,7 +80,9 @@
   ],
   "campaign": {
     "levels": {
+      "city-borough": 1,
       "city-downtown": 1
-    }
+    },
+    "family": "midrise-office"
   }
 }

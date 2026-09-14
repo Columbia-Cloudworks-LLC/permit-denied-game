@@ -1214,6 +1214,219 @@ export class RoadBuilder {
     }
   }
 
+  /** Drop public streets and orphan driveways that sit outside the kept lot cluster. */
+  dropPublicRoadsAwayFromLots(
+    lots: readonly { x: number; y: number; w: number; d: number; drivewayId?: string; frontage?: { segmentId: string } }[],
+    pad: number,
+  ): void {
+    if (!lots.length) return;
+    const keep = new Set<string>();
+    for (const lot of lots) {
+      if (lot.drivewayId) keep.add(lot.drivewayId);
+    }
+    for (const seg of [...this.segments]) {
+      if (seg.roadClass === "driveway" || seg.roadClass === "ramp") {
+        if (lots.some((lot) => lot.drivewayId === seg.id)) keep.add(seg.id);
+        continue;
+      }
+      if (keep.has(seg.id)) continue;
+      const live = this.segments.find((s) => s.id === seg.id);
+      if (!live) continue;
+      const range = nearLotTRange(live, lots, pad);
+      if (!range) continue;
+      this.keepNearPortion(live, range.t0, range.t1, keep);
+    }
+    for (const acc of this.accesses) keep.add(acc.segmentId);
+    this.growNearKeep(keep, lots, pad * 1.5);
+    this.connectKeptPublic(keep);
+    this.dropRedundantFarPublic(keep, lots, pad);
+    for (const seg of [...this.segments]) {
+      if (!keep.has(seg.id)) this.detachSegment(seg);
+    }
+    this.stripDegenerate();
+  }
+
+  private keepNearPortion(seg: RoadSegment, raw0: number, raw1: number, keep: Set<string>): void {
+    let t0 = Math.max(0, raw0 - 0.04);
+    let t1 = Math.min(1, raw1 + 0.04);
+    if (t1 - t0 < 0.1) {
+      const mid = (t0 + t1) * 0.5;
+      t0 = Math.max(0, mid - 0.08);
+      t1 = Math.min(1, mid + 0.08);
+    }
+    let live = this.segments.find((s) => s.id === seg.id);
+    if (!live) return;
+    if (t0 > 0.05) {
+      const cut = this.splitSegment(live, t0);
+      live = cut.second;
+      t1 = (t1 - t0) / Math.max(1e-4, 1 - t0);
+    }
+    if (!live) return;
+    if (t1 < 0.95) {
+      const cut = this.splitSegment(live, t1);
+      if (cut.first) keep.add(cut.first.id);
+      return;
+    }
+    keep.add(live.id);
+  }
+
+  private connectKeptPublic(keep: Set<string>): void {
+    const publicSegs = this.segments.filter((s) => s.roadClass !== "driveway" && s.roadClass !== "ramp");
+    const byId = new Map(publicSegs.map((s) => [s.id, s]));
+    const nodeToSegs = new Map<string, string[]>();
+    for (const s of publicSegs) {
+      for (const nid of [s.startId, s.endId]) {
+        const list = nodeToSegs.get(nid) ?? [];
+        list.push(s.id);
+        nodeToSegs.set(nid, list);
+      }
+    }
+    const flood = (startId: string, allowed: Set<string>): Set<string> => {
+      const seen = new Set<string>();
+      const stack = [startId];
+      seen.add(startId);
+      while (stack.length) {
+        const id = stack.pop()!;
+        const seg = byId.get(id);
+        if (!seg) continue;
+        for (const nid of [seg.startId, seg.endId]) {
+          for (const sid of nodeToSegs.get(nid) ?? []) {
+            if (!allowed.has(sid) || seen.has(sid)) continue;
+            seen.add(sid);
+            stack.push(sid);
+          }
+        }
+      }
+      return seen;
+    };
+    const remaining = new Set(publicSegs.filter((s) => keep.has(s.id)).map((s) => s.id));
+    if (remaining.size <= 1) return;
+    const roots: string[] = [];
+    const visited = new Set<string>();
+    for (const id of remaining) {
+      if (visited.has(id)) continue;
+      const comp = flood(id, remaining);
+      for (const x of comp) visited.add(x);
+      roots.push(id);
+    }
+    if (roots.length <= 1) return;
+    const allPublic = new Set(publicSegs.map((s) => s.id));
+    const merged = flood(roots[0]!, remaining);
+    for (let i = 1; i < roots.length; i++) {
+      const target = flood(roots[i]!, remaining);
+      const prev = new Map<string, string | null>();
+      const q = [...merged];
+      for (const id of merged) prev.set(id, null);
+      let hit: string | undefined;
+      while (q.length && !hit) {
+        const id = q.shift()!;
+        const seg = byId.get(id);
+        if (!seg) continue;
+        for (const nid of [seg.startId, seg.endId]) {
+          for (const sid of nodeToSegs.get(nid) ?? []) {
+            if (!allPublic.has(sid) || prev.has(sid)) continue;
+            prev.set(sid, id);
+            if (target.has(sid)) {
+              hit = sid;
+              break;
+            }
+            q.push(sid);
+          }
+          if (hit) break;
+        }
+      }
+      if (!hit) continue;
+      let cur: string | null = hit;
+      while (cur) {
+        keep.add(cur);
+        remaining.add(cur);
+        merged.add(cur);
+        cur = prev.get(cur) ?? null;
+      }
+      for (const id of target) merged.add(id);
+    }
+  }
+
+  private growNearKeep(
+    keep: Set<string>,
+    lots: readonly { x: number; y: number; w: number; d: number }[],
+    pad: number,
+  ): void {
+    let grown = true;
+    while (grown) {
+      grown = false;
+      for (const seg of this.segments) {
+        if (keep.has(seg.id) || seg.roadClass === "driveway" || seg.roadClass === "ramp") continue;
+        if (!nearLotTRange(seg, lots, pad)) continue;
+        const touches = [seg.startId, seg.endId].some((nid) => {
+          const node = this.nodes.find((n) => n.id === nid);
+          return node?.segmentIds.some((id) => keep.has(id));
+        });
+        if (!touches) continue;
+        keep.add(seg.id);
+        grown = true;
+      }
+    }
+  }
+
+  private dropRedundantFarPublic(
+    keep: Set<string>,
+    lots: readonly { x: number; y: number; w: number; d: number }[],
+    pad: number,
+  ): void {
+    const accessIds = new Set(this.accesses.map((a) => a.segmentId));
+    const far = [...keep]
+      .map((id) => this.segments.find((s) => s.id === id))
+      .filter((seg): seg is RoadSegment => !!seg && seg.roadClass !== "driveway" && seg.roadClass !== "ramp")
+      .map((seg) => {
+        const mid = samplePolyline(seg.points, 0.5);
+        const dist = Math.min(...lots.map((lot) => {
+          const dx = Math.max(lot.x - mid.x, 0, mid.x - lot.x - lot.w);
+          const dy = Math.max(lot.y - mid.y, 0, mid.y - lot.y - lot.d);
+          return Math.hypot(dx, dy);
+        }));
+        return { id: seg.id, dist };
+      })
+      .filter((entry) => entry.dist > pad && !accessIds.has(entry.id))
+      .sort((a, b) => b.dist - a.dist);
+    for (const entry of far) {
+      keep.delete(entry.id);
+      if (!this.publicKeepConnected(keep)) keep.add(entry.id);
+    }
+  }
+
+  private publicKeepConnected(keep: Set<string>): boolean {
+    const publicSegs = this.segments.filter(
+      (s) => keep.has(s.id) && s.roadClass !== "driveway" && s.roadClass !== "ramp",
+    );
+    if (publicSegs.length <= 1) return publicSegs.length === 1;
+    const allowed = new Set(publicSegs.map((s) => s.id));
+    const nodeToSegs = new Map<string, string[]>();
+    for (const s of publicSegs) {
+      for (const nid of [s.startId, s.endId]) {
+        const list = nodeToSegs.get(nid) ?? [];
+        list.push(s.id);
+        nodeToSegs.set(nid, list);
+      }
+    }
+    const seen = new Set<string>();
+    const stack = [publicSegs[0]!.id];
+    seen.add(publicSegs[0]!.id);
+    while (stack.length) {
+      const id = stack.pop()!;
+      const seg = publicSegs.find((s) => s.id === id);
+      if (!seg) continue;
+      for (const nid of [seg.startId, seg.endId]) {
+        for (const sid of nodeToSegs.get(nid) ?? []) {
+          if (!allowed.has(sid) || seen.has(sid)) continue;
+          seen.add(sid);
+          stack.push(sid);
+        }
+      }
+    }
+    return seen.size === publicSegs.length;
+  }
+
   nodeById(id: string): RoadNode | undefined {
     return this.nodes.find((n) => n.id === id);
   }
@@ -1458,6 +1671,32 @@ export class RoadBuilder {
       if (n.segmentIds.length === 0) this.nodes.splice(i, 1);
     }
   }
+}
+
+function pointNearLot(p: { x: number; y: number }, lot: { x: number; y: number; w: number; d: number }, pad: number): boolean {
+  const dx = Math.max(lot.x - p.x, 0, p.x - lot.x - lot.w);
+  const dy = Math.max(lot.y - p.y, 0, p.y - lot.y - lot.d);
+  return dx * dx + dy * dy <= pad * pad;
+}
+
+function nearLotTRange(
+  seg: RoadSegment,
+  lots: readonly { x: number; y: number; w: number; d: number }[],
+  pad: number,
+): { t0: number; t1: number } | null {
+  let t0 = 1;
+  let t1 = 0;
+  const samples = 10;
+  for (let i = 0; i <= samples; i++) {
+    const t = i / samples;
+    const p = samplePolyline(seg.points, t);
+    if (lots.some((lot) => pointNearLot(p, lot, pad))) {
+      t0 = Math.min(t0, t);
+      t1 = Math.max(t1, t);
+    }
+  }
+  if (t1 < t0) return null;
+  return { t0, t1 };
 }
 
 function nodeTouchesLayer(b: RoadBuilder, node: RoadNode, layer: number): boolean {

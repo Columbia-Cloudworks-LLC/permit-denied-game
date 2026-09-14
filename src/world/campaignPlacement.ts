@@ -9,6 +9,8 @@ export interface CampaignPlacement {
   maxRepeats?: number;
   landmarkOnly?: boolean;
   zones?: readonly LotCompat[];
+  family?: string;
+  exception?: boolean;
 }
 
 export interface CampaignPlacementIssue {
@@ -16,7 +18,7 @@ export interface CampaignPlacementIssue {
   detail: string;
 }
 
-const placementShapeKeys = new Set(['levels', 'maxRepeats', 'landmarkOnly', 'zones']);
+const placementShapeKeys = new Set(['levels', 'maxRepeats', 'landmarkOnly', 'zones', 'family', 'exception']);
 
 export function parseCampaignPlacement(input: unknown, context: string): CampaignPlacement {
   if (!input || typeof input !== 'object' || Array.isArray(input)) {
@@ -54,6 +56,16 @@ export function parseCampaignPlacement(input: unknown, context: string): Campaig
       throw new Error(`${context}: campaign.zones must be an array of zone names`);
     }
     placement.zones = record.zones as LotCompat[];
+  }
+  if (record.family !== undefined) {
+    if (typeof record.family !== 'string' || !record.family.trim()) {
+      throw new Error(`${context}: campaign.family must be a non-empty string`);
+    }
+    placement.family = record.family;
+  }
+  if (record.exception !== undefined) {
+    if (typeof record.exception !== 'boolean') throw new Error(`${context}: campaign.exception must be boolean`);
+    placement.exception = record.exception;
   }
   return placement;
 }

@@ -153,6 +153,9 @@
     "levels": {
       "city-borough": 1,
       "city-downtown": 1
-    }
+    },
+    "family": "parking",
+    "exception": true,
+    "maxRepeats": 1
   }
 }

@@ -116,7 +116,6 @@
   "campaign": {
     "levels": {
       "township": 2,
-      "city-borough": 1,
       "county": 1,
       "village": 1
     }
