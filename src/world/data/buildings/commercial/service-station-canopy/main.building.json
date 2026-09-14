@@ -63,5 +63,12 @@
         "y": 6
       }
     ]
+  },
+  "campaign": {
+    "levels": {
+      "county": 1,
+      "village": 1,
+      "township": 1
+    }
   }
 }

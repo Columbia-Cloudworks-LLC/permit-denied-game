@@ -51,9 +51,15 @@
     },
     {
       "id": "ice",
-      "asset": "interior-display-fridge",
+      "asset": "hvac",
       "x": 13,
       "y": 18
     }
-  ]
+  ],
+  "campaign": {
+    "levels": {
+      "suburb": 1
+    },
+    "maxRepeats": 1
+  }
 }

@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "id": "mansion-admin-wing",
+  "label": "ESTATE ADMIN WING",
+  "kind": "shop",
+  "w": 8,
+  "d": 6,
+  "floors": 2,
+  "roof": "flat",
+  "theme": "civic",
+  "windowStride": 2,
+  "features": {
+    "porch": false,
+    "awning": false,
+    "parapet": true,
+    "chimney": false,
+    "garage": false
+  },
+  "construction": "concrete-bearing",
+  "zones": { "residential": 0, "commercial": 0, "industrial": 0 },
+  "traits": { "use": ["admin-wing"], "form": ["office-wing"], "style": ["civic"], "scale": ["estate"] },
+  "campaign": { "levels": { "governors-mansion": 2 }, "maxRepeats": 2 },
+  "partitions": true,
+  "connections": [],
+  "sections": [
+    { "id": "public", "role": "public", "x": 0, "y": 0, "w": 8, "d": 6, "floor": 0, "floors": 1, "layout": "public.layout.json" },
+    { "id": "offices", "role": "offices", "x": 1, "y": 0, "w": 6, "d": 3, "floor": 1, "floors": 1, "layout": "offices.layout.json" }
+  ],
+  "openings": [
+    { "floor": 0, "side": "south", "at": 0.5, "kind": "door" }
+  ],
+  "facadeDetails": [
+    { "id": "admin-steps", "kind": "entry-steps", "floor": 0, "gx": 3, "gy": 5, "side": "south", "width": 2 },
+    { "id": "admin-sign", "kind": "signboard", "floor": 1, "gx": 2, "gy": 2, "side": "south", "width": 3, "text": "ADMIN" }
+  ]
+}

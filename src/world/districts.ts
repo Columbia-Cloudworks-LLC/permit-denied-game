@@ -1,9 +1,12 @@
+import { campaignLevelById } from "../game/campaign";
 import { DRESSING } from "../game/constants";
 import { aabbOverlap, pointInAabb } from "../game/math";
 import type { DistrictId } from "../game/session";
 import type { Building, Prop } from "../structure/types";
 import { getAsset, validateCatalog } from "./catalog";
 import { aabbContainedInBox, aabbContainedInPoly, convexOverlap, parcelHitsRoad } from "./parcels";
+import type { CampaignLevelDef } from "../game/campaign";
+import { generateCampaignLayout } from "./campaignLayout";
 import { generateRuralLayout, type TopologyFamily } from "./rural";
 import {
   aabbOverlapsRoad,
@@ -33,8 +36,9 @@ export function generateDistrictLayout(
   id: Exclude<DistrictId, "classic">,
   seed: number,
   topology?: TopologyFamily,
+  campaign?: CampaignLevelDef,
 ): Omit<Town, "vehicles" | "pile" | "rubble" | "marks" | "roadCar" | "visualRevision" | "collapsedSites" | "siteRevision"> {
-  const rural = generateRuralLayout(id, seed, topology);
+  const rural = campaign ? generateCampaignLayout(campaign, seed) : generateRuralLayout(id, seed, topology);
   return {
     buildings: rural.buildings,
     props: rural.props,
@@ -51,6 +55,7 @@ export function generateDistrictLayout(
     network: rural.network,
     terrain: rural.terrain,
     district: rural.district,
+    campaignLevel: rural.campaignLevel,
     seed: rural.seed,
     roadSpawnX: rural.roadSpawnX,
     roadSpawnY: rural.roadSpawnY,
@@ -84,12 +89,22 @@ export function validateTown(town: Town): DistrictReport {
   const catalog = validateCatalog();
   for (const issue of catalog.issues) issues.push(issue);
 
-  const expected = districtCount(town.district);
-  if (town.buildings.length !== expected) {
-    issues.push({
-      code: "count",
-      detail: `expected ${expected} buildings, got ${town.buildings.length}`,
-    });
+  if (town.campaignLevel) {
+    const landmarks = town.buildings.filter(building => building.campaignLandmark);
+    if (landmarks.length !== 1) {
+      issues.push({ code: "landmark", detail: `expected 1 landmark, got ${landmarks.length}` });
+    }
+    if (!spawnClear(town.buildings, town.props, town.spawnX, town.spawnY)) {
+      issues.push({ code: "spawn", detail: "dozer spawn is blocked" });
+    }
+  } else {
+    const expected = districtCount(town.district);
+    if (town.buildings.length !== expected) {
+      issues.push({
+        code: "count",
+        detail: `expected ${expected} buildings, got ${town.buildings.length}`,
+      });
+    }
   }
 
   const ids = new Set<number>();
@@ -106,7 +121,9 @@ export function validateTown(town: Town): DistrictReport {
     }
   }
 
-  const budget = DRESSING.districtMax[town.district];
+  const budget = town.campaignLevel
+    ? campaignLevelById(town.campaignLevel).generation.dressingBudget
+    : DRESSING.districtMax[town.district];
   if (town.props.length > budget) {
     issues.push({ code: "density", detail: `${town.props.length} assets exceeds ${budget}` });
   }

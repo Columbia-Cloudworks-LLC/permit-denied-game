@@ -11,7 +11,7 @@ export function gameSetupRules(kind: SessionKind, district: DistrictId, currentS
 }
 export type DemoAsset = "ranch" | "rivertown" | "steel-warehouse";
 export type DistrictId = "classic" | "d10" | "d30" | "d100";
-export type PlayMode = "title" | "play" | "pause" | "upgrade" | "results";
+export type PlayMode = "title" | "play" | "pause" | "upgrade" | "results" | "briefing";
 
 export const DISTRICT_COUNTS: Record<DistrictId, number> = {
   classic: 7,

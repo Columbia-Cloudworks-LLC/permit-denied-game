@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "id": "city-hall",
+  "label": "CITY HALL",
+  "w": 12,
+  "d": 9,
+  "floors": 5,
+  "kind": "shop",
+  "construction": "brick-mixed-use",
+  "roof": "flat",
+  "theme": "civic",
+  "windowStride": 2,
+  "features": {
+    "porch": false,
+    "awning": false,
+    "parapet": true,
+    "chimney": false,
+    "garage": false
+  },
+  "zones": { "residential": 0, "commercial": 0, "industrial": 0 },
+  "traits": { "use": ["city-hall", "landmark"], "form": ["clock-hall"], "style": ["civic"], "scale": ["downtown"] },
+  "campaign": { "levels": { "city-downtown": 1 }, "landmarkOnly": true },
+  "partitions": true,
+  "sections": [
+    { "id": "hall", "role": "hall", "x": 0, "y": 0, "w": 12, "d": 9, "floor": 0, "floors": 2, "layout": "hall.layout.json" },
+    { "id": "clock", "role": "clock", "x": 4, "y": 2, "w": 4, "d": 5, "floor": 2, "floors": 3, "layout": "clock.layout.json" }
+  ],
+  "connections": [],
+  "openings": [
+    { "floor": 0, "side": "south", "at": 0.5, "kind": "door" }
+  ],
+  "facadeDetails": [
+    { "id": "hall-steps", "kind": "entry-steps", "floor": 0, "gx": 4, "gy": 8, "side": "south", "width": 4 },
+    { "id": "south-clock", "kind": "clock-face", "floor": 4, "gx": 4, "gy": 6, "side": "south", "width": 4 },
+    { "id": "east-clock", "kind": "clock-face", "floor": 4, "gx": 7, "gy": 2, "side": "east", "width": 4 },
+    { "id": "city-sign", "kind": "signboard", "floor": 1, "gx": 4, "gy": 8, "side": "south", "width": 4, "text": "CITY HALL" }
+  ]
+}

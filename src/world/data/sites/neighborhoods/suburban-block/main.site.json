@@ -79,5 +79,11 @@
       "x": 11,
       "y": 6
     }
-  ]
+  ],
+  "campaign": {
+    "levels": {
+      "suburb": 1
+    },
+    "maxRepeats": 1
+  }
 }

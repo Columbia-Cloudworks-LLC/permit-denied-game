@@ -52,5 +52,10 @@
       "kind": "loading"
     }
   ],
-  "generationOrder": 10
+  "generationOrder": 10,
+  "campaign": {
+    "levels": {
+      "city-borough": 1
+    }
+  }
 }

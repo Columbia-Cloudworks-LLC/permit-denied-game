@@ -49,5 +49,12 @@
       "x": 43,
       "y": 24
     }
-  ]
+  ],
+  "campaign": {
+    "levels": {
+      "city-borough": 1,
+      "city-downtown": 1
+    },
+    "maxRepeats": 1
+  }
 }

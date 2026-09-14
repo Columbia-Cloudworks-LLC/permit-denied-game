@@ -402,5 +402,12 @@
       "w": 3,
       "d": 1
     }
-  ]
+  ],
+  "campaign": {
+    "levels": {
+      "city-borough": 1,
+      "city-downtown": 2
+    },
+    "maxRepeats": 1
+  }
 }

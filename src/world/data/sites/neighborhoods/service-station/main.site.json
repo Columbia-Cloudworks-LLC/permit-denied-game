@@ -61,5 +61,13 @@
       "x": 33,
       "y": 5
     }
-  ]
+  ],
+  "campaign": {
+    "levels": {
+      "county": 1,
+      "village": 1,
+      "township": 1
+    },
+    "maxRepeats": 1
+  }
 }

@@ -55,5 +55,11 @@
       "at": 0.5,
       "kind": "door"
     }
-  ]
+  ],
+  "campaign": {
+    "levels": {
+      "city-downtown": 1
+    },
+    "maxRepeats": 1
+  }
 }

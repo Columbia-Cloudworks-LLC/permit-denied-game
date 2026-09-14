@@ -44,5 +44,11 @@
       "kind": "door"
     }
   ],
-  "generationOrder": 5
+  "generationOrder": 5,
+  "campaign": {
+    "levels": {
+      "city-borough": 3,
+      "city-downtown": 2
+    }
+  }
 }

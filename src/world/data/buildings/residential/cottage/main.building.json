@@ -43,5 +43,12 @@
       "kind": "door"
     }
   ],
-  "generationOrder": 3
+  "generationOrder": 3,
+  "campaign": {
+    "levels": {
+      "county": 3,
+      "village": 3,
+      "suburb": 1
+    }
+  }
 }

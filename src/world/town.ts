@@ -6,6 +6,7 @@ import { populateTestYard, type TestYard } from './testYard';
 import type { TestMapRequest } from './testMapRequest';
 import { CELL } from "../game/constants";
 import { Rng } from "../game/rng";
+import type { CampaignLevelDef, CampaignLevelId } from "../game/campaign";
 import { DEFAULT_DISTRICT_SEEDS, type DistrictId } from "../game/session";
 import { resetDebrisSim } from "../sim/debris";
 import { PileField } from "../sim/pile";
@@ -44,6 +45,7 @@ export interface Town {
   network: RoadNetwork;
   terrain: TerrainField;
   district: DistrictId;
+  campaignLevel?: CampaignLevelId;
   seed: number;
   roadSpawnX: number;
   roadSpawnY: number;
@@ -64,6 +66,7 @@ export interface TownOptions {
   district?: DistrictId;
   seed?: number;
   topology?: TopologyFamily;
+  campaign?: CampaignLevelDef;
 }
 
 export function createTown(options: TownOptions = {}): Town {
@@ -84,7 +87,7 @@ function createTownLayout(options: TownOptions = {}): Town {
     return town;
   }
 
-  const layout = generateDistrictLayout(district, seed, options.topology);
+  const layout = generateDistrictLayout(district, seed, options.topology, options.campaign);
   const pileW = layout.maxX - layout.minX + 4;
   const pileD = layout.maxY - layout.minY + 4;
   return {

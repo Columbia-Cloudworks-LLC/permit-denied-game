@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "id": "district-police-station",
+  "label": "DISTRICT POLICE STATION",
+  "w": 11,
+  "d": 7,
+  "floors": 2,
+  "kind": "shop",
+  "construction": "concrete-bearing",
+  "roof": "flat",
+  "theme": "civic",
+  "windowStride": 2,
+  "features": {
+    "porch": false,
+    "awning": false,
+    "parapet": true,
+    "chimney": false,
+    "garage": false
+  },
+  "zones": { "residential": 0, "commercial": 0, "industrial": 0 },
+  "traits": { "use": ["police-station", "landmark"], "form": ["station-block"], "style": ["civic"], "scale": ["suburb"] },
+  "campaign": { "levels": { "suburb": 1 }, "landmarkOnly": true },
+  "partitions": true,
+  "sections": [
+    { "id": "garage", "role": "vehicle-bay", "x": 0, "y": 0, "w": 11, "d": 7, "floor": 0, "floors": 1, "layout": "garage.layout.json" },
+    { "id": "staff", "role": "holding", "x": 1, "y": 0, "w": 5, "d": 4, "floor": 1, "floors": 1, "layout": "staff.layout.json" },
+    { "id": "offices", "role": "offices", "x": 6, "y": 0, "w": 4, "d": 4, "floor": 1, "floors": 1, "layout": "offices.layout.json" }
+  ],
+  "connections": [
+    { "a": "staff/1/bath", "b": "offices/1/workroom", "at": 0.5, "width": 0.35 }
+  ],
+  "openings": [
+    { "floor": 0, "side": "south", "at": 0.18, "kind": "loading" },
+    { "floor": 0, "side": "south", "at": 0.48, "kind": "loading" },
+    { "floor": 0, "side": "south", "at": 0.82, "kind": "door" }
+  ],
+  "facadeDetails": [
+    { "id": "entry-steps", "kind": "entry-steps", "floor": 0, "gx": 8, "gy": 6, "side": "south", "width": 3 },
+    { "id": "station-sign", "kind": "signboard", "floor": 1, "gx": 4, "gy": 3, "side": "south", "width": 4, "text": "POLICE" },
+    { "id": "west-shutter", "kind": "roll-up-door", "floor": 0, "gx": 1, "gy": 6, "side": "south", "width": 3 },
+    { "id": "east-shutter", "kind": "roll-up-door", "floor": 0, "gx": 5, "gy": 6, "side": "south", "width": 3 }
+  ]
+}

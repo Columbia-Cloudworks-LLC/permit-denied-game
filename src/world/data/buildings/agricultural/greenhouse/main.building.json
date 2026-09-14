@@ -11,10 +11,56 @@
   "roofAxis": "y",
   "theme": "warehouse",
   "windowStride": 1,
-  "features": { "porch": false, "awning": false, "parapet": false, "chimney": false, "garage": false },
-  "zones": { "residential": 0, "commercial": 0, "industrial": 0 },
-  "traits": { "use": ["horticulture"], "form": ["B39", "greenhouse"], "construction": ["glass", "metal-frame"] },
-  "sections": [{ "id": "glasshouse", "role": "growing-house", "x": 0, "y": 0, "w": 6, "d": 10, "floor": 0, "floors": 1, "layout": "plants.layout.json" }],
+  "features": {
+    "porch": false,
+    "awning": false,
+    "parapet": false,
+    "chimney": false,
+    "garage": false
+  },
+  "zones": {
+    "residential": 0,
+    "commercial": 0,
+    "industrial": 0
+  },
+  "traits": {
+    "use": [
+      "horticulture"
+    ],
+    "form": [
+      "B39",
+      "greenhouse"
+    ],
+    "construction": [
+      "glass",
+      "metal-frame"
+    ]
+  },
+  "sections": [
+    {
+      "id": "glasshouse",
+      "role": "growing-house",
+      "x": 0,
+      "y": 0,
+      "w": 6,
+      "d": 10,
+      "floor": 0,
+      "floors": 1,
+      "layout": "plants.layout.json"
+    }
+  ],
   "partitions": false,
-  "openings": [{ "floor": 0, "side": "south", "at": 0.5, "kind": "door" }]
+  "openings": [
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.5,
+      "kind": "door"
+    }
+  ],
+  "campaign": {
+    "levels": {
+      "county": 1
+    }
+  }
 }

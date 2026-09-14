@@ -89,5 +89,11 @@
       "at": 0.8333333333333334,
       "kind": "door"
     }
-  ]
+  ],
+  "campaign": {
+    "levels": {
+      "suburb": 2,
+      "city-borough": 2
+    }
+  }
 }

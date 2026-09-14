@@ -78,5 +78,12 @@
       "at": 0.85,
       "kind": "loading"
     }
-  ]
+  ],
+  "campaign": {
+    "levels": {
+      "township": 1,
+      "suburb": 1,
+      "city-borough": 1
+    }
+  }
 }

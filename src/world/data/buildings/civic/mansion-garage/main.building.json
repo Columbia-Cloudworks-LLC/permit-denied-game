@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "id": "mansion-garage",
+  "label": "ESTATE GARAGE",
+  "kind": "house",
+  "w": 6,
+  "d": 5,
+  "floors": 1,
+  "roof": "gable",
+  "theme": "colonial",
+  "windowStride": 2,
+  "features": {
+    "porch": false,
+    "awning": false,
+    "parapet": false,
+    "chimney": false,
+    "garage": false
+  },
+  "construction": "timber-house",
+  "zones": { "residential": 0, "commercial": 0, "industrial": 0 },
+  "traits": { "use": ["estate-garage"], "form": ["broad-gable"], "style": ["colonial"], "scale": ["estate"] },
+  "campaign": { "levels": { "governors-mansion": 1 }, "maxRepeats": 1 },
+  "partitions": true,
+  "connections": [],
+  "sections": [
+    { "id": "garage", "role": "garage", "x": 0, "y": 0, "w": 6, "d": 5, "floor": 0, "floors": 1, "layout": "garage.layout.json" }
+  ],
+  "openings": [
+    { "floor": 0, "side": "south", "at": 0.3, "kind": "loading" },
+    { "floor": 0, "side": "south", "at": 0.7, "kind": "loading" }
+  ],
+  "facadeDetails": [
+    { "id": "west-door", "kind": "roll-up-door", "floor": 0, "gx": 1, "gy": 4, "side": "south", "width": 2 },
+    { "id": "east-door", "kind": "roll-up-door", "floor": 0, "gx": 3, "gy": 4, "side": "south", "width": 2 }
+  ]
+}

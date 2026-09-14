@@ -240,5 +240,10 @@
       "w": 1,
       "d": 3
     }
-  ]
+  ],
+  "campaign": {
+    "levels": {
+      "township": 1
+    }
+  }
 }

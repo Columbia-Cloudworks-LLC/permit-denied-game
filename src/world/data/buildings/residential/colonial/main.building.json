@@ -44,5 +44,14 @@
       "kind": "door"
     }
   ],
-  "generationOrder": 4
+  "generationOrder": 4,
+  "campaign": {
+    "levels": {
+      "village": 2,
+      "township": 3,
+      "suburb": 2,
+      "governors-mansion": 1,
+      "county": 1
+    }
+  }
 }

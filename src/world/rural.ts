@@ -1,3 +1,4 @@
+import type { CampaignLevelDef } from "../game/campaign";
 import { aabbOverlap, len } from "../game/math";
 import { Rng } from "../game/rng";
 import { DISTRICT_COUNTS, type DistrictId } from "../game/session";
@@ -7,12 +8,17 @@ import { buildingOccupy, dressLot, fillWorldGround } from "./dressing";
 import {
   PARCEL,
   allocateFrontage,
+  archetypeFootprint,
   attachDriveway,
+  expandLotToFit,
   expandStreets,
   placeBuildingInLot,
+  runWithParcelProfile,
   type NhoodDebug,
   type NhoodReject,
 } from "./parcels";
+import { campaignEligible, campaignWeight, pickWeighted } from "./campaignPlacement";
+import { ARCHETYPES, archetypeById } from "./archetypes";
 import {
   curvePoints,
   derivedRoadBoxes,
@@ -59,6 +65,7 @@ export interface RuralLayout {
   district: DistrictId;
   seed: number;
   topology: TopologyFamily;
+  campaignLevel?: CampaignLevelDef['id'];
   diagnostic: { ok: boolean; issues: LayoutIssue[] };
   nhood: NhoodDebug;
 }
@@ -73,20 +80,34 @@ export function generateRuralLayout(
   id: Exclude<DistrictId, "classic">,
   seed: number,
   topologyOverride?: TopologyFamily,
+  campaign?: CampaignLevelDef,
 ): RuralLayout {
-  const count = DISTRICT_COUNTS[id];
+  const generate = (): RuralLayout => generateRuralLayoutInner(id, seed, topologyOverride, campaign);
+  if (!campaign) return generate();
+  return runWithParcelProfile(campaign.generation.parcel, campaign.generation.parcel, generate);
+}
+
+function generateRuralLayoutInner(
+  id: Exclude<DistrictId, "classic">,
+  seed: number,
+  topologyOverride: TopologyFamily | undefined,
+  campaign: CampaignLevelDef | undefined,
+): RuralLayout {
+  const count = campaign?.generation.buildingCount ?? DISTRICT_COUNTS[id];
   const rng = new Rng(seed);
-  const topology = topologyOverride ?? pickTopology(rng, count);
+  const topology = (campaign && campaign.generation.topology !== 'estate'
+    ? campaign.generation.topology
+    : topologyOverride) ?? pickTopology(rng, count);
   const b = new RoadBuilder();
   const originX = 4;
   const originY = 4;
   const issues: LayoutIssue[] = [];
   const rejected: NhoodReject[] = [];
 
-  buildSkeleton(b, topology, count, originX, originY, rng);
+  buildSkeleton(b, topology, count, originX, originY, rng, campaign);
   b.normalizeJunctions();
 
-  for (let pass = 0; pass <= PARCEL.maxExpand; pass++) {
+  for (let pass = 0; pass <= (campaign?.generation.parcel.maxExpand ?? PARCEL.maxExpand); pass++) {
     const slots = estimateSlots(b.segments, b.nodes);
     if (slots >= count * 1.7) break;
     if (!expandStreets(b, rng, pass)) {
@@ -105,13 +126,18 @@ export function generateRuralLayout(
   const buildings: Building[] = [];
   const kept: Lot[] = [];
   const corridors: { x: number; y: number }[][] = [];
+  const used = new Map<string, number>();
   const publicSegs = () => b.segments.filter((s) => s.roadClass !== "driveway" && s.roadClass !== "ramp");
+  const pick = campaign ? campaignPicker(campaign, used) : undefined;
+
+  if (campaign) placeCampaignLandmark(campaign, pool, rng, buildings, kept, corridors, publicSegs, b, used);
 
   for (const lot of pool) {
     if (kept.length >= count) break;
+    if (kept.some(k => k.id === lot.id)) continue;
     lot.zone = zoneForIndex(kept.length, count, lot.frontage.segmentId, b.segments);
     lot.identity = identityForIndex(kept.length, count, lot.frontage.segmentId, b.segments, rng);
-    const building = placeBuildingInLot(lot, rng, buildings, publicSegs(), corridors);
+    const building = placeBuildingInLot(lot, rng, buildings, publicSegs(), corridors, pick);
     if (!building) {
       rejected.push({ kind: "building", reason: "no-fit", points: lot.boundary });
       continue;
@@ -124,6 +150,7 @@ export function generateRuralLayout(
     buildings.push(building);
     kept.push(lot);
     corridors.push(drive.corridor);
+    used.set(building.archetypeId, (used.get(building.archetypeId) ?? 0) + 1);
   }
 
   if (kept.length < count) {
@@ -135,7 +162,7 @@ export function generateRuralLayout(
       if (kept.some((k) => k.id === lot.id)) continue;
       lot.zone = zoneForIndex(kept.length, count, lot.frontage.segmentId, b.segments);
       lot.identity = identityForIndex(kept.length, count, lot.frontage.segmentId, b.segments, rng);
-      const building = placeBuildingInLot(lot, rng, buildings, publicSegs(), corridors);
+      const building = placeBuildingInLot(lot, rng, buildings, publicSegs(), corridors, pick);
       if (!building) {
         rejected.push({ kind: "building", reason: "no-fit", points: lot.boundary });
         continue;
@@ -148,6 +175,7 @@ export function generateRuralLayout(
       buildings.push(building);
       kept.push(lot);
       corridors.push(drive.corridor);
+      used.set(building.archetypeId, (used.get(building.archetypeId) ?? 0) + 1);
     }
   }
 
@@ -171,11 +199,11 @@ export function generateRuralLayout(
   const occBoxes = buildings.flatMap(buildingOccupy);
   const props: Prop[] = [];
   const ground: GroundPatch[] = [];
-  const perLot = count >= 80 ? 6 : 7;
+  const perLot = campaign?.generation.propsPerLot ?? (count >= 80 ? 6 : 7);
   for (let i = 0; i < kept.length; i++) {
     const lot = kept[i]!;
     const dressed = dressLot(lot, buildings[i], rng, { boxes: occBoxes }, perLot, corridors);
-    props.push(...dressed.props);
+    props.push(...dressed.props.filter(prop => !campaign || campaignEligible(getAsset(prop.assetId).campaign, campaign.id)));
     ground.push(...dressed.patches);
     for (const p of dressed.props) occBoxes.push({ x: p.x, y: p.y, w: p.w, d: p.d });
   }
@@ -184,6 +212,7 @@ export function generateRuralLayout(
   for (let i = props.length - 1; i >= 0; i--) {
     const p = props[i]!;
     const def = getAsset(p.assetId);
+    if (campaign && !campaignEligible(def.campaign, campaign.id)) { props.splice(i, 1); continue; }
     if (def.roadsideOk) continue;
     if (propTouchesPavement(network, p)) props.splice(i, 1);
   }
@@ -234,6 +263,7 @@ export function generateRuralLayout(
     district: id,
     seed,
     topology,
+    campaignLevel: campaign?.id,
     diagnostic: { ok: issues.length === 0 && kept.length === count, issues },
     nhood: { rejected },
   };
@@ -381,10 +411,8 @@ function selectLotCluster(lots: readonly Lot[], want: number, rng: Rng): Lot[] {
   return picked;
 }
 
-function buildBlockGrid(b: RoadBuilder, count: number, ox: number, oy: number, rng: Rng): void {
+function buildBlockGrid(b: RoadBuilder, count: number, ox: number, oy: number, rng: Rng, blockW = 40, blockD = 36): void {
   const { ew, ns } = gridDims(count);
-  const blockW = 40;
-  const blockD = 36;
   const rows: ReturnType<RoadBuilder["node"]>[][] = [];
   for (let r = 0; r < ew; r++) {
     const y = oy + 12 + r * blockD + rng.range(-0.3, 0.3);
@@ -457,6 +485,7 @@ function buildSkeleton(
   ox: number,
   oy: number,
   rng: Rng,
+  campaign?: CampaignLevelDef,
 ): RoadSegment[] {
   const pairPitch = 14.2 * 2 + 9.5;
   const collectors = Math.max(2, Math.ceil(count / 14));
@@ -465,7 +494,7 @@ function buildSkeleton(
   const branch = Math.max(pairPitch * 0.6, 20 + count * 0.14);
 
   if (count >= 8) {
-    buildBlockGrid(b, count, ox, oy, rng);
+    buildBlockGrid(b, count, ox, oy, rng, campaign?.generation.parcel.blockW, campaign?.generation.parcel.blockD);
     addTopologyFlavor(b, topology, ox, oy, rng);
     return b.segments.filter((s) => s.roadClass !== "driveway");
   }
@@ -679,6 +708,64 @@ function clear(buildings: Building[], props: Prop[], x: number, y: number): bool
     if (aabbOverlap(x - rad, y - rad, rad * 2, rad * 2, p.x, p.y, p.w, p.d)) return false;
   }
   return true;
+}
+
+function campaignPicker(campaign: CampaignLevelDef, used: Map<string, number>) {
+  return (lot: Lot, rng: Rng, tried: ReadonlySet<string>) => {
+    const pool = ARCHETYPES.filter(a =>
+      !tried.has(a.id) &&
+      campaignEligible(a.campaign, campaign.id, { zone: lot.zone, used: used.get(a.id) ?? 0 }),
+    );
+    const fitting = pool.filter(a => {
+      const size = archetypeFootprint(a);
+      return size.w + 0.08 <= lot.buildable.w && size.d + 0.08 <= lot.buildable.d;
+    });
+    const zoned = (fitting.length ? fitting : pool).filter(a =>
+      (a.campaign?.zones ? a.campaign.zones.includes(lot.zone) : a.zones[lot.zone] > 0) || !a.campaign?.zones,
+    );
+    const pickFrom = zoned.length ? zoned : (fitting.length ? fitting : pool);
+    return pickWeighted(pickFrom, a => campaignWeight(a.campaign, campaign.id), (min, max) => rng.range(min, max));
+  };
+}
+
+function placeCampaignLandmark(
+  campaign: CampaignLevelDef,
+  pool: Lot[],
+  rng: Rng,
+  buildings: Building[],
+  kept: Lot[],
+  corridors: { x: number; y: number }[][],
+  publicSegs: () => import("./roads").RoadSegment[],
+  b: RoadBuilder,
+  used: Map<string, number>,
+): void {
+  const landmark = archetypeById(campaign.landmark.buildingId);
+  const size = archetypeFootprint(landmark);
+  const ranked = [...pool].sort((a, c) => c.w * c.d - a.w * a.d || (c.x + c.w * 0.5) - (a.x + a.w * 0.5));
+  const pickLandmark = (_lot: Lot, _rng: Rng, tried: ReadonlySet<string>) => tried.has(landmark.id) ? undefined : landmark;
+  for (const lot of ranked) {
+    lot.zone = 'commercial';
+    lot.identity = 'shop';
+    const needGrow = lot.buildable.w + 0.08 < size.w || lot.buildable.d + 0.08 < size.d;
+    if (needGrow) {
+      const evicted = expandLotToFit(lot, size.w, size.d, publicSegs(), pool);
+      if (!evicted) continue;
+      for (let i = pool.length - 1; i >= 0; i--) {
+        if (evicted.includes(pool[i]!.id)) pool.splice(i, 1);
+      }
+    }
+    const building = placeBuildingInLot(lot, rng, buildings, publicSegs(), corridors, pickLandmark);
+    if (!building) continue;
+    const drive = attachDriveway(b, lot, building, [...kept, ...pool]);
+    if (!drive || drive.reject) continue;
+    building.campaignLandmark = true;
+    building.name = campaign.landmark.label.toUpperCase();
+    buildings.push(building);
+    kept.push(lot);
+    corridors.push(drive.corridor);
+    used.set(building.archetypeId, 1);
+    return;
+  }
 }
 
 function applyTerrain(field: TerrainField, topology: TopologyFamily, minX: number, maxX: number): void {

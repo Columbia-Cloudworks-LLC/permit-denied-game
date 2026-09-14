@@ -84,5 +84,10 @@
       "side": "south",
       "width": 3
     }
-  ]
+  ],
+  "campaign": {
+    "levels": {
+      "county": 2
+    }
+  }
 }

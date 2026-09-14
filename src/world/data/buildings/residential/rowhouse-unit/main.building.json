@@ -101,5 +101,11 @@
       "w": 1,
       "d": 3
     }
-  ]
+  ],
+  "campaign": {
+    "levels": {
+      "suburb": 2,
+      "city-borough": 3
+    }
+  }
 }

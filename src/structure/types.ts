@@ -178,6 +178,7 @@ export interface Building {
   construction: import("./construction").ConstructionDef;
   layout: import("./construction").LayoutDef;
   lotId: string | null;
+  campaignLandmark?: boolean;
   floorTiles: FloorTile[];
   id: number;
   kind: BuildingKind;
