@@ -2,6 +2,7 @@ import { TITLE } from '../game/constants';
 import { PermitIntro, permitDocument, type PermitSound } from './permitIntro';
 import { playableDistrict, type DistrictId, type SessionKind } from '../game/session';
 import { MENU_LABELS as L, MODE_LABELS, MODE_DESCRIPTIONS, SITE_LABELS } from '../game/menuLabels';
+import { labeledMenuButton, MENU_ICONS, soundButtonContent } from './menuIcons';
 import { version } from '../../package.json';
 import notices from './thirdPartyNotices.txt?raw';
 
@@ -133,7 +134,11 @@ export class OperatorMenu {
   syncMuted(muted: boolean): void {
     this.muted = muted;
     const button = this.root.querySelector<HTMLButtonElement>('[data-menu-action="mute"]');
-    if (button) { button.textContent = muted ? L.soundOff : L.soundOn; button.setAttribute('aria-pressed', String(!muted)); }
+    if (button) {
+      button.innerHTML = soundButtonContent(muted);
+      button.setAttribute('aria-pressed', String(!muted));
+      button.setAttribute('aria-label', muted ? L.soundOff : L.soundOn);
+    }
   }
 
   private syncSetup(): void {
@@ -158,9 +163,9 @@ export class OperatorMenu {
     this.heading.textContent = titles[page];
     this.root.querySelector<HTMLElement>('.nameplate')!.hidden = !(this.mode === 'title' && page === 'home') && page !== 'about';
     if (page === 'home') this.body.innerHTML = `${this.mode === 'title'
-      ? `${permitDocument()}<button class="ignition primary" data-nav="dispatch"><span class="ignition-symbol" aria-hidden="true">⏻</span><span>${L.play}</span><span aria-hidden="true">↗</span></button>`
+      ? `${permitDocument()}<button class="ignition primary" data-nav="dispatch"><span class="ignition-symbol" aria-hidden="true">${MENU_ICONS.power}</span><span>${L.play}</span><span aria-hidden="true">↗</span></button>`
       : `<button class="primary" data-menu-action="resume">${L.resume}</button><div class="mobile-menu-links menu-grid"><button data-nav="equipment">Equipment & Objective</button><button data-menu-action="debug">${L.debug}</button></div><div class="menu-grid"><button data-menu-action="restart" aria-describedby="restart-help">${L.restart}</button><button data-nav="dispatch">${L.newGame}</button></div><p class="fine-print" id="restart-help">Start this site over with the same layout. Resets cash, demolition, upgrades, and the permit application.</p>`}
-      <nav class="menu-grid" aria-label="Game menu"><button data-nav="controls">${L.controls}</button><button data-menu-action="mute">${L.soundOn}</button><button data-nav="about">${L.about}</button>${facebookLink}${this.mode === 'pause' ? `<button data-menu-action="title" aria-describedby="main-menu-help">${L.mainMenu}</button>` : ''}</nav>${this.mode === 'pause' ? '<p class="fine-print" id="main-menu-help">Returning to the main menu ends this game. You cannot resume it.</p>' : ''}`;
+      <nav class="menu-grid" aria-label="Game menu"><button data-nav="controls">${labeledMenuButton(MENU_ICONS.gamepad, L.controls)}</button><button data-menu-action="mute">${soundButtonContent(false)}</button><button data-nav="about">${labeledMenuButton(MENU_ICONS.about, L.about)}</button>${facebookLink}${this.mode === 'pause' ? `<button data-menu-action="title" aria-describedby="main-menu-help">${L.mainMenu}</button>` : ''}</nav>${this.mode === 'pause' ? '<p class="fine-print" id="main-menu-help">Returning to the main menu ends this game. You cannot resume it.</p>' : ''}`;
     if (page === 'equipment') this.body.innerHTML = '<div class="equipment-details"></div><h2>Permit Application</h2><p class="fine-print">Resubmitting spends cash on a county processing fee.</p><div class="menu-permit-host"></div>';
     if (page === 'dispatch') {
       this.body.innerHTML = `<div class="dispatch-fields"><label>Mode<select id="dispatch-mode">${Object.entries(MODE_LABELS).map(([id, label]) => `<option value="${id}">${label}</option>`).join('')}</select></label><label id="dispatch-lot-field">Site Size<select id="dispatch-lot"></select></label></div><p class="fine-print" id="mode-description"></p>${this.mode === 'pause' ? '<p class="caution">Starting a new game replaces your current progress and upgrades.</p>' : ''}<button class="primary" data-menu-action="start">${L.start}</button><button data-nav="back">Back</button>`;

@@ -69,8 +69,12 @@ h1:focus, .panel:focus { outline: none; }
 .menu-body > .primary { width: 100%; min-height: 56px; }
 #hud-root .ignition { display: flex; align-items: center; gap: 18px; text-align: left; margin: 24px 0 16px; padding: 18px 22px; font-size: 18px; }
 .ignition > span:last-child { margin-left: auto; font-size: 28px; }
-.ignition-symbol { font-size: 34px; font-family: Arial,sans-serif; border: 2px solid #584d27; border-radius: 50%; padding: 0 8px; }
+.ignition-symbol { display: inline-flex; align-items: center; justify-content: center; width: 2.45em; height: 2.45em; border: 2px solid #584d27; border-radius: 50%; flex-shrink: 0; }
+.ignition-symbol .menu-icon { width: 1.35em; height: 1.35em; }
 .menu-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 14px 0; }
+.menu-grid button, .menu-grid .menu-social { display: inline-flex; align-items: center; justify-content: center; gap: 10px; }
+.menu-icon { display: block; flex: none; }
+.menu-btn-icon { display: inline-flex; align-items: center; }
 .nameplate { margin-top: 26px; padding: 13px 18px; display: flex; justify-content: space-between; gap: 20px; align-items: center; background: #151c16; border: 1px solid #5c6451; color: #b6bdab; border-radius: 3px; font: 9px/1.8 var(--mono); position: relative; }
 .nameplate:before, .nameplate:after { content: '•'; position: absolute; top: calc(50% - 8px); color: #94977e; }
 .nameplate:before { left: 5px; } .nameplate:after { right: 5px; }
