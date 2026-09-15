@@ -59,6 +59,9 @@
   "campaign": {
     "levels": {
       "township": 1
-    }
+    },
+    "urbanBands": [
+      "suburban"
+    ]
   }
 }

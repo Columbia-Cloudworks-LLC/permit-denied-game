@@ -124,7 +124,13 @@
   ],
   "campaign": {
     "levels": {
-      "suburb": 2
-    }
+      "suburb": 2,
+      "city-borough": 1
+    },
+    "urbanBands": [
+      "suburban",
+      "borough-mixed",
+      "service-industrial"
+    ]
   }
 }

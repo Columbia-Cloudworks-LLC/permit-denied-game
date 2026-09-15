@@ -89,7 +89,14 @@
   "campaign": {
     "levels": {
       "village": 2,
-      "township": 1
-    }
+      "township": 1,
+      "city-downtown": 1
+    },
+    "urbanBands": [
+      "village-main-street",
+      "suburban",
+      "service-industrial",
+      "downtown-transition"
+    ]
   }
 }

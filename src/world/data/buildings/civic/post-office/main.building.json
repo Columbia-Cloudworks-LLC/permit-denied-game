@@ -60,6 +60,11 @@
     "levels": {
       "village": 1,
       "township": 1
-    }
+    },
+    "urbanBands": [
+      "village-main-street",
+      "suburban",
+      "service-industrial"
+    ]
   }
 }

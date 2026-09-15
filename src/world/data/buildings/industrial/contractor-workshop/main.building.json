@@ -69,7 +69,12 @@
   ],
   "campaign": {
     "levels": {
-      "township": 1
-    }
+      "township": 1,
+      "city-borough": 1,
+      "city-downtown": 1
+    },
+    "urbanBands": [
+      "service-industrial"
+    ]
   }
 }

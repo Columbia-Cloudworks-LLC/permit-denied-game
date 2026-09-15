@@ -48,6 +48,10 @@
     "levels": {
       "township": 1,
       "suburb": 1
-    }
+    },
+    "urbanBands": [
+      "suburban",
+      "service-industrial"
+    ]
   }
 }

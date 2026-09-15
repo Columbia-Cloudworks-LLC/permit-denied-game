@@ -64,6 +64,11 @@
       "township": 1,
       "suburb": 2,
       "governors-mansion": 1
-    }
+    },
+    "urbanBands": [
+      "rural",
+      "suburban",
+      "estate"
+    ]
   }
 }

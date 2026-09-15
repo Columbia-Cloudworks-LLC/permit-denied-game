@@ -19,7 +19,15 @@
   },
   "zones": { "residential": 0, "commercial": 0, "industrial": 0 },
   "traits": { "use": ["police-station", "landmark"], "form": ["station-block"], "style": ["civic"], "scale": ["suburb"] },
-  "campaign": { "levels": { "suburb": 1 }, "landmarkOnly": true },
+  "campaign": {
+    "levels": {
+      "suburb": 1
+    },
+    "landmarkOnly": true,
+    "urbanBands": [
+      "suburban"
+    ]
+  },
   "partitions": true,
   "sections": [
     { "id": "garage", "role": "vehicle-bay", "x": 0, "y": 0, "w": 11, "d": 7, "floor": 0, "floors": 1, "layout": "garage.layout.json" },

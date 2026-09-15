@@ -46,6 +46,10 @@
       "village": 2,
       "township": 1,
       "suburb": 2
-    }
+    },
+    "urbanBands": [
+      "rural",
+      "suburban"
+    ]
   }
 }

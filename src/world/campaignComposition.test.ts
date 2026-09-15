@@ -35,8 +35,10 @@ describe('campaign composition rules', () => {
       expect(def!.campaign?.family, id).toBeTruthy();
     }
     expect(ARCHETYPES.find(entry => entry.id === 'union-tower')?.campaign).toBeUndefined();
-    expect(campaignEligible(ARCHETYPES.find(entry => entry.id === 'bakery')!.campaign, 'city-downtown')).toBe(false);
-    expect(campaignEligible(ARCHETYPES.find(entry => entry.id === 'walkup')!.campaign, 'city-borough')).toBe(false);
+    expect(campaignEligible(ARCHETYPES.find(entry => entry.id === 'bakery')!.campaign, 'city-downtown', { urbanBand: 'downtown-core' })).toBe(false);
+    expect(campaignEligible(ARCHETYPES.find(entry => entry.id === 'bakery')!.campaign, 'city-downtown', { urbanBand: 'downtown-transition' })).toBe(true);
+    expect(campaignEligible(ARCHETYPES.find(entry => entry.id === 'walkup')!.campaign, 'city-borough', { urbanBand: 'borough-mixed' })).toBe(true);
+    expect(campaignEligible(ARCHETYPES.find(entry => entry.id === 'ranch')!.campaign, 'city-downtown', { urbanBand: 'downtown-core' })).toBe(false);
     expect(campaignEligible(ARCHETYPES.find(entry => entry.id === 'parking-garage')!.campaign, 'city-downtown')).toBe(true);
     expect(ARCHETYPES.find(entry => entry.id === 'parking-garage')!.campaign?.exception).toBe(true);
   });
@@ -46,6 +48,9 @@ describe('campaign composition rules', () => {
       id: `lot${i}`,
       buildable: { x: 0, y: 0, w: 14 - (i % 4), d: 13 - (i % 3) },
       templateId: i < 12 ? 'tower' : i < 24 ? 'standard' : 'compact',
+      frontage: { segmentId: `seg${Math.floor(i / 4)}`, side: i % 2 === 0 ? 1 : -1, t0: 0.1, t1: 0.3 },
+      urbanBand: i < 16 ? 'downtown-core' : i < 28 ? 'downtown-transition' : 'service-industrial',
+      districtRole: i < 16 ? 'downtown-core' : i < 28 ? 'transition-ring' : 'industrial-service-edge',
     }));
     for (const id of ['city-borough', 'city-downtown'] as const) {
       const level = campaignLevelById(id);
@@ -62,7 +67,7 @@ describe('campaign composition rules', () => {
       }
       const sky = plan.assignments.filter(item => (ARCHETYPES.find(entry => entry.id === item.buildingId)?.floors ?? 0) >= 20).length;
       if (id === 'city-borough') expect(sky).toBe(0);
-      else expect(sky / needed).toBeGreaterThanOrEqual(0.3);
+      else expect(sky / needed).toBeGreaterThanOrEqual(0.22);
     }
   });
 

@@ -19,7 +19,15 @@
   "construction": "timber-house",
   "zones": { "residential": 0, "commercial": 0, "industrial": 0 },
   "traits": { "use": ["estate-garage"], "form": ["broad-gable"], "style": ["colonial"], "scale": ["estate"] },
-  "campaign": { "levels": { "governors-mansion": 1 }, "maxRepeats": 1 },
+  "campaign": {
+    "levels": {
+      "governors-mansion": 1
+    },
+    "maxRepeats": 1,
+    "urbanBands": [
+      "estate"
+    ]
+  },
   "partitions": true,
   "connections": [],
   "sections": [

@@ -56,6 +56,9 @@
     "levels": {
       "township": 1
     },
-    "maxRepeats": 1
+    "maxRepeats": 1,
+    "urbanBands": [
+      "service-industrial"
+    ]
   }
 }

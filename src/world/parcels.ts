@@ -48,6 +48,7 @@ export type ParcelMetrics = {
   driveWidth: number;
   maxExpand: number;
   lotClasses?: readonly ParcelLotClass[];
+  contiguousFrontage?: boolean;
 };
 
 export interface ParcelSetbackRange {
@@ -88,6 +89,7 @@ export interface NhoodReject {
 
 export interface NhoodDebug {
   rejected: NhoodReject[];
+  urban?: import('./urbanGeography').UrbanGeographyReport;
 }
 
 function defaultSetbacks(rng?: Rng): LotSetbacks {
@@ -314,11 +316,15 @@ export function allocateFrontage(
     [...publicSegs, ...checkRoads].map((s) => s.id),
   );
   const ordered = [...publicSegs];
-  for (let i = ordered.length - 1; i > 0; i--) {
-    const j = rng.int(0, i);
-    const tmp = ordered[i]!;
-    ordered[i] = ordered[j]!;
-    ordered[j] = tmp;
+  if (currentParcel().contiguousFrontage) {
+    ordered.sort((a, b) => a.id.localeCompare(b.id));
+  } else {
+    for (let i = ordered.length - 1; i > 0; i--) {
+      const j = rng.int(0, i);
+      const tmp = ordered[i]!;
+      ordered[i] = ordered[j]!;
+      ordered[j] = tmp;
+    }
   }
   const safety = Math.max(count * 4, existing.length + 8);
 
@@ -329,29 +335,52 @@ export function allocateFrontage(
     if (path < parcel.minFront + 2) continue;
     const startClear = nodeDegree(nodes, seg.startId, publicIds) >= 3 ? parcel.junctionClear : 1.4;
     const endClear = nodeDegree(nodes, seg.endId, publicIds) >= 3 ? parcel.junctionClear : 1.4;
-    let cursor = startClear;
     const usable = path - endClear;
-    let slot = 0;
-    const side0: LotSide = rng.chance(0.5) ? 1 : -1;
-    while (cursor + parcel.minFront <= usable && lots.length < safety) {
-      const lotClass = pickLotClass(parcel, rng);
-      const minFront = lotClass?.minFront ?? parcel.minFront;
-      const maxFront = lotClass?.maxFront ?? parcel.maxFront;
-      const minDepth = lotClass?.minDepth ?? parcel.minDepth;
-      const maxDepth = lotClass?.maxDepth ?? parcel.maxDepth;
-      if (cursor + minFront > usable) break;
-      const front = clamp(rng.range(minFront, maxFront), minFront, usable - cursor);
-      const depth = rng.range(minDepth, maxDepth);
-      const t0 = cursor / path;
-      const t1 = (cursor + front) / path;
-      const side: LotSide = slot % 2 === 0 ? side0 : side0 === 1 ? -1 : 1;
-      slot++;
-      cursor += front + parcel.lotGap;
-      const made = tryParcel(seg, side, t0, t1, depth, lots, rng, rejected, checkRoads, lotClass?.id);
-      if (made) lots.push(made);
-      const other: LotSide = side === 1 ? -1 : 1;
-      const twin = tryParcel(seg, other, t0, t1, depth * rng.range(0.92, 1.06), lots, rng, rejected, checkRoads, lotClass?.id);
-      if (twin) lots.push(twin);
+    if (parcel.contiguousFrontage) {
+      for (const side of [1, -1] as const) {
+        let cursor = startClear;
+        while (cursor + parcel.minFront * 0.92 <= usable && lots.length < safety) {
+          const leftover = usable - cursor;
+          const lotClass = pickLotClass(parcel, rng);
+          const minFront = lotClass?.minFront ?? parcel.minFront;
+          const maxFront = lotClass?.maxFront ?? parcel.maxFront;
+          const minDepth = lotClass?.minDepth ?? parcel.minDepth;
+          const maxDepth = lotClass?.maxDepth ?? parcel.maxDepth;
+          const squeeze = leftover < minFront && leftover >= minFront * 0.88;
+          if (!squeeze && cursor + minFront > usable) break;
+          const front = squeeze ? leftover : clamp(rng.range(minFront, maxFront), Math.min(minFront, leftover), leftover);
+          const depth = rng.range(minDepth, maxDepth);
+          const t0 = cursor / path;
+          const t1 = (cursor + front) / path;
+          cursor += front + parcel.lotGap;
+          const made = tryParcel(seg, side, t0, t1, depth, lots, rng, rejected, checkRoads, lotClass?.id);
+          if (made) lots.push(made);
+        }
+      }
+    } else {
+      let cursor = startClear;
+      let slot = 0;
+      const side0: LotSide = rng.chance(0.5) ? 1 : -1;
+      while (cursor + parcel.minFront <= usable && lots.length < safety) {
+        const lotClass = pickLotClass(parcel, rng);
+        const minFront = lotClass?.minFront ?? parcel.minFront;
+        const maxFront = lotClass?.maxFront ?? parcel.maxFront;
+        const minDepth = lotClass?.minDepth ?? parcel.minDepth;
+        const maxDepth = lotClass?.maxDepth ?? parcel.maxDepth;
+        if (cursor + minFront > usable) break;
+        const front = clamp(rng.range(minFront, maxFront), minFront, usable - cursor);
+        const depth = rng.range(minDepth, maxDepth);
+        const t0 = cursor / path;
+        const t1 = (cursor + front) / path;
+        const side: LotSide = slot % 2 === 0 ? side0 : side0 === 1 ? -1 : 1;
+        slot++;
+        cursor += front + parcel.lotGap;
+        const made = tryParcel(seg, side, t0, t1, depth, lots, rng, rejected, checkRoads, lotClass?.id);
+        if (made) lots.push(made);
+        const other: LotSide = side === 1 ? -1 : 1;
+        const twin = tryParcel(seg, other, t0, t1, depth * rng.range(0.92, 1.06), lots, rng, rejected, checkRoads, lotClass?.id);
+        if (twin) lots.push(twin);
+      }
     }
   }
   return { lots, rejected };

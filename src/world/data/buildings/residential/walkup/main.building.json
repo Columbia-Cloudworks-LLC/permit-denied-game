@@ -48,7 +48,13 @@
   "campaign": {
     "levels": {
       "township": 2,
-      "suburb": 3
-    }
+      "suburb": 3,
+      "city-borough": 2
+    },
+    "urbanBands": [
+      "suburban",
+      "borough-mixed",
+      "service-industrial"
+    ]
   }
 }

@@ -245,6 +245,9 @@
   "campaign": {
     "levels": {
       "suburb": 2
-    }
+    },
+    "urbanBands": [
+      "suburban"
+    ]
   }
 }

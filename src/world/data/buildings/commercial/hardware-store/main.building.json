@@ -70,7 +70,16 @@
   "campaign": {
     "levels": {
       "township": 2,
-      "village": 1
-    }
+      "village": 1,
+      "city-borough": 1,
+      "city-downtown": 1
+    },
+    "urbanBands": [
+      "village-main-street",
+      "suburban",
+      "borough-mixed",
+      "downtown-transition",
+      "service-industrial"
+    ]
   }
 }

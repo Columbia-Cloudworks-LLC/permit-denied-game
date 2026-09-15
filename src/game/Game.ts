@@ -44,6 +44,9 @@ import {
   startCampaign,
   type CampaignRun,
 } from "./campaignRun";
+import { CAMPAIGN_LEVELS, isCampaignLevelId, type CampaignLevelId } from "./campaign";
+import { urbanDebugDump } from "../world/urbanGeography";
+import { ARCHETYPES } from "../world/archetypes";
 import {
   CASH_TARGET,
   COPY,
@@ -244,6 +247,11 @@ export class Game {
     this.renderer.debug.perf = this.perf.enabled;
     this.syncDebug();
     if (this.rules.kind === 'challenge' && !this.rules.job) this.campaign = startCampaign(this.rules.seed);
+    const levelParam = new URLSearchParams(window.location.search).get('level');
+    if (this.campaign && levelParam && isCampaignLevelId(levelParam)) {
+      this.campaign.levelIndex = CAMPAIGN_LEVELS.findIndex(level => level.id === levelParam);
+      this.campaign.briefing = false;
+    }
     this.reset("same");
     if (this.rules.testMap) this.hud.openDebug();
     if (startsAtTitle(window.location.search)) this.mode = "title";
@@ -683,6 +691,23 @@ export class Game {
 
   perfSnapshot() {
     return this.perf.summary();
+  }
+
+  jumpCampaignLevel(id: CampaignLevelId): void {
+    if (!this.campaign) this.campaign = startCampaign(this.rules.seed);
+    const index = CAMPAIGN_LEVELS.findIndex(level => level.id === id);
+    if (index < 0) return;
+    this.campaign.levelIndex = index;
+    this.campaign.briefing = false;
+    this.reset('same');
+  }
+
+  urbanSnapshot(): Record<string, unknown> | undefined {
+    if (!this.campaign) return undefined;
+    const level = currentLevel(this.campaign);
+    const geography = this.town.nhood.urban;
+    if (!geography) return undefined;
+    return urbanDebugDump(level, this.town.seed, this.town.buildings, this.town.lots, geography, ARCHETYPES);
   }
 
   lookAtTown(mode: 'overview' | 'street' | 'open' = 'overview'): void {

@@ -28,6 +28,8 @@ describe('campaign placement metadata', () => {
     }
     expect(ARCHETYPES.find(a => a.id === 'ranch')!.zones.residential).toBeGreaterThan(0);
     expect(campaignEligible(ARCHETYPES.find(a => a.id === 'ranch')!.campaign, 'county')).toBe(true);
+    expect(campaignEligible(ARCHETYPES.find(a => a.id === 'bakery')!.campaign, 'city-downtown', { urbanBand: 'downtown-core' })).toBe(false);
+    expect(campaignEligible(ARCHETYPES.find(a => a.id === 'needle-office')!.campaign, 'city-downtown', { urbanBand: 'downtown-core' })).toBe(true);
   });
 
   it('does not let sites bypass constituent building eligibility', () => {

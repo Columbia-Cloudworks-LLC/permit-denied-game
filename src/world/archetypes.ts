@@ -79,7 +79,7 @@ const buildingShape: Shape = { version: 'number', id: 'string', kind: 'string', 
   features: { porch: 'boolean', awning: 'boolean', parapet: 'boolean', chimney: 'boolean', garage: 'boolean' },
   'facadeDetails?': [{ id: 'string', kind: 'string', floor: 'number', gx: 'number', gy: 'number', side: 'string', width: 'number', 'text?': 'string' }],
   zones: { residential: 'number', commercial: 'number', industrial: 'number' },
-  'campaign?': { levels: { '*': 'number' }, 'maxRepeats?': 'number', 'landmarkOnly?': 'boolean', 'zones?': ['string'], 'family?': 'string', 'exception?': 'boolean' } };
+  'campaign?': { levels: { '*': 'number' }, 'maxRepeats?': 'number', 'landmarkOnly?': 'boolean', 'zones?': ['string'], 'family?': 'string', 'exception?': 'boolean', 'urbanBands?': ['string'], 'streetRole?': 'string' } };
 
 export function validateBuildingDefinition(a: Archetype): string[] {
   const issues = validateConstruction(a.construction);

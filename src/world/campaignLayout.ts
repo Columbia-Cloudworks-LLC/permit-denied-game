@@ -147,7 +147,43 @@ function generateEstateLayout(level: CampaignLevelDef, seed: number): RuralLayou
     topology: 'loop',
     campaignLevel: level.id,
     diagnostic: { ok: !!mansion, issues: mansion ? [] : [{ code: 'landmark', detail: 'estate missing mansion' }] },
-    nhood: { rejected: [] },
+    nhood: {
+      rejected: [],
+      urban: {
+        center: { x: (minX + maxX) * 0.5, y: (minY + maxY) * 0.5 },
+        extent: Math.max(8, maxX - minX, maxY - minY),
+        lots: lots.map(lot => ({
+          lotId: lot.id,
+          districtRole: 'estate' as const,
+          urbanBand: 'estate' as const,
+          distToCenter: 0,
+          radius: 0,
+          corner: false,
+          roadClass: 'residential',
+        })),
+        openSpaces: [],
+        blocks: [],
+        byRole: { estate: lots.length },
+        byBand: { estate: lots.length },
+      },
+    },
+    urban: {
+      center: { x: (minX + maxX) * 0.5, y: (minY + maxY) * 0.5 },
+      extent: Math.max(8, maxX - minX, maxY - minY),
+      lots: lots.map(lot => ({
+        lotId: lot.id,
+        districtRole: 'estate' as const,
+        urbanBand: 'estate' as const,
+        distToCenter: 0,
+        radius: 0,
+        corner: false,
+        roadClass: 'residential',
+      })),
+      openSpaces: [],
+      blocks: [],
+      byRole: { estate: lots.length },
+      byBand: { estate: lots.length },
+    },
   };
 }
 
@@ -172,6 +208,8 @@ function estateLotFor(building: Building, index: number): Lot {
     identity: building.archetypeId === 'governors-mansion' ? 'shop' : 'service',
     accessId: '',
     templateId: '',
+    urbanBand: 'estate',
+    districtRole: 'estate',
     setbacks,
     buildable: { x: minX, y: minY, w: maxX - minX, d: maxY - minY },
   });

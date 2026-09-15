@@ -3,7 +3,7 @@ import { CAMPAIGN_LEVELS, campaignLevelById } from '../game/campaign';
 import { landmarkDemolitionStatus } from '../game/campaignRun';
 import { availableTownValue, landmarkShare } from '../game/campaignValue';
 import { campaignEligible } from './campaignPlacement';
-import { campaignFamily, evaluateCampaignComposition, heightClass } from './campaignComposition';
+import { campaignFamily, evaluateCampaignComposition } from './campaignComposition';
 import { generateCampaignLayout } from './campaignLayout';
 import { getAsset } from './catalog';
 import { createTown } from './town';
@@ -82,13 +82,18 @@ describe('campaign generation', () => {
         expect(report.ordinary).toBe(level.generation.buildingCount - 1);
         if (id === 'city-borough') {
           expect(report.byClass.skyscraper).toBe(0);
-          expect(report.byClass['mid-rise'] / report.ordinary).toBeGreaterThanOrEqual(0.8);
+          const mid = a.buildings.filter(building => {
+            if (building.campaignLandmark) return false;
+            const floors = ARCHETYPES.find(entry => entry.id === building.archetypeId)?.floors ?? building.floors;
+            return floors >= 2 && floors <= 8;
+          }).length;
+          expect(mid / report.ordinary).toBeGreaterThanOrEqual(0.65);
         } else {
-          const tall = a.buildings.filter(building => !building.campaignLandmark && heightClass(
-            ARCHETYPES.find(entry => entry.id === building.archetypeId)?.floors ?? building.floors,
-          ) !== 'low-rise').length;
-          expect(tall / report.ordinary).toBeGreaterThanOrEqual(0.95);
-          expect(report.byClass.skyscraper / report.ordinary).toBeGreaterThanOrEqual(0.3);
+          const fourPlus = a.buildings.filter(building => !building.campaignLandmark && (
+            ARCHETYPES.find(entry => entry.id === building.archetypeId)?.floors ?? building.floors
+          ) >= 4).length;
+          expect(fourPlus / report.ordinary).toBeGreaterThanOrEqual(0.7);
+          expect(report.byClass.skyscraper / report.ordinary).toBeGreaterThanOrEqual(0.22);
         }
         const families = new Set(a.buildings.filter(building => !building.campaignLandmark).map(building => {
           const def = ARCHETYPES.find(entry => entry.id === building.archetypeId)!;

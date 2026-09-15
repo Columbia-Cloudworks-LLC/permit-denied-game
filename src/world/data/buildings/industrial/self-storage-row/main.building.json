@@ -111,7 +111,11 @@
   "campaign": {
     "levels": {
       "township": 1,
-      "suburb": 1
-    }
+      "suburb": 1,
+      "city-downtown": 1
+    },
+    "urbanBands": [
+      "service-industrial"
+    ]
   }
 }

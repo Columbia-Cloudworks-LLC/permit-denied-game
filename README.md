@@ -20,7 +20,11 @@ http://localhost:5173/?sandbox=1&district=d100
 http://localhost:5173/?sandbox=1&ranch=1
 http://localhost:5173/?perf=1
 http://localhost:5173/?sandbox=1&district=d30&nhood=1
+http://localhost:5173/?mode=challenge&seed=19&level=city-downtown&nhood=1
+http://localhost:5173/?mode=challenge&seed=19&level=city-borough&nhood=1
 ```
+
+Time Challenge inspect links skip the title and open that campaign level. `G` toggles the neighborhood overlay (lots colored by urban band). In the console, `window.__pd.urbanSnapshot()` dumps band/role per lot; `window.__pd.lookAtTown('overview')` frames the town.
 
 Ranch benchmark: `?sandbox=1&ranch=1` loads d10 seed `17634759` with the dozer on the ranch south lawn, facing the house. **R** rebuilds the same lot. Drive **W** into the south wall; **Space** for a powered blade. Chip the middle three south cells, then ease off and watch those roof bays sag, hinge, fall, and settle into pushable panels. Leave and drive back — the wreck and rubble stay. A long hold on **W** punches through the whole house.
 
@@ -82,7 +86,7 @@ HUD shows **BLADE UP** / **BLADE DOWN**. Deaths: **ENGINE COOKED** (heat from gr
 
 Time Challenge is seven timed levels on the same town. Each level shows its cash target and landmark on the top bar. Chip walls, breach rooms, collapse floors. The ranch house is the demolition benchmark — open `?sandbox=1&ranch=1` and see **Run** above. Full building bonuses pay more. Cash milestones pause the clock run for one upgrade: stronger blade, more engine, or a faster powered push. Clear a level to carry upgrades forward; retry restores the upgrades you had when you entered that level.
 
-Sandbox mode has no county clock and does not end from heat or thrown tracks. Restart (R) rebuilds the same layout and seed. New Lot / N rolls a new seed. Play / Change Site selects Time Challenge or Sandbox. Time Challenge is a seven-level campaign (County through Governor's Mansion): demolish the marked landmark and earn that level's dollar target before the county clock expires. It does not pick a site size. Sandbox still chooses district size (10, 30, or 100 buildings). Optional BLADE+ / ENGINE+ / PUSH+ never force a pause in sandbox. See [docs/campaign.md](docs/campaign.md) for level settings, landmarks, and how to add an asset to selected levels. Technical timings stay off the normal HUD; add `?perf=1` or press ` to inspect frame, sim, and debris budgets.
+Sandbox mode has no county clock and does not end from heat or thrown tracks. Restart (R) rebuilds the same layout and seed. New Lot / N rolls a new seed. Play / Change Site selects Time Challenge or Sandbox. Time Challenge is a seven-level campaign (County through Governor's Mansion): demolish the marked landmark and earn that level's dollar target before the county clock expires. It does not pick a site size. Sandbox still chooses district size (10, 30, or 100 buildings). Optional BLADE+ / ENGINE+ / PUSH+ never force a pause in sandbox. See [docs/campaign.md](docs/campaign.md) and [docs/city-map-fabric.md](docs/city-map-fabric.md) for level settings, urban bands, landmarks, and how to add an asset to selected levels. Technical timings stay off the normal HUD; add `?perf=1` or press ` to inspect frame, sim, and debris budgets.
 
 Same seed plus the same inputs reproduce a run within ordinary floating-point drift (tests allow about 5–8% mass tolerance through crush/aggregation).
 

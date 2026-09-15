@@ -384,6 +384,11 @@ export interface Lot {
   identity: LotIdentity;
   accessId: string;
   templateId: string;
+  /** Campaign urban geography. Absent on Sandbox lots. */
+  urbanBand?: string;
+  districtRole?: string;
+  cornerLot?: boolean;
+  openSpaceName?: string;
   /** Frontage road, side of the polyline, and interval in segment t. */
   frontage: LotFrontage;
   /** Closed parcel ring in world space (first point is not repeated). */

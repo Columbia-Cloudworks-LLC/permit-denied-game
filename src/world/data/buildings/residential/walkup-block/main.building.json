@@ -43,7 +43,13 @@
     "levels": {
       "city-borough": 2,
       "city-downtown": 2
-    }
+    },
+    "urbanBands": [
+      "downtown-core",
+      "downtown-transition",
+      "borough-mixed"
+    ],
+    "streetRole": "run"
   },
   "openings": [
     {

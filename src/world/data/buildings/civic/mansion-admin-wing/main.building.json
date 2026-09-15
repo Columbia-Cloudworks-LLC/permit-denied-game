@@ -19,7 +19,15 @@
   "construction": "concrete-bearing",
   "zones": { "residential": 0, "commercial": 0, "industrial": 0 },
   "traits": { "use": ["admin-wing"], "form": ["office-wing"], "style": ["civic"], "scale": ["estate"] },
-  "campaign": { "levels": { "governors-mansion": 2 }, "maxRepeats": 2 },
+  "campaign": {
+    "levels": {
+      "governors-mansion": 2
+    },
+    "maxRepeats": 2,
+    "urbanBands": [
+      "estate"
+    ]
+  },
   "partitions": true,
   "connections": [],
   "sections": [

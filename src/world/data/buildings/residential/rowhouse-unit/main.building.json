@@ -104,7 +104,14 @@
   ],
   "campaign": {
     "levels": {
-      "suburb": 2
-    }
+      "suburb": 2,
+      "city-borough": 3
+    },
+    "urbanBands": [
+      "suburban",
+      "borough-mixed",
+      "service-industrial"
+    ],
+    "streetRole": "run"
   }
 }

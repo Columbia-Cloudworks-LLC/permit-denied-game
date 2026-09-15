@@ -68,7 +68,11 @@
     "levels": {
       "county": 1,
       "village": 1,
-      "township": 1
-    }
+      "township": 1,
+      "city-downtown": 1
+    },
+    "urbanBands": [
+      "service-industrial"
+    ]
   }
 }

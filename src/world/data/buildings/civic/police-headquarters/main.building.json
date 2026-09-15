@@ -19,7 +19,15 @@
   },
   "zones": { "residential": 0, "commercial": 0, "industrial": 0 },
   "traits": { "use": ["police-headquarters", "landmark"], "form": ["civic-slab"], "style": ["civic"], "scale": ["city"] },
-  "campaign": { "levels": { "city-borough": 1 }, "landmarkOnly": true },
+  "campaign": {
+    "levels": {
+      "city-borough": 1
+    },
+    "landmarkOnly": true,
+    "urbanBands": [
+      "borough-mixed"
+    ]
+  },
   "partitions": true,
   "sections": [
     { "id": "public", "role": "public", "x": 0, "y": 0, "w": 8, "d": 8, "floor": 0, "floors": 1, "layout": "public.layout.json" },

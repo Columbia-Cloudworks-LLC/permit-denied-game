@@ -52,6 +52,11 @@
       "suburb": 2,
       "governors-mansion": 1,
       "county": 1
-    }
+    },
+    "urbanBands": [
+      "rural",
+      "suburban",
+      "estate"
+    ]
   }
 }

@@ -19,7 +19,15 @@
   },
   "zones": { "residential": 0, "commercial": 0, "industrial": 0 },
   "traits": { "use": ["sheriff-office", "landmark"], "form": ["L-wing"], "style": ["civic"], "scale": ["county"] },
-  "campaign": { "levels": { "county": 1 }, "landmarkOnly": true },
+  "campaign": {
+    "levels": {
+      "county": 1
+    },
+    "landmarkOnly": true,
+    "urbanBands": [
+      "rural"
+    ]
+  },
   "partitions": true,
   "sections": [
     { "id": "garage", "role": "vehicle-bay", "x": 0, "y": 0, "w": 7, "d": 7, "floor": 0, "floors": 1, "layout": "garage.layout.json" },

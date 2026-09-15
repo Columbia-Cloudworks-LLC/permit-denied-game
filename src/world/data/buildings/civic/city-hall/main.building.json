@@ -19,7 +19,15 @@
   },
   "zones": { "residential": 0, "commercial": 0, "industrial": 0 },
   "traits": { "use": ["city-hall", "landmark"], "form": ["clock-hall"], "style": ["civic"], "scale": ["downtown"] },
-  "campaign": { "levels": { "city-downtown": 1 }, "landmarkOnly": true },
+  "campaign": {
+    "levels": {
+      "city-downtown": 1
+    },
+    "landmarkOnly": true,
+    "urbanBands": [
+      "downtown-core"
+    ]
+  },
   "partitions": true,
   "sections": [
     { "id": "hall", "role": "hall", "x": 0, "y": 0, "w": 12, "d": 9, "floor": 0, "floors": 2, "layout": "hall.layout.json" },

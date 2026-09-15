@@ -83,6 +83,12 @@
       "county": 2,
       "village": 2,
       "township": 1
-    }
+    },
+    "urbanBands": [
+      "rural",
+      "village-main-street",
+      "suburban",
+      "service-industrial"
+    ]
   }
 }
