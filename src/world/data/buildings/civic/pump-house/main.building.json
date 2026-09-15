@@ -60,6 +60,10 @@
     "levels": {
       "county": 1,
       "governors-mansion": 1
-    }
+    },
+    "urbanBands": [
+      "rural",
+      "service-industrial"
+    ]
   }
 }

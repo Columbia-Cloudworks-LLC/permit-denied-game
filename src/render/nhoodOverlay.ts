@@ -43,8 +43,30 @@ export function drawNhoodOverlay(g: Graphics, labels: Text[], town: Town): void 
     labels.push(label);
   }
 
+  const bandColor: Record<string, number> = {
+    rural: 0x8fbf6a,
+    'village-main-street': 0xdfc786,
+    suburban: 0x7ec8ff,
+    'borough-mixed': 0x5ad68a,
+    'downtown-core': 0xff6b4a,
+    'downtown-transition': 0xffb347,
+    'service-industrial': 0x9aa3ad,
+    estate: 0xc9a0dc,
+  };
+
   for (const lot of town.lots) {
-    if (lot.boundary?.length) ring(g, lot.boundary, 0x5ad68a, 0.8);
+    if (lot.boundary?.length) ring(g, lot.boundary, bandColor[lot.urbanBand ?? ''] ?? 0x5ad68a, 0.8);
+    if (lot.urbanBand) {
+      const c = lot.boundary[0] ?? { x: lot.x, y: lot.y };
+      const p = worldToScreen(c.x, c.y, 0.08);
+      const label = new Text({
+        text: lot.openSpaceName ?? `${lot.districtRole ?? ''}`,
+        style: { fill: 0xf4f0e4, fontSize: 8, fontFamily: "monospace" },
+      });
+      label.x = p.x + 2;
+      label.y = p.y - 10;
+      labels.push(label);
+    }
     if (lot.frontage?.segmentId) {
       const seg = town.network.segments.find((s) => s.id === lot.frontage.segmentId);
       if (seg) {

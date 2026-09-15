@@ -117,7 +117,12 @@
     "levels": {
       "township": 2,
       "county": 1,
-      "village": 1
-    }
+      "village": 1,
+      "city-borough": 1,
+      "city-downtown": 1
+    },
+    "urbanBands": [
+      "service-industrial"
+    ]
   }
 }

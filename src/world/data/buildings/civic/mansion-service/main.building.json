@@ -19,7 +19,15 @@
   },
   "zones": { "residential": 0, "commercial": 0, "industrial": 0 },
   "traits": { "use": ["service-house"], "form": ["utility-block"], "style": ["warehouse"], "scale": ["estate"] },
-  "campaign": { "levels": { "governors-mansion": 1 }, "maxRepeats": 1 },
+  "campaign": {
+    "levels": {
+      "governors-mansion": 1
+    },
+    "maxRepeats": 1,
+    "urbanBands": [
+      "estate"
+    ]
+  },
   "partitions": true,
   "sections": [
     { "id": "service", "role": "service", "x": 0, "y": 0, "w": 4, "d": 5, "floor": 0, "floors": 1, "layout": "service.layout.json" }

@@ -48,6 +48,10 @@
     "levels": {
       "village": 3,
       "township": 2
-    }
+    },
+    "urbanBands": [
+      "rural",
+      "suburban"
+    ]
   }
 }

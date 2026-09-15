@@ -48,7 +48,18 @@
     "levels": {
       "village": 2,
       "township": 2,
-      "county": 1
-    }
+      "county": 1,
+      "city-borough": 2,
+      "city-downtown": 1
+    },
+    "urbanBands": [
+      "rural",
+      "village-main-street",
+      "suburban",
+      "borough-mixed",
+      "downtown-transition",
+      "service-industrial"
+    ],
+    "streetRole": "run"
   }
 }

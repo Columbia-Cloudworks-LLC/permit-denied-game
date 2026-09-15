@@ -61,6 +61,11 @@
       "city-borough": 1,
       "city-downtown": 1
     },
-    "family": "midrise-office"
+    "family": "midrise-office",
+    "urbanBands": [
+      "downtown-core",
+      "downtown-transition",
+      "borough-mixed"
+    ]
   }
 }

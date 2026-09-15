@@ -61,6 +61,11 @@
       "city-downtown": 1
     },
     "maxRepeats": 1,
-    "family": "civic-tower"
+    "family": "civic-tower",
+    "urbanBands": [
+      "downtown-core",
+      "downtown-transition",
+      "borough-mixed"
+    ]
   }
 }

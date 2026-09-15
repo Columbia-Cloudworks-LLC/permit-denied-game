@@ -19,7 +19,15 @@
   },
   "zones": { "residential": 0, "commercial": 0, "industrial": 0 },
   "traits": { "use": ["gatehouse"], "form": ["square-tower"], "style": ["colonial"], "scale": ["estate"] },
-  "campaign": { "levels": { "governors-mansion": 2 }, "maxRepeats": 2 },
+  "campaign": {
+    "levels": {
+      "governors-mansion": 2
+    },
+    "maxRepeats": 2,
+    "urbanBands": [
+      "estate"
+    ]
+  },
   "partitions": true,
   "sections": [
     { "id": "watch", "role": "watch", "x": 0, "y": 0, "w": 4, "d": 4, "floor": 0, "floors": 2, "layout": "gate.layout.json" }

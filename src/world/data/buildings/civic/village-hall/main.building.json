@@ -19,7 +19,15 @@
   },
   "zones": { "residential": 0, "commercial": 0, "industrial": 0 },
   "traits": { "use": ["village-hall", "landmark"], "form": ["gable-hall"], "style": ["civic"], "scale": ["village"] },
-  "campaign": { "levels": { "village": 1 }, "landmarkOnly": true },
+  "campaign": {
+    "levels": {
+      "village": 1
+    },
+    "landmarkOnly": true,
+    "urbanBands": [
+      "village-main-street"
+    ]
+  },
   "partitions": true,
   "sections": [
     { "id": "meeting", "role": "meeting", "x": 0, "y": 0, "w": 7, "d": 8, "floor": 0, "floors": 1, "layout": "meeting.layout.json" },

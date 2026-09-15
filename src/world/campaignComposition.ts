@@ -4,6 +4,8 @@ import type { Archetype } from './archetypes';
 import { campaignEligible, campaignWeight, pickWeighted } from './campaignPlacement';
 import { archetypeFootprint } from './parcels';
 import type { Rng } from '../game/rng';
+import { bandAllowsArchetype } from './urbanGeography';
+import type { UrbanBand } from './urbanBands';
 
 export const HEIGHT_CLASSES = ['low-rise', 'mid-rise', 'high-rise', 'skyscraper'] as const;
 export type HeightClass = (typeof HEIGHT_CLASSES)[number];
@@ -119,6 +121,13 @@ function allowedForBand(archetype: Archetype, level: CampaignLevelDef): boolean 
   return true;
 }
 
+function matchesLotBand(archetype: Archetype, lot: Lot): boolean {
+  const band = lot.urbanBand as UrbanBand | undefined;
+  if (!band) return true;
+  if (archetype.campaign?.urbanBands?.length) return bandAllowsArchetype(archetype, band);
+  return true;
+}
+
 function inBand(archetype: Archetype, minFloors: number, maxFloors: number): boolean {
   return archetype.floors >= minFloors && archetype.floors <= maxFloors;
 }
@@ -194,6 +203,10 @@ export function planCampaignComposition(
 
   const remainingAllowed = pool.filter(archetype => {
     if (archetype.campaign?.exception) return true;
+    if (level.id === 'city-downtown' && archetype.floors <= 1) return false;
+    if (level.id === 'city-borough' && archetype.campaign?.urbanBands?.length === 1 && archetype.campaign.urbanBands[0] === 'service-industrial') {
+      return false;
+    }
     return !rules.bands.some(band => band.forbid && inBand(archetype, band.minFloors, band.maxFloors));
   });
   while (queue.length < needed) {
@@ -222,9 +235,19 @@ export function planCampaignComposition(
     }
   }
 
-  const rankedLots = [...lots].sort((a, b) => {
+  const roleRank = (lot: Lot) => {
+    const role = lot.districtRole;
+    if (role === 'downtown-core' || role === 'borough-center' || role === 'civic-center') return 4;
+    if (role === 'transition-ring' || role === 'mixed-use-corridor' || role === 'village-main-street') return 3;
+    if (role === 'borough-neighborhood' || role === 'borough-edge') return 2;
+    if (role === 'industrial-service-edge') return 0;
+    return 1;
+  };
+  const rankedLots = [...lots].filter(lot => !lot.openSpaceName).sort((a, b) => {
     const towerBias = (id: string | undefined) => id === 'tower' ? 1 : id === 'standard' ? 0 : -1;
-    return towerBias(b.templateId) - towerBias(a.templateId)
+    return roleRank(b) - roleRank(a)
+      || (b.cornerLot === a.cornerLot ? 0 : b.cornerLot ? 1 : -1)
+      || towerBias(b.templateId) - towerBias(a.templateId)
       || b.buildable.w * b.buildable.d - a.buildable.w * a.buildable.d
       || a.id.localeCompare(b.id);
   });
@@ -233,21 +256,43 @@ export function planCampaignComposition(
     const right = pool.find(entry => entry.id === b)!;
     const leftSize = archetypeFootprint(left);
     const rightSize = archetypeFootprint(right);
-    return right.floors - left.floors || rightSize.w * rightSize.d - leftSize.w * leftSize.d || a.localeCompare(b);
+    const cornerBias = (entry: Archetype) => entry.campaign?.streetRole === 'corner' ? 1 : 0;
+    return right.floors - left.floors || cornerBias(right) - cornerBias(left) || rightSize.w * rightSize.d - leftSize.w * leftSize.d || a.localeCompare(b);
   });
 
   const assignments: CompositionAssignment[] = [];
   const takenLots = new Set<string>();
+  const familyOnSegment = new Map<string, string>();
   for (const buildingId of rankedIds) {
     const def = pool.find(entry => entry.id === buildingId)!;
     const size = archetypeFootprint(def);
-    const fit = rankedLots.find(lot =>
-      !takenLots.has(lot.id)
-      && lot.buildable.w + 0.08 >= size.w
-      && lot.buildable.d + 0.08 >= size.d,
-    ) ?? rankedLots.find(lot => !takenLots.has(lot.id));
+    const bandFit = rankedLots.filter(lot => !takenLots.has(lot.id) && matchesLotBand(def, lot));
+    const preferCorner = def.campaign?.streetRole === 'corner';
+    const preferRun = def.campaign?.streetRole === 'run' || campaignFamily(def) === 'mixed-use';
+    const rankedFits = [...bandFit].sort((a, b) => {
+      const cornerScore = (lot: Lot) => (preferCorner && lot.cornerLot ? 0 : preferCorner ? 2 : lot.cornerLot && def.floors <= 3 ? 1 : 0);
+      const runKey = (lot: Lot) => `${lot.frontage?.segmentId ?? lot.id}:${lot.frontage?.side ?? 0}`;
+      const runScore = (lot: Lot) => {
+        const existing = familyOnSegment.get(runKey(lot));
+        if (!preferRun) return 0;
+        if (existing === campaignFamily(def)) return -1;
+        if (existing) return 1;
+        return 0;
+      };
+      const alreadyFits = (lot: Lot) => lot.buildable.w + 0.08 >= size.w && lot.buildable.d + 0.08 >= size.d ? 0 : 1;
+      return roleRank(b) - roleRank(a)
+        || cornerScore(a) - cornerScore(b)
+        || runScore(a) - runScore(b)
+        || alreadyFits(a) - alreadyFits(b)
+        || a.id.localeCompare(b.id);
+    });
+    const serviceOnly = def.campaign?.urbanBands?.length === 1 && def.campaign.urbanBands[0] === 'service-industrial';
+    const fit = rankedFits[0]
+      ?? rankedLots.find(lot => !takenLots.has(lot.id) && matchesLotBand(def, lot))
+      ?? (serviceOnly ? undefined : rankedLots.find(lot => !takenLots.has(lot.id)));
     if (!fit) continue;
     takenLots.add(fit.id);
+    familyOnSegment.set(`${fit.frontage.segmentId}:${fit.frontage.side}`, campaignFamily(def));
     assignments.push({ lotId: fit.id, buildingId });
   }
   if (assignments.length < needed) {
@@ -282,6 +327,17 @@ export function legalOrdinaryCandidates(
     .filter(archetype => allowedForBand(archetype, level))
     .filter(archetype => (used.get(archetype.id) ?? 0) < maxEach)
     .filter(archetype => (familyUsed.get(campaignFamily(archetype)) ?? 0) < maxFamily);
+}
+
+export function legalOrdinaryForLot(
+  level: CampaignLevelDef,
+  lot: Lot,
+  archetypes: readonly Archetype[],
+  used: ReadonlyMap<string, number>,
+  ordinaryTarget: number,
+): Archetype[] {
+  return legalOrdinaryCandidates(level, archetypes, used, ordinaryTarget)
+    .filter(archetype => matchesLotBand(archetype, lot));
 }
 
 export function sameBandCandidates(

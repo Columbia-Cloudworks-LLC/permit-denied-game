@@ -49,6 +49,10 @@
       "county": 3,
       "village": 3,
       "suburb": 1
-    }
+    },
+    "urbanBands": [
+      "rural",
+      "suburban"
+    ]
   }
 }

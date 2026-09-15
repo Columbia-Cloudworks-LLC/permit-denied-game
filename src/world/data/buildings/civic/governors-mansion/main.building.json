@@ -19,7 +19,15 @@
   },
   "zones": { "residential": 0, "commercial": 0, "industrial": 0 },
   "traits": { "use": ["governors-mansion", "landmark"], "form": ["estate-house"], "style": ["colonial"], "scale": ["estate"] },
-  "campaign": { "levels": { "governors-mansion": 1 }, "landmarkOnly": true },
+  "campaign": {
+    "levels": {
+      "governors-mansion": 1
+    },
+    "landmarkOnly": true,
+    "urbanBands": [
+      "estate"
+    ]
+  },
   "partitions": true,
   "sections": [
     { "id": "commons", "role": "commons", "x": 0, "y": 0, "w": 8, "d": 7, "floor": 0, "floors": 1, "layout": "commons.layout.json" },

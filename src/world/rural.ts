@@ -25,9 +25,18 @@ import {
   planCampaignComposition,
   sameBandCandidates,
 } from "./campaignComposition";
+import {
+  applyUrbanTags,
+  classifyUrbanGeography,
+  enumerateRoadBlocks,
+  reserveNamedOpenSpaces,
+  type UrbanGeographyReport,
+} from "./urbanGeography";
+import type { UrbanBand } from "./urbanBands";
 import { ARCHETYPES, archetypeById, type Archetype } from "./archetypes";
 import {
   curvePoints,
+  aabbOverlapsRoad,
   derivedRoadBoxes,
   emptyTerrain,
   linePoints,
@@ -75,6 +84,7 @@ export interface RuralLayout {
   campaignLevel?: CampaignLevelDef['id'];
   diagnostic: { ok: boolean; issues: LayoutIssue[] };
   nhood: NhoodDebug;
+  urban?: UrbanGeographyReport;
 }
 
 export function pickTopology(rng: Rng, count: number): TopologyFamily {
@@ -146,10 +156,22 @@ function generateRuralLayoutInner(
   }
 
   const clusterRng = new Rng(seed ^ 0x51a11);
-  const developed = selectStreetCluster(b.segments, b.nodes, Math.ceil(count * 1.7) + 6, clusterRng);
-  const alloc = allocateFrontage(developed, b.nodes, count * 3, new Rng(seed ^ 0x51a11), [], b.segments);
-  const pool = selectLotCluster(alloc.lots, count * 2, new Rng(seed ^ 0xc1a55));
+  const developed = selectStreetCluster(
+    b.segments,
+    b.nodes,
+    campaign ? Math.ceil(count * 2.4) + 4 : Math.ceil(count * 1.7) + 6,
+    clusterRng,
+  );
+  const alloc = allocateFrontage(developed, b.nodes, campaign ? count * 4 : count * 3, new Rng(seed ^ 0x51a11), [], b.segments);
+  const pool = campaign
+    ? selectLotCluster(alloc.lots, Math.min(alloc.lots.length, count * 3), new Rng(seed ^ 0xc1a55))
+    : selectLotCluster(alloc.lots, count * 2, new Rng(seed ^ 0xc1a55));
   rejected.push(...alloc.rejected);
+  let urban = campaign ? classifyUrbanGeography(campaign, pool, b.segments, b.nodes) : undefined;
+  if (campaign && urban) {
+    urban = reserveNamedOpenSpaces(campaign, pool, urban);
+    applyUrbanTags(pool, urban);
+  }
 
   const buildings: Building[] = [];
   const kept: Lot[] = [];
@@ -177,6 +199,7 @@ function generateRuralLayoutInner(
 
   for (const lot of ordinaryLots) {
     if (kept.length >= count) break;
+    if (lot.openSpaceName) continue;
     if (kept.some(k => k.id === lot.id)) continue;
     if (!placeCampaignLot(campaign, lot, rng, buildings, kept, corridors, publicSegs, b, used, pick, assignedId.get(lot.id), pool, rejected, count)) {
       continue;
@@ -187,6 +210,11 @@ function generateRuralLayoutInner(
     const extraSegs = selectStreetCluster(b.segments, b.nodes, Math.ceil(count * 2.1), new Rng(seed ^ 0x222));
     const extra = allocateFrontage(extraSegs, b.nodes, count * 3, new Rng(seed ^ 0x222), kept, b.segments);
     rejected.push(...extra.rejected);
+    if (campaign && extra.lots.length) {
+      const extraFresh = extra.lots.filter(lot => !kept.some(keptLot => keptLot.id === lot.id));
+      const extraUrban = classifyUrbanGeography(campaign, extraFresh, b.segments, b.nodes);
+      applyUrbanTags(extraFresh, extraUrban);
+    }
     for (const lot of extra.lots) {
       if (kept.length >= count) break;
       if (kept.some((k) => k.id === lot.id)) continue;
@@ -204,7 +232,13 @@ function generateRuralLayoutInner(
   }
 
   b.dropAccessesForLots(new Set(kept.map((l) => l.id)));
-  if (campaign?.composition) b.dropPublicRoadsAwayFromLots(kept, 14);
+  if (campaign?.composition) {
+    const keepPads = [
+      ...kept,
+      ...(urban?.openSpaces ?? []).map(space => ({ x: space.x, y: space.y, w: space.w, d: space.d })),
+    ];
+    b.dropPublicRoadsAwayFromLots(keepPads, 12);
+  }
   const network = b.finish({ normalize: false });
   for (const lot of kept) {
     const acc = network.accesses.find((a) => a.id === lot.accessId || a.lotId === lot.id);
@@ -213,6 +247,7 @@ function generateRuralLayoutInner(
       lot.frontage.segmentId = acc.segmentId;
     }
   }
+  if (campaign) nudgeBuildingsOffStreets(buildings, kept, network);
 
   const occBoxes = buildings.flatMap(buildingOccupy);
   const props: Prop[] = [];
@@ -256,6 +291,52 @@ function generateRuralLayoutInner(
   applyTerrain(terrain, topology, minX, maxX);
   ground.unshift(...fillWorldGround(minX - 1, minY - 1, maxX + 1, maxY + 1, seed));
 
+  if (campaign && urban) {
+    const keptIds = new Set(kept.map(lot => lot.id));
+    urban.lots = urban.lots.filter(info => keptIds.has(info.lotId));
+    urban.blocks = enumerateRoadBlocks(network.nodes).map(block => {
+      const inside = kept.filter(lot => {
+        const c = { x: lot.x + lot.w * 0.5, y: lot.y + lot.d * 0.5 };
+        return c.x >= block.x && c.x <= block.x + block.w && c.y >= block.y && c.y <= block.y + block.d;
+      });
+      const prior = urban!.openSpaces.find(space => Math.abs(space.x - block.x) < 3 && Math.abs(space.y - block.y) < 3);
+      const empty = inside.length === 0 && block.w * block.d >= 80;
+      if (empty && !prior && (campaign.id === 'city-borough' || campaign.id === 'city-downtown')) {
+        const kind = campaign.id === 'city-downtown' ? 'plaza' : 'park';
+        const names = kind === 'plaza'
+          ? ['Market Plaza', 'Station Plaza', 'Founders Plaza']
+          : ['Borough Green', 'Elm Park', 'Canal Park'];
+        const used = new Set(urban!.openSpaces.map(space => space.name));
+        const name = names.find(entry => !used.has(entry)) ?? names[urban!.openSpaces.length % names.length]!;
+        urban!.openSpaces.push({
+          id: block.id,
+          kind,
+          name,
+          x: block.x,
+          y: block.y,
+          w: block.w,
+          d: block.d,
+          band: kind === 'park' ? 'borough-mixed' : 'downtown-core',
+        });
+      }
+      return {
+        ...block,
+        lotIds: inside.map(lot => lot.id),
+        coverage: inside.reduce((sum, lot) => sum + lot.w * lot.d, 0) / Math.max(1, block.w * block.d),
+        role: prior?.kind ?? (empty ? (campaign.id === 'city-downtown' ? 'plaza' : 'park') : 'borough-neighborhood'),
+        reserved: !!(prior || empty),
+      };
+    });
+    const byRole: Record<string, number> = {};
+    const byBand: Record<string, number> = {};
+    for (const info of urban.lots) {
+      byRole[info.districtRole] = (byRole[info.districtRole] ?? 0) + 1;
+      byBand[info.urbanBand] = (byBand[info.urbanBand] ?? 0) + 1;
+    }
+    urban.byRole = byRole;
+    urban.byBand = byBand;
+  }
+
   const roads = derivedRoadBoxes(network);
   const cluster = buildings.length
     ? {
@@ -289,7 +370,8 @@ function generateRuralLayoutInner(
     topology,
     campaignLevel: campaign?.id,
     diagnostic: { ok: issues.length === 0 && kept.length === count, issues },
-    nhood: { rejected },
+    nhood: { rejected, urban },
+    urban,
   };
 }
 
@@ -458,9 +540,11 @@ function buildBlockGrid(b: RoadBuilder, count: number, ox: number, oy: number, r
       });
     }
   }
-  const dead = rows[0]![0]!;
-  const spur = b.node(dead.x - 18, dead.y + rng.range(-1, 1), dead.elev);
-  b.segment(dead, spur, linePoints(pt(dead), pt(spur)), { roadClass: "service" });
+  if (blockW >= 34) {
+    const dead = rows[0]![0]!;
+    const spur = b.node(dead.x - 18, dead.y + rng.range(-1, 1), dead.elev);
+    b.segment(dead, spur, linePoints(pt(dead), pt(spur)), { roadClass: "service" });
+  }
 }
 
 function estimateSlots(segments: readonly RoadSegment[], nodes: readonly { id: string; segmentIds: string[] }[]): number {
@@ -520,7 +604,7 @@ function buildSkeleton(
   const branch = Math.max(pairPitch * 0.6, 20 + count * 0.14);
 
   if (count >= 8) {
-    buildBlockGrid(b, campaign?.composition ? count + 18 : count, ox, oy, rng, campaign?.generation.parcel.blockW, campaign?.generation.parcel.blockD);
+    buildBlockGrid(b, campaign?.composition ? count + 8 : count, ox, oy, rng, campaign?.generation.parcel.blockW, campaign?.generation.parcel.blockD);
     addTopologyFlavor(b, topology, ox, oy, rng);
     return b.segments.filter((s) => s.roadClass !== "driveway");
   }
@@ -752,12 +836,21 @@ function assignedPicker(
       const size = archetypeFootprint(assigned);
       if (size.w + 0.08 <= lot.buildable.w && size.d + 0.08 <= lot.buildable.d) return assigned;
     }
-    const fallbacks = sameBandCandidates(assigned, campaign, ARCHETYPES, used, ordinaryTarget).filter(entry => !tried.has(entry.id));
+    const fallbacks = sameBandCandidates(assigned, campaign, ARCHETYPES, used, ordinaryTarget)
+      .filter(entry => !tried.has(entry.id))
+      .sort((a, b) => {
+        if (assigned.floors >= 8) {
+          const prefer = (entry: Archetype) => entry.floors >= 8 ? 0 : 1;
+          const ranked = prefer(a) - prefer(b);
+          if (ranked) return ranked;
+        }
+        return Math.abs(a.floors - assigned.floors) - Math.abs(b.floors - assigned.floors);
+      });
     const fitting = fallbacks.filter(entry => {
       const size = archetypeFootprint(entry);
       return size.w + 0.08 <= lot.buildable.w && size.d + 0.08 <= lot.buildable.d;
     });
-    return pickWeighted(fitting, entry => campaignWeight(entry.campaign, campaign.id) || 1, (min, max) => rng.range(min, max));
+    return fitting[0] ?? pickWeighted(fitting, entry => campaignWeight(entry.campaign, campaign.id) || 1, (min, max) => rng.range(min, max));
   };
 }
 
@@ -839,7 +932,11 @@ function campaignPicker(campaign: CampaignLevelDef, used: Map<string, number>) {
       : ARCHETYPES.filter(a => campaignEligible(a.campaign, campaign.id, { zone: lot.zone, used: used.get(a.id) ?? 0 }));
     const pool = legal.filter(a =>
       !tried.has(a.id) &&
-      campaignEligible(a.campaign, campaign.id, { zone: lot.zone, used: used.get(a.id) ?? 0 }),
+      campaignEligible(a.campaign, campaign.id, {
+        zone: lot.zone,
+        used: used.get(a.id) ?? 0,
+        urbanBand: lot.urbanBand as UrbanBand | undefined,
+      }),
     );
     const fitting = pool.filter(a => {
       const size = archetypeFootprint(a);
@@ -866,7 +963,15 @@ function placeCampaignLandmark(
 ): void {
   const landmark = archetypeById(campaign.landmark.buildingId);
   const size = archetypeFootprint(landmark);
-  const ranked = [...pool].sort((a, c) => c.w * c.d - a.w * a.d || (c.x + c.w * 0.5) - (a.x + a.w * 0.5));
+  const civicRank = (lot: Lot) => {
+    const role = lot.districtRole;
+    if (role === 'downtown-core' || role === 'borough-center' || role === 'civic-center' || role === 'village-main-street') return 3;
+    if (role === 'transition-ring' || role === 'mixed-use-corridor' || role === 'commercial-corridor') return 2;
+    return 1;
+  };
+  const ranked = [...pool]
+    .filter(lot => !lot.openSpaceName)
+    .sort((a, c) => civicRank(c) - civicRank(a) || c.w * c.d - a.w * a.d || (c.x + c.w * 0.5) - (a.x + a.w * 0.5));
   const pickLandmark = (_lot: Lot, _rng: Rng, tried: ReadonlySet<string>) => tried.has(landmark.id) ? undefined : landmark;
   for (const lot of ranked) {
     lot.zone = 'commercial';
@@ -891,6 +996,75 @@ function placeCampaignLandmark(
     used.set(building.archetypeId, 1);
     return;
   }
+}
+
+function nudgeBuildingsOffStreets(buildings: Building[], lots: readonly Lot[], network: RoadNetwork): void {
+  const byId = new Map(lots.map(lot => [lot.id, lot]));
+  const dirs = (heading: number): readonly [number, number][] => {
+    const fx = Math.cos(heading);
+    const fy = Math.sin(heading);
+    return [
+      [fx, fy],
+      [-fy, fx],
+      [fy, -fx],
+      [-fx, -fy],
+    ];
+  };
+  for (const building of buildings) {
+    const lot = byId.get(building.lotId ?? '');
+    if (!lot) continue;
+    const footprint0 = { x: building.x, y: building.y, w: building.w * building.cellSize, d: building.d * building.cellSize };
+    if (![footprint0, ...building.decorBoxes].some(box => aabbOverlapsRoad(network, box.x, box.y, box.w, box.d))) {
+      continue;
+    }
+    let cleared = false;
+    for (const [dx, dy] of dirs(lot.heading)) {
+      if (cleared) break;
+      const originX = building.x;
+      const originY = building.y;
+      const originDecor = building.decorBoxes.map(box => ({ ...box }));
+      for (let step = 0; step < 10; step++) {
+        const next = {
+          x: building.x + dx * 0.28,
+          y: building.y + dy * 0.28,
+          w: footprint0.w,
+          d: footprint0.d,
+        };
+        if (!aabbContained(next, lot.buildable)) break;
+        building.x = next.x;
+        building.y = next.y;
+        for (const box of building.decorBoxes) {
+          box.x += dx * 0.28;
+          box.y += dy * 0.28;
+        }
+        const occupy = [
+          { x: building.x, y: building.y, w: footprint0.w, d: footprint0.d },
+          ...building.decorBoxes,
+        ];
+        if (!occupy.some(box => aabbOverlapsRoad(network, box.x, box.y, box.w, box.d))) {
+          cleared = true;
+          break;
+        }
+      }
+      if (!cleared) {
+        building.x = originX;
+        building.y = originY;
+        for (let i = 0; i < building.decorBoxes.length; i++) {
+          building.decorBoxes[i] = originDecor[i]!;
+        }
+      }
+    }
+  }
+}
+
+function aabbContained(
+  box: { x: number; y: number; w: number; d: number },
+  env: { x: number; y: number; w: number; d: number },
+): boolean {
+  return box.x >= env.x - 0.02
+    && box.y >= env.y - 0.02
+    && box.x + box.w <= env.x + env.w + 0.02
+    && box.y + box.d <= env.y + env.d + 0.02;
 }
 
 function applyTerrain(field: TerrainField, topology: TopologyFamily, minX: number, maxX: number): void {

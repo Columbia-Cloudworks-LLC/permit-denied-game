@@ -71,6 +71,9 @@
     "levels": {
       "county": 2,
       "village": 1
-    }
+    },
+    "urbanBands": [
+      "rural"
+    ]
   }
 }

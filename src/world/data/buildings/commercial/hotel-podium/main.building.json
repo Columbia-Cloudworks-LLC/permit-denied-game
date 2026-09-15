@@ -422,6 +422,11 @@
       "city-downtown": 1
     },
     "maxRepeats": 1,
-    "family": "hotel"
+    "family": "hotel",
+    "urbanBands": [
+      "downtown-core",
+      "downtown-transition",
+      "borough-mixed"
+    ]
   }
 }

@@ -409,6 +409,11 @@
       "city-downtown": 2
     },
     "maxRepeats": 1,
-    "family": "urban-apartment"
+    "family": "urban-apartment",
+    "urbanBands": [
+      "downtown-core",
+      "downtown-transition",
+      "borough-mixed"
+    ]
   }
 }

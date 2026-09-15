@@ -43,7 +43,10 @@
     "levels": {
       "city-downtown": 2
     },
-    "maxRepeats": 3
+    "maxRepeats": 3,
+    "urbanBands": [
+      "downtown-core"
+    ]
   },
   "openings": [
     {

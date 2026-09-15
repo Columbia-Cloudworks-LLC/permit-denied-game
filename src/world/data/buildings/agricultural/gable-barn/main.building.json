@@ -60,6 +60,9 @@
   "campaign": {
     "levels": {
       "county": 3
-    }
+    },
+    "urbanBands": [
+      "rural"
+    ]
   }
 }

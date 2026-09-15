@@ -39,7 +39,7 @@ Clear **Governor's Mansion** and the campaign is over (**COUNTY CLOSED**). **New
 
 ## Levels
 
-Density rises from County through City Downtown by tightening lots and setbacks, not only by adding buildings. City Borough and City Downtown also use **composition rules**: height-band quotas, variant caps, and mixed parcel classes so later maps read as urban instead of a dense village of one-story shops. Governor's Mansion is a smaller estate with a site-placed landmark. The exact mid-rise and skyscraper roster is in [urban-variant-roster](urban-variant-roster.md).
+Density rises from County through City Downtown by tightening lots and setbacks, then by placing buildings into **urban bands** derived from world-space geometry (distance to center, road class, corner/frontage). City Borough and City Downtown also use **composition rules**: height-band quotas, variant caps, street-wall parcels, and named plazas/parks so later maps read as urban fabric instead of leftover vacant blocks. Governor's Mansion is a smaller estate with a site-placed landmark. The exact mid-rise and skyscraper roster is in [urban-variant-roster](urban-variant-roster.md). The band model and numeric thresholds are in [city-map-fabric](city-map-fabric.md).
 
 | # | Level | Landmark | Target | Clock | Buildings | Roads |
 | --- | --- | --- | ---: | ---: | ---: | --- |
@@ -90,14 +90,14 @@ Add a `campaign` object on the `*.building.json`:
 
 Weights are relative odds among eligible buildings on that level. Use only these level IDs: `county`, `village`, `township`, `suburb`, `city-borough`, `city-downtown`, `governors-mansion`. Invalid IDs or negative weights fail discovery.
 
-Optional `family` groups visually related variants for diversity caps. Optional `exception` marks a deliberate low-rise that may appear in a city pool without counting as the default fabric (Borough/Downtown: `parking-garage` only). Missing `campaign` is still opt-out.
+Optional `family` groups visually related variants for diversity caps. Optional `exception` marks a deliberate low-rise that may appear in a city pool without counting as the default fabric (Borough/Downtown: `parking-garage` only). Optional `urbanBands` lists the map roles the building may occupy (`rural`, `village-main-street`, `suburban`, `borough-mixed`, `downtown-core`, `downtown-transition`, `service-industrial`, `estate`). Optional `streetRole` is `corner`, `run`, or `standard`. Missing `campaign` is still opt-out. Sandbox still uses `zones` only.
 
 City composition is configured on the level in `src/game/campaign.ts`, not hoped-for from weights:
 
-| Level | Ordinary buildings | Height rule | Variant / family caps |
+| Level | Ordinary buildings | Height / band rule | Variant / family caps |
 | --- | ---: | --- | --- |
-| City Borough | 31 | ≥80% mid-rise (5–12). No skyscrapers. | ≥6 IDs, none >20%, family ≤40% |
-| City Downtown | 35 | ≥95% five stories or taller, ≥30% skyscrapers (20+) | ≥6 IDs, none >20%, family ≤40% |
+| City Borough | 31 | ≥65% 2–8 stories, ≥45% mid-rise (5–12). No skyscrapers. Low-rise service only at the industrial-service edge. | ≥6 IDs, none >20%, family ≤40% |
+| City Downtown | 35 | ≥70% four stories or taller, 22–45% skyscrapers (20+). Core has no one-story buildings. One-story shops/service only in transition, borough edge, or service edge. | ≥6 IDs, none >20%, family ≤40% |
 
 Generation plans those slots, reserves larger lots for taller footprints, expands a lot when needed, and retries the seed a bounded number of times. If the map still cannot meet the rule, layout throws instead of filling with leftover bakeries.
 
@@ -127,10 +127,10 @@ Optional `campaign.zones` further limits a prop or building to listed lot zones.
 ### Checklist
 
 1. Discover the package in the Asset Test Yard and demolish it there first. See [construction authoring](construction-authoring.md) and [asset test yard](asset-test-yard.md).
-2. Add `campaign.levels` for the levels that should use it. Leave `zones` at zero until Sandbox should pick it too.
+2. Add `campaign.levels` for the levels that should use it and `campaign.urbanBands` for the map roles it may occupy. Leave `zones` at zero until Sandbox should pick it too.
 3. If it belongs to a site, give the site the same levels and make sure every member is eligible.
-4. Run `npm test`. Campaign generation checks that every placed building and prop is eligible, that each level has exactly one landmark, and that available demolition value exceeds the dollar target.
+4. Run `npm test`. Campaign generation checks eligibility, landmarks, urban-band fabric, and that available demolition value exceeds the dollar target.
 
 ## Direct links
 
-Time Challenge still starts from the Play menu. Diagnostic links (`?sandbox=1`, `?yard=1`, `?job=brick`) do not enter the campaign. `?mode=challenge` skips the title and opens County’s briefing on the current seed.
+Time Challenge still starts from the Play menu. Diagnostic links (`?sandbox=1`, `?yard=1`, `?job=brick`) do not enter the campaign. `?mode=challenge` skips the title and opens County’s briefing on the current seed. `?mode=challenge&level=city-downtown&nhood=1` jumps to that level for map inspection.

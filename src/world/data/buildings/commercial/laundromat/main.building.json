@@ -58,7 +58,13 @@
   ],
   "campaign": {
     "levels": {
-      "suburb": 1
-    }
+      "suburb": 1,
+      "city-downtown": 1
+    },
+    "urbanBands": [
+      "suburban",
+      "service-industrial",
+      "downtown-transition"
+    ]
   }
 }

@@ -19,7 +19,16 @@
   },
   "zones": { "residential": 0, "commercial": 0, "industrial": 0 },
   "traits": { "use": ["township-hall", "landmark"], "form": ["L-wing"], "style": ["civic"], "scale": ["township"] },
-  "campaign": { "levels": { "township": 1 }, "landmarkOnly": true },
+  "campaign": {
+    "levels": {
+      "township": 1
+    },
+    "landmarkOnly": true,
+    "urbanBands": [
+      "village-main-street",
+      "suburban"
+    ]
+  },
   "partitions": true,
   "sections": [
     { "id": "main", "role": "chambers", "x": 0, "y": 0, "w": 6, "d": 8, "floor": 0, "floors": 2, "layout": "main.layout.json" },

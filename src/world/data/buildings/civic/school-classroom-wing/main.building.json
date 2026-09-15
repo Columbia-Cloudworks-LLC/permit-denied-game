@@ -107,6 +107,9 @@
     "levels": {
       "township": 1,
       "suburb": 2
-    }
+    },
+    "urbanBands": [
+      "suburban"
+    ]
   }
 }

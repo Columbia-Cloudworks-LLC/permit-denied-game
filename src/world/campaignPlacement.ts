@@ -3,6 +3,7 @@ import type { LotZone } from '../structure/types';
 import type { Archetype } from './archetypes';
 import type { BuildingSite } from './buildingSites';
 import type { AssetDef, LotCompat } from './catalog';
+import { isStreetRole, isUrbanBand, type StreetRole, type UrbanBand } from './urbanBands';
 
 export interface CampaignPlacement {
   levels: Partial<Record<CampaignLevelId, number>>;
@@ -11,6 +12,8 @@ export interface CampaignPlacement {
   zones?: readonly LotCompat[];
   family?: string;
   exception?: boolean;
+  urbanBands?: readonly UrbanBand[];
+  streetRole?: StreetRole;
 }
 
 export interface CampaignPlacementIssue {
@@ -18,7 +21,9 @@ export interface CampaignPlacementIssue {
   detail: string;
 }
 
-const placementShapeKeys = new Set(['levels', 'maxRepeats', 'landmarkOnly', 'zones', 'family', 'exception']);
+const placementShapeKeys = new Set([
+  'levels', 'maxRepeats', 'landmarkOnly', 'zones', 'family', 'exception', 'urbanBands', 'streetRole',
+]);
 
 export function parseCampaignPlacement(input: unknown, context: string): CampaignPlacement {
   if (!input || typeof input !== 'object' || Array.isArray(input)) {
@@ -67,6 +72,18 @@ export function parseCampaignPlacement(input: unknown, context: string): Campaig
     if (typeof record.exception !== 'boolean') throw new Error(`${context}: campaign.exception must be boolean`);
     placement.exception = record.exception;
   }
+  if (record.urbanBands !== undefined) {
+    if (!Array.isArray(record.urbanBands) || record.urbanBands.length < 1 || record.urbanBands.some(band => typeof band !== 'string' || !isUrbanBand(band))) {
+      throw new Error(`${context}: campaign.urbanBands must list known urban bands`);
+    }
+    placement.urbanBands = record.urbanBands as UrbanBand[];
+  }
+  if (record.streetRole !== undefined) {
+    if (typeof record.streetRole !== 'string' || !isStreetRole(record.streetRole)) {
+      throw new Error(`${context}: campaign.streetRole must be standard, corner, or run`);
+    }
+    placement.streetRole = record.streetRole;
+  }
   return placement;
 }
 
@@ -78,7 +95,7 @@ export function campaignWeight(placement: CampaignPlacement | undefined, level: 
 export function campaignEligible(
   placement: CampaignPlacement | undefined,
   level: CampaignLevelId,
-  options: { zone?: LotZone; used?: number; landmark?: boolean } = {},
+  options: { zone?: LotZone; used?: number; landmark?: boolean; urbanBand?: UrbanBand } = {},
 ): boolean {
   if (!placement) return false;
   const weight = campaignWeight(placement, level);
@@ -87,6 +104,7 @@ export function campaignEligible(
   if (!placement.landmarkOnly && options.landmark) return false;
   if (options.used !== undefined && placement.maxRepeats !== undefined && options.used >= placement.maxRepeats) return false;
   if (options.zone && placement.zones && !placement.zones.includes(options.zone)) return false;
+  if (options.urbanBand && placement.urbanBands && !placement.urbanBands.includes(options.urbanBand)) return false;
   return true;
 }
 

@@ -59,6 +59,9 @@
   "campaign": {
     "levels": {
       "suburb": 1
-    }
+    },
+    "urbanBands": [
+      "service-industrial"
+    ]
   }
 }
