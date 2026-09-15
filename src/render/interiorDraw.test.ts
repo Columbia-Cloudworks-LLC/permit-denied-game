@@ -3,7 +3,7 @@ import { SIM_DT } from "../game/constants";
 import { ParticlePool } from "../fx/particles";
 import { applyCellDamage, createBuildingFromArchetype, stepStructures } from "../structure/building";
 import { fixtureCatalog } from "../structure/interior";
-import { neighborRoofBayOpen, roofFrameBeams } from "../structure/roof";
+import { neighborRoofBayOpen, roofCoverage, roofFrameBeams } from "../structure/roof";
 import { depthKey, roofPainterDepth } from "../world/iso";
 import { getBuildingSurfaces, maxTopFloorWallFaceDepth } from "./buildingSurfaces";
 import { interiorCmds, roofCommandDepth, roofShowsFrame } from "./interiorDraw";
@@ -72,8 +72,8 @@ describe("ranch roof framing", () => {
   it("does not hide an intact roof bay when a south wall opens", () => {
     const b = createBuildingFromArchetype("ranch", "ROOF STAYS", 0, 0);
     smash(b, 2, b.d - 1);
-    const south = b.roofs.find((r) => r.support.some((s) => s.gx === 2 && s.gy === b.d - 1))!;
-    const north = b.roofs.find((r) => r.support.some((s) => s.gx === 2 && s.gy === 0))!;
+    const south = b.roofs.find((r) => roofCoverage(r).some((s) => s.gx === 2 && s.gy === b.d - 1))!;
+    const north = b.roofs.find((r) => roofCoverage(r).some((s) => s.gx === 2 && s.gy === 0))!;
     expect(south.state).toBe("intact");
     expect(north.state).toBe("intact");
     expect(roofShowsFrame(b, south)).toBe(false);
@@ -82,8 +82,8 @@ describe("ranch roof framing", () => {
 
   it("exposes framing on an intact bay only after the neighbor opening appears", () => {
     const b = createBuildingFromArchetype("ranch", "OPENING", 0, 0);
-    const left = b.roofs.find((r) => r.support.some((s) => s.gx === 1 && s.gy === b.d - 1))!;
-    const mid = b.roofs.find((r) => r.support.some((s) => s.gx === 2 && s.gy === b.d - 1))!;
+    const left = b.roofs.find((r) => roofCoverage(r).some((s) => s.gx === 1 && s.gy === b.d - 1))!;
+    const mid = b.roofs.find((r) => roofCoverage(r).some((s) => s.gx === 2 && s.gy === b.d - 1))!;
     expect(roofShowsFrame(b, mid)).toBe(false);
     expect(neighborRoofBayOpen(b, mid, -1)).toBe(false);
     for (const cell of b.cells) {
@@ -98,7 +98,7 @@ describe("ranch roof framing", () => {
 
   it("draws rafters along the roof slope instead of a flat ladder", () => {
     const b = createBuildingFromArchetype("ranch", "RAFTERS", 0, 0);
-    const south = b.roofs.find((r) => r.support.some((s) => s.gy === b.d - 1))!;
+    const south = b.roofs.find((r) => roofCoverage(r).some((s) => s.gy === b.d - 1))!;
     const rise = roofFrameBeams(south)
       .filter((beam) => beam.kind === "rafter")
       .map((beam) => Math.abs(beam.b.z - beam.a.z));

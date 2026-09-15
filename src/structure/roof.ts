@@ -508,8 +508,105 @@ function clipRoof(verts: RoofSection["verts"], axis: "x" | "y", plane: number, g
   });
 }
 
+function industrialRoofBuilding(building: Building): boolean {
+  return building.construction.walls === "frame" && building.construction.roof === "metal" && !building.coreCollapse;
+}
+
+function polygonAreaXY(verts: RoofSection["verts"]): number {
+  let area = 0;
+  for (let i = 0; i < verts.length; i++) {
+    const a = verts[i]!;
+    const b = verts[(i + 1) % verts.length]!;
+    area += a.x * b.y - b.x * a.y;
+  }
+  return Math.abs(area) * 0.5;
+}
+
+function clipTileRidge(section: RoofSection, verts: RoofSection["verts"]): RoofSection["ridge"] {
+  if (!section.ridge) return undefined;
+  const ridgeZ = section.ridge.az;
+  if (Math.max(...verts.map((v) => v.z)) < ridgeZ - 0.08) return undefined;
+  const xs = verts.map((v) => v.x);
+  const ys = verts.map((v) => v.y);
+  const alongX = Math.abs(section.ridge.ay - section.ridge.by) < 1e-3;
+  if (alongX) {
+    const ax = Math.max(section.ridge.ax, Math.min(...xs));
+    const bx = Math.min(section.ridge.bx, Math.max(...xs));
+    return bx - ax < 1e-4 ? undefined : { ...section.ridge, ax, bx };
+  }
+  const ay = Math.max(section.ridge.ay, Math.min(...ys));
+  const by = Math.min(section.ridge.by, Math.max(...ys));
+  return by - ay < 1e-4 ? undefined : { ...section.ridge, ay, by };
+}
+
+/** Clip a continuous-pitch plane into cell-scale tiles so debris matches real roofing. */
+function tileRoofToCells(building: Building, sections: RoofSection[]): RoofSection[] {
+  const cs = building.cellSize;
+  const out: RoofSection[] = [];
+  for (const section of sections) {
+    const covered = roofCoverage(section);
+    if (!covered.length) continue;
+    const bounds = bbox(covered);
+    const have = new Set(covered.map((c) => `${c.gx},${c.gy}`));
+    const secXs = section.verts.map((v) => v.x);
+    const secYs = section.verts.map((v) => v.y);
+    const secX0 = Math.min(...secXs);
+    const secX1 = Math.max(...secXs);
+    const secY0 = Math.min(...secYs);
+    const secY1 = Math.max(...secYs);
+    let added = 0;
+    for (let gx = bounds.minX; gx <= bounds.maxX; gx++) {
+      for (let gy = bounds.minY; gy <= bounds.maxY; gy++) {
+        if (!have.has(`${gx},${gy}`)) continue;
+        const x0 = gx === bounds.minX ? secX0 : building.x + gx * cs;
+        const x1 = gx === bounds.maxX ? secX1 : building.x + (gx + 1) * cs;
+        const y0 = gy === bounds.minY ? secY0 : building.y + gy * cs;
+        const y1 = gy === bounds.maxY ? secY1 : building.y + (gy + 1) * cs;
+        if (x1 - x0 < 1e-6 || y1 - y0 < 1e-6) continue;
+        const verts = clipRoof(
+          clipRoof(clipRoof(clipRoof(section.verts, "x", x0, true), "x", x1, false), "y", y0, true),
+          "y",
+          y1,
+          false,
+        );
+        if (verts.length < 3 || polygonAreaXY(verts) < cs * cs * 0.08) continue;
+        out.push({
+          ...makeSection(out.length + 1, section.style, section.support, verts, section.material, clipTileRidge(section, verts)),
+          coverage: [{ gx, gy }],
+          tooth: section.tooth,
+        });
+        added++;
+      }
+    }
+    if (!added) out.push({ ...section, id: out.length + 1, coverage: covered });
+  }
+  return out;
+}
+
+function assignTiledSupport(building: Building, sections: RoofSection[]): RoofSection[] {
+  const top = building.floors - 1;
+  const topSupports = building.cells.filter((c) => c.floor === top && c.isSupport);
+  return sections.map((section, i) => {
+    const covered = roofCoverage(section);
+    const bearingPad = building.construction.walls === "frame" ? 1 : 0;
+    let support = topSupports
+      .filter((c) =>
+        covered.some((t) => Math.abs(t.gx - c.gx) <= bearingPad && (bearingPad > 0 || t.gy === c.gy)),
+      )
+      .map((c) => ({ gx: c.gx, gy: c.gy }));
+    if (!support.length) {
+      const inherited = section.support.filter((s) => {
+        const cell = building.grid[top]?.[s.gx]?.[s.gy];
+        return !!cell && cell.isSupport && cellPresent(cell);
+      });
+      support = inherited.length ? inherited : topSupports.map((c) => ({ gx: c.gx, gy: c.gy }));
+    }
+    return { ...section, id: i + 1, support, coverage: covered };
+  });
+}
+
 function industrialPanels(building: Building, bays: RoofSection[]): RoofSection[] {
-  if (building.construction.walls !== "frame" || building.construction.roof !== "metal" || building.coreCollapse) return bays;
+  if (!industrialRoofBuilding(building)) return bays;
   const panels: RoofSection[] = [];
   const bearings = new Map<string, NonNullable<RoofSection["bay"]>>();
   for (const bay of bays) {
@@ -590,7 +687,10 @@ function generateRoofLayer(building: Building): RoofSection[] {
       sections.push(...extra);
     }
   }
-  return industrialPanels(building, splitStructuralBays(building, sections));
+  if (industrialRoofBuilding(building)) {
+    return industrialPanels(building, splitStructuralBays(building, sections));
+  }
+  return assignTiledSupport(building, tileRoofToCells(building, sections));
 }
 
 /** Slice existing planes so shed pitch and flat deck elevation remain continuous across bays. */
@@ -798,9 +898,12 @@ function neighborRoofBay(building: Building, roof: RoofSection, dgx: number): Ro
   if (!coverage.length) return undefined;
   const edge = dgx < 0 ? Math.min(...coverage.map(coord)) : Math.max(...coverage.map(coord));
   const side = (r: RoofSection) => {
-    if (!r.ridge) return 0;
     const center = vertsCenter(r.verts);
-    return Math.sign(alongY ? center.x - r.ridge.ax : center.y - r.ridge.ay);
+    if (r.ridge) return Math.sign(alongY ? center.x - r.ridge.ax : center.y - r.ridge.ay);
+    const mid = alongY
+      ? building.x + (building.w * building.cellSize) * 0.5
+      : building.y + (building.d * building.cellSize) * 0.5;
+    return Math.sign(alongY ? center.x - mid : center.y - mid);
   };
   return building.roofs.find(other => other.id !== roof.id && other.floor === roof.floor && other.style === roof.style && side(other) === side(roof)
     && roofCoverage(other).some(s => coord(s) === edge + dgx));
@@ -1075,12 +1178,13 @@ export function gableWallVerts(
 
 /** Viewer-facing gable outline from the story top up to the ridge. */
 export function gableEndCaps(building: Building, floor = building.floors - 1): GableEndCap[] {
-  const live = building.roofs.filter(
-    (r) => r.floor === floor && r.style === "gable" && (r.state === "intact" || r.state === "sagging") && r.ridge,
+  const floorGables = building.roofs.filter(
+    (r) => r.floor === floor && r.style === "gable" && (r.state === "intact" || r.state === "sagging"),
   );
+  const live = floorGables.filter((r) => r.ridge);
   if (live.length === 0) return [];
   const ridge = live[0]!.ridge!;
-  const cells = live.flatMap((r) => r.support);
+  const cells = floorGables.flatMap((r) => roofCoverage(r));
   if (cells.length === 0) return [];
   const b = bbox(cells);
   const cs = building.cellSize;
@@ -1088,8 +1192,8 @@ export function gableEndCaps(building: Building, floor = building.floors - 1): G
   const x1 = building.x + (b.maxX + 1) * cs;
   const y0 = building.y + b.minY * cs;
   const y1 = building.y + (b.maxY + 1) * cs;
-  const sag = Math.max(...live.map((r) => r.sag * 0.35));
-  const eaveZ = Math.min(...live.flatMap((r) => r.verts.map((v) => v.z))) - sag;
+  const sag = Math.max(...floorGables.map((r) => r.sag * 0.35));
+  const eaveZ = Math.min(...floorGables.flatMap((r) => r.verts.map((v) => v.z))) - sag;
   const peakZ = ridge.az - sag;
   const axisX = Math.abs(ridge.ay - ridge.by) < 1e-3;
   if (axisX) {
@@ -1117,19 +1221,21 @@ export function gableEndCaps(building: Building, floor = building.floors - 1): G
 export function gablePlanesSloped(roofs: RoofSection[]): boolean {
   const gables = roofs.filter((r) => r.style === "gable" && r.state !== "gone");
   if (gables.length < 2) return false;
-  const a = gables[0]!;
-  const b = gables[1]!;
-  const zSpread = (r: RoofSection) => {
-    const zs = r.verts.map((v) => v.z);
-    return Math.max(...zs) - Math.min(...zs);
-  };
-  if (zSpread(a) < 0.35 || zSpread(b) < 0.35) return false;
-  if (!a.ridge || !b.ridge) return false;
-  const sameRidge =
-    Math.abs(a.ridge.ax - b.ridge.ax) < 1e-6 &&
-    Math.abs(a.ridge.ay - b.ridge.ay) < 1e-6 &&
-    Math.abs(a.ridge.az - b.ridge.az) < 1e-6;
-  return sameRidge;
+  const zs = gables.flatMap((r) => r.verts.map((v) => v.z));
+  if (Math.max(...zs) - Math.min(...zs) < 0.35) return false;
+  const ridged = gables.filter((r) => r.ridge);
+  if (ridged.length < 2) return false;
+  return ridged.some((a, i) =>
+    ridged.slice(i + 1).some((b) => {
+      const ar = a.ridge!;
+      const br = b.ridge!;
+      if (Math.abs(ar.az - br.az) > 1e-6) return false;
+      const alongX = Math.abs(ar.ay - ar.by) < 1e-3;
+      return alongX
+        ? Math.abs(ar.ay - br.ay) < 1e-3 && Math.abs(ar.by - br.by) < 1e-3
+        : Math.abs(ar.ax - br.ax) < 1e-3 && Math.abs(ar.bx - br.bx) < 1e-3;
+    }),
+  );
 }
 
 function supportFraction(building: Building, roof: RoofSection): { have: number; total: number } {
