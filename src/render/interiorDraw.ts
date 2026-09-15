@@ -11,6 +11,7 @@ import { industrialRoofOpen, neighborRoofBayOpen, roofFrameBeams } from "../stru
 import type { Building, Cell, InteriorFixture, RoofSection } from "../structure/types";
 import { cellPresent, cellWorldBox } from "../structure/types";
 import { depthKey, roofPainterDepth } from "../world/iso";
+import { maxTopFloorWallFaceDepth } from "./buildingSurfaces";
 import { drawFaceWindow, drawIsoBox, drawOrientedIsoBox, drawSlopedQuad, drawTopCap, shade } from "./drawIso";
 import { brokenEdgeColor, floorFinishColor, topFaceColor, wallFaceColor } from "./lighting";
 import { PAL } from "./palette";
@@ -205,6 +206,18 @@ export function roofInteriorPainterDepth(b: Building, roof: RoofSection, verts: 
     }
   }
   return depth;
+}
+
+/**
+ * Per-bay gable/shed panels at the far side have a lower front-vertex depth than
+ * a long south/east wall, so the wall would paint over the eave and gable edge.
+ * Keep every sloped panel after those wall faces.
+ */
+export function roofCommandDepth(b: Building, roof: RoofSection, verts: RoofSection["verts"]): number {
+  const depth = roofInteriorPainterDepth(b, roof, verts);
+  if (roof.style !== "gable" && roof.style !== "shed") return depth;
+  const walls = maxTopFloorWallFaceDepth(b);
+  return Number.isFinite(walls) ? Math.max(depth, walls + 1) : depth;
 }
 
 function drawSlopedBeam(

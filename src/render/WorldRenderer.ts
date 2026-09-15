@@ -17,8 +17,9 @@ import type { Bird, Building, CollapsedSite, CoverKind, GroundMark, GroundPatch,
 import type { Dozer } from "../vehicle/dozer";
 import type { Town } from "../world/town";
 import { getBuildingSurfaces, releaseBuildingSurfaces } from "./buildingSurfaces";
+import { wallPaintSpans } from "./wallPaint";
 import { drawCatalogProp } from "./assets";
-import { drawRoofFrame, interiorCmds, roofInteriorPainterDepth, roofShowsFrame } from "./interiorDraw";
+import { drawRoofFrame, interiorCmds, roofCommandDepth, roofShowsFrame } from "./interiorDraw";
 import { cellColors, drawGroundPoly, drawIsoBox, drawOrientedGround, drawOrientedIsoBox, drawShadow, drawSlopedQuad, drawWorldPoly, PAL, shade } from "./drawIso";
 import {
   drawBuildingFootprintShadow,
@@ -258,12 +259,8 @@ export class WorldRenderer {
       const hasSolid = b.cells.some((c) => c.state !== "gone" && c.state !== "falling");
       if (hasSolid && view.walls) {
         visible++;
-        // A whole-hall ground shadow must not paint over the rear roof panels.
-        if (b.roofs.some(r => r.bay)) drawBuildingFootprintShadow(this.groundOverlays, surfaces.footprint, 1);
-        else this.cmds.push({
-          depth: depthKey(b.x + bw * 0.5, b.y + bd * 0.5, 0),
-          run: (g) => drawBuildingFootprintShadow(g, surfaces.footprint, 1),
-        });
+        // Ground layer only: a depth-sorted footprint shadow paints over far gable bays.
+        drawBuildingFootprintShadow(this.groundOverlays, surfaces.footprint, 1);
       }
       for (const detail of view.details ? b.facadeDetails : []) {
         if (detail.floor > view.maxFloor) continue;
@@ -275,12 +272,9 @@ export class WorldRenderer {
         if (command) { visible++; this.cmds.push(command); }
       }
       const near = dozer.x > b.x - 6 && dozer.x < b.x + bw + 6 && dozer.y > b.y - 6 && dozer.y < b.y + bd + 6;
-      const walls = near ? surfaces.walls.flatMap(s => {
-        const count = s.dir === "south" ? s.gx1 - s.gx0 + 1 : s.gy1 - s.gy0 + 1;
-        return Array.from({ length: count }, (_, i) => ({ ...s,
-          gx0: s.gx0 + (s.dir === "south" ? i : 0), gx1: s.gx0 + (s.dir === "south" ? i : 0),
-          gy0: s.gy0 + (s.dir === "east" ? i : 0), gy1: s.gy0 + (s.dir === "east" ? i : 0) }));
-      }) : surfaces.walls;
+      // Always paint per cell. A long east/south merge sorts at its midpoint and loses
+      // to a nearer upper-floor slab, which then covers the facade (catalog + in-game).
+      const walls = wallPaintSpans(b);
       if ((b.canopy || b.openDecks) && view.walls) for (const c of b.cells) {
         if (c.state === 'gone' || c.state === 'falling' || c.floor > view.maxFloor) continue;
         const box = cellWorldBox(b, c);
@@ -355,7 +349,7 @@ export class WorldRenderer {
               Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys), Math.min(...zs), Math.max(...zs) + .2);
             visible++;
             this.cmds.push({
-              depth: roofInteriorPainterDepth(b, roof, moved),
+              depth: roofCommandDepth(b, roof, moved),
               run: (g) => drawRoofBay(g, b, roof, alpha),
             });
           }
@@ -622,8 +616,8 @@ function drawRoofSection(
           { x: r.bx, y: r.by, z: r.bz - 0.02 - sag },
           { x: r.ax, y: r.ay, z: r.az - 0.02 - sag },
         ],
-        PAL.roofShingleDark,
-        PAL.roofShingleDark,
+        cols.edge,
+        cols.edge,
         faded,
       );
     }

@@ -11,6 +11,7 @@ import { createTown, type Town } from '../world/town';
 import { bayBuildings, bayProps, bayVehicles, discoverYardAssets, instantiateBay, type YardBay } from '../world/yardCatalog';
 import { PileField } from '../sim/pile';
 import { emptyTerrain, RoadBuilder, linePoints, pt } from '../world/roads';
+import { CATALOG_CAPTURE_DOZER } from './catalogCaptureDozer';
 import { createDozer, stepDozer } from '../vehicle/dozer';
 import { createRoadVehicle } from '../vehicle/roadVehicle';
 import { worldBoundsToScreen } from '../world/iso';
@@ -96,7 +97,7 @@ export async function bootAssetCapture(): Promise<void> {
     if (!Number.isInteger(variant) || variant < 0 || variant >= asset.variants) throw new Error('Invalid variant');
     town = createTown({ seed: 4517 });
     const pad = Math.max(12, asset.clearance);
-    bay = { key: `capture:${id}`, asset, variant, baseline: false, x: 0, y: 0,
+    bay = { key: `capture:${id}`, asset, variant, baseline: false, intactFacade: true, x: 0, y: 0,
       w: asset.w + pad * 2, d: asset.d + pad * 2 };
     // InstantiateBay positions the asset by clearance, so match the reserved origin.
     bay.x = pad - asset.clearance; bay.y = pad - asset.clearance;
@@ -112,7 +113,7 @@ export async function bootAssetCapture(): Promise<void> {
     town.terrain = emptyTerrain(0, 0, town.maxX + 2, town.maxY + 2);
     town.debrisOwnerAt = () => bay.key; town.pile.ownerAt = town.debrisOwnerAt;
     particles.ownerAt = town.debrisOwnerAt; particles.reseed(4517);
-    dozer = createDozer(-100, -100, 0);
+    dozer = createDozer(CATALOG_CAPTURE_DOZER.x, CATALOG_CAPTURE_DOZER.y, CATALOG_CAPTURE_DOZER.heading);
     if (id === 'vehicle:bulldozer') {
       dozer = createDozer(pad + 3, pad + 2, 0);
       dozer.bladeDown = variant === 1;
