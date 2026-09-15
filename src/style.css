@@ -74,6 +74,7 @@ h1:focus, .panel:focus { outline: none; }
 .menu-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 14px 0; }
 .menu-grid button, .menu-grid .menu-social { display: inline-flex; align-items: center; justify-content: center; gap: 10px; }
 .menu-icon { display: block; flex: none; }
+.menu-icon-ban { stroke: #a12827; }
 .menu-btn-icon { display: inline-flex; align-items: center; }
 .nameplate { margin-top: 26px; padding: 13px 18px; display: flex; justify-content: space-between; gap: 20px; align-items: center; background: #151c16; border: 1px solid #5c6451; color: #b6bdab; border-radius: 3px; font: 9px/1.8 var(--mono); position: relative; }
 .nameplate:before, .nameplate:after { content: '•'; position: absolute; top: calc(50% - 8px); color: #94977e; }

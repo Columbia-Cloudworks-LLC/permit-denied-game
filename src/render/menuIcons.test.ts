@@ -30,8 +30,12 @@ describe('menu icons', () => {
     expect(off.indexOf('Sound:')).toBeLessThan(off.indexOf('<svg'));
     expect(on).toContain('data-menu-icon="speaker"');
     expect(off).toContain('data-menu-icon="speaker-muted"');
-    expect(off).toContain('<circle');
-    expect(off).toContain('M14.4 15.3');
+    expect(off).toContain('data-menu-icon-ban="true"');
+    expect(off).toContain('#a12827');
+    expect(off.indexOf('M3.6 9.4')).toBeLessThan(off.indexOf('data-menu-icon-ban'));
+    expect(off).toContain('cx="12"');
+    expect(off).not.toContain('cx="17.5"');
     expect(on).not.toBe(off);
+    expect(on).not.toContain('data-menu-icon-ban');
   });
 });
