@@ -43,6 +43,29 @@ function spanDepth(b: Building, gx0: number, gy0: number, gx1: number, gy1: numb
   return depthKey(cx, cy, floor * FLOOR_Z);
 }
 
+/** Front-plane depth of every top-floor south/east wall cell. Gable bays behind this must sort later. */
+export function maxTopFloorWallFaceDepth(b: Building): number {
+  const floor = b.floors - 1;
+  const cs = b.cellSize;
+  const z = floor * FLOOR_Z;
+  let max = -Infinity;
+  for (const span of getBuildingSurfaces(b).walls) {
+    if (span.floor !== floor) continue;
+    if (span.dir === "south") {
+      const y = b.y + (span.gy0 + 1) * cs;
+      for (let gx = span.gx0; gx <= span.gx1; gx++) {
+        max = Math.max(max, depthKey(b.x + (gx + 0.5) * cs, y, z));
+      }
+      continue;
+    }
+    const x = b.x + (span.gx0 + 1) * cs;
+    for (let gy = span.gy0; gy <= span.gy1; gy++) {
+      max = Math.max(max, depthKey(x, b.y + (gy + 0.5) * cs, z));
+    }
+  }
+  return max;
+}
+
 function footprintBox(b: Building): { x: number; y: number; w: number; d: number } {
   const cs = b.cellSize;
   let minGx = b.w;

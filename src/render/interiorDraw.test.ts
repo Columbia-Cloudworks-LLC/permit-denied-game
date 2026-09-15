@@ -4,8 +4,10 @@ import { ParticlePool } from "../fx/particles";
 import { applyCellDamage, createBuildingFromArchetype, stepStructures } from "../structure/building";
 import { fixtureCatalog } from "../structure/interior";
 import { neighborRoofBayOpen, roofFrameBeams } from "../structure/roof";
-import { depthKey } from "../world/iso";
-import { interiorCmds, roofShowsFrame } from "./interiorDraw";
+import { depthKey, roofPainterDepth } from "../world/iso";
+import { getBuildingSurfaces, maxTopFloorWallFaceDepth } from "./buildingSurfaces";
+import { interiorCmds, roofCommandDepth, roofShowsFrame } from "./interiorDraw";
+import { wallSpanFadeRuns } from "./occlusion";
 import { PAL } from "./palette";
 
 function smash(b: ReturnType<typeof createBuildingFromArchetype>, gx: number, gy: number): void {
@@ -113,5 +115,43 @@ describe("ranch interior depth vs facades", () => {
     expect(floor).toBeDefined();
     const wallD = depthKey(b.x + 2.5 * b.cellSize, b.y + 2.9 * b.cellSize, 1.1);
     expect(floor!.depth).toBeLessThan(wallD);
+  });
+});
+
+describe("gable roof sort vs eave walls", () => {
+  const far = { x: -100, y: -100, heading: 0 };
+
+  it.each(["cottage", "dairy-building", "gable-barn"] as const)(
+    "paints every %s sloped panel after the long south/east wall faces",
+    (id) => {
+      const b = createBuildingFromArchetype(id, id.toUpperCase(), 0, 0);
+      const wallDepth = maxTopFloorWallFaceDepth(b);
+      expect(wallDepth).toBeGreaterThan(0);
+      const live = b.roofs.filter((r) => r.style === "gable" && r.state !== "gone");
+      expect(live.length).toBeGreaterThan(1);
+      for (const roof of live) {
+        const raw = roofPainterDepth(roof.verts);
+        const command = roofCommandDepth(b, roof, roof.verts);
+        expect(command).toBeGreaterThan(wallDepth);
+        expect(command).toBeGreaterThanOrEqual(raw);
+      }
+      for (const span of getBuildingSurfaces(b).walls.filter((s) => s.floor === b.floors - 1)) {
+        for (const run of wallSpanFadeRuns(b, span, far)) {
+          for (const roof of live) {
+            expect(roofCommandDepth(b, roof, roof.verts)).toBeGreaterThan(run.span.depth);
+          }
+        }
+      }
+    },
+  );
+
+  it("boosts far dairy bays that raw eave depth would leave behind the south wall", () => {
+    const b = createBuildingFromArchetype("dairy-building", "DAIRY", 0, 0);
+    const wallDepth = maxTopFloorWallFaceDepth(b);
+    const behind = b.roofs.filter((r) => r.style === "gable" && roofPainterDepth(r.verts) <= wallDepth);
+    expect(behind.length).toBeGreaterThan(0);
+    for (const roof of behind) {
+      expect(roofCommandDepth(b, roof, roof.verts)).toBeGreaterThan(wallDepth);
+    }
   });
 });

@@ -6,7 +6,7 @@ import { depthKey } from '../world/iso';
 import { drawWorldPoly, shade } from './drawIso';
 import { getBuildingSurfaces } from './buildingSurfaces';
 import { displacedRoofVerts } from '../structure/roof';
-import { roofInteriorPainterDepth } from './interiorDraw';
+import { roofCommandDepth } from './interiorDraw';
 
 // A small world-space lettering alphabet keeps signs crisp at the game's pixel scale.
 const LETTERS: Record<string, string> = {
@@ -36,7 +36,7 @@ export function facadeDetailCommand(b: Building, d: FacadeDetailDef, alpha = 1) 
     depth = Math.max(depth, depthKey(b.x + (south ? span.gx1 + .5 : span.gx0 + 1) * b.cellSize,
       b.y + (south ? span.gy0 + 1 : span.gy1 + .5) * b.cellSize, span.floor * FLOOR_Z) + .5);
   if ((d.kind === 'roof-duct' || d.kind === 'dormer')) for (const roof of b.roofs) if (roof.floor === d.floor && roof.state !== 'gone')
-    depth = Math.max(depth, roofInteriorPainterDepth(b, roof, displacedRoofVerts(roof)) + 1);
+    depth = Math.max(depth, roofCommandDepth(b, roof, displacedRoofVerts(roof)) + 1);
   return { depth,
     run: (g: Graphics) => {
       const poly = (coords: number[][], color: number, out = .045) => drawWorldPoly(g, coords.map(([u, v]) => point(u!, v!, out)), color, alpha);

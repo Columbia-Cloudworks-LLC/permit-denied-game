@@ -53,7 +53,13 @@ export function yardGridSlots(a: YardAsset): number {
   return a.fixture ? Math.round(a.w/CELL)*Math.round(a.d/CELL)*2*(a.fixtureLevels??1) : 0;
 }
 export interface YardBox { x: number; y: number; w: number; d: number }
-export interface YardBay extends YardBox { key: string; asset: YardAsset; variant: number; baseline: boolean; focused?: boolean; building?: Building; prop?: Prop; vehicle?: VehicleState; site?: { buildings: Building[]; props: Prop[]; vehicles?: VehicleState[] } }
+export interface YardBay extends YardBox {
+  key: string; asset: YardAsset; variant: number; baseline: boolean; focused?: boolean;
+  /** Catalog/capture keeps every south cell. Yard tests still open the front for entry. */
+  intactFacade?: boolean;
+  building?: Building; prop?: Prop; vehicle?: VehicleState;
+  site?: { buildings: Building[]; props: Prop[]; vehicles?: VehicleState[] };
+}
 export function bayBuildings(bay: YardBay): Building[] { return bay.site?.buildings ?? (bay.building ? [bay.building] : []); }
 export function bayProps(bay: YardBay): Prop[] { return bay.site?.props ?? (bay.prop ? [bay.prop] : []); }
 export function bayVehicles(bay: YardBay): VehicleState[] {return bay.site?.vehicles ?? (bay.vehicle?[bay.vehicle]:[]); }
@@ -88,10 +94,12 @@ export function instantiateBay(bay: YardBay): void {
       layout: { partitions: false,
         rooms: Array.from({length:floors},(_,floor) => ({ id: `room-${floor}`, kind: 'living', floor, x: 0, y: 0, w: 1, d: 1, finish: 'plank', contents: [] })) } });
     if(levels>1)b.floorTiles=b.floorTiles.map(t=>t.floor%levels!==0 && t.gx>0 && t.gx<b.w-1 && t.gy>0 && t.gy<b.d-1?{...t,void:true}:t);
-    // Open-front contextual host: retain floor tiles under the opening, so the
-    // production envelope/exposure and ground collision paths are active at entry.
-    for (const cell of b.cells) if (cell.gy === b.d - 1 && cell.gx >= 1 && cell.gx <= 3) {
-      cell.state = 'gone'; cell.hp = 0;
+    // Yard tests open the south wall so the fixture is reachable. Catalog capture
+    // keeps an intact facade — the public shot is not a cutaway or dollhouse.
+    if (!bay.intactFacade) {
+      for (const cell of b.cells) if (cell.gy === b.d - 1 && cell.gx >= 1 && cell.gx <= 3) {
+        cell.state = 'gone'; cell.hp = 0;
+      }
     }
     const size=a.fixtureSize??{w:1,d:1,h:1};
     b.fixtures = (bay.focused ? [0] : [0, levels]).map(floor => makeFixture(b, floor + 1, a.fixture!, 'living', floor, x + 2, y + 2, size.w, size.d, size.h));
