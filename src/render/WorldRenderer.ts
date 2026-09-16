@@ -35,11 +35,21 @@ import { elevatedTankCommands } from './elevatedTank';
 import { siloCommands } from './silos';
 import { drawNhoodOverlay } from "./nhoodOverlay";
 import { buildingHidesDozer, objectOcclusionFade, pieceHidesDozer, VisibilityFades, wallSpanFadeRuns } from "./occlusion";
+import {
+  buildingDamaged,
+  buildingIsLive,
+  buildingLod,
+  buildingNeedsDetails,
+  buildingNeedsInterior,
+  coalesceStaticChunks,
+  debugViewSignature,
+} from "./buildingLod";
 
 interface Cmd {
   floor?: number;
   key?: string;
   version?: string | number;
+  chunk?: string;
   depth: number;
   run: (g: Graphics) => void;
 }
@@ -60,6 +70,7 @@ export class WorldRenderer {
   private readonly groundOverlays = new Graphics();
   private readonly drawing = new DrawCache();
   private readonly cmds: Cmd[] = [];
+  private readonly staticBuildingCmds = new WeakMap<Building, { key: string; cmds: Cmd[]; visible: number }>();
   readonly debug = defaultDebugView();
   jobTarget?: Building;
   landmarkTarget?: Building;
@@ -78,7 +89,7 @@ export class WorldRenderer {
   private groundKey = "";
   private overlayKey = "";
   private siteKey = "";
-  stats = { total: 0, visible: 0, surfaceGeometry: 0, cached: 0, rebuilt: 0 };
+  stats = { total: 0, visible: 0, commands: 0, surfaceGeometry: 0, cached: 0, rebuilt: 0 };
   dozerHidden = false;
 
   constructor() {
@@ -211,6 +222,9 @@ export class WorldRenderer {
     }
 
     let surfaceGeometry = 0;
+    const viewSig = debugViewSignature(view);
+    const camLod = `${Math.round(this.camX / 40)}:${Math.round(this.camY / 40)}:${this.zoom.toFixed(2)}:${this.viewW}x${this.viewH}`;
+    const hideDressing = view.overview || this.zoom < 0.55;
     for (const b of town.buildings) {
       if (b.retired) { releaseBuildingSurfaces(b); continue; }
       const commandStart = this.cmds.length;
@@ -237,20 +251,14 @@ export class WorldRenderer {
         }
         continue;
       }
-      for (const c of b.cells) if (c.coreSupport && cellPresent(c) && view.walls) {
-        const box = cellWorldBox(b, c);
-        const alpha = view.reveal || view.maxFloor === 0 ? 1 : objectOcclusionFade(dozer, box.x, box.y, box.w, box.d, 0, FLOOR_Z);
-        this.cmds.push({ depth: depthKey(box.x + .3, box.y + .3, .1), run: g => drawIsoBox(g, box.x, box.y, box.w, box.d, 0, FLOOR_Z, 0xb6a784, 0x827754, 0x9c8d68, alpha) });
-      }
+      const near = dozer.x > b.x - 6 && dozer.x < b.x + bw + 6 && dozer.y > b.y - 6 && dozer.y < b.y + bd + 6;
+      const lod = buildingLod(near, view.overview, this.zoom);
+      const damaged = buildingDamaged(b);
+      const live = buildingIsLive(lod, damaged);
+      const needsInterior = buildingNeedsInterior(b, view, lod);
+      const needsDetails = buildingNeedsDetails(view, lod);
       const surfaces = getBuildingSurfaces(b);
-
       surfaceGeometry += surfaces.geometryCount;
-      const fadeBox = (key: string, x: number, y: number, w: number, d: number, z: number, top: number) => {
-        const alpha = this.fades.sample(`${b.id}:${key}`, objectOcclusionFade(dozer, x, y, w, d, z, top), dt);
-        fadeValues.push(Math.round(alpha * 1000));
-        if (alpha < .6 || pieceHidesDozer(dozer, x, y, w, d, z, top)) occluded = true;
-        return alpha;
-      };
       if (this.jobTarget === b) {
         const inset = .3;
         for (const [x, y, w, d] of [[b.x - inset, b.y - inset, bw + inset * 2, .07],
@@ -265,8 +273,38 @@ export class WorldRenderer {
         // Ground layer only: a depth-sorted footprint shadow paints over far gable bays.
         drawBuildingFootprintShadow(this.groundOverlays, surfaces.footprint, 1);
       }
-      for (const detail of view.details ? b.facadeDetails : []) {
+      const cacheKey = live ? "" : `${b.visualRevision}:${viewSig}:${camLod}:${needsInterior ? 1 : 0}:${needsDetails ? 1 : 0}`;
+      if (cacheKey) {
+        const hit = this.staticBuildingCmds.get(b);
+        if (hit && hit.key === cacheKey) {
+          visible += hit.visible;
+          this.cmds.push(...hit.cmds);
+          continue;
+        }
+      }
+      for (const c of b.cells) if (c.coreSupport && cellPresent(c) && view.walls) {
+        const box = cellWorldBox(b, c);
+        const alpha = !live || view.reveal || view.maxFloor === 0 ? 1 : objectOcclusionFade(dozer, box.x, box.y, box.w, box.d, 0, FLOOR_Z);
+        this.cmds.push({ depth: depthKey(box.x + .3, box.y + .3, .1), run: g => drawIsoBox(g, box.x, box.y, box.w, box.d, 0, FLOOR_Z, 0xb6a784, 0x827754, 0x9c8d68, alpha) });
+      }
+      const fadeBox = (key: string, x: number, y: number, w: number, d: number, z: number, top: number) => {
+        if (!live) return 1;
+        const alpha = this.fades.sample(`${b.id}:${key}`, objectOcclusionFade(dozer, x, y, w, d, z, top), dt);
+        fadeValues.push(Math.round(alpha * 1000));
+        if (alpha < .6 || pieceHidesDozer(dozer, x, y, w, d, z, top)) occluded = true;
+        return alpha;
+      };
+      for (const detail of needsDetails ? b.facadeDetails : []) {
         if (detail.floor > view.maxFloor) continue;
+        const z0 = detail.floor * FLOOR_Z;
+        if (!this.visibleBox(
+          b.x + detail.gx * b.cellSize,
+          b.y + detail.gy * b.cellSize,
+          (detail.side === "south" ? detail.width : 1) * b.cellSize,
+          (detail.side === "east" ? detail.width : 1) * b.cellSize,
+          z0,
+          z0 + FLOOR_Z,
+        )) continue;
         const command = facadeDetailCommand(b, detail, fadeBox(`detail:${detail.id}`,
           b.x + detail.gx * b.cellSize, b.y + detail.gy * b.cellSize,
           (detail.side === 'south' ? detail.width : 1) * b.cellSize,
@@ -274,12 +312,11 @@ export class WorldRenderer {
           detail.floor * FLOOR_Z, (detail.floor + 1) * FLOOR_Z));
         if (command) { visible++; this.cmds.push(command); }
       }
-      const near = dozer.x > b.x - 6 && dozer.x < b.x + bw + 6 && dozer.y > b.y - 6 && dozer.y < b.y + bd + 6;
-      // Always paint per cell. A long east/south merge sorts at its midpoint and loses
-      // to a nearer upper-floor slab, which then covers the facade (catalog + in-game).
-      const walls = wallPaintSpans(b);
+      // Split long facades only when interior slabs can cover them in painter order.
+      const walls = wallPaintSpans(b, needsInterior);
       if ((b.canopy || b.openDecks) && view.walls) for (const c of b.cells) {
         if (c.state === 'gone' || c.state === 'falling' || c.floor > view.maxFloor) continue;
+        if (!this.visibleBox(b.x, b.y, bw, bd, c.floor * FLOOR_Z, (c.floor + 1) * FLOOR_Z)) continue;
         const box = cellWorldBox(b, c);
         this.cmds.push({ floor:c.floor, depth: depthKey(box.x + box.w / 2, box.y + box.d / 2, c.floor * FLOOR_Z),
           run: g => drawIsoBox(g, box.x, box.y, box.w, box.d, c.floor * FLOOR_Z, FLOOR_Z, 0xb7bab0, 0x697a70, 0x8d9c91) });
@@ -294,31 +331,43 @@ export class WorldRenderer {
           ...(tile.gy===0 ? [[x,y,cs,.12]] : []), ...(tile.gy===b.d-1 ? [[x,y+cs-.12,cs,.12]] : []),
         ]) this.cmds.push({floor:tile.floor,depth:depthKey(bx!+bw!/2,by!+bd!/2,z),run:g=>drawIsoBox(g,bx!,by!,bw!,bd!,z,.45*(1-tile.fallT),0xb9b7a8,0x777f75,0x929b8e)});
         // Short end-of-deck parking bays stay clear of the alternating ramp lanes.
-        if(view.details && tile.gx>=b.w-3 && tile.gx<b.w-1 && [2,5,8].includes(tile.gy))
+        if(needsDetails && tile.gx>=b.w-3 && tile.gx<b.w-1 && [2,5,8].includes(tile.gy))
           this.cmds.push({floor:tile.floor,depth:depthKey(x+cs/2,y+.02,z+.01),run:g=>drawIsoBox(g,x,y,cs,.055,z,.012,0xe0dfc7,0xe0dfc7,0xe0dfc7)});
       }
       for (const span of view.walls && !b.canopy && !b.openDecks ? walls : []) {
         if (span.floor > view.maxFloor) continue;
-        for (const run of wallSpanFadeRuns(b, span, dozer)) {
-          const s = run.span, cs = b.cellSize;
-          const wallX = b.x + (s.dir === "east" ? s.gx0 + 1 : s.gx0) * cs;
-          const wallY = b.y + (s.dir === "south" ? s.gy0 + 1 : s.gy0) * cs;
-          const wallW = s.dir === "east" ? .08 : (s.gx1 - s.gx0 + 1) * cs;
-          const wallD = s.dir === "south" ? .08 : (s.gy1 - s.gy0 + 1) * cs;
-          const wallZ = s.floor * FLOOR_Z;
-          const wallTop = (s.floor + 1) * FLOOR_Z;
-          const alpha = this.fades.sample(`${b.id}:wall:${s.dir}:${s.floor}:${s.gx0}:${s.gy0}`,
-            Math.min(run.fade, objectOcclusionFade(dozer, wallX, wallY, wallW, wallD, wallZ, wallTop)), dt);
-          fadeValues.push(Math.round(alpha * 1000));
-          if (alpha < .6 || pieceHidesDozer(dozer, wallX, wallY, wallW, wallD, wallZ, wallTop)) occluded = true;
+        const cs = b.cellSize;
+        const wallX = b.x + (span.dir === "east" ? span.gx0 + 1 : span.gx0) * cs;
+        const wallY = b.y + (span.dir === "south" ? span.gy0 + 1 : span.gy0) * cs;
+        const wallW = span.dir === "east" ? .08 : (span.gx1 - span.gx0 + 1) * cs;
+        const wallD = span.dir === "south" ? .08 : (span.gy1 - span.gy0 + 1) * cs;
+        const wallZ = span.floor * FLOOR_Z;
+        const wallTop = (span.floor + 1) * FLOOR_Z;
+        if (!this.visibleBox(wallX, wallY, wallW, wallD, wallZ, wallTop)) continue;
+        const runs = live ? wallSpanFadeRuns(b, span, dozer) : [{ span, fade: 1 }];
+        for (const run of runs) {
+          const s = run.span;
+          const runX = b.x + (s.dir === "east" ? s.gx0 + 1 : s.gx0) * cs;
+          const runY = b.y + (s.dir === "south" ? s.gy0 + 1 : s.gy0) * cs;
+          const runW = s.dir === "east" ? .08 : (s.gx1 - s.gx0 + 1) * cs;
+          const runD = s.dir === "south" ? .08 : (s.gy1 - s.gy0 + 1) * cs;
+          const alpha = live
+            ? this.fades.sample(`${b.id}:wall:${s.dir}:${s.floor}:${s.gx0}:${s.gy0}`,
+              Math.min(run.fade, objectOcclusionFade(dozer, runX, runY, runW, runD, wallZ, wallTop)), dt)
+            : 1;
+          if (live) {
+            fadeValues.push(Math.round(alpha * 1000));
+            if (alpha < .6 || pieceHidesDozer(dozer, runX, runY, runW, runD, wallZ, wallTop)) occluded = true;
+          }
           visible++;
           this.cmds.push({
+            key: `building:${b.id}:wall:${s.dir}:${s.floor}:${s.gx0}:${s.gy0}`,
             depth: run.span.depth,
             run: (g) => drawWallSpan(g, b, run.span, alpha),
           });
         }
       }
-      {
+      if (needsInterior) {
         const interiors = interiorCmds(b, 1, { fadeBox, reveal: view.reveal || b.openDecks || b.construction.skin === 'glass' || !view.roofs || !view.walls || view.maxFloor < b.floors - 1, maxFloor: view.maxFloor })
           .filter(c => c.kind === "floor" ? view.floors : c.kind === "fixture" ? view.contents : view.walls);
         visible += interiors.length;
@@ -348,15 +397,18 @@ export class WorldRenderer {
           for (const roof of liveRoofs) {
             const moved = roofVerts(roof);
             const xs = moved.map(v => v.x), ys = moved.map(v => v.y), zs = moved.map(v => v.z);
-            const alpha = fadeBox(`roof:${roof.id}`, Math.min(...xs), Math.min(...ys),
-              Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys), Math.min(...zs), Math.max(...zs) + .2);
+            const rx = Math.min(...xs), ry = Math.min(...ys), rw = Math.max(...xs) - rx, rd = Math.max(...ys) - ry;
+            const rz0 = Math.min(...zs), rz1 = Math.max(...zs) + .2;
+            if (!this.visibleBox(rx, ry, rw, rd, rz0, rz1)) continue;
+            const alpha = fadeBox(`roof:${roof.id}`, rx, ry, rw, rd, rz0, rz1);
             visible++;
             this.cmds.push({
+              key: `building:${b.id}:roof:${roof.id}`,
               depth: roofCommandDepth(b, roof, moved),
               run: (g) => drawRoofBay(g, b, roof, alpha),
             });
           }
-          if (b.features.chimney) {
+          if (b.features.chimney && lod !== "overview") {
             const ch = chimneyWorld(b);
             if (ch) {
               visible++;
@@ -373,14 +425,26 @@ export class WorldRenderer {
         const decks = this.cmds.splice(commandStart).sort((a,c)=>(a.floor??-1)-(c.floor??-1)||a.depth-c.depth);
         if(decks.length) this.cmds.push({depth:Math.max(...decks.map(c=>c.depth)),run:g=>{for(const c of decks)c.run(g);}});
       }
-      const version = [b.visualRevision, near ? dozer.x : 0, near ? dozer.y : 0, fadeValues.join(","), JSON.stringify(view)].join(':');
+      const version = live
+        ? [b.visualRevision, dozer.x.toFixed(2), dozer.y.toFixed(2), fadeValues.join(","), viewSig].join(":")
+        : [b.visualRevision, viewSig].join(":");
+      const chunk = live ? undefined : `b${b.id}`;
       for (let j = commandStart; j < this.cmds.length; j++) {
-        this.cmds[j]!.key = 'building:' + b.id + ':' + (j - commandStart);
-        this.cmds[j]!.version = version;
+        const cmd = this.cmds[j]!;
+        if (!cmd.key) cmd.key = "building:" + b.id + ":" + (j - commandStart);
+        cmd.version = version;
+        if (chunk) cmd.chunk = chunk;
+      }
+      if (cacheKey) {
+        this.staticBuildingCmds.set(b, {
+          key: cacheKey,
+          visible: this.cmds.length - commandStart,
+          cmds: this.cmds.slice(commandStart),
+        });
       }
     }
 
-    for (const p of view.props ? town.props : []) {
+    for (const p of view.props && !hideDressing ? town.props : []) {
       if (p.broken) continue;
       total++;
       if (!this.visibleBox(p.x, p.y, p.w, p.d, p.elev, p.elev + 3.2)) continue;
@@ -444,7 +508,8 @@ export class WorldRenderer {
     }
 
     this.cmds.sort((a, b) => a.depth - b.depth);
-    this.drawing.draw(this.cmds);
+    const submitted = coalesceStaticChunks(this.cmds);
+    this.drawing.draw(submitted);
     const hidden = occluded && !view.overview;
     this.dozerHidden = hidden;
     if (hidden) {
@@ -463,7 +528,7 @@ export class WorldRenderer {
     drawDebugOverlay(this.debugOverlay, town, dozer, view);
     this.drawLandmarkMarkers();
     this.fades.end();
-    this.stats = { total, visible, surfaceGeometry, cached: this.drawing.size, rebuilt: this.drawing.rebuilt };
+    this.stats = { total, visible, commands: submitted.length, surfaceGeometry, cached: this.drawing.size, rebuilt: this.drawing.rebuilt };
   }
 
   private drawLandmarkMarkers(): void {

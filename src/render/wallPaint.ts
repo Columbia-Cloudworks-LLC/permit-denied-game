@@ -15,8 +15,9 @@ export function splitWallSpan(span: WallSpan): WallSpan[] {
   }));
 }
 
-export function wallPaintSpans(b: Building): WallSpan[] {
-  return getBuildingSurfaces(b).walls.flatMap(splitWallSpan);
+export function wallPaintSpans(b: Building, split = true): WallSpan[] {
+  const walls = getBuildingSurfaces(b).walls;
+  return split ? walls.flatMap(splitWallSpan) : walls;
 }
 
 /** Painter depths the shared wall path actually submits, including fade-run face depth. */
