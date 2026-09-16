@@ -1,5 +1,6 @@
 import { drawBowlingLanes } from './bowlingLanes';
 import { Graphics } from "pixi.js";
+import { paintsFloorSlab } from "../structure/coreCollapse";
 import { FLOOR_Z } from "../game/constants";
 import {
   fixtureCatalog,
@@ -276,7 +277,7 @@ export function interiorCmds(
   const coverage = interiorFloorCoverage(b, options.reveal);
   {
     for (const tile of b.floorTiles) {
-      if (tile.state !== "falling" || tile.floor > maxFloor) continue;
+      if (tile.state !== "falling" || tile.floor > maxFloor || !paintsFloorSlab(tile.floor)) continue;
       const cs = b.cellSize, x = b.x + tile.gx * cs, y = b.y + tile.gy * cs;
       const z = tile.floor * FLOOR_Z * (1 - tile.fallT);
       const mat = b.construction.floor;
@@ -314,7 +315,7 @@ export function interiorCmds(
       Array.from({ length: span.gx1 - span.gx0 + 1 }, (_, ix) => ({ ...span,
         gx0: span.gx0 + ix, gx1: span.gx0 + ix, gy0: span.gy0 + iy, gy1: span.gy0 + iy }))).flat());
   for (const span of spans) {
-    if (span.floor > maxFloor) continue;
+    if (span.floor > maxFloor || !paintsFloorSlab(span.floor)) continue;
     const cs = b.cellSize;
     const alpha = localFade(`floor:${span.floor}:${span.gx0}:${span.gy0}`, b.x + span.gx0 * cs,
       b.y + span.gy0 * cs, (span.gx1 - span.gx0 + 1) * cs, (span.gy1 - span.gy0 + 1) * cs,

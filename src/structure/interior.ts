@@ -1,4 +1,4 @@
-import { DETAILED_FLOORS } from './coreCollapse';
+import { DETAILED_FLOORS, paintsFloorSlab } from './coreCollapse';
 import { hitObject, objectFragments } from '../sim/objectBehavior';
 import { FLOOR_Z } from "../game/constants";
 import { floorIndex, releaseFloorIndex } from './floorIndex';
@@ -235,7 +235,7 @@ function coverIndex(building: Building, gx: number, gy: number, floor: number): 
 
 function collectInteriorFloorSpans(building: Building, reveal = false): InteriorFloorSpan[] {
   const spans: InteriorFloorSpan[] = [];
-  for (let floor = 0; floor < building.floors; floor++) {
+  for (let floor = 0; floor < building.floors && paintsFloorSlab(floor); floor++) {
     const marks = interiorFloorMarks(building, floor, reveal);
     const used = new Array(building.w * building.d).fill(false);
     for (let gy = 0; gy < building.d; gy++) {
