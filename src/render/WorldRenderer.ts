@@ -257,30 +257,8 @@ export class WorldRenderer {
       const live = buildingIsLive(lod, damaged);
       const needsInterior = buildingNeedsInterior(b, view, lod);
       const needsDetails = buildingNeedsDetails(view, lod);
-      const cacheKey = live ? "" : `${b.visualRevision}:${viewSig}:${camLod}:${needsInterior ? 1 : 0}:${needsDetails ? 1 : 0}`;
-      if (cacheKey) {
-        const hit = this.staticBuildingCmds.get(b);
-        if (hit && hit.key === cacheKey) {
-          visible += hit.visible;
-          this.cmds.push(...hit.cmds);
-          continue;
-        }
-      }
-      for (const c of b.cells) if (c.coreSupport && cellPresent(c) && view.walls) {
-        const box = cellWorldBox(b, c);
-        const alpha = !live || view.reveal || view.maxFloor === 0 ? 1 : objectOcclusionFade(dozer, box.x, box.y, box.w, box.d, 0, FLOOR_Z);
-        this.cmds.push({ depth: depthKey(box.x + .3, box.y + .3, .1), run: g => drawIsoBox(g, box.x, box.y, box.w, box.d, 0, FLOOR_Z, 0xb6a784, 0x827754, 0x9c8d68, alpha) });
-      }
       const surfaces = getBuildingSurfaces(b);
-
       surfaceGeometry += surfaces.geometryCount;
-      const fadeBox = (key: string, x: number, y: number, w: number, d: number, z: number, top: number) => {
-        if (!live) return 1;
-        const alpha = this.fades.sample(`${b.id}:${key}`, objectOcclusionFade(dozer, x, y, w, d, z, top), dt);
-        fadeValues.push(Math.round(alpha * 1000));
-        if (alpha < .6 || pieceHidesDozer(dozer, x, y, w, d, z, top)) occluded = true;
-        return alpha;
-      };
       if (this.jobTarget === b) {
         const inset = .3;
         for (const [x, y, w, d] of [[b.x - inset, b.y - inset, bw + inset * 2, .07],
@@ -295,6 +273,27 @@ export class WorldRenderer {
         // Ground layer only: a depth-sorted footprint shadow paints over far gable bays.
         drawBuildingFootprintShadow(this.groundOverlays, surfaces.footprint, 1);
       }
+      const cacheKey = live ? "" : `${b.visualRevision}:${viewSig}:${camLod}:${needsInterior ? 1 : 0}:${needsDetails ? 1 : 0}`;
+      if (cacheKey) {
+        const hit = this.staticBuildingCmds.get(b);
+        if (hit && hit.key === cacheKey) {
+          visible += hit.visible;
+          this.cmds.push(...hit.cmds);
+          continue;
+        }
+      }
+      for (const c of b.cells) if (c.coreSupport && cellPresent(c) && view.walls) {
+        const box = cellWorldBox(b, c);
+        const alpha = !live || view.reveal || view.maxFloor === 0 ? 1 : objectOcclusionFade(dozer, box.x, box.y, box.w, box.d, 0, FLOOR_Z);
+        this.cmds.push({ depth: depthKey(box.x + .3, box.y + .3, .1), run: g => drawIsoBox(g, box.x, box.y, box.w, box.d, 0, FLOOR_Z, 0xb6a784, 0x827754, 0x9c8d68, alpha) });
+      }
+      const fadeBox = (key: string, x: number, y: number, w: number, d: number, z: number, top: number) => {
+        if (!live) return 1;
+        const alpha = this.fades.sample(`${b.id}:${key}`, objectOcclusionFade(dozer, x, y, w, d, z, top), dt);
+        fadeValues.push(Math.round(alpha * 1000));
+        if (alpha < .6 || pieceHidesDozer(dozer, x, y, w, d, z, top)) occluded = true;
+        return alpha;
+      };
       for (const detail of needsDetails ? b.facadeDetails : []) {
         if (detail.floor > view.maxFloor) continue;
         const z0 = detail.floor * FLOOR_Z;
