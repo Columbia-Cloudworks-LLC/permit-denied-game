@@ -15,6 +15,7 @@ import { depthKey, screenAabbVisible, worldBoundsToScreen, worldToScreen } from 
 import type { ParticlePool } from "../fx/particles";
 import { applyBrokenRoofEdge, displacedRoofVerts, roofHeightAt, sectionOwnsRidge, sawtoothClosures } from "../structure/roof";
 import type { Bird, Building, CollapsedSite, CoverKind, GroundMark, GroundPatch, Particle, RoofSection, Rubble } from "../structure/types";
+import type { FieldFeature, TerrainFeature } from "../world/terrainFeatures";
 import type { Dozer } from "../vehicle/dozer";
 import type { Town } from "../world/town";
 import { getBuildingSurfaces, releaseBuildingSurfaces } from "./buildingSurfaces";
@@ -139,7 +140,7 @@ export class WorldRenderer {
     let visible = 0;
     let occluded = false;
 
-    const gKey = `${view.terrain}:${view.roads}:${town.district}:${town.seed}:${town.lots.length}:${town.network.mesh.length}:${town.ground.length}`;
+    const gKey = `${view.terrain}:${view.roads}:${town.district}:${town.seed}:${town.lots.length}:${town.network.mesh.length}:${town.ground.length}:${town.features?.length ?? 0}:${town.featureRevision ?? 0}`;
     if (gKey !== this.groundKey) {
       this.ground.clear();
       const covers = town.ground.length
@@ -157,6 +158,7 @@ export class WorldRenderer {
       for (const patch of view.terrain ? covers : []) {
         drawCover(this.ground, patch);
       }
+      if (view.terrain) drawTerrainFeatures(this.ground, town.features ?? []);
       const mesh = town.network.mesh;
       if (view.roads && mesh.length) {
         // RoadMeshQuad x/y are world centers; drawOrientedGround uses the same convention.
@@ -665,10 +667,16 @@ function drawCollapsedSite(g: Graphics, site: CollapsedSite): void {
 
 function drawCover(g: Graphics, patch: GroundPatch): void {
   const color = coverColor(patch.cover);
-  if (Math.abs(patch.heading) > 0.05) {
+  if (patch.poly && patch.poly.length >= 3) {
+    drawWorldPoly(g, patch.poly.map((p) => ({ x: p.x, y: p.y, z: patch.z })), color, 1);
+  } else if (Math.abs(patch.heading) > 0.05) {
     drawOrientedGround(g, patch.x + patch.w * 0.5, patch.y + patch.d * 0.5, patch.heading, patch.w, patch.d, color, 1, patch.z);
   } else {
     drawGroundPoly(g, patch.x, patch.y, patch.w, patch.d, color, 1, patch.z);
+  }
+  if (patch.cover === "water" || patch.cover === "forest-floor" || patch.cover.startsWith("field-")) {
+    if (patch.cover.startsWith("field-")) drawFieldRows(g, patch);
+    return;
   }
   const speckle = patch.z < 0 ? 1 : Math.min(40, Math.max(4, Math.floor((patch.w * patch.d) / 18)));
   const dark = coverDark(patch.cover);
@@ -677,6 +685,160 @@ function drawCover(g: Graphics, patch: GroundPatch): void {
     const gy = patch.y + ((i * 29 + (patch.seed % 17)) % 89) * 0.1 * (patch.d / 8);
     if (gx > patch.x + patch.w || gy > patch.y + patch.d) continue;
     drawGroundPoly(g, gx, gy, 0.32, 0.26, dark, 0.2, patch.z);
+  }
+}
+
+function drawFieldRows(g: Graphics, patch: GroundPatch): void {
+  const gap = patch.cover === "field-mature" ? 0.7 : 0.52;
+  const rows = Math.min(16, Math.max(5, Math.floor(patch.d / gap)));
+  const color = coverDark(patch.cover);
+  const thick = patch.cover === "field-tilled" ? 0.22 : patch.cover === "field-stubble" ? 0.16 : patch.cover === "field-mature" ? 0.28 : 0.2;
+  const z = patch.z + 0.006;
+  for (let i = 0; i < rows; i++) {
+    const t = (i + 0.5) / rows - 0.5;
+    const fx = Math.cos(patch.heading);
+    const fy = Math.sin(patch.heading);
+    const cx = patch.x + patch.w * 0.5 - fy * t * patch.d;
+    const cy = patch.y + patch.d * 0.5 + fx * t * patch.d;
+    drawOrientedGround(g, cx, cy, patch.heading, patch.w * 0.9, thick, color, patch.cover === "field-tilled" ? 0.7 : 0.95, z);
+  }
+}
+
+function drawTerrainFeatures(g: Graphics, features: readonly TerrainFeature[]): void {
+  for (const feature of features) {
+    switch (feature.kind) {
+      case "forest":
+        drawForestCanopy(g, feature);
+        break;
+      case "field":
+        drawFieldCrops(g, feature);
+        drawFieldChurn(g, feature);
+        break;
+      case "pond":
+      case "lake":
+      case "river":
+        break;
+      default: {
+        const _never: never = feature;
+        return _never;
+      }
+    }
+  }
+}
+
+function drawForestCanopy(g: Graphics, feature: Extract<TerrainFeature, { kind: "forest" }>): void {
+  const rng = new Rng(feature.seed);
+  const blobs = 6;
+  for (let i = 0; i < blobs; i++) {
+    const a = rng.range(0, Math.PI * 2);
+    const r = rng.range(feature.coreR * 0.55, feature.canopyR * 0.82);
+    const w = rng.range(2.2, 3.4);
+    const d = rng.range(1.9, 2.9);
+    drawOrientedGround(
+      g,
+      feature.cx + Math.cos(a) * r,
+      feature.cy + Math.sin(a) * r,
+      a,
+      w,
+      d,
+      i % 2 === 0 ? 0x3a5a30 : 0x2c4826,
+      0.55,
+      0.018,
+    );
+  }
+  drawOrientedGround(g, feature.cx, feature.cy, 0, feature.coreR * 1.65, feature.coreR * 1.5, 0x0c1810, 0.96, 0.028);
+}
+
+function cropRowStyle(feature: FieldFeature): { top: number; left: number; right: number; h: number; thick: number } {
+  const mature = feature.state === "mature";
+  const short = feature.state === "short";
+  switch (feature.crop) {
+    case "corn":
+      return {
+        top: mature ? 0xd4c44a : short ? 0x6aaa38 : 0x8a6a38,
+        left: mature ? 0x6a7a22 : 0x3a4a1c,
+        right: mature ? 0x8a9a2c : 0x4a5a22,
+        h: mature ? 0.48 : short ? 0.18 : 0.05,
+        thick: mature ? 0.26 : 0.2,
+      };
+    case "wheat":
+      return {
+        top: mature ? 0xe2c456 : short ? 0x8aaa40 : 0x9a7a40,
+        left: mature ? 0x8a6a22 : 0x4a4a1c,
+        right: mature ? 0xb08a30 : 0x5a5a22,
+        h: mature ? 0.32 : short ? 0.14 : 0.05,
+        thick: mature ? 0.24 : 0.18,
+      };
+    case "soy":
+      return {
+        top: mature ? 0x4a8a38 : short ? 0x5a9a42 : 0x7a5a30,
+        left: mature ? 0x245022 : 0x3a3818,
+        right: mature ? 0x366a2c : 0x4a4820,
+        h: mature ? 0.28 : short ? 0.12 : 0.05,
+        thick: mature ? 0.28 : 0.2,
+      };
+    default: {
+      const _never: never = feature.crop;
+      return _never;
+    }
+  }
+}
+
+function drawFieldCrops(g: Graphics, feature: FieldFeature): void {
+  if (feature.state === "tilled") return;
+  const style = cropRowStyle(feature);
+  const gap = 0.62;
+  const rows = Math.min(14, Math.max(5, Math.floor(feature.d / gap)));
+  const fx = Math.cos(feature.heading);
+  const fy = Math.sin(feature.heading);
+  const ox = feature.x + feature.w * 0.5;
+  const oy = feature.y + feature.d * 0.5;
+  for (let i = 0; i < rows; i++) {
+    const t = (i + 0.5) / rows - 0.5;
+    const cx = ox - fy * t * feature.d;
+    const cy = oy + fx * t * feature.d;
+    drawOrientedIsoBox(
+      g,
+      cx,
+      cy,
+      feature.heading,
+      feature.w * 0.88,
+      style.thick,
+      0.012,
+      style.h,
+      style.top,
+      style.left,
+      style.right,
+      feature.state === "stubble" ? 0.7 : 1,
+    );
+  }
+}
+
+function drawFieldChurn(g: Graphics, feature: FieldFeature): void {
+  const fx = Math.cos(feature.heading);
+  const fy = Math.sin(feature.heading);
+  const ox = feature.x + feature.w * 0.5;
+  const oy = feature.y + feature.d * 0.5;
+  for (let iy = 0; iy < feature.rows; iy++) {
+    for (let ix = 0; ix < feature.cols; ix++) {
+      if (!feature.churn[iy * feature.cols + ix]) continue;
+      const cx = ox + fx * ((ix + 0.5) * feature.cell - feature.w * 0.5) - fy * ((iy + 0.5) * feature.cell - feature.d * 0.5);
+      const cy = oy + fy * ((ix + 0.5) * feature.cell - feature.w * 0.5) + fx * ((iy + 0.5) * feature.cell - feature.d * 0.5);
+      drawOrientedIsoBox(
+        g,
+        cx,
+        cy,
+        feature.heading,
+        feature.cell * 1.15,
+        feature.cell * 1.15,
+        0.01,
+        0.06,
+        0x6a4a28,
+        0x3a2814,
+        0x52381c,
+        1,
+      );
+    }
   }
 }
 
@@ -701,6 +863,18 @@ function coverColor(cover: CoverKind): number {
       return PAL.planted;
     case "lot":
       return PAL.lot;
+    case "water":
+      return PAL.water;
+    case "forest-floor":
+      return PAL.forestFloor;
+    case "field-tilled":
+      return PAL.fieldTilled;
+    case "field-short":
+      return PAL.fieldShort;
+    case "field-mature":
+      return PAL.fieldMature;
+    case "field-stubble":
+      return PAL.fieldStubble;
     default: {
       const _never: never = cover;
       return _never;
@@ -724,6 +898,15 @@ function coverDark(cover: CoverKind): number {
     case "concrete":
     case "parking":
       return PAL.concreteDark;
+    case "water":
+      return PAL.waterDark;
+    case "forest-floor":
+    case "field-short":
+    case "field-mature":
+      return 0x1e381c;
+    case "field-tilled":
+    case "field-stubble":
+      return 0x5a3a1c;
     default: {
       const _never: never = cover;
       return _never;

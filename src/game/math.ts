@@ -84,3 +84,28 @@ export function pointInAabb(
 ): boolean {
   return px >= x && px <= x + w && py >= y && py <= y + d;
 }
+
+export function pointInPoly(px: number, py: number, poly: readonly { x: number; y: number }[]): boolean {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const a = poly[i]!;
+    const b = poly[j]!;
+    const hit = a.y > py !== b.y > py && px < ((b.x - a.x) * (py - a.y)) / (b.y - a.y + 1e-9) + a.x;
+    if (hit) inside = !inside;
+  }
+  return inside;
+}
+
+export function distToSegment(
+  px: number,
+  py: number,
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+): number {
+  const abx = bx - ax;
+  const aby = by - ay;
+  const t = clamp(((px - ax) * abx + (py - ay) * aby) / (abx * abx + aby * aby + 1e-8), 0, 1);
+  return len(px - (ax + abx * t), py - (ay + aby * t));
+}

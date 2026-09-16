@@ -2,6 +2,7 @@ import { aabbOverlap } from "../game/math";
 import { Rng } from "../game/rng";
 import type { CoverKind, GroundPatch, Lot, LotIdentity, Prop } from "../structure/types";
 import type { Building } from "../structure/types";
+import type { BiomeProfile } from "./biomes";
 import { getAsset, spawnAsset, type LotCompat } from "./catalog";
 
 export interface DressSlot {
@@ -175,6 +176,7 @@ export function fillWorldGround(
   maxY: number,
   seed: number,
   tile = 6.2,
+  biome?: BiomeProfile,
 ): GroundPatch[] {
   const patches: GroundPatch[] = [];
   const cols = Math.max(1, Math.ceil((maxX - minX) / tile));
@@ -182,7 +184,7 @@ export function fillWorldGround(
   for (let iy = 0; iy < rows; iy++) {
     for (let ix = 0; ix < cols; ix++) {
       const n = (ix * 17 + iy * 31 + (seed & 0xffff)) >>> 0;
-      const cover: CoverKind = n % 7 === 0 ? "scrub" : n % 11 === 0 ? "dirt" : "grass";
+      const cover = groundCoverFor(n, biome);
       patches.push({
         x: minX + ix * tile,
         y: minY + iy * tile,
@@ -196,6 +198,24 @@ export function fillWorldGround(
     }
   }
   return patches;
+}
+
+function groundCoverFor(n: number, biome?: BiomeProfile): CoverKind {
+  if (!biome) return n % 7 === 0 ? "scrub" : n % 11 === 0 ? "dirt" : "grass";
+  switch (biome.id) {
+    case "northern-conifer":
+      return n % 5 === 0 ? "scrub" : "grass";
+    case "agricultural-plain":
+      return n % 9 === 0 ? "dirt" : "grass";
+    case "mixed-woodland":
+      return n % 6 === 0 ? "scrub" : "grass";
+    case "temperate-broadleaf":
+      return n % 7 === 0 ? "scrub" : n % 13 === 0 ? "dirt" : "grass";
+    default: {
+      const _never: never = biome.id;
+      return _never;
+    }
+  }
 }
 
 function placeSlot(

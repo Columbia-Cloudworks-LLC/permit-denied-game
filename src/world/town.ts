@@ -19,7 +19,9 @@ import { buildingOccupy, dressLot, fillWorldGround, pickTemplate } from "./dress
 import { CLASSIC_PLACEMENTS } from "./families";
 import { completeLot, type NhoodDebug } from "./parcels";
 import { linePoints, pt, RoadBuilder, emptyTerrain, type RoadNetwork, type TerrainField } from "./roads";
+import { defaultBiome, type BiomeProfile } from "./biomes";
 import type { TopologyFamily } from "./rural";
+import type { TerrainFeature } from "./terrainFeatures";
 
 export interface Town {
   yard?: TestYard;
@@ -56,6 +58,9 @@ export interface Town {
   diagnostic: DistrictReport;
   nhood: NhoodDebug;
   topology?: TopologyFamily;
+  biome: BiomeProfile;
+  features: TerrainFeature[];
+  featureRevision: number;
 }
 
 export interface TownOptions {
@@ -112,6 +117,7 @@ function emptyTestTown(seed: number): Town {
     minX: 0, minY: 0, maxX: 32, maxY: 32, district: 'classic', seed,
     roadSpawnX: 4, roadSpawnY: 4, roadSpawnHeading: 0, visualRevision: 1, siteRevision: 1,
     collapsedSites: [], diagnostic: { ok: true, issues: [] }, nhood: { rejected: [] },
+    biome: defaultBiome(), features: [], featureRevision: 0,
   };
 }
 
@@ -239,6 +245,9 @@ function createClassicTown(seed: number, showcase = false): Town {
     siteRevision: 1,
     diagnostic: { ok: true, issues: [] },
     nhood: { rejected: [] },
+    biome: defaultBiome(),
+    features: [],
+    featureRevision: 0,
   };
 }
 

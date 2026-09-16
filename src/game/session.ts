@@ -11,6 +11,7 @@ export function gameSetupRules(kind: SessionKind, district: DistrictId, currentS
 }
 export type DemoAsset = "ranch" | "rivertown" | "steel-warehouse";
 export type DistrictId = "classic" | "d10" | "d30" | "d100";
+export type SessionTopology = "county" | "crossroads" | "tjunction" | "curve-farm" | "loop" | "frontage";
 export type PlayMode = "title" | "play" | "pause" | "upgrade" | "results" | "briefing";
 
 export const DISTRICT_COUNTS: Record<DistrictId, number> = {
@@ -36,6 +37,7 @@ export interface SessionRules {
   district: DistrictId;
   seed: number;
   ranchFocus: boolean;
+  topology?: SessionTopology;
 }
 
 function defaultSessionRules(): SessionRules {
@@ -69,6 +71,17 @@ export function parseSessionFromSearch(search: string): SessionRules {
   if (rawSeed !== null && rawSeed !== "") {
     const seed = Number(rawSeed);
     if (Number.isFinite(seed) && seed >= 0) rules.seed = seed >>> 0;
+  }
+  const topology = params.get("topology");
+  if (
+    topology === "county" ||
+    topology === "crossroads" ||
+    topology === "tjunction" ||
+    topology === "curve-farm" ||
+    topology === "loop" ||
+    topology === "frontage"
+  ) {
+    rules.topology = topology;
   }
   if (params.get("job") === "brick") {
     rules.testMap = undefined;

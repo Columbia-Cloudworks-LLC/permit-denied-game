@@ -2,6 +2,7 @@ import { clamp } from '../game/math';
 import { DEBRIS, DOZER } from '../game/constants';
 import type { Town } from '../world/town';
 import { terrainHeightAt, roadSurfaceAt } from '../world/roads';
+import { resolveTraversal, terrainTraversalAt } from '../world/terrainFeatures';
 import { cellWorldBox } from '../structure/types';
 import type { WorldEvent } from '../structure/types';
 import type { ParticlePool } from '../fx/particles';
@@ -151,7 +152,14 @@ export function stepVehicleWorld(town: Town, dozer: Dozer, particles: ParticlePo
             let obstacle = candidates.some(b => boxContact(nose, b));
             dynamic.query(ahead.x, ahead.y, ahead.w, ahead.d, candidates);
             obstacle ||= candidates.some(b => b.vehicle !== v && boxContact(nose, b) !== undefined);
+            const prevX = v.x, prevY = v.y;
             stepVehicle(v, sub, obstacle);
+            if (town.features.length && terrainTraversalAt(town.features, v.x, v.y) !== 'open') {
+              const resolved = resolveTraversal(v.x, v.y, prevX, prevY, town.features);
+              v.x = resolved.x;
+              v.y = resolved.y;
+              if (resolved.blocked) { v.vx *= 0.2; v.vy *= 0.2; }
+            }
             const road = roadSurfaceAt(town.network, v.x, v.y, v.layer), ground = road.on ? road.elev : terrainHeightAt(town.terrain, v.x, v.y);
             const pile = town.pile.sample(v.x, v.y), resistance = Math.max(0, pile.height - d.drive.clearance);
             v.vx *= Math.exp(-resistance * sub * 6 / d.drive.traction);

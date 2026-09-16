@@ -25,7 +25,13 @@ export type CoverKind =
   | "parking"
   | "driveway"
   | "planted"
-  | "lot";
+  | "lot"
+  | "water"
+  | "forest-floor"
+  | "field-tilled"
+  | "field-short"
+  | "field-mature"
+  | "field-stubble";
 export type DestructionProfile =
   | "brittle"
   | "bend-snap"
@@ -410,6 +416,7 @@ export interface GroundPatch {
   cover: CoverKind;
   seed: number;
   z: number;
+  poly?: { x: number; y: number }[];
 }
 
 export interface Bird {

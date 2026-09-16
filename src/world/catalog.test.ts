@@ -17,6 +17,9 @@ describe("destructible asset catalog", () => {
     expect(assetsByFamily("commercial").length).toBeGreaterThanOrEqual(1);
     expect(assetsByFamily("roadside").length).toBeGreaterThanOrEqual(1);
     expect(assetsByFamily("vegetation").length).toBeGreaterThanOrEqual(1);
+    for (const id of ["oak", "pine", "oak-sapling", "pine-sapling", "oak-shrub", "pine-shrub"]) {
+      expect(ASSET_IDS).toContain(id);
+    }
   });
 
   it("defines camera and pole behavior through catalog capabilities", () => {
