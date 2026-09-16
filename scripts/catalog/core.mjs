@@ -26,7 +26,7 @@ export async function filesUnder(root, relative = '') {
 export async function sharedFingerprint(root = '.') {
   // JSON definitions are covered by resolved per-asset inputs. All executable
   // source is conservatively included, except the independent gallery.
-  const source = (await filesUnder(join(root, 'src'))).filter(p => !p.endsWith('.json') && !p.includes('.test.') && !p.startsWith('catalog/'));
+  const source = (await filesUnder(join(root, 'src'))).filter(p => !p.endsWith('.json') && !p.includes('.test.') && !p.startsWith('catalog/') && !p.startsWith('designer/') && !p.startsWith('site/'));
   const names = [...source.map(p => `src/${p}`), 'package-lock.json', 'scripts/capture-assets.mjs',
     'scripts/catalog/core.mjs', 'scripts/catalog/cache.mjs', 'scripts/verify-asset-captures.mjs'];
   return digest(JSON.stringify(await Promise.all(names.sort().map(async p => [p, digest(await readFile(join(root, p)))]))));

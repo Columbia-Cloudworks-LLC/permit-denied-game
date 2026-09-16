@@ -4,14 +4,13 @@ import { vehicleStats } from '../vehicle/world';
 import { VEHICLES } from '../vehicle/definitions';
 import { isCoreBearing } from '../structure/coreCollapse';
 import { Application } from 'pixi.js';
-import { SIM_DT, FLOOR_Z } from '../game/constants';
+import { SIM_DT } from '../game/constants';
 import { ParticlePool } from '../fx/particles';
 import { WorldRenderer } from '../render/WorldRenderer';
-import { createTown, type Town } from '../world/town';
-import { bayBuildings, bayProps, bayVehicles, discoverYardAssets, instantiateBay, type YardBay } from '../world/yardCatalog';
-import { PileField } from '../sim/pile';
-import { emptyTerrain, RoadBuilder, linePoints, pt } from '../world/roads';
-import { CATALOG_CAPTURE_DOZER } from './catalogCaptureDozer';
+import { type Town } from '../world/town';
+import { bayBuildings, bayProps, bayVehicles, discoverYardAssets, type YardBay } from '../world/yardCatalog';
+import { RoadBuilder, linePoints, pt } from '../world/roads';
+import { createIsolateLot, frameIsolateLot } from './isolateLot';
 import { createDozer, stepDozer } from '../vehicle/dozer';
 import { createRoadVehicle } from '../vehicle/roadVehicle';
 import { worldBoundsToScreen } from '../world/iso';
@@ -95,25 +94,12 @@ export async function bootAssetCapture(): Promise<void> {
     const asset = assets.find(a => a.id === id);
     if (!asset) throw new Error(`Unknown capture asset ${id}`);
     if (!Number.isInteger(variant) || variant < 0 || variant >= asset.variants) throw new Error('Invalid variant');
-    town = createTown({ seed: 4517 });
-    const pad = Math.max(12, asset.clearance);
-    bay = { key: `capture:${id}`, asset, variant, baseline: false, intactFacade: true, x: 0, y: 0,
-      w: asset.w + pad * 2, d: asset.d + pad * 2 };
-    // InstantiateBay positions the asset by clearance, so match the reserved origin.
-    bay.x = pad - asset.clearance; bay.y = pad - asset.clearance;
-    instantiateBay(bay);
-    town.buildings = bayBuildings(bay); town.props = bayProps(bay);town.vehicles=bayVehicles(bay);
+    const lot = createIsolateLot(asset, variant);
+    town = lot.town; bay = lot.bay; dozer = lot.dozer; camera = lot.camera;
+    const pad = lot.pad;
     if (asset.category === 'detail') for (const b of town.buildings)
       b.facadeDetails = b.facadeDetails.filter(d => `detail:${d.kind}` === asset.id);
-    town.rubble = []; town.marks = []; town.collapsedSites = [];
-    town.yard = undefined; town.lots = []; town.ground = []; town.roads = [];
-    town.network = new RoadBuilder().finish(); town.roadCar = null;
-    town.minX = 0; town.minY = 0; town.maxX = asset.w + pad * 2; town.maxY = asset.d + pad * 2;
-    town.pile = new PileField(0, 0, town.maxX + 2, town.maxY + 2);
-    town.terrain = emptyTerrain(0, 0, town.maxX + 2, town.maxY + 2);
-    town.debrisOwnerAt = () => bay.key; town.pile.ownerAt = town.debrisOwnerAt;
     particles.ownerAt = town.debrisOwnerAt; particles.reseed(4517);
-    dozer = createDozer(CATALOG_CAPTURE_DOZER.x, CATALOG_CAPTURE_DOZER.y, CATALOG_CAPTURE_DOZER.heading);
     if (id === 'vehicle:bulldozer') {
       dozer = createDozer(pad + 3, pad + 2, 0);
       dozer.bladeDown = variant === 1;
@@ -124,11 +110,7 @@ export async function bootAssetCapture(): Promise<void> {
       town.roadCar = createRoadVehicle(pad + 3, pad + 2, 0);town.vehicles.push(town.roadCar);
     }
     ticks = 0; invalidateWorldCollision();
-    const height = Math.max(1, ...town.buildings.map(b => b.floors * FLOOR_Z + (b.elevatedTank ? b.elevatedTank.definition.height + .5 : 1.5)), asset.prop?.footprint.h ?? 0);
-    camera = worldBoundsToScreen(pad - 3, pad - 3, asset.w + 6, asset.d + 6, 0, height);
-    renderer.zoom = Math.min(3, .88 * Math.min(1280 / (camera.maxX - camera.minX), 960 / (camera.maxY - camera.minY)));
-    renderer.camX = (camera.minX + camera.maxX) / 2 * renderer.zoom;
-    renderer.camY = (camera.minY + camera.maxY) / 2 * renderer.zoom;
+    frameIsolateLot(renderer, camera, 1280, 960);
     return render();
   }
   function advance(frames: number) {

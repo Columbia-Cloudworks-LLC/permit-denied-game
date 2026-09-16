@@ -11,7 +11,10 @@ npm install
 npm run dev
 ```
 
-Open the URL Vite prints (http://localhost:5173).
+Open the URL Vite prints (http://localhost:5173). Separate Vite entries, not imported by the game:
+
+- `/catalog/` — published still gallery (R2). Permit chrome, search, cards, dialog.
+- `/designer/` — building JSON preview only. File tabs, isolate-lot Pixi view, export/copy. Drafts are never added to the town.
 
 Sandbox and district presets can be opened directly:
 

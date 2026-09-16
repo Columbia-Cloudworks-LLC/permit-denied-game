@@ -2,6 +2,8 @@
 
 The gallery is a separate Vite entry at `/catalog/`. The game does not import it. Images, detail manifests, and paged indexes live in Cloudflare R2; Vercel deploys only the gallery shell and a pointer to an immutable catalog release.
 
+The page uses the same permit chrome as the title menu: stamp, **PERMIT DENIED**, “The County Said No.”, Play / Catalog / Designer nav, and the Columbia Cloudworks nameplate. It is a still gallery, not a live editor. Building JSON preview lives at `/designer/` (also a separate Vite entry the game does not import). Designer opens existing `BUILDING_FILES` packages or a new draft from porch-house / a 1-story box, parses a virtual map of the draft plus existing construction files, and previews an isolate lot. Export and copy only — drafts are never written into the town.
+
 ## Local work
 
 `npm run build` remains a normal game/gallery-shell build. `npm run catalog:local` builds, captures the entire production catalog, verifies coverage, converts images, and prepares `/catalog/` for `npm run preview`. Install Chromium once with `npx playwright install chromium`. Full capture can take minutes; the local gallery intentionally reports unavailable until generated.
