@@ -1,6 +1,8 @@
 import './style.css';
 import { initPrivacy, analyticsEvent } from '../privacy/privacy';
+import { hydrateSiteChrome } from '../site/chrome';
 initPrivacy(true);
+hydrateSiteChrome('catalog');
 import { searchPage, type Card, type Tree } from './search';
 
 interface Frame { file: string; width: number; height: number; label: string; seconds: number }

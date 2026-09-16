@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="referrer" content="no-referrer">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Building designer · PERMIT DENIED</title>
+  <meta name="description" content="Preview building package JSON for PERMIT DENIED. Export only — this page does not add drafts to the town.">
+  <meta name="theme-color" content="#222a23">
+  <link rel="icon" type="image/x-icon" href="/brand/favicon.ico">
+  <meta property="og:title" content="Building designer · PERMIT DENIED">
+  <meta property="og:description" content="Live isolate-lot preview of building JSON. The County Said No.">
+  <meta property="og:image" content="/brand/PermitDenied-Logo_521x521.png">
+</head>
+<body class="site-page">
+  <header id="site-header" class="site-header">
+    <div class="site-brand" data-site-permit></div>
+    <div class="site-titles">
+      <p class="site-eyebrow">COUNTY ARCHIVE</p>
+      <h1>PERMIT DENIED</h1>
+      <p class="tagline">The County Said No.</p>
+    </div>
+    <nav class="site-nav" aria-label="Site">
+      <a href="/">Play</a>
+      <a href="/catalog/">Catalog</a>
+      <a href="/designer/" aria-current="page">Designer</a>
+    </nav>
+  </header>
+  <main class="designer-work">
+    <section class="preview-pane" aria-label="Isolate lot preview">
+      <div class="preview-toolbar">
+        <label>View
+          <select id="preview-view">
+            <option value="intact">Intact model</option>
+            <option value="cutaway">Cutaway / reveal</option>
+          </select>
+        </label>
+        <p class="fine">Preview only. Nothing here is added to the town.</p>
+      </div>
+      <div id="preview-host" aria-label="Building preview"></div>
+      <p id="preview-status">Opening porch-house draft…</p>
+    </section>
+    <section class="editor-pane" aria-label="Building package files">
+      <div class="editor-toolbar">
+        <label>Open
+          <select id="open-package"></select>
+        </label>
+        <label>New from
+          <select id="new-template">
+            <option value="porch-house">porch-house</option>
+            <option value="box">1-story box</option>
+          </select>
+        </label>
+        <button type="button" id="new-package">New from template</button>
+        <button type="button" id="download-files">Download files</button>
+        <button type="button" id="copy-package">Copy package</button>
+      </div>
+      <div id="file-tabs" class="file-tabs" role="tablist" aria-label="Package files"></div>
+      <label class="fine" for="file-editor">Package JSON</label>
+      <textarea id="file-editor" spellcheck="false" autocapitalize="off"></textarea>
+      <p id="parse-errors" hidden></p>
+    </section>
+  </main>
+  <footer id="site-footer" class="nameplate"></footer>
+  <script type="module" src="/src/designer/main.ts"></script>
+</body>
+</html>

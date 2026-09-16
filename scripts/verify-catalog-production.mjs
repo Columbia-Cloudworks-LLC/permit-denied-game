@@ -7,7 +7,9 @@ export async function verifyCatalogProduction(origin, expected) {
     assert.ok(response.ok, `Catalog HTTP ${response.status}: ${url}`); return response;
   }
   const page = await get(`${origin}/catalog/`);
-  assert.ok((await page.text()).includes('THE DEMOLITION COLLECTION'), 'Wrong catalog page');
+  const html = await page.text();
+  assert.ok(html.includes('PERMIT DENIED') && html.includes('The County Said No.'), 'Wrong catalog page');
+  assert.ok(!html.includes('THE DEMOLITION COLLECTION'), 'Catalog still uses the lime collection headline');
   const pointer = await (await get(`${origin}/catalog/release.json`)).json();
   assert.equal(pointer.commit, expected.commit); assert.equal(pointer.version, expected.version);
   const url = new URL(pointer.url);

@@ -10,8 +10,8 @@ export function analyticsPage(href: string): string | null {
   if (url.protocol !== 'https:' || !['permitdenied.app', 'www.permitdenied.app'].includes(url.hostname)) return null;
   if (['capture', 'yard', 'testAsset', 'demo', 'tower', 'ranch', 'perf', 'nhood'].some(key => url.searchParams.has(key))) return null;
   const path = url.pathname.replace(/\/$/, '') || '/';
-  if (!['/', '/catalog', '/privacy', '/terms'].includes(path)) return null;
-  return 'https://permitdenied.app' + (path === '/catalog' ? '/catalog/' : path);
+  if (!['/', '/catalog', '/designer', '/privacy', '/terms'].includes(path)) return null;
+  return 'https://permitdenied.app' + (path === '/catalog' ? '/catalog/' : path === '/designer' ? '/designer/' : path);
 }
 /** The vendor sends external referrers separately from beforeSend's URL. Drop
  * analytics for unusual full-path referrers rather than leak their contents. */

@@ -15,9 +15,12 @@ export async function staticDeploymentFiles(directory) {
       { src: '/catalog', status: 308, headers: { Location: '/catalog/' } },
       { src: '/catalog/', dest: '/catalog/index.html', headers: { 'cache-control': 'no-cache' } },
       { src: '/catalog/release.json', headers: { 'cache-control': 'no-store' }, continue: true },
+      { src: '/designer', status: 308, headers: { Location: '/designer/' } },
+      { src: '/designer/', dest: '/designer/index.html', headers: { 'cache-control': 'no-cache' } },
       { src: '/build.json', headers: { 'cache-control': 'no-store' }, continue: true },
       { handle: 'filesystem' },
       { src: '/catalog/(.*)', status: 404 },
+      { src: '/designer/(.*)', status: 404 },
       { src: '/(.*)', dest: '/index.html' },
     ],
   })).toString('base64'), encoding: 'base64' }];
