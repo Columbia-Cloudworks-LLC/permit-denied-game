@@ -2,6 +2,7 @@ import { drawVehicleAssembly, vehicleRenderGroups } from './modularVehicle';
 import { BowlingStrikes } from './bowlingStrikes';
 import { corePileAreas, drawCorePiles } from './corePileDraw';
 import { drawCoreFloor } from './coreCollapseDraw';
+import { paintsFloorSlab } from '../structure/coreCollapse';
 import { cellWorldBox, cellPresent } from '../structure/types';
 import { DrawCache } from './drawCache';
 import type { YardBay } from '../world/yardCatalog';
@@ -282,7 +283,7 @@ export class WorldRenderer {
           run: g => drawIsoBox(g, box.x, box.y, box.w, box.d, c.floor * FLOOR_Z, FLOOR_Z, 0xb7bab0, 0x697a70, 0x8d9c91) });
       }
       if (b.openDecks) for (const tile of b.floorTiles) {
-        if (tile.void || tile.state === 'gone' || tile.floor > view.maxFloor) continue;
+        if (tile.void || tile.state === 'gone' || tile.floor > view.maxFloor || !paintsFloorSlab(tile.floor)) continue;
         const cs=b.cellSize, x=b.x+tile.gx*cs, y=b.y+tile.gy*cs;
         const z=tile.floor*FLOOR_Z*(1-tile.fallT)+.18;
         // Low barriers belong to their deck tile and descend with it.

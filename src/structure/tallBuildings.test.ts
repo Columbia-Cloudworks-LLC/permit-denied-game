@@ -1,6 +1,7 @@
 import { ARCHETYPES } from '../world/archetypes';
 import { expect, it } from 'vitest';
 import { createBuildingFromArchetype, applyCellDamage, stepStructures } from './building';
+import { DETAILED_FLOORS, paintsFloorSlab } from './coreCollapse';
 import { ParticlePool } from '../fx/particles';
 
 it('bounds apartment tower simulation and collapses it as a coherent shell', () => {
@@ -15,7 +16,7 @@ it('bounds apartment tower simulation and collapses it as a coherent shell', () 
   }
   console.log(JSON.stringify({ fixtures, ms: performance.now() - start, fragments, pulses }));
   expect(b.coreCollapse?.phase).toBe('settled');
-  expect(b.fixtures.every(f => f.floor < 3)).toBe(true);
+  expect(b.fixtures.every(f => paintsFloorSlab(f.floor))).toBe(true);
   expect(fragments).toBe(0);
   expect(pulses).toBe(b.floors);
   expect(b.fullyDown).toBe(true);
@@ -24,7 +25,7 @@ it('bounds apartment tower simulation and collapses it as a coherent shell', () 
 it.each(['parking-garage', 'grain-elevator', 'hotel-podium', 'union-tower'])('uses controlled collapse for tall %s', id => {
   const b = createBuildingFromArchetype(id, 'TEST', 0, 0);
   expect(b.coreCollapse).toBeDefined();
-  expect(b.fixtures.every(f => f.floor < 3)).toBe(true);
+  expect(b.fixtures.every(f => paintsFloorSlab(f.floor))).toBe(true);
   expect(b.coreCollapse!.definition.supports.every(s => !b.grid[0]![s.x]![s.y]!.silo)).toBe(true);
 });
 
@@ -38,9 +39,9 @@ it('preserves detailed three-story homes', () => {
 it('applies the cutoff to every building package', () => {
   for (const a of ARCHETYPES) {
     const b = createBuildingFromArchetype(a.id, 'TEST', 0, 0);
-    if (b.floors > 3) expect(b.coreCollapse ?? b.elevatedTank, a.id).toBeDefined();
+    if (b.floors > DETAILED_FLOORS) expect(b.coreCollapse ?? b.elevatedTank, a.id).toBeDefined();
     else expect(b.coreCollapse, a.id).toBeUndefined();
-    expect(b.fixtures.every(f => f.floor < 3), a.id).toBe(true);
+    expect(b.fixtures.every(f => paintsFloorSlab(f.floor)), a.id).toBe(true);
   }
 });
 

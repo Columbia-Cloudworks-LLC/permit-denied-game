@@ -33,6 +33,10 @@ export interface CoreImpact {
 }
 /** All tall buildings share the bounded collapse path; authored cores retain their tuning. */
 export const DETAILED_FLOORS = 3;
+/** Stories at this index and above stay in the sim for core collapse; they are not painted. */
+export function paintsFloorSlab(floor: number): boolean {
+  return floor < DETAILED_FLOORS;
+}
 export function automaticCore(b: Building): CoreCollapseDef {
   const supports = b.cells.filter(c => c.floor === 0 && !c.silo && c.isSupport && cellPresent(c));
   const bearing = supports.length ? supports : b.cells.filter(c => c.floor === 0 && !c.silo && cellPresent(c));
