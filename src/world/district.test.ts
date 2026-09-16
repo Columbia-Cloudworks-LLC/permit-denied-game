@@ -50,6 +50,15 @@ describe("district generation", () => {
     expect(report.issues, report.issues.map((i) => i.detail).join("; ")).toEqual([]);
   });
 
+  it("attaches one biome and keeps terrain features off the spawn", () => {
+    for (const district of ["d10", "d30"] as const) {
+      const town = createTown({ district, seed: 0x51a11 });
+      expect(town.biome.id).toMatch(/temperate-broadleaf|northern-conifer|mixed-woodland|agricultural-plain/);
+      expect(town.features).toBeDefined();
+      expect(validateTown(town).ok).toBe(true);
+    }
+  });
+
   it("derives pile coverage and vehicle spawns from the selected district", () => {
     const town = createTown({ district: "d30", seed: 3 });
     expect(town.pile.ox).toBeLessThanOrEqual(town.minX);

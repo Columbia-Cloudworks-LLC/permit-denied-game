@@ -3,7 +3,9 @@ import { DRESSING } from "../game/constants";
 import { aabbOverlap, pointInAabb } from "../game/math";
 import type { DistrictId } from "../game/session";
 import type { Building, Prop } from "../structure/types";
+import { speciesCompatible } from "./biomes";
 import { getAsset, validateCatalog } from "./catalog";
+import { terrainTraversalAt, validateFeatureLayout } from "./terrainFeatures";
 import { aabbContainedInBox, aabbContainedInPoly, convexOverlap, parcelHitsRoad } from "./parcels";
 import type { CampaignLevelDef } from "../game/campaign";
 import { generateCampaignLayout } from "./campaignLayout";
@@ -63,6 +65,9 @@ export function generateDistrictLayout(
     diagnostic: rural.diagnostic,
     nhood: rural.nhood,
     topology: rural.topology,
+    biome: rural.biome,
+    features: rural.features,
+    featureRevision: 0,
   };
 }
 
@@ -189,6 +194,30 @@ export function validateTown(town: Town): DistrictReport {
   }
   if (!spawnClear(town.buildings, town.props, town.roadSpawnX, town.roadSpawnY)) {
     issues.push({ code: "road-spawn", detail: "test car spawn is blocked" });
+  }
+  if (terrainTraversalAt(town.features, town.spawnX, town.spawnY) !== "open") {
+    issues.push({ code: "spawn-terrain", detail: "dozer spawn is in water or forest core" });
+  }
+  if (terrainTraversalAt(town.features, town.roadSpawnX, town.roadSpawnY) !== "open") {
+    issues.push({ code: "road-spawn-terrain", detail: "test car spawn is in water or forest core" });
+  }
+  for (const detail of validateFeatureLayout(
+    town.features,
+    town.network,
+    town.buildings,
+    town.spawnX,
+    town.spawnY,
+    town.roadSpawnX,
+    town.roadSpawnY,
+  )) {
+    issues.push({ code: "terrain-feature", detail });
+  }
+  if (town.biome) {
+    for (const prop of town.props) {
+      if (!speciesCompatible(town.biome, prop.assetId)) {
+        issues.push({ code: "biome-species", detail: `${prop.assetId} is not in ${town.biome.id}` });
+      }
+    }
   }
 
   const onRoad =

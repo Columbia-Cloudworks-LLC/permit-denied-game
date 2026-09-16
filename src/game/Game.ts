@@ -94,6 +94,7 @@ export class Game {
   private hud!: Hud;
   private yardPanel?: YardPanel;
   private followRoadCamera = true;
+  private followZoom = 1.15;
   private towerOverview = true;
   private yardFocus?: YardBay;
   private perfEl: HTMLElement | null = null;
@@ -101,7 +102,7 @@ export class Game {
   private rules: SessionRules = parseSessionFromSearch(
     typeof window === "undefined" ? "" : window.location.search,
   );
-  private town = createTown({ towerTest: this.rules.towerTest, district: this.rules.district, seed: this.rules.seed, showcase: !!this.rules.demo, testMap: this.rules.testMap });
+  private town = createTown({ towerTest: this.rules.towerTest, district: this.rules.district, seed: this.rules.seed, showcase: !!this.rules.demo, testMap: this.rules.testMap, topology: this.rules.topology });
   private dozer = createDozer(this.town.spawnX, this.town.spawnY, this.town.spawnHeading);
   private birds: Bird[] = [];
   private cash = 0;
@@ -331,6 +332,7 @@ export class Game {
     const followKey = this.followRoadCamera ? this.town.roadCar?.yardOwner : undefined;
     this.releaseControls();
     this.followRoadCamera = true;
+    this.followZoom = 1.15;
     if (kind === "new" && !keepSetup && !this.campaign) this.rules.seed = nextSeed(this.rules.seed);
     if (this.campaign && kind === "new") this.campaign = retryCampaignLevel(this.campaign);
     if (this.campaign) this.rules.seed = this.campaign.levelSeed;
@@ -340,6 +342,7 @@ export class Game {
       seed: this.rules.seed,
       showcase: !!this.rules.demo,
       testMap: this.rules.testMap,
+      topology: this.rules.topology,
       campaign: this.campaign ? currentLevel(this.campaign) : undefined,
     });
     const ranch = this.rules.demo || this.rules.ranchFocus
@@ -410,6 +413,7 @@ export class Game {
     const params = this.rules.testMap ? new URLSearchParams(testMapSearch(this.rules.testMap, this.rules.seed))
       : new URLSearchParams(this.rules.job ? { job: 'brick', seed: String(this.rules.seed) }
         : { mode: this.rules.kind, district: this.rules.district, seed: String(this.rules.seed) });
+    if (this.rules.topology) params.set('topology', this.rules.topology);
     const previous = new URLSearchParams(location.search);
     for (const key of ['controls', 'perf']) if (previous.has(key)) params.set(key, previous.get(key)!);
     history.replaceState(null, '', '?' + params);
@@ -710,6 +714,29 @@ export class Game {
     return urbanDebugDump(level, this.town.seed, this.town.buildings, this.town.lots, geography, ARCHETYPES);
   }
 
+  lookAtWorld(x: number, y: number, heading = 0, zoom = 1.15): void {
+    this.followRoadCamera = false;
+    this.followZoom = zoom;
+    this.yardFocus = undefined;
+    this.renderer.showNhood = false;
+    this.dozer = createDozer(x, y, heading);
+    this.renderer.zoom = zoom;
+    const focus = cameraFocus(x, y, 0.4, this.renderer.zoom);
+    this.renderer.camX = focus.x;
+    this.renderer.camY = focus.y;
+  }
+
+  frameDozer(zoom = this.followZoom): void {
+    this.followRoadCamera = false;
+    this.followZoom = zoom;
+    this.yardFocus = undefined;
+    this.renderer.showNhood = false;
+    this.renderer.zoom = zoom;
+    const focus = cameraFocus(this.dozer.x, this.dozer.y, 0.4, zoom);
+    this.renderer.camX = focus.x;
+    this.renderer.camY = focus.y;
+  }
+
   lookAtTown(mode: 'overview' | 'street' | 'open' = 'overview'): void {
     this.followRoadCamera = false;
     this.yardFocus = undefined;
@@ -808,7 +835,7 @@ export class Game {
       this.renderer.camY += (focus.y * zoom - this.renderer.camY) * k;
     } else if (this.renderer.showNhood) this.frameNhood(dt);
     else {
-      this.renderer.zoom = 1.15;
+      this.renderer.zoom = this.followZoom;
       const focus = cameraFocus(this.dozer.x, this.dozer.y, 0.4, this.renderer.zoom);
       this.renderer.camX += (focus.x - this.renderer.camX) * (1 - Math.exp(-6 * dt));
       this.renderer.camY += (focus.y - this.renderer.camY) * (1 - Math.exp(-6 * dt));

@@ -1,10 +1,13 @@
 import type { CampaignLevelDef } from "../game/campaign";
+import { DRESSING } from "../game/constants";
 import { aabbOverlap, len } from "../game/math";
 import { Rng } from "../game/rng";
 import { DISTRICT_COUNTS, type DistrictId } from "../game/session";
 import type { Building, GroundPatch, Lot, Prop } from "../structure/types";
+import { selectBiome, type BiomeProfile } from "./biomes";
 import { getAsset, spawnAsset } from "./catalog";
 import { buildingOccupy, dressLot, fillWorldGround } from "./dressing";
+import { placeTerrainFeatures, type TerrainFeature } from "./terrainFeatures";
 import {
   PARCEL,
   allocateFrontage,
@@ -81,6 +84,8 @@ export interface RuralLayout {
   district: DistrictId;
   seed: number;
   topology: TopologyFamily;
+  biome: BiomeProfile;
+  features: TerrainFeature[];
   campaignLevel?: CampaignLevelDef['id'];
   diagnostic: { ok: boolean; issues: LayoutIssue[] };
   nhood: NhoodDebug;
@@ -136,6 +141,7 @@ function generateRuralLayoutInner(
   const topology = (campaign && campaign.generation.topology !== 'estate'
     ? campaign.generation.topology
     : topologyOverride) ?? pickTopology(rng, count);
+  const biome = selectBiome(id, seed, topology);
   const b = new RoadBuilder();
   const originX = 4;
   const originY = 4;
@@ -289,7 +295,7 @@ function generateRuralLayoutInner(
 
   const terrain = emptyTerrain(minX - 2, minY - 2, maxX - minX + 4, maxY - minY + 4);
   applyTerrain(terrain, topology, minX, maxX);
-  ground.unshift(...fillWorldGround(minX - 1, minY - 1, maxX + 1, maxY + 1, seed));
+  ground.unshift(...fillWorldGround(minX - 1, minY - 1, maxX + 1, maxY + 1, seed, 6.2, biome));
 
   if (campaign && urban) {
     const keptIds = new Set(kept.map(lot => lot.id));
@@ -346,6 +352,25 @@ function generateRuralLayoutInner(
     : undefined;
   const spawn = pickSpawn(network, buildings, props, 0, undefined, campaign ? cluster : undefined);
   const roadSpawn = pickSpawn(network, buildings, props, 1, spawn, campaign ? cluster : undefined);
+  const propBudget = campaign?.generation.dressingBudget ?? DRESSING.districtMax[id];
+  const features = placeTerrainFeatures({
+    biome,
+    seed,
+    minX,
+    minY,
+    maxX,
+    maxY,
+    network,
+    lots: kept,
+    buildings,
+    props,
+    ground,
+    spawnX: spawn.x,
+    spawnY: spawn.y,
+    roadSpawnX: roadSpawn.x,
+    roadSpawnY: roadSpawn.y,
+    propBudget,
+  });
 
   return {
     buildings,
@@ -368,6 +393,8 @@ function generateRuralLayoutInner(
     district: id,
     seed,
     topology,
+    biome,
+    features,
     campaignLevel: campaign?.id,
     diagnostic: { ok: issues.length === 0 && kept.length === count, issues },
     nhood: { rejected, urban },

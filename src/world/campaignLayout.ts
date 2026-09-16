@@ -16,6 +16,7 @@ import {
   RoadBuilder,
   samplePolyline,
 } from './roads';
+import { defaultBiome } from './biomes';
 import type { RuralLayout } from './rural';
 import { generateRuralLayout } from './rural';
 
@@ -145,6 +146,8 @@ function generateEstateLayout(level: CampaignLevelDef, seed: number): RuralLayou
     district: 'd30',
     seed,
     topology: 'loop',
+    biome: defaultBiome(),
+    features: [],
     campaignLevel: level.id,
     diagnostic: { ok: !!mansion, issues: mansion ? [] : [{ code: 'landmark', detail: 'estate missing mansion' }] },
     nhood: {

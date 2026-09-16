@@ -19,6 +19,20 @@ describe("catalog destruction", () => {
     expect(town.props.filter((p) => !p.broken && p.id === mailbox.id)).toHaveLength(0);
   });
 
+  it("topples oak and pine with the catalog destruction path", () => {
+    resetPropIds();
+    const town = createTown();
+    const oak = spawnAsset("oak", 8, 8);
+    const pine = spawnAsset("pine", 12, 8);
+    town.props.push(oak, pine);
+    const particles = new ParticlePool();
+    destroyProp(town, oak, particles, [], 6, 8);
+    destroyProp(town, pine, particles, [], 10, 8);
+    expect(oak.broken).toBe(true);
+    expect(pine.broken).toBe(true);
+    expect(town.rubble.some((r) => r.material === "wood")).toBe(true);
+  });
+
   it("topples a mature tree into elongated remnant debris", () => {
     resetPropIds();
     const town = createTown();
