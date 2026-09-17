@@ -21,9 +21,9 @@ describe("fixture catalog thumbnails", () => {
       expect(named.length, asset.id).toBeGreaterThan(0);
       expect(named.every((f) => !fixtureExposed(b, f)), asset.id).toBe(true);
       const intact = interiorCmds(b, 1, { reveal: false });
-      expect(intact.filter((c) => c.kind === "fixture"), asset.id).toHaveLength(0);
+      expect(intact.filter((c) => c.kind === "fixture" || c.kind === "partition"), asset.id).toHaveLength(0);
       const cutaway = interiorCmds(b, 1, { reveal: true, maxFloor: 0 });
-      expect(cutaway.some((c) => c.kind === "fixture"), asset.id).toBe(true);
+      expect(cutaway.some((c) => c.kind === "fixture" || c.kind === "partition"), asset.id).toBe(true);
       signatures.set(
         asset.id,
         named.map((f) => `${f.kind}:${f.w.toFixed(2)}:${f.d.toFixed(2)}:${f.h.toFixed(2)}`).join("|"),
