@@ -1,3 +1,4 @@
+import { VitePWA } from "vite-plugin-pwa";
 import { defineConfig } from "vitest/config";
 import { facebookMetadata, facebookPageUrl } from "./scripts/facebook-metadata.mjs";
 import { version } from './package.json';
@@ -13,7 +14,38 @@ export default defineConfig({
       if (context.path.startsWith('/catalog/') || context.path.startsWith('/designer/') || context.path.startsWith('/privacy/') || context.path.startsWith('/terms/')) return [];
       return facebookMetadata(process.env.FACEBOOK_APP_ID, process.env.REQUIRE_FACEBOOK_APP_ID === '1');
     },
-  }],
+  }, VitePWA({
+    registerType: 'prompt',
+    injectRegister: false,
+    filename: 'sw.js',
+    manifest: false,
+    includeManifestIcons: false,
+    workbox: {
+      globPatterns: ['index.html', 'assets/**/*.{js,css}', 'pwa/*.png', 'brand/favicon.ico', 'manifest.webmanifest', 'build.json'],
+      globIgnores: [
+        '**/catalog/**',
+        '**/designer/**',
+        '**/privacy/**',
+        '**/terms/**',
+        '**/social/**',
+        '**/assets/catalog-*',
+        '**/assets/designer-*',
+        '**/assets/privacy-*',
+        '**/assets/legal-*',
+        '**/assets/assetCapture-*',
+        '**/assets/isolateLot-*',
+        '**/assets/chrome-*',
+      ],
+      navigateFallback: 'index.html',
+      navigateFallbackAllowlist: [/^\/($|\?)/],
+      navigateFallbackDenylist: [/^\/catalog(?:\/|$)/, /^\/designer(?:\/|$)/, /^\/privacy(?:\/|$)/, /^\/terms(?:\/|$)/],
+      cleanupOutdatedCaches: true,
+      skipWaiting: false,
+      clientsClaim: false,
+      maximumFileSizeToCacheInBytes: 8 * 1024 * 1024,
+    },
+    devOptions: { enabled: false },
+  })],
   // Generated capture galleries are not application entry points.
   optimizeDeps: { entries: ["index.html"] },
   server: {

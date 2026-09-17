@@ -11,6 +11,7 @@ import type { PermitSound } from './permitIntro';
 import { DEBUG_GROUPS, type DebugView, type DebugToggle } from "../debug/view";
 import { type DistrictId, type SessionKind } from "../game/session";
 import { createDebugBinderState, type BinderTab } from '../debug/binderState';
+import { applyPwaUpdate, onPwaUpdate } from '../pwa/update';
 
 export type OverlayMode = "none" | "title" | "pause" | "upgrade" | "results" | "briefing";
 
@@ -184,7 +185,9 @@ export class Hud {
       title: () => this.onTitle?.(), mute: () => this.onMute?.(), click: () => this.onClick?.(),
       unlockSound: () => this.onUnlockSound?.() ?? Promise.resolve(),
       titleSound: (kind, index) => this.onTitleSound?.(kind, index),
+      pwaUpdate: () => { void applyPwaUpdate(); },
     });
+    onPwaUpdate(pending => this.menu.setUpdateAvailable(pending));
     root.querySelector('#debug-session')!.append(root.querySelector('#hud-session')!);
     this.overlay.addEventListener('keydown', e => {
       if (this.lastOverlay === 'upgrade' && ['1', '2', '3'].includes(e.key) && !e.repeat) {

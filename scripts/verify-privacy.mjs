@@ -39,6 +39,7 @@ async function context(options = {}) {
       else { events.push(JSON.parse(route.request().postData() || '{}')); await route.fulfill({ status: 200, body: '{}' }); }
       return;
     }
+    if (url.pathname === '/sw.js') { await route.fulfill({ status: 404, body: '' }); return; }
     if (url.pathname === '/catalog/release.json') { await route.fulfill({ json: { url: 'https://assets.permitdenied.app/release.json', commit: 'test', version: 'test' } }); return; }
     let relative = url.pathname === '/' ? 'index.html' : url.pathname.replace(/^\//, '');
     if (/^(privacy|terms|catalog)\/?$/.test(relative)) relative = relative.replace(/\/$/, '') + '/index.html';

@@ -10,6 +10,8 @@ export const MENU_LABELS = {
   play: 'Play', pause: 'Pause', resume: 'Resume', restart: 'Restart Site', newLayout: 'New Layout',
   newGame: 'New Game', start: 'Start Game', mainMenu: 'Main Menu', nextLevel: 'Next Level', retryLevel: 'Retry Level',
   beginLevel: 'Begin Level', newCampaign: 'New Campaign', controls: 'Controls', about: 'About',
+  reloadBuild: 'Reload Latest Build',
+  reloadBuildHelp: 'A newer county build is ready. Reload to apply it. The current run stays on this version until then.',
   debug: 'Debug', soundOn: 'Sound On', soundOff: 'Sound Off',
   brick: 'Brick Building Demolition', brickPreview: 'Brick Building Preview', yard: 'Open Test Yard',
   blade: 'Blade', engine: 'Engine', push: 'Push',
