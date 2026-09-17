@@ -45,6 +45,9 @@ test('catalog routes stay isolated from the game fallback and require a pinned r
     assert.equal(config.routes[missing].status, 404);
     assert.ok(missing < config.routes.length - 1);
     assert.equal(config.routes.find(route => route.src === '/catalog/release.json').headers['cache-control'], 'no-store');
+    assert.equal(config.routes.find(route => route.src === '/sw.js').headers['cache-control'], 'no-cache');
+    assert.equal(config.routes.find(route => route.src === '/workbox-(.*)\\.js').headers['cache-control'], 'public, max-age=31536000, immutable');
+    assert.equal(config.routes.find(route => route.src === '/manifest.webmanifest').headers['content-type'], 'application/manifest+json');
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 

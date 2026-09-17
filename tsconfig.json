@@ -5,7 +5,7 @@
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "types": ["vite/client"],
+    "types": ["vite/client", "vite-plugin-pwa/client"],
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,

@@ -14,6 +14,13 @@ for (let attempt = 0; attempt < 12; attempt++) {
     if (!response.ok) throw new Error(`Production returned HTTP ${response.status}`);
     const html = await response.text();
     if (!html.includes(`property="fb:app_id" content="${id}"`)) throw new Error('Production Facebook metadata does not match the repository variable');
+    if (!html.includes('rel="manifest"') || !html.includes('/manifest.webmanifest')) throw new Error('Production HTML does not link the web app manifest');
+    const manifest = await fetch('https://permitdenied.app/manifest.webmanifest', { cache: 'no-store', signal: AbortSignal.timeout(15000) });
+    if (!manifest.ok) throw new Error('Production web app manifest is missing');
+    const manifestJson = await manifest.json();
+    if (manifestJson.name !== 'PERMIT DENIED' || manifestJson.display !== 'fullscreen') throw new Error('Production web app manifest is not the game PWA');
+    const worker = await fetch('https://permitdenied.app/sw.js', { cache: 'no-store', signal: AbortSignal.timeout(15000) });
+    if (!worker.ok || !(await worker.text()).includes('precache')) throw new Error('Production service worker is missing');
     const entry = html.match(/<script[^>]*src="([^"]+)"/);
     if (!entry) throw new Error('Production entry script missing');
     const script = await fetch(new URL(entry[1], 'https://permitdenied.app'), { signal: AbortSignal.timeout(15000) });

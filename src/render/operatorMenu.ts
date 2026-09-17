@@ -18,6 +18,7 @@ export interface MenuActions {
   click(): void;
   unlockSound(): Promise<void>;
   titleSound(kind: PermitSound, index: number): void;
+  pwaUpdate?(): void;
 }
 
 const publisher = '<a class="publisher-brand" href="https://columbiacloudworks.com/" target="_blank" rel="noopener noreferrer"><img src="/brand/Columbia-Cloudworks-Icon-Small.png" width="28" height="28" alt="" /><span>Columbia Cloudworks LLC</span></a>';
@@ -35,6 +36,7 @@ export class OperatorMenu {
   private session: SessionKind = 'sandbox';
   private district: DistrictId = 'd10';
   private muted = false;
+  private updateAvailable = false;
   private readonly intro = new PermitIntro();
   private introVersion = 0;
 
@@ -75,6 +77,7 @@ export class OperatorMenu {
       if (action === 'debug') this.actions.debug?.();
       if (action === 'title') this.actions.title();
       if (action === 'mute') this.actions.mute();
+      if (action === 'pwa-update') this.actions.pwaUpdate?.();
       if (action === 'start') {
         this.actions.start(this.session, this.district);
       }
@@ -141,6 +144,12 @@ export class OperatorMenu {
     }
   }
 
+  setUpdateAvailable(pending: boolean): void {
+    if (this.updateAvailable === pending) return;
+    this.updateAvailable = pending;
+    this.syncUpdatePrompt();
+  }
+
   private syncSetup(): void {
     this.body.querySelector<HTMLSelectElement>('#dispatch-mode')!.value = this.session;
     const sizes = this.body.querySelector<HTMLSelectElement>('#dispatch-lot')!;
@@ -165,7 +174,7 @@ export class OperatorMenu {
     if (page === 'home') this.body.innerHTML = `${this.mode === 'title'
       ? `${permitDocument()}<button class="ignition primary" data-nav="dispatch"><span class="ignition-symbol" aria-hidden="true">${MENU_ICONS.power}</span><span>${L.play}</span><span aria-hidden="true">↗</span></button>`
       : `<button class="primary" data-menu-action="resume">${L.resume}</button><div class="mobile-menu-links menu-grid"><button data-nav="equipment">Equipment & Objective</button><button data-menu-action="debug">${L.debug}</button></div><div class="menu-grid"><button data-menu-action="restart" aria-describedby="restart-help">${L.restart}</button><button data-nav="dispatch">${L.newGame}</button></div><p class="fine-print" id="restart-help">Start this site over with the same layout. Resets cash, demolition, upgrades, and the permit application.</p>`}
-      <nav class="menu-grid" aria-label="Game menu"><button data-nav="controls">${labeledMenuButton(MENU_ICONS.gamepad, L.controls)}</button><button data-menu-action="mute">${soundButtonContent(false)}</button><button data-nav="about">${labeledMenuButton(MENU_ICONS.about, L.about)}</button>${facebookLink}${this.mode === 'pause' ? `<button data-menu-action="title" aria-describedby="main-menu-help">${L.mainMenu}</button>` : ''}</nav>${this.mode === 'pause' ? '<p class="fine-print" id="main-menu-help">Returning to the main menu ends this game. You cannot resume it.</p>' : ''}`;
+      <nav class="menu-grid" aria-label="Game menu"><button data-nav="controls">${labeledMenuButton(MENU_ICONS.gamepad, L.controls)}</button><button data-menu-action="mute">${soundButtonContent(false)}</button><button data-nav="about">${labeledMenuButton(MENU_ICONS.about, L.about)}</button>${facebookLink}${this.mode === 'pause' ? `<button data-menu-action="title" aria-describedby="main-menu-help">${L.mainMenu}</button>` : ''}</nav>${this.mode === 'pause' ? '<p class="fine-print" id="main-menu-help">Returning to the main menu ends this game. You cannot resume it.</p>' : ''}${this.updatePromptHtml()}`;
     if (page === 'equipment') this.body.innerHTML = '<div class="equipment-details"></div><h2>Permit Application</h2><p class="fine-print">Resubmitting spends cash on a county processing fee.</p><div class="menu-permit-host"></div>';
     if (page === 'dispatch') {
       this.body.innerHTML = `<div class="dispatch-fields"><label>Mode<select id="dispatch-mode">${Object.entries(MODE_LABELS).map(([id, label]) => `<option value="${id}">${label}</option>`).join('')}</select></label><label id="dispatch-lot-field">Site Size<select id="dispatch-lot"></select></label></div><p class="fine-print" id="mode-description"></p>${this.mode === 'pause' ? '<p class="caution">Starting a new game replaces your current progress and upgrades.</p>' : ''}<button class="primary" data-menu-action="start">${L.start}</button><button data-nav="back">Back</button>`;
@@ -182,5 +191,16 @@ export class OperatorMenu {
     this.heading.focus();
     this.root.querySelector('.console-panel')!.scrollTop = 0;
     if (this.mode === 'title' && page === 'home') this.playIntro();
+  }
+
+  private updatePromptHtml(): string {
+    if (!this.updateAvailable) return '';
+    return `<div class="pwa-update"><button type="button" data-menu-action="pwa-update">${L.reloadBuild}</button><p class="fine-print">${L.reloadBuildHelp}</p></div>`;
+  }
+
+  private syncUpdatePrompt(): void {
+    if (this.page !== 'home' || !this.mode) return;
+    this.body.querySelector('.pwa-update')?.remove();
+    if (this.updateAvailable) this.body.insertAdjacentHTML('beforeend', this.updatePromptHtml());
   }
 }

@@ -2,6 +2,13 @@ import { privacyTestSetup } from './privacy-test-setup.mjs';
 import { chromium } from 'playwright';
 import assert from 'node:assert/strict';
 import { mkdir } from 'node:fs/promises';
+import {
+  assertWebAppManifest,
+  htmlHasAppleTouchIcon,
+  htmlHasManifestLink,
+  htmlHasPngFavicon,
+  htmlKeepsIcoFavicon,
+} from './pwa.mjs';
 
 const base = process.env.MOBILE_TEST_URL || 'http://localhost:5173';
 const output = process.argv[2] || 'docs/visual-verification/mobile-ui';
@@ -11,8 +18,39 @@ const errors = [];
 const page = await browser.newPage({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
 await privacyTestSetup(page);
 page.on('pageerror', error => errors.push(error.message));
+
+async function assertPwaDiscovery(target) {
+  const html = await target.content();
+  assert.equal(htmlHasManifestLink(html), true);
+  assert.equal(htmlKeepsIcoFavicon(html), true);
+  assert.equal(htmlHasPngFavicon(html), true);
+  assert.equal(htmlHasAppleTouchIcon(html), true);
+  const manifestResponse = await target.request.get(new URL('/manifest.webmanifest', base).href);
+  assert.equal(manifestResponse.ok(), true, 'web app manifest must be available');
+  const manifest = await manifestResponse.json();
+  assertWebAppManifest(manifest);
+  for (const icon of manifest.icons) {
+    const iconResponse = await target.request.get(new URL(icon.src, base).href);
+    assert.equal(iconResponse.ok(), true, `${icon.src} must be available`);
+  }
+  const sw = await target.request.get(new URL('/sw.js', base).href);
+  const swType = sw.headers()['content-type'] || '';
+  const swBody = await sw.text();
+  if (sw.ok() && swType.includes('javascript')) {
+    assert.match(swBody, /precacheAndRoute|createHandlerBoundToURL/);
+  } else {
+    console.log('Service worker is not served on this origin; production builds are checked by verify-pwa.');
+  }
+}
+
 try {
   await page.goto(`${base}/?controls=1`);
+  await assertPwaDiscovery(page);
+  await page.setViewportSize({ width: 844, height: 390 });
+  await page.waitForTimeout(200);
+  await page.screenshot({ path: `${output}/installed-landscape.png` });
+  console.log('installed landscape 844x390: PWA manifest and icons available');
+  await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole('button', { name: 'Play', exact: true }).click();
   await page.getByRole('button', { name: 'Start Game', exact: true }).click();
   await page.locator('.mobile-hud').waitFor({ state: 'visible' });
@@ -42,7 +80,7 @@ try {
   await page.locator('.equipment-details').waitFor();
   assert.match(await page.locator('.equipment-details').innerText(),/Blade 1.00/);
   await page.getByRole('button',{name:'Back',exact:true}).click();
-  await page.getByRole('button',{name:'Debug',exact:true}).click();
+  await page.locator('.operator-menu').getByRole('button',{name:'Debug',exact:true}).click();
   await page.getByRole('checkbox',{name:'Freeze Simulation',exact:true}).check();
   await page.getByRole('button',{name:'Step One Frame',exact:true}).click();
   await page.getByRole('checkbox',{name:'Freeze Simulation',exact:true}).uncheck();
@@ -53,7 +91,7 @@ try {
   await page.locator('.mobile-hud').waitFor({state:'visible'});
 
   await page.locator('#mobile-pause').click();
-  await page.getByRole('button',{name:'Debug',exact:true}).click();
+  await page.locator('.operator-menu').getByRole('button',{name:'Debug',exact:true}).click();
   await page.getByRole('tab',{name:'Session',exact:true}).click();
   await page.getByRole('button',{name:'Brick Building Demolition',exact:true}).click();
   await page.locator('#mobile-job').waitFor({state:'visible'});

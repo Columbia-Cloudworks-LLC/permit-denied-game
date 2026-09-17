@@ -34,14 +34,17 @@ Ranch benchmark: `?sandbox=1&ranch=1` loads d10 seed `17634759` with the dozer o
 ```powershell
 npm test          # destruction harness
 npm run build     # typecheck + production bundle
+npm run test:pwa  # web app manifest, icons, and service worker
 npm run preview   # serve the production build
 ```
 
-Mobile UI verification: with the Vite dev server running and Playwright Chromium installed (`npx playwright install chromium`), run `npm run test:mobile`. Set `MOBILE_TEST_URL` if using another port. The check covers phone/tablet geometry, multi-touch resets, menus, warnings and permit resubmission; screenshots go to the ignored `docs/visual-verification/mobile-ui/` directory.
+Mobile UI verification: with the Vite dev server running and Playwright Chromium installed (`npx playwright install chromium`), run `npm run test:mobile`. Set `MOBILE_TEST_URL` if using another port. The check covers phone/tablet geometry, an installed-display landscape viewport, PWA manifest/icon discovery, multi-touch resets, menus, warnings and permit resubmission; screenshots go to the ignored `docs/visual-verification/mobile-ui/` directory. Service-worker registration is verified from the production bundle by `npm run test:pwa` after `npm run build`. Point `MOBILE_TEST_URL` at `npm run preview` to also fetch `/sw.js` from that mobile pass.
 
 ## Play
 
 https://permitdenied.app (also https://www.permitdenied.app)
+
+On current Android Chrome, open the site and use **Install app**. That installs PERMIT DENIED as an application, not a browser bookmark: the home screen and launcher show the game icon, and launch opens `https://permitdenied.app/` fullscreen in landscape without browser tabs or the address bar. After one successful online load, the installed app can reopen its cached shell while briefly offline. Catalog, designer, privacy, and terms pages are not part of that shell and fail clearly without a network. A newer release does not replace code during an active demolition; the title screen and pause menu show **Reload Latest Build** when a waiting worker is ready.
 
 Source: https://github.permitdenied.app (permanent redirect to the GitHub repository)
 

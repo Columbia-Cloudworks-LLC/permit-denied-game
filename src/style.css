@@ -94,6 +94,8 @@ dt { color: #d9b96f; font: bold 11px/1.5 var(--mono); } dd { margin: 0; color: #
 .license-notices { border-top: 1px solid var(--line); font-size: 12px; }
 .license-notices summary { cursor: pointer; padding: 14px 0; }
 .license-notices pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 280px; overflow-y: auto; font: 11px/1.5 var(--mono); }
+.pwa-update { margin-top: 8px; }
+.pwa-update button { width: 100%; }
 .panel h2 { color: var(--yellow); font: 900 32px/.95 Arial,sans-serif; letter-spacing: -.02em; }
 .panel p { color: #c8cfb9; font: 14px/1.6 Arial,sans-serif; }
 .choices { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 26px; }
