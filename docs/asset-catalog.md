@@ -29,7 +29,7 @@ The public release contains version, commit, counts, category browse/search tree
 
 Each asset has a detail file grouping variants and ordered series. Only the active frame and its immediate neighbors load. Model/layers/floors, standard destruction, cutaway destruction, effects-hidden destruction, and vehicle motion remain separate series. The final cleared image is labeled as additional full-damage cleanup. URLs encode the asset, variant, series, and frame. Keyboard controls operate inside the dialog; touch gestures preserve vertical scrolling.
 
-Image keys hash converted bytes. Full views use lossless WebP, thumbnails use 360px WebP, and duplicates share keys. The public payload excludes snapshots, simulation structures, and private cache records. Objects and release manifests are immutable. The deployment pointer is revalidated; rollback restores the earlier pointer and shell without rewriting R2 data.
+Image keys hash converted bytes. Full views use lossless WebP, thumbnails use 360px WebP, and duplicates share keys. Building and site cards use the intact model; `fixture:*` cards use the ground-floor cutaway so the named fixture is visible. Generation rejects a fixture thumbnail sourced from an opaque intact exterior. The public payload excludes snapshots, simulation structures, and private cache records. Objects and release manifests are immutable. The deployment pointer is revalidated; rollback restores the earlier pointer and shell without rewriting R2 data.
 
 ## Incremental capture and CI
 
