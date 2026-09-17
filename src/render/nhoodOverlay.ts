@@ -1,4 +1,4 @@
-import { Graphics, Text } from "pixi.js";
+import { Container, Graphics, Text } from "pixi.js";
 import { worldToScreen } from "../world/iso";
 import type { Town } from "../world/town";
 
@@ -18,10 +18,15 @@ function ring(g: Graphics, points: readonly { x: number; y: number }[], color: n
   line(g, [...points, points[0]!], color, alpha);
 }
 
-export function drawNhoodOverlay(g: Graphics, labels: Text[], town: Town): void {
+export function clearNhoodOverlay(g: Graphics, layer: Container): void {
   g.clear();
-  for (const t of labels) t.destroy();
-  labels.length = 0;
+  for (const child of [...layer.children]) {
+    if (child !== g) child.destroy();
+  }
+}
+
+export function drawNhoodOverlay(g: Graphics, layer: Container, town: Town): void {
+  clearNhoodOverlay(g, layer);
 
   for (const node of town.network.nodes) {
     const s = worldToScreen(node.x, node.y, node.elev + 0.05);
@@ -40,7 +45,7 @@ export function drawNhoodOverlay(g: Graphics, labels: Text[], town: Town): void 
     });
     label.x = p.x + 3;
     label.y = p.y - 8;
-    labels.push(label);
+    layer.addChild(label);
   }
 
   const bandColor: Record<string, number> = {
@@ -65,7 +70,7 @@ export function drawNhoodOverlay(g: Graphics, labels: Text[], town: Town): void 
       });
       label.x = p.x + 2;
       label.y = p.y - 10;
-      labels.push(label);
+      layer.addChild(label);
     }
     if (lot.frontage?.segmentId) {
       const seg = town.network.segments.find((s) => s.id === lot.frontage.segmentId);
@@ -107,6 +112,6 @@ export function drawNhoodOverlay(g: Graphics, labels: Text[], town: Town): void 
     });
     label.x = s.x;
     label.y = s.y;
-    labels.push(label);
+    layer.addChild(label);
   }
 }
