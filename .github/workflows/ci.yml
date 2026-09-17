@@ -158,6 +158,11 @@ jobs:
           DEPLOY_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           DEPLOY_BRANCH: ${{ github.head_ref || github.ref_name }}
         run: node scripts/deploy-vercel.mjs
+      - name: Attach github.permitdenied.app
+        if: steps.current.outputs.yes == 'true' && env.DEPLOY_TARGET == 'production'
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: node scripts/configure-github-domain.mjs
       - name: Verify production metadata
         if: steps.current.outputs.yes == 'true' && env.DEPLOY_TARGET == 'production'
         id: verify

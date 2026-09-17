@@ -12,6 +12,8 @@ Vercel CLI authentication and the complete five-record DNS API export are verifi
 
 Registrar delegation is now updated: IONOS API and Google public DNS both report the assigned Cloudflare nameservers, and the business dashboard reports the zone active. The Vercel zone remains intact for rollback. No parent DS existed before migration, and none has been added during the delegation transition; enable DNSSEC only after old delegation caches have expired.
 
+Do not attach `github.permitdenied.app` to R2. That hostname is a Vercel project alias; Cloudflare DNS already answers it through the wildcard CNAME to Vercel, and the game deployment's host route issues the repository redirect.
+
 The public R2 hostname is connected with active ownership and TLS, minimum TLS 1.2. Both buckets have `r2.dev` disabled; the private cache bucket has no custom domain or CORS policy. The active `Immutable asset catalog` cache rule matches only `assets.permitdenied.app`, makes responses eligible for caching, and respects origin cache headers for edge and browser TTLs. Live JSON delivery returned HTTP 200, the immutable cache header, wildcard read-only CORS, and a subsequent Cloudflare cache HIT. The game continued returning HTTP 200. Account-wide monthly spend notifications at $5 and $20 go to the business billing contact; these do not cap usage.
 
 IONOS configuration is stored in GitHub organization variables `IONOS_API_KEY_NAME` and `IONOS_API_PUBLIC_PREFIX`, and organization secret `IONOS_API_SECRET`, initially accessible only to `permit-denied-game`. Ordinary game and catalog jobs do not receive registrar credentials. Add selected repositories explicitly when reusing this configuration.

@@ -43,13 +43,15 @@ Mobile UI verification: with the Vite dev server running and Playwright Chromium
 
 https://permitdenied.app (also https://www.permitdenied.app)
 
+Source: https://github.permitdenied.app (permanent redirect to the GitHub repository)
+
 Vercel hosts the Vite static build. GitHub Actions owns deployment to the linked `permit-denied` project on the Columbia Cloudworks LLC team. After Linux and Windows CI pass, internal pull requests get preview deployments and `main` gets production deployments. Ship with `/release` (`.cursor/commands/release.md`): inspect remaining work, bump `package.json` and `package-lock.json` to the next `1.0.N` (patch unless specified), title the PR `Release 1.0.N: <short what shipped>`, then commit, wait on CI, merge, and sync `main`. About & Credits shows that package version. Do not merge a ship without the bump. Deployment links appear in GitHub deployments and the CI job summary. `vercel.json` disables Vercel's automatic Git builds to avoid duplicate deployments. Fork PRs run checks without deployment credentials.
 
 GitHub Actions repository variables are the source of truth for `FACEBOOK_APP_ID`, `VERCEL_ORG_ID`, and `VERCEL_PROJECT_ID`. `VERCEL_TOKEN` is a repository secret used only by deployment steps. `FACEBOOK_APP_SECRET` remains stored for future server-side integration and is never passed to the build or browser. There is no duplicate App ID setting to maintain in Vercel or source code. The Vite HTML transform injects the public `fb:app_id` from the workflow environment; deployment builds fail if it is missing or malformed. Local builds omit the tag unless `FACEBOOK_APP_ID` is provided.
 
 Actions builds with the repository's configuration, checks the generated metadata, and uploads only the compiled static site through Vercel's Build Output API. The API path avoids a Vercel CLI user-profile lookup that fails for the current team token. Older commits skip deployment when the branch has advanced. To redeploy after a variable or token update, dispatch the CI workflow on `main` (production) or the relevant internal branch (preview). Changing GitHub configuration alone does not change an already deployed page. The workflow verifies the production metadata after deployment. Test the build helper with `node --test scripts/*.test.mjs`.
 
-IONOS is only the registrar. Nameservers are Vercel (`ns1.vercel-dns.com`, `ns2.vercel-dns.com`). No backend, accounts, or API keys. Entirely client-side.
+IONOS is only the registrar. Authoritative nameservers are Cloudflare (`dee.ns.cloudflare.com`, `elliott.ns.cloudflare.com`). Game apex and `www` stay DNS-only at Vercel. A wildcard `*.permitdenied.app` CNAME also points at Vercel, so `github.permitdenied.app` already resolves and presents the existing wildcard certificate. Production deploys attach that hostname to the `permit-denied` project; the Build Output API then issues a 308 to `https://github.com/Columbia-Cloudworks-LLC/permit-denied-game` for every path on that host. Catalog objects stay on `assets.permitdenied.app` (Cloudflare R2). The original Vercel DNS zone is retained for rollback. No backend, accounts, or API keys. Entirely client-side.
 
 ## Automated title screenshot
 

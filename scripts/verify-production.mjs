@@ -1,6 +1,7 @@
 import { facebookPageUrl } from './facebook-metadata.mjs';
 import { readFile } from 'node:fs/promises';
 import { verifyCatalogProduction } from './verify-catalog-production.mjs';
+import { assertGithubVanityRedirect, GITHUB_VANITY_HOST } from './github-redirect.mjs';
 
 const { version } = JSON.parse(await readFile('package.json', 'utf8'));
 const id = process.env.FACEBOOK_APP_ID?.trim();
@@ -28,6 +29,9 @@ for (let attempt = 0; attempt < 12; attempt++) {
     }
     const analytics = await fetch('https://permitdenied.app/_vercel/insights/script.js', { signal: AbortSignal.timeout(15000) });
     if (!analytics.ok || !(analytics.headers.get('content-type') || '').includes('javascript') || !(await analytics.text()).includes('beforeSend')) throw new Error('Production analytics script route is unavailable');
+    for (const path of ['/', '/anything']) {
+      assertGithubVanityRedirect(await fetch(`https://${GITHUB_VANITY_HOST}${path}`, { redirect: 'manual', cache: 'no-store', signal: AbortSignal.timeout(15000) }));
+    }
     console.log(`Production ${version} and Facebook App ID verified`);
     process.exit(0);
   } catch (error) { lastError = error; }
