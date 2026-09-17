@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { campaignLevelById } from "../game/campaign";
 import { ARCHETYPES } from "../world/archetypes";
 import { evaluateCampaignComposition } from "../world/campaignComposition";
@@ -29,7 +29,17 @@ describe("dense-city render bench", () => {
     expect(first.visible).toBe(second.visible);
     expect(first.commands).toBe(second.commands);
 
+    const messages: string[] = [];
+    const capture = (...args: unknown[]) => {
+      messages.push(args.map(String).join(" "));
+    };
+    const warn = vi.spyOn(console, "warn").mockImplementation(capture);
+    const group = vi.spyOn(console, "groupCollapsed").mockImplementation(capture);
     const samples = measureDenseCityBench({ seed: DENSE_CITY_SEED, warmup: 2, frames: 12 });
+    const pixi = messages.filter((message) => /addChild: Only Containers will be allowed to add children/i.test(message));
+    warn.mockRestore();
+    group.mockRestore();
+    expect(pixi, pixi.join("\n")).toEqual([]);
     expect(samples).toHaveLength(DENSE_CITY_SCENES.length);
     for (const sample of samples) {
       expect(sample.buildings).toBe(level.generation.buildingCount);

@@ -33,7 +33,7 @@ import { drawDozer } from "./vehicles";
 import { facadeDetailCommand } from './facadeDetails';
 import { elevatedTankCommands } from './elevatedTank';
 import { siloCommands } from './silos';
-import { drawNhoodOverlay } from "./nhoodOverlay";
+import { clearNhoodOverlay, drawNhoodOverlay } from "./nhoodOverlay";
 import { buildingHidesDozer, objectOcclusionFade, pieceHidesDozer, VisibilityFades, wallSpanFadeRuns } from "./occlusion";
 import {
   buildingDamaged,
@@ -64,8 +64,8 @@ export class WorldRenderer {
   private readonly ground = new Graphics();
   private readonly sites = new Graphics();
   private readonly overlay = new Graphics();
-  private readonly nhood = new Graphics();
-  private readonly nhoodLabels: Text[] = [];
+  private readonly nhood = new Container();
+  private readonly nhoodGfx = new Graphics();
   private readonly world = new Graphics();
   private readonly groundOverlays = new Graphics();
   private readonly drawing = new DrawCache();
@@ -93,6 +93,7 @@ export class WorldRenderer {
   dozerHidden = false;
 
   constructor() {
+    this.nhood.addChild(this.nhoodGfx);
     this.root.addChild(this.ground, this.sites, this.overlay, this.groundOverlays, this.drawing.root, this.world, this.nhood, this.debugOverlay);
     this.root.addChild(this.bowlingStrikes.root, this.landmarkPin);
     this.hudOverlay.addChild(this.landmarkArrow);
@@ -215,11 +216,8 @@ export class WorldRenderer {
       this.overlayKey = oKey;
     }
 
-    if (this.showNhood) drawNhoodOverlay(this.nhood, this.nhoodLabels, town);
-    else this.nhood.clear();
-    for (const label of this.nhoodLabels) {
-      if (!label.parent) this.nhood.addChild(label);
-    }
+    if (this.showNhood) drawNhoodOverlay(this.nhoodGfx, this.nhood, town);
+    else clearNhoodOverlay(this.nhoodGfx, this.nhood);
 
     let surfaceGeometry = 0;
     const viewSig = debugViewSignature(view);
