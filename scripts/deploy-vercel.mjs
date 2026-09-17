@@ -1,6 +1,7 @@
 import { readdir, readFile, appendFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { githubVanityRedirectRoute } from './github-redirect.mjs';
 
 // Upload only compiled files in Build Output API format. Let Vercel process
 // that output normally so project integrations, including analytics, get routes.
@@ -8,6 +9,7 @@ export async function staticDeploymentFiles(directory) {
   const files = [{ file: '.vercel/output/config.json', data: Buffer.from(JSON.stringify({
     version: 3,
     routes: [
+      githubVanityRedirectRoute(),
       { src: '/(.*)', headers: { 'referrer-policy': 'no-referrer' }, continue: true },
       { src: '/privacy/?', dest: '/privacy/index.html', headers: { 'cache-control': 'no-cache' } },
       { src: '/terms/?', dest: '/terms/index.html', headers: { 'cache-control': 'no-cache' } },

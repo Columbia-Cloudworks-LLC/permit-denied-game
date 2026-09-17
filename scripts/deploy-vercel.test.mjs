@@ -4,6 +4,7 @@ import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { staticDeploymentFiles, deploy } from './deploy-vercel.mjs';
+import { githubVanityRedirectRoute } from './github-redirect.mjs';
 
 test('packages static output byte-for-byte in Build Output API format', async () => {
   const root = await mkdtemp(path.join(tmpdir(), 'permit-deployment-'));
@@ -17,9 +18,10 @@ test('packages static output byte-for-byte in Build Output API format', async ()
     assert.deepEqual(Buffer.from(binary.data, 'base64'), Buffer.from([0, 255, 17]));
     const config = JSON.parse(Buffer.from(files[0].data, 'base64'));
     assert.equal(config.version, 3);
+    assert.deepEqual(config.routes[0], githubVanityRedirectRoute());
     assert.equal(config.routes.find(r => r.src === '/privacy/?').dest, '/privacy/index.html');
     assert.equal(config.routes.find(r => r.src === '/terms/?').dest, '/terms/index.html');
-    assert.equal(config.routes[0].headers['referrer-policy'], 'no-referrer');
+    assert.equal(config.routes[1].headers['referrer-policy'], 'no-referrer');
     assert.equal(config.routes.at(-1).dest, '/index.html');
   } finally { await rm(root, { recursive: true, force: true }); }
 });

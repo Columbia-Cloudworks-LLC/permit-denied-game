@@ -3,6 +3,7 @@
 This is a one-town prototype, not a shipped product with player support hours.
 
 Play: https://permitdenied.app
+Source: https://github.permitdenied.app
 
 1. Run and keys: [`README.md`](../README.md)
 2. How to contribute: [`CONTRIBUTING.md`](CONTRIBUTING.md)
