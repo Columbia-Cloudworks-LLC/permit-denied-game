@@ -23,11 +23,13 @@ describe('menu icons', () => {
     expect(MENU_ICONS.about).toMatch(/M9\.7 9\.5/);
   });
 
-  it('renders Sound: with a speaker that mutes through a circled slash', () => {
+  it('renders Sound with a speaker icon before the label, muted through a circled slash', () => {
     const on = soundButtonContent(false);
     const off = soundButtonContent(true);
-    expect(on.indexOf('Sound:')).toBeLessThan(on.indexOf('<svg'));
-    expect(off.indexOf('Sound:')).toBeLessThan(off.indexOf('<svg'));
+    expect(on).toBe(labeledMenuButton(MENU_ICONS.speaker, 'Sound'));
+    expect(off).toBe(labeledMenuButton(MENU_ICONS.speakerMuted, 'Sound'));
+    expect(on.indexOf('<svg')).toBeLessThan(on.indexOf('Sound'));
+    expect(off.indexOf('<svg')).toBeLessThan(off.indexOf('Sound'));
     expect(on).toContain('data-menu-icon="speaker"');
     expect(off).toContain('data-menu-icon="speaker-muted"');
     expect(off).toContain('data-menu-icon-ban="true"');
@@ -37,5 +39,6 @@ describe('menu icons', () => {
     expect(off).not.toContain('cx="17.5"');
     expect(on).not.toBe(off);
     expect(on).not.toContain('data-menu-icon-ban');
+    expect(on.replace(MENU_ICONS.speaker, '')).toBe(off.replace(MENU_ICONS.speakerMuted, ''));
   });
 });
