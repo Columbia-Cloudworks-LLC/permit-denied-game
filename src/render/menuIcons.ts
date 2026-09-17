@@ -27,5 +27,5 @@ export function labeledMenuButton(iconHtml: string, label: string): string {
 }
 
 export function soundButtonContent(muted: boolean): string {
-  return `<span>Sound:</span><span class="menu-btn-icon">${muted ? MENU_ICONS.speakerMuted : MENU_ICONS.speaker}</span>`;
+  return labeledMenuButton(muted ? MENU_ICONS.speakerMuted : MENU_ICONS.speaker, 'Sound');
 }
