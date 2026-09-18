@@ -11,6 +11,12 @@ import { stepWorld, type Upgrades } from "./worldSim";
 
 const upgrades: Upgrades = { blade: 0, engine: 0, push: 0 };
 
+/** Let the Vitest worker drain IPC after `onTaskUpdate`. `setTimeout(0)` resumes
+ *  in the timers phase, before poll, so forked-worker ACKs never run. */
+function pumpVitestRpc(): Promise<void> {
+  return new Promise((resolve) => setImmediate(resolve));
+}
+
 function percentile(values: number[], p: number): number {
   const sorted = [...values].sort((a, b) => a - b);
   const i = Math.min(sorted.length - 1, Math.max(0, Math.ceil((p / 100) * sorted.length) - 1));
@@ -84,7 +90,7 @@ describe("district simulation benches", () => {
       dozer.y = town.buildings[0]!.y + 1;
       report(`${district} revisit`, timeSteps(town, dozer, 90, false));
       expect(totalDebrisMass(town)).toBeGreaterThanOrEqual(0);
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      await pumpVitestRpc();
     }
   });
 
@@ -97,6 +103,7 @@ describe("district simulation benches", () => {
     const stride = 12;
     let lastMass = 0;
     const samples: number[] = [];
+    await pumpVitestRpc();
     for (let i = 0; i < steps; i += stride) {
       if (i === Math.floor(steps * 0.05)) smashNearest(town, 2);
       if (i === Math.floor(steps * 0.2)) {
@@ -116,8 +123,7 @@ describe("district simulation benches", () => {
       for (let k = 0; k < stride; k++) stepWorld(town, dozer, particles, upgrades, SIM_DT);
       samples.push((performance.now() - t0) / stride);
       lastMass = totalDebrisMass(town);
-      // Yield so the Vitest worker can answer RPC (birpc defaults to 60s).
-      if (samples.length % 40 === 0) await new Promise((resolve) => setTimeout(resolve, 0));
+      if (samples.length % 10 === 0) await pumpVitestRpc();
     }
     report("classic 20min accelerated (per step)", samples);
     expect(lastMass).toBeGreaterThan(0.5);

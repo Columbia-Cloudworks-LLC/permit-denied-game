@@ -69,8 +69,9 @@ export default defineConfig({
     hookTimeout: 240_000,
     teardownTimeout: 240_000,
     // Vitest 3.2 birpc ACKs time out at 60s. The accelerated 20-minute sandbox
-    // is CPU-bound; extra workers on GitHub-hosted runners starve it and fail
-    // with Timeout calling "onTaskUpdate".
+    // is CPU-bound; extra workers on GitHub-hosted runners starve it. The bench
+    // yields with setImmediate so forked-worker IPC is polled before the next
+    // tight loop (setTimeout(0) resumes in timers, before poll).
     ...(process.env.CI ? { maxWorkers: 1 } : {}),
   },
 });
