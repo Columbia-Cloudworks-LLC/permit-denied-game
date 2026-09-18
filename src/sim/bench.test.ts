@@ -14,7 +14,7 @@ const upgrades: Upgrades = { blade: 0, engine: 0, push: 0 };
 /** Give the forked Vitest worker a full event-loop turn so `onTaskUpdate` ACKs
  *  can run. A 0ms timer resumes in the timers phase, before poll. */
 function pumpVitestRpc(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, 1));
+  return new Promise((resolve) => setTimeout(resolve, 15));
 }
 
 function percentile(values: number[], p: number): number {
@@ -98,7 +98,7 @@ describe("district simulation benches", () => {
     const minutes = 20;
     const steps = Math.floor((minutes * 60) / SIM_DT);
     const stride = 12;
-    const slices = 4;
+    const slices = 8;
     const smashAt = {
       early: Math.floor(steps * 0.05 / stride) * stride,
       debris: Math.floor(steps * 0.2 / stride) * stride,
