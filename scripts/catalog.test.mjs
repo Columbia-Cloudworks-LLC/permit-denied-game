@@ -8,7 +8,7 @@ import sharp from 'sharp';
 import { fingerprint, buildIndexes, buildTree, digest, requiredCaptures, objectWriter, publicationFiles } from './catalog/core.mjs';
 import { restoreCapture, saveCapture } from './catalog/cache.mjs';
 import { uploadVerified } from './catalog/storage.mjs';
-import { generateCatalog, seriesFor } from './catalog/generate.mjs';
+import { generateCatalog, isOpaqueIntactExterior, seriesFor, thumbnailSource } from './catalog/generate.mjs';
 
 const compiled = ts.transpileModule(await readFile('src/catalog/search.ts', 'utf8'), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
 const { searchPage } = await import(`data:text/javascript;base64,${Buffer.from(compiled).toString('base64')}`);
@@ -135,6 +135,83 @@ test('destruction views remain separate and vehicles expose motion', () => {
   assert.equal(series.find(s => s.id === 'cutaway').frames.length, 1);
   assert.equal(seriesFor([{ source: 'motion/frame-0015.png' }], 'Unsupported')[0].id, 'motion');
 });
+
+test('fixture cards use the ground-floor cutaway; buildings keep the intact model', () => {
+  assert.equal(thumbnailSource({ category: 'fixture' }), 'floors/00-cutaway.png');
+  assert.equal(thumbnailSource({ category: 'building' }), 'model.png');
+  assert.equal(thumbnailSource({ category: 'site' }), 'model.png');
+  assert.equal(thumbnailSource({ category: 'vehicle' }), 'model.png');
+  assert.ok(isOpaqueIntactExterior('model.png'));
+  assert.ok(isOpaqueIntactExterior('destruction/00-intact.png'));
+  assert.equal(isOpaqueIntactExterior('floors/00-cutaway.png'), false);
+  assert.equal(isOpaqueIntactExterior('layers/cutaway.png'), false);
+});
+
+test('generation rejects a fixture thumbnail sourced from an opaque intact exterior', () => fixture(async root => {
+  const shard = join(root, 'captures/shard'), folder = 'fixture/interior-bed/variant-0';
+  await mkdir(join(shard, folder, 'floors'), { recursive: true });
+  const intact = await sharp({ create: { width: 16, height: 12, channels: 3, background: '#a03030' } }).png().toBuffer();
+  const cutaway = await sharp({ create: { width: 16, height: 12, channels: 3, background: '#3060a0' } }).png().toBuffer();
+  await writeFile(join(shard, folder, 'model.png'), intact);
+  await writeFile(join(shard, folder, 'floors/00-cutaway.png'), cutaway);
+  const writeManifest = async captures => writeFile(join(shard, 'manifest.json'), JSON.stringify({
+    commit: 'commit-a', assets: [{ id: 'fixture:interior-bed', name: 'bed (interior)', category: 'fixture', variant: 0,
+      folder, fingerprint: 'fp', restorationVerified: true, captures }] }));
+  await writeManifest([{ file: 'model.png', sha256: digest(intact), state: { seconds: 0 } }]);
+  await assert.rejects(generateCatalog(join(root, 'captures'), join(root, 'missing'), { commit: 'commit-a', version: '1' }),
+    /missing thumbnail source floors\/00-cutaway/);
+  await writeManifest([
+    { file: 'model.png', sha256: digest(intact), state: { seconds: 0 } },
+    { file: 'floors/00-cutaway.png', sha256: digest(intact), state: { seconds: 0 } },
+  ]);
+  await writeFile(join(shard, folder, 'floors/00-cutaway.png'), intact);
+  await assert.rejects(generateCatalog(join(root, 'captures'), join(root, 'same-hash'), { commit: 'commit-a', version: '1' }),
+    /matches the opaque intact exterior/);
+}));
+
+test('published fixture thumbnails come from the cutaway and stay distinct from intact hosts', () => fixture(async root => {
+  const shard = join(root, 'captures/shard');
+  const png = async color => sharp({ create: { width: 16, height: 12, channels: 3, background: color } }).png().toBuffer();
+  const host = await png('#a03030'), bed = await png('#3060a0'), pins = await png('#30a060'), building = await png('#a0a030');
+  async function writeAsset(id, category, folder, modelBytes, thumbBytes) {
+    await mkdir(join(shard, folder, 'floors'), { recursive: true });
+    await writeFile(join(shard, folder, 'model.png'), modelBytes);
+    const captures = [{ file: 'model.png', sha256: digest(modelBytes), state: { seconds: 0 } }];
+    if (category === 'fixture') {
+      await writeFile(join(shard, folder, 'floors/00-cutaway.png'), thumbBytes);
+      captures.push({ file: 'floors/00-cutaway.png', sha256: digest(thumbBytes), state: { seconds: 0 } });
+    }
+    return { id, name: id, category, variant: 0, folder, fingerprint: id, restorationVerified: true, captures };
+  }
+  const assets = [
+    await writeAsset('building:rivertown', 'building', 'building/rivertown/variant-0', building, building),
+    await writeAsset('fixture:interior-bed', 'fixture', 'fixture/interior-bed/variant-0', host, bed),
+    await writeAsset('fixture:interior-pinsetter', 'fixture', 'fixture/interior-pinsetter/variant-0', host, pins),
+  ];
+  await writeFile(join(shard, 'manifest.json'), JSON.stringify({ commit: 'commit-a', assets }));
+  const result = await generateCatalog(join(root, 'captures'), join(root, 'public'), { commit: 'commit-a', version: '1' });
+  const release = JSON.parse(await readFile(join(root, 'public', result.file), 'utf8'));
+  const cards = [];
+  async function walk(node) {
+    const data = JSON.parse(await readFile(join(root, 'public', node.file), 'utf8'));
+    if (data.items) cards.push(...data.items.map(item => item.card));
+    else for (const child of data.children) await walk(child);
+  }
+  await walk(release.byId);
+  const byId = Object.fromEntries(cards.map(card => [card.id, card]));
+  assert.equal(byId['building:rivertown'].thumbnailSource, undefined);
+  const details = {};
+  for (const card of cards) details[card.id] = JSON.parse(await readFile(join(root, 'public', card.detail), 'utf8'));
+  assert.equal(details['building:rivertown'].thumbnailSource, 'model.png');
+  assert.equal(details['fixture:interior-bed'].thumbnailSource, 'floors/00-cutaway.png');
+  assert.equal(details['fixture:interior-pinsetter'].thumbnailSource, 'floors/00-cutaway.png');
+  assert.notEqual(byId['fixture:interior-bed'].thumbnail, byId['fixture:interior-pinsetter'].thumbnail);
+  assert.notEqual(byId['fixture:interior-bed'].thumbnail, byId['building:rivertown'].thumbnail);
+  const expectedBed = await sharp(bed).resize({ width: 360, withoutEnlargement: true }).webp({ quality: 85 }).toBuffer();
+  const expectedBuilding = await sharp(building).resize({ width: 360, withoutEnlargement: true }).webp({ quality: 85 }).toBuffer();
+  assert.equal(digest(await readFile(join(root, 'public', byId['fixture:interior-bed'].thumbnail))), digest(expectedBed));
+  assert.equal(digest(await readFile(join(root, 'public', byId['building:rivertown'].thumbnail))), digest(expectedBuilding));
+}));
 
 test('modular vehicles require every heading, directional failure, travel and persistent wreck sequence',()=>{
   const required=requiredCaptures({category:'vehicle',destruction:'supported',floors:0});

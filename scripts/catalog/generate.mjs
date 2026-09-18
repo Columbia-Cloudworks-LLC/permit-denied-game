@@ -42,6 +42,35 @@ export function frameLabel(file) {
   return labels[stem] || stem.replaceAll('-', ' ');
 }
 
+/** Intact host exteriors hide interior fixtures behind roof and walls. */
+export const OPAQUE_INTACT_EXTERIORS = Object.freeze(['model.png', 'destruction/00-intact.png']);
+
+export function isOpaqueIntactExterior(file) {
+  return OPAQUE_INTACT_EXTERIORS.includes(file);
+}
+
+export function thumbnailSource(asset) {
+  if (asset.category === 'fixture') return 'floors/00-cutaway.png';
+  return 'model.png';
+}
+
+function thumbnailCapture(asset) {
+  const file = thumbnailSource(asset);
+  if (asset.category === 'fixture' && isOpaqueIntactExterior(file)) {
+    throw new Error(`${asset.id}: fixture thumbnail sourced from an opaque intact exterior`);
+  }
+  const capture = asset.captures.find(c => c.file === file);
+  if (!capture) throw new Error(`${asset.id}: missing thumbnail source ${file}`);
+  if (asset.category === 'fixture' && isOpaqueIntactExterior(capture.file)) {
+    throw new Error(`${asset.id}: fixture thumbnail sourced from an opaque intact exterior`);
+  }
+  const intact = asset.captures.filter(c => isOpaqueIntactExterior(c.file));
+  if (asset.category === 'fixture' && intact.some(c => c.sha256 === capture.sha256)) {
+    throw new Error(`${asset.id}: fixture thumbnail matches the opaque intact exterior`);
+  }
+  return capture;
+}
+
 export async function generateCatalog(root, output, { commit, version, allowLegacy = false }) {
   const shards = await readCaptures(root), writer = await objectWriter(output);
   const groups = new Map(), images = new Map();
@@ -65,10 +94,12 @@ export async function generateCatalog(root, output, { commit, version, allowLega
       }
       const model = asset.captures.find(c => c.file === 'model.png');
       if (!model) throw new Error('Missing model');
-      const thumb = await sharp(await readFile(join(root, shard.folder, asset.folder, model.file)))
+      const thumbCapture = thumbnailCapture(asset);
+      const thumb = await sharp(await readFile(join(root, safeKey(shard.folder), safeKey(asset.folder), safeKey(thumbCapture.file))))
         .resize({ width: IMAGE_SETTINGS.thumbnailWidth, withoutEnlargement: true }).webp({ quality: 85 }).toBuffer();
       const thumbnail = await writer.put(thumb, 'webp');
-      if (!groups.has(asset.id)) groups.set(asset.id, { id: asset.id, name: asset.name || asset.id, category: asset.category, thumbnail, variants: [] });
+      if (!groups.has(asset.id)) groups.set(asset.id, { id: asset.id, name: asset.name || asset.id, category: asset.category,
+        thumbnail, thumbnailSource: thumbCapture.file, variants: [] });
       groups.get(asset.id).variants.push({ variant: asset.variant, fingerprint: asset.fingerprint || `legacy-${model.sha256}`,
         destructionUnsupported: asset.destructionUnsupported, series: seriesFor(frames, asset.destructionUnsupported) });
       if (asset.reused) reused++;
