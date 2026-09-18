@@ -66,6 +66,7 @@ export function generateDistrictLayout(
     nhood: rural.nhood,
     topology: rural.topology,
     biome: rural.biome,
+    surface: rural.surface,
     features: rural.features,
     featureRevision: 0,
   };
@@ -195,10 +196,10 @@ export function validateTown(town: Town): DistrictReport {
   if (!spawnClear(town.buildings, town.props, town.roadSpawnX, town.roadSpawnY)) {
     issues.push({ code: "road-spawn", detail: "test car spawn is blocked" });
   }
-  if (terrainTraversalAt(town.features, town.spawnX, town.spawnY) !== "open") {
+  if (terrainTraversalAt(town.features, town.spawnX, town.spawnY, town.surface) !== "open") {
     issues.push({ code: "spawn-terrain", detail: "dozer spawn is in water or forest core" });
   }
-  if (terrainTraversalAt(town.features, town.roadSpawnX, town.roadSpawnY) !== "open") {
+  if (terrainTraversalAt(town.features, town.roadSpawnX, town.roadSpawnY, town.surface) !== "open") {
     issues.push({ code: "road-spawn-terrain", detail: "test car spawn is in water or forest core" });
   }
   for (const detail of validateFeatureLayout(
@@ -209,6 +210,7 @@ export function validateTown(town: Town): DistrictReport {
     town.spawnY,
     town.roadSpawnX,
     town.roadSpawnY,
+    town.surface,
   )) {
     issues.push({ code: "terrain-feature", detail });
   }

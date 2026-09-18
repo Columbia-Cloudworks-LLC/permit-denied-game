@@ -365,16 +365,16 @@ export function stepWorld(
   cash += stepVehicleWorld(town,dozer,particles,events,dt,bladeMul);
 
   clampDozer(dozer, town.minX + 0.8, town.minY + 0.8, town.maxX - 0.8, town.maxY - 0.8);
-  if (town.features.length) {
+  if (town.surface || town.features.length) {
     const pins = [
       { x: dozer.x, y: dozer.y },
       { x: dozer.x + Math.cos(dozer.heading) * DOZER.radius, y: dozer.y + Math.sin(dozer.heading) * DOZER.radius },
       { x: dozer.x - Math.cos(dozer.heading) * DOZER.radius * 0.6, y: dozer.y - Math.sin(dozer.heading) * DOZER.radius * 0.6 },
     ];
-    if (pins.some((pin) => terrainTraversalAt(town.features, pin.x, pin.y) !== "open")) {
+    if (pins.some((pin) => terrainTraversalAt(town.features, pin.x, pin.y, town.surface) !== "open")) {
       const startX = dozer.motionStartX ?? dozer.x;
       const startY = dozer.motionStartY ?? dozer.y;
-      const resolved = resolveTraversal(dozer.x, dozer.y, startX, startY, town.features);
+      const resolved = resolveTraversal(dozer.x, dozer.y, startX, startY, town.features, town.surface);
       dozer.x = resolved.x;
       dozer.y = resolved.y;
       if (resolved.blocked) {
@@ -382,12 +382,14 @@ export function stepWorld(
         dozer.vy *= 0.28;
       }
     }
-    const churnPts = [...bladePoints(dozer), { x: dozer.x, y: dozer.y }];
-    const flattened = churnFieldsUnder(town.features, churnPts, dozer.bladeDown ? 0.75 : 0.48);
-    if (flattened > 0) {
-      town.featureRevision += 1;
-      particles.burst("dust", dozer.x, dozer.y, 0.28, 0.45 + flattened * 0.02);
-      particles.burst("wood", dozer.x, dozer.y, 0.36, 0.28);
+    if (town.features.some((feature) => feature.kind === "field")) {
+      const churnPts = [...bladePoints(dozer), { x: dozer.x, y: dozer.y }];
+      const flattened = churnFieldsUnder(town.features, churnPts, dozer.bladeDown ? 0.75 : 0.48);
+      if (flattened > 0) {
+        town.featureRevision += 1;
+        particles.burst("dust", dozer.x, dozer.y, 0.28, 0.45 + flattened * 0.02);
+        particles.burst("wood", dozer.x, dozer.y, 0.36, 0.28);
+      }
     }
   }
   particles.step(dt);

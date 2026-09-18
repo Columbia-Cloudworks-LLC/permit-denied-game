@@ -87,13 +87,26 @@ Traffic cameras still use the bird-escape gag (`birdGag`). Light poles and power
 
 `src/world/dressing.ts` templates (rural residence, family yard, farmstead, roadside service, contractor yard, utility lot, small commercial) place assets relative to lot + building, test occupancy, and keep a driveway corridor. Same seed reproduces selection, variants, headings, and ground patches.
 
-Ground covers (`grass`, `dirt`, `gravel`, `tracks`, `concrete`, `parking`, `driveway`, `planted`) are deterministic and cached with static ground rendering. A tiled grass/scrub field covers the town extent first so the canvas does not show through between lots; lot patches and the road mesh paint on top. Covers are render-only unless a driveway corridor is also used for access checks. Yard slots are placed in heading-aligned lot space (depth along the lot heading, frontage across) so front-yard assets stay on the lot instead of on pavement.
+Natural ground is a versioned surface grid (`src/world/terrain.ts`, `TERRAIN_GEN_VERSION = 1`) generated **before** roads. `TerrainField.height` stays a separate 2.4-unit height field and does not drive vehicles. Gameplay queries `surfaceAt` / `roadCostAt` / `lotCostAt` / `traversalAt`; it never switches on sprite names. `CoverKind` is leftover polygon garnish (lot pads, driveways, parking, field crop tints).
+
+Overlay precedence, later wins:
+
+1. Base classified cell (`grass` / `scrub` / `dirt` / `prairie` / `duff` / `leaf-litter` / `gravel`)
+2. `forest-floor` blob overlay
+3. `field` blob overlay
+4. `wet-edge`
+5. `water`
+6. Lot dressing pads — lot wins over forest-floor
+7. Driveway / parking patches
+8. Road mesh
+
+Autotiles load `/terrain/ground.json` (atlas PNG + TexturePacker hash frames) into chunked Pixi meshes (`SURFACE_CHUNK = 16`). Camera pan does not rebuild tiles. The old 6.2-unit world-fill checker is gone.
 
 Density budgets live in `DRESSING`: per-lot caps and per-district maxima (`classic` / `d10` / `d30` / `d100`). New debris uses the existing distance-prioritized cleanup; broken props leave the collision hash.
 
 ## Road graph (foundation)
 
-`src/world/roads.ts` is the source of truth. Districts are generated road-first (`src/world/rural.ts`): topology family from seed, then frontage parcels, then buildings and driveway segments. `town.roads` AABB boxes are a derived compatibility view.
+`src/world/roads.ts` is the source of truth for the graph. Districts are generated **terrain-first** (`src/world/rural.ts`): bounds, biome, and surface grid, then an orthogonal block-grid skeleton scored by `roadCostAt`, then frontage parcels, then buildings. Water and forest-core under retained streets and lots convert to grass (`enforceOpenCorridors`) before the developed stamp; features are derived from the stamped grid. `town.roads` AABB boxes are a derived compatibility view. Classic Rivertown and the Governor's estate keep authored building and road positions and stamp developed cells afterward.
 
 Types: `RoadNode`, `RoadSegment` (polyline + class + width + layer + elevation), `Lane`, `RoadAccess`, `TerrainField`. Queries: `roadSurfaceAt`, `terrainHeightAt`, `nearestRoadAccess`, `projectPointToRoad`, `connectedLanes`, `canTransitionBetweenSurfaces`, `findRoadRoute`, `publicStreetsReachable`. A spatial hash indexes segments so vehicles do not scan the whole graph each step. `invalidateNetworkIndex` clears that cache after a finished network is mutated.
 

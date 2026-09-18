@@ -5,6 +5,7 @@ import type { FieldCropId, FieldState, BiomeProfile } from "./biomes";
 import { getAsset, spawnAsset } from "./catalog";
 import { drivewayPatch, lotAxisSizes, lotLocalToWorld } from "./dressing";
 import { derivedRoadBoxes, pointOnRoad, type RoadNetwork } from "./roads";
+import { SURFACE_ID, traversalAt, type SurfaceGrid } from "./terrain";
 
 export const WATER_SALT = 0xa7e2;
 export const FOREST_SALT = 0xf02e57;
@@ -75,6 +76,7 @@ export interface FeatureContext {
   roadSpawnX: number;
   roadSpawnY: number;
   propBudget: number;
+  surface?: SurfaceGrid;
 }
 
 const ROAD_MARGIN = 4.2;
@@ -82,7 +84,13 @@ const LOT_MARGIN = 1.6;
 const BUILDING_MARGIN = 1.4;
 const SPAWN_CLEAR = 4.2;
 
-export function terrainTraversalAt(features: readonly TerrainFeature[] | undefined, x: number, y: number): TraversalKind {
+export function terrainTraversalAt(
+  features: readonly TerrainFeature[] | undefined,
+  x: number,
+  y: number,
+  grid?: SurfaceGrid | null,
+): TraversalKind {
+  if (grid) return traversalAt(grid, x, y);
   if (!features?.length) return "open";
   for (const feature of features) {
     switch (feature.kind) {
@@ -213,12 +221,13 @@ export function resolveTraversal(
   startX: number,
   startY: number,
   features: readonly TerrainFeature[] | undefined,
+  grid?: SurfaceGrid | null,
 ): { x: number; y: number; blocked: boolean } {
-  if (terrainTraversalAt(features, x, y) === "open") return { x, y, blocked: false };
-  if (terrainTraversalAt(features, x, startY) === "open") return { x, y: startY, blocked: true };
-  if (terrainTraversalAt(features, startX, y) === "open") return { x: startX, y, blocked: true };
-  if (terrainTraversalAt(features, startX, startY) === "open") return { x: startX, y: startY, blocked: true };
-  const escaped = pushOutOfTerrain(features, startX, startY) ?? pushOutOfTerrain(features, x, y);
+  if (terrainTraversalAt(features, x, y, grid) === "open") return { x, y, blocked: false };
+  if (terrainTraversalAt(features, x, startY, grid) === "open") return { x, y: startY, blocked: true };
+  if (terrainTraversalAt(features, startX, y, grid) === "open") return { x: startX, y, blocked: true };
+  if (terrainTraversalAt(features, startX, startY, grid) === "open") return { x: startX, y: startY, blocked: true };
+  const escaped = pushOutOfTerrain(features, startX, startY, grid) ?? pushOutOfTerrain(features, x, y, grid);
   if (escaped) return { ...escaped, blocked: true };
   return { x: startX, y: startY, blocked: true };
 }
@@ -227,7 +236,15 @@ function pushOutOfTerrain(
   features: readonly TerrainFeature[] | undefined,
   x: number,
   y: number,
+  grid?: SurfaceGrid | null,
 ): { x: number; y: number } | undefined {
+  if (grid) {
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1], [2, 0], [-2, 0], [0, 2], [0, -2]] as const) {
+      const px = x + dx * 0.6;
+      const py = y + dy * 0.6;
+      if (traversalAt(grid, px, py) === "open") return { x: px, y: py };
+    }
+  }
   if (!features?.length) return undefined;
   for (const feature of features) {
     switch (feature.kind) {
@@ -302,6 +319,7 @@ function nearestRiverPoint(feature: RiverFeature, x: number, y: number): { x: nu
 }
 
 export function placeTerrainFeatures(ctx: FeatureContext): TerrainFeature[] {
+  if (ctx.surface) return deriveTerrainFeatures(ctx);
   const features: TerrainFeature[] = [];
   placeWater(ctx, features);
   placeForests(ctx, features);
@@ -309,6 +327,185 @@ export function placeTerrainFeatures(ctx: FeatureContext): TerrainFeature[] {
   for (const feature of features) ctx.ground.push(...featurePatches(feature));
   placeEdgeTrees(ctx, features);
   return features;
+}
+
+export function deriveTerrainFeatures(ctx: FeatureContext): TerrainFeature[] {
+  const grid = ctx.surface;
+  if (!grid) return placeTerrainFeatures({ ...ctx, surface: undefined });
+  const features: TerrainFeature[] = [];
+  const seen = new Uint8Array(grid.surface.length);
+  for (let i = 0; i < grid.surface.length; i++) {
+    if (seen[i]) continue;
+    const id = grid.surface[i]!;
+    if (id !== SURFACE_ID.water && id !== SURFACE_ID["forest-floor"] && id !== SURFACE_ID["forest-core"] && id !== SURFACE_ID.field) {
+      seen[i] = 1;
+      continue;
+    }
+    const cells = floodIds(grid, i, id === SURFACE_ID.water
+      ? [SURFACE_ID.water]
+      : id === SURFACE_ID.field
+        ? [SURFACE_ID.field]
+        : [SURFACE_ID["forest-floor"], SURFACE_ID["forest-core"]], seen);
+    if (id === SURFACE_ID.water) {
+      const water = waterFromBlob(grid, cells, features.length);
+      if (water) features.push(water);
+    } else if (id === SURFACE_ID.field) {
+      const field = fieldFromBlob(grid, cells, ctx, features.length);
+      if (field) features.push(field);
+    } else {
+      const forest = forestFromBlob(grid, cells, features.length);
+      if (forest) features.push(forest);
+    }
+  }
+  for (const feature of features) {
+    if (feature.kind === "field") ctx.ground.push(...featurePatches(feature));
+  }
+  placeEdgeTrees(ctx, features);
+  return features;
+}
+
+function floodIds(grid: SurfaceGrid, start: number, ids: readonly number[], seen: Uint8Array): number[] {
+  const want = new Set(ids);
+  const q = [start];
+  seen[start] = 1;
+  const cells: number[] = [];
+  while (q.length) {
+    const i = q.pop()!;
+    if (!want.has(grid.surface[i]!)) continue;
+    cells.push(i);
+    const ix = i % grid.cols;
+    const iy = (i / grid.cols) | 0;
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+      const nx = ix + dx;
+      const ny = iy + dy;
+      if (nx < 0 || ny < 0 || nx >= grid.cols || ny >= grid.rows) continue;
+      const j = ny * grid.cols + nx;
+      if (seen[j] || !want.has(grid.surface[j]!)) continue;
+      seen[j] = 1;
+      q.push(j);
+    }
+  }
+  return cells;
+}
+
+function waterFromBlob(grid: SurfaceGrid, cells: number[], n: number): BasinFeature | RiverFeature | undefined {
+  if (cells.length < 6) return undefined;
+  const pts = cells.map((i) => ({
+    x: grid.ox + (i % grid.cols) + 0.5,
+    y: grid.oy + ((i / grid.cols) | 0) + 0.5,
+  }));
+  const xs = pts.map((p) => p.x);
+  const ys = pts.map((p) => p.y);
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+  const cx = (minX + maxX) * 0.5;
+  const cy = (minY + maxY) * 0.5;
+  const touchesW = minX <= grid.ox + 1.5;
+  const touchesE = maxX >= grid.ox + grid.cols - 1.5;
+  const touchesN = minY <= grid.oy + 1.5;
+  const touchesS = maxY >= grid.oy + grid.rows - 1.5;
+  const long = Math.max(maxX - minX, maxY - minY) > Math.min(maxX - minX, maxY - minY) * 2.4;
+  if ((touchesW && touchesE) || (touchesN && touchesS) || long) {
+    const vertical = maxY - minY >= maxX - minX;
+    const path = [...pts].sort((a, b) => (vertical ? a.y - b.y : a.x - b.x)).filter((_, i, arr) => i % Math.max(1, Math.floor(arr.length / 8)) === 0);
+    if (path.length < 2) path.push(pts[0]!, pts[pts.length - 1]!);
+    return { kind: "river", id: `river-${n}`, path, halfWidth: 1.25, seed: n * 9973 + cells.length };
+  }
+  const poly = outlineAround(pts, cx, cy);
+  return {
+    kind: cells.length > 70 ? "lake" : "pond",
+    id: `${cells.length > 70 ? "lake" : "pond"}-${n}`,
+    poly,
+    seed: n * 7919 + cells.length,
+  };
+}
+
+function forestFromBlob(grid: SurfaceGrid, cells: number[], n: number): ForestFeature | undefined {
+  if (cells.length < 8) return undefined;
+  let sx = 0;
+  let sy = 0;
+  const cores: { x: number; y: number }[] = [];
+  const all: { x: number; y: number }[] = [];
+  for (const i of cells) {
+    const x = grid.ox + (i % grid.cols) + 0.5;
+    const y = grid.oy + ((i / grid.cols) | 0) + 0.5;
+    all.push({ x, y });
+    sx += x;
+    sy += y;
+    if (grid.surface[i] === SURFACE_ID["forest-core"]) cores.push({ x, y });
+  }
+  const cx = sx / cells.length;
+  const cy = sy / cells.length;
+  let coreR = 1.2;
+  for (const p of cores) coreR = Math.max(coreR, len(p.x - cx, p.y - cy));
+  let canopyR = coreR + 2.2;
+  for (const p of all) canopyR = Math.max(canopyR, len(p.x - cx, p.y - cy));
+  return { kind: "forest", id: `forest-${n}`, cx, cy, coreR, canopyR, seed: n * 6271 + cells.length };
+}
+
+function fieldFromBlob(grid: SurfaceGrid, cells: number[], ctx: FeatureContext, n: number): FieldFeature | undefined {
+  if (cells.length < 10) return undefined;
+  const cellSet = new Set(cells);
+  const blocked = (x: number, y: number): boolean => {
+    if (pointOnRoad(ctx.network, x, y)) return true;
+    for (const lot of ctx.lots) {
+      if (x >= lot.x && y >= lot.y && x <= lot.x + lot.w && y <= lot.y + lot.d) return true;
+    }
+    for (const building of ctx.buildings) {
+      const bw = building.w * building.cellSize;
+      const bd = building.d * building.cellSize;
+      if (x >= building.x - 1.6 && y >= building.y - 1.6 && x <= building.x + bw + 1.6 && y <= building.y + bd + 1.6) return true;
+    }
+    for (const prop of ctx.props) {
+      if (x >= prop.x - 1.2 && y >= prop.y - 1.2 && x <= prop.x + prop.w + 1.2 && y <= prop.y + prop.d + 1.2) return true;
+    }
+    return false;
+  };
+  let bestI = -1;
+  let bestN = -1;
+  for (const i of cells) {
+    const ix = i % grid.cols;
+    const iy = (i / grid.cols) | 0;
+    const x = grid.ox + ix + 0.5;
+    const y = grid.oy + iy + 0.5;
+    if (x < ctx.minX + 2 || y < ctx.minY + 2 || x > ctx.maxX - 2 || y > ctx.maxY - 2) continue;
+    if (blocked(x, y)) continue;
+    let n4 = 0;
+    for (let dy = -2; dy <= 2; dy++) {
+      for (let dx = -3; dx <= 3; dx++) {
+        const nx = ix + dx;
+        const ny = iy + dy;
+        if (nx < 0 || ny < 0 || nx >= grid.cols || ny >= grid.rows) continue;
+        if (cellSet.has(ny * grid.cols + nx)) n4++;
+      }
+    }
+    if (n4 > bestN) {
+      bestN = n4;
+      bestI = i;
+    }
+  }
+  if (bestI < 0) bestI = cells[0]!;
+  const cx = grid.ox + (bestI % grid.cols) + 0.5;
+  const cy = grid.oy + ((bestI / grid.cols) | 0) + 0.5;
+  const w = 8;
+  const d = 6;
+  const rng = new Rng(ctx.seed ^ FIELD_SALT ^ (n * 13));
+  return makeField(cx - w * 0.5, cy - d * 0.5, w, d, 0, rng, ctx.biome, `field-${n}`);
+}
+
+function outlineAround(pts: { x: number; y: number }[], cx: number, cy: number): { x: number; y: number }[] {
+  const unique = [...pts];
+  unique.sort((a, b) => Math.atan2(a.y - cy, a.x - cx) - Math.atan2(b.y - cy, b.x - cx));
+  const step = Math.max(1, Math.floor(unique.length / 12));
+  const poly = unique.filter((_, i) => i % step === 0);
+  return poly.length >= 3 ? poly : [
+    { x: cx - 2, y: cy - 2 },
+    { x: cx + 2, y: cy - 2 },
+    { x: cx + 2, y: cy + 2 },
+    { x: cx - 2, y: cy + 2 },
+  ];
 }
 
 function placeWater(ctx: FeatureContext, features: TerrainFeature[]): void {
@@ -586,12 +783,13 @@ function placeEdgeTrees(ctx: FeatureContext, features: TerrainFeature[]): void {
       const x = feature.cx + Math.cos(a) * r;
       const y = feature.cy + Math.sin(a) * r;
       if (len(x - feature.cx, y - feature.cy) <= feature.coreR + 0.35) continue;
-      if (terrainTraversalAt(features, x, y) !== "open") continue;
+      if (terrainTraversalAt(features, x, y, ctx.surface) !== "open") continue;
       const pool = i % 5 === 0 ? ctx.biome.shrubs : i % 4 === 0 ? ctx.biome.saplings : ctx.biome.trees;
       const assetId = rng.pick(pool);
       const def = getAsset(assetId);
       const px = x - def.footprint.w * 0.5;
       const py = y - def.footprint.d * 0.5;
+      if (px < ctx.minX || py < ctx.minY || px + def.footprint.w > ctx.maxX || py + def.footprint.d > ctx.maxY) continue;
       if (blocked(ctx, features, px, py, def.footprint.w, def.footprint.d, 0.8, true)) continue;
       if (ctx.props.some((p) => aabbOverlap(px, py, def.footprint.w, def.footprint.d, p.x, p.y, p.w, p.d))) continue;
       const prop = spawnAsset(assetId, px, py, a + rng.range(-0.2, 0.2), rng.int(0, def.variants - 1));
@@ -806,10 +1004,42 @@ export function validateFeatureLayout(
   spawnY: number,
   roadSpawnX: number,
   roadSpawnY: number,
+  grid?: SurfaceGrid | null,
 ): string[] {
   const issues: string[] = [];
-  if (terrainTraversalAt(features, spawnX, spawnY) !== "open") issues.push("spawn blocked by terrain");
-  if (terrainTraversalAt(features, roadSpawnX, roadSpawnY) !== "open") issues.push("road spawn blocked by terrain");
+  if (terrainTraversalAt(features, spawnX, spawnY, grid) !== "open") issues.push("spawn blocked by terrain");
+  if (terrainTraversalAt(features, roadSpawnX, roadSpawnY, grid) !== "open") issues.push("road spawn blocked by terrain");
+  if (grid) {
+    const seen = new Set<string>();
+    for (let iy = 0; iy < grid.rows; iy++) {
+      for (let ix = 0; ix < grid.cols; ix++) {
+        const id = grid.surface[iy * grid.cols + ix]!;
+        if (id !== SURFACE_ID.water && id !== SURFACE_ID["forest-core"]) continue;
+        const x = grid.ox + (ix + 0.5) * grid.cell;
+        const y = grid.oy + (iy + 0.5) * grid.cell;
+        const label = id === SURFACE_ID.water ? "water" : "forest-core";
+        if (pointOnRoad(network, x, y)) {
+          const msg = `${label} overlaps a road`;
+          if (!seen.has(msg)) {
+            seen.add(msg);
+            issues.push(msg);
+          }
+        }
+        for (const building of buildings) {
+          const bw = building.w * building.cellSize;
+          const bd = building.d * building.cellSize;
+          if (x >= building.x && y >= building.y && x <= building.x + bw && y <= building.y + bd) {
+            const msg = `${label} overlaps ${building.name}`;
+            if (!seen.has(msg)) {
+              seen.add(msg);
+              issues.push(msg);
+            }
+          }
+        }
+      }
+    }
+    return issues;
+  }
   for (const feature of features) {
     if (feature.kind === "field") continue;
     if (featureHitsRoad(feature, network)) issues.push(`${feature.id} overlaps a road`);
@@ -827,7 +1057,7 @@ export function validateFeatureLayout(
 function featureHitsRoad(feature: TerrainFeature, network: RoadNetwork): boolean {
   switch (feature.kind) {
     case "forest":
-      return pointNearRoad(network, feature.cx, feature.cy, feature.canopyR + 0.25);
+      return pointNearRoad(network, feature.cx, feature.cy, feature.coreR + 0.25);
     case "pond":
     case "lake":
       return feature.poly.some((p) => pointNearRoad(network, p.x, p.y, 0.35))
@@ -848,7 +1078,7 @@ function featureHitsBox(feature: TerrainFeature, box: { x: number; y: number; w:
     case "forest": {
       const qx = Math.max(box.x, Math.min(feature.cx, box.x + box.w));
       const qy = Math.max(box.y, Math.min(feature.cy, box.y + box.d));
-      return len(feature.cx - qx, feature.cy - qy) <= feature.canopyR;
+      return len(feature.cx - qx, feature.cy - qy) <= feature.coreR;
     }
     case "pond":
     case "lake":

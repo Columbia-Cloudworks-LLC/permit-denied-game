@@ -6,8 +6,8 @@ import { DISTRICT_COUNTS, type DistrictId } from "../game/session";
 import type { Building, GroundPatch, Lot, Prop } from "../structure/types";
 import { selectBiome, type BiomeProfile } from "./biomes";
 import { getAsset, spawnAsset } from "./catalog";
-import { buildingOccupy, dressLot, fillWorldGround } from "./dressing";
-import { placeTerrainFeatures, type TerrainFeature } from "./terrainFeatures";
+import { buildingOccupy, dressLot } from "./dressing";
+import { deriveTerrainFeatures, type TerrainFeature } from "./terrainFeatures";
 import {
   PARCEL,
   allocateFrontage,
@@ -18,6 +18,7 @@ import {
   expandStreets,
   placeBuildingInLot,
   runWithParcelProfile,
+  convexOverlap,
   type NhoodDebug,
   type NhoodReject,
 } from "./parcels";
@@ -55,6 +56,17 @@ import {
   type TerrainField,
 } from "./roads";
 import type { Town } from "./town";
+import {
+  estimateRuralSurfaceBounds,
+  enforceOpenCorridors,
+  generateSurfaceGrid,
+  meanRoadCost,
+  sampleSegmentCenterline,
+  stampDeveloped,
+  finalizeStampedSurface,
+  traversalAt,
+  type SurfaceGrid,
+} from "./terrain";
 
 export interface LayoutIssue {
   code: string;
@@ -85,6 +97,7 @@ export interface RuralLayout {
   seed: number;
   topology: TopologyFamily;
   biome: BiomeProfile;
+  surface: SurfaceGrid;
   features: TerrainFeature[];
   campaignLevel?: CampaignLevelDef['id'];
   diagnostic: { ok: boolean; issues: LayoutIssue[] };
@@ -142,19 +155,32 @@ function generateRuralLayoutInner(
     ? campaign.generation.topology
     : topologyOverride) ?? pickTopology(rng, count);
   const biome = selectBiome(id, seed, topology);
-  const b = new RoadBuilder();
   const originX = 4;
   const originY = 4;
   const issues: LayoutIssue[] = [];
   const rejected: NhoodReject[] = [];
+  const blockW = campaign?.generation.parcel.blockW ?? 40;
+  const blockD = campaign?.generation.parcel.blockD ?? 36;
+  const bounds = estimateRuralSurfaceBounds(count, originX, originY, blockW, blockD);
+  const spawnBand = { x: originX + 2, y: originY + 8, w: 18, d: 18 };
+  const surface = generateSurfaceGrid({
+    seed,
+    biome,
+    minX: bounds.minX,
+    minY: bounds.minY,
+    maxX: bounds.maxX,
+    maxY: bounds.maxY,
+    spawnBand,
+  });
 
-  buildSkeleton(b, topology, count, originX, originY, rng, campaign);
-  b.normalizeJunctions();
+  const { builder: b, originX: usedOx, originY: usedOy } = pickSkeleton(surface, topology, count, originX, originY, seed, campaign);
+  void usedOx;
+  void usedOy;
 
   for (let pass = 0; pass <= (campaign?.generation.parcel.maxExpand ?? PARCEL.maxExpand); pass++) {
     const slots = estimateSlots(b.segments, b.nodes);
     if (slots >= count * 1.7) break;
-    if (!expandStreets(b, rng, pass)) {
+    if (!expandStreets(b, rng, pass, surface) && !expandStreets(b, rng, pass)) {
       if (slots >= count) break;
       continue;
     }
@@ -213,7 +239,7 @@ function generateRuralLayoutInner(
   }
 
   if (kept.length < count) {
-    const extraSegs = selectStreetCluster(b.segments, b.nodes, Math.ceil(count * 2.1), new Rng(seed ^ 0x222));
+    const extraSegs = selectStreetCluster(b.segments, b.nodes, Math.ceil(count * 3.2), new Rng(seed ^ 0x222));
     const extra = allocateFrontage(extraSegs, b.nodes, count * 3, new Rng(seed ^ 0x222), kept, b.segments);
     rejected.push(...extra.rejected);
     if (campaign && extra.lots.length) {
@@ -225,6 +251,17 @@ function generateRuralLayoutInner(
       if (kept.length >= count) break;
       if (kept.some((k) => k.id === lot.id)) continue;
       if (!placeCampaignLot(campaign, lot, rng, buildings, kept, corridors, publicSegs, b, used, pick, undefined, extra.lots, rejected, count)) {
+        continue;
+      }
+    }
+  }
+
+  if (kept.length < count) {
+    for (const lot of ordinaryLots) {
+      if (kept.length >= count) break;
+      if (lot.openSpaceName) continue;
+      if (kept.some((k) => k.id === lot.id)) continue;
+      if (!placeCampaignLot(campaign, lot, rng, buildings, kept, corridors, publicSegs, b, used, pick, assignedId.get(lot.id), pool, rejected, count)) {
         continue;
       }
     }
@@ -292,10 +329,16 @@ function generateRuralLayoutInner(
     maxX = Math.max(maxX, lot.x + lot.w + 1);
     maxY = Math.max(maxY, lot.y + lot.d + 1);
   }
+  minX = Math.min(minX, surface.ox);
+  minY = Math.min(minY, surface.oy);
+  maxX = Math.max(maxX, surface.ox + surface.cols * surface.cell);
+  maxY = Math.max(maxY, surface.oy + surface.rows * surface.cell);
 
   const terrain = emptyTerrain(minX - 2, minY - 2, maxX - minX + 4, maxY - minY + 4);
   applyTerrain(terrain, topology, minX, maxX);
-  ground.unshift(...fillWorldGround(minX - 1, minY - 1, maxX + 1, maxY + 1, seed, 6.2, biome));
+  enforceOpenCorridors(surface, network, kept, buildings);
+  stampDeveloped(surface, network, kept, ground);
+  finalizeStampedSurface(surface, biome, seed);
 
   if (campaign && urban) {
     const keptIds = new Set(kept.map(lot => lot.id));
@@ -350,10 +393,10 @@ function generateRuralLayoutInner(
       y: buildings.reduce((sum, building) => sum + building.y + building.d * building.cellSize * 0.5, 0) / buildings.length,
     }
     : undefined;
-  const spawn = pickSpawn(network, buildings, props, 0, undefined, campaign ? cluster : undefined);
-  const roadSpawn = pickSpawn(network, buildings, props, 1, spawn, campaign ? cluster : undefined);
+  const spawn = pickSpawn(network, buildings, props, 0, undefined, campaign ? cluster : undefined, surface);
+  const roadSpawn = pickSpawn(network, buildings, props, 1, spawn, campaign ? cluster : undefined, surface);
   const propBudget = campaign?.generation.dressingBudget ?? DRESSING.districtMax[id];
-  const features = placeTerrainFeatures({
+  const features = deriveTerrainFeatures({
     biome,
     seed,
     minX,
@@ -370,6 +413,7 @@ function generateRuralLayoutInner(
     roadSpawnX: roadSpawn.x,
     roadSpawnY: roadSpawn.y,
     propBudget,
+    surface,
   });
 
   return {
@@ -394,6 +438,7 @@ function generateRuralLayoutInner(
     seed,
     topology,
     biome,
+    surface,
     features,
     campaignLevel: campaign?.id,
     diagnostic: { ok: issues.length === 0 && kept.length === count, issues },
@@ -460,6 +505,7 @@ function selectStreetCluster(
   nodes: readonly RoadNode[],
   needSlots: number,
   rng: Rng,
+  grid?: SurfaceGrid,
 ): RoadSegment[] {
   const publicSegs = segments.filter((s) => s.roadClass !== "driveway" && s.roadClass !== "ramp");
   if (!publicSegs.length) return [];
@@ -509,7 +555,11 @@ function selectStreetCluster(
     let bestD = Infinity;
     for (const s of frontier) {
       const mid = samplePolyline(s.points, 0.5);
-      const d = (mid.x - cx) * (mid.x - cx) + (mid.y - cy) * (mid.y - cy);
+      let d = (mid.x - cx) * (mid.x - cx) + (mid.y - cy) * (mid.y - cy);
+      if (grid) {
+        const cost = meanRoadCost(grid, sampleSegmentCenterline(s));
+        d = d * 0.25 + (Number.isFinite(cost.mean) ? cost.mean : 8) * 40 + cost.reject * 12;
+      }
       if (d < bestD) {
         bestD = d;
         best = s;
@@ -613,6 +663,44 @@ function identityForIndex(
   if (i % 5 === 2 || (roadClass === "rural" && i % 4 === 1)) return "farm";
   if (i === count - 1) return "utility";
   return "residence";
+}
+
+function pickSkeleton(
+  grid: SurfaceGrid,
+  topology: TopologyFamily,
+  count: number,
+  originX: number,
+  originY: number,
+  seed: number,
+  campaign: CampaignLevelDef | undefined,
+): { builder: RoadBuilder; originX: number; originY: number } {
+  const shifts: { dx: number; dy: number }[] = [];
+  for (const dy of [0, -1, 1, -2, 2]) {
+    for (const dx of [0, -1, 1, -2, 2]) shifts.push({ dx, dy });
+  }
+  let best: { builder: RoadBuilder; originX: number; originY: number; reject: number; mean: number } | undefined;
+  for (const shift of shifts) {
+    const ox = originX + shift.dx;
+    const oy = originY + shift.dy;
+    const b = new RoadBuilder();
+    buildSkeleton(b, topology, count, ox, oy, new Rng(seed), campaign);
+    b.normalizeJunctions();
+    const samples: { x: number; y: number }[] = [];
+    for (const seg of b.segments) {
+      if (seg.roadClass === "driveway" || seg.roadClass === "ramp") continue;
+      samples.push(...sampleSegmentCenterline(seg));
+    }
+    const score = meanRoadCost(grid, samples);
+    if (
+      !best ||
+      score.reject < best.reject ||
+      (score.reject === best.reject && score.mean < best.mean)
+    ) {
+      best = { builder: b, originX: ox, originY: oy, reject: score.reject, mean: score.mean };
+    }
+    if (score.reject === 0 && estimateSlots(b.segments, b.nodes) >= count * 1.5) break;
+  }
+  return best ?? { builder: new RoadBuilder(), originX, originY };
 }
 
 function buildSkeleton(
@@ -819,6 +907,7 @@ function pickSpawn(
   pick: number,
   avoid?: { x: number; y: number },
   prefer?: { x: number; y: number },
+  grid?: SurfaceGrid,
 ): { x: number; y: number; heading: number } {
   const segs = network.segments.filter((s) => s.roadClass === "rural" || s.roadClass === "residential");
   const pool = segs.length ? segs : network.segments.filter((s) => s.roadClass !== "driveway");
@@ -828,6 +917,7 @@ function pickSpawn(
     for (const t of tries) {
       const p = samplePolyline(seg.points, t);
       if (avoid && len(p.x - avoid.x, p.y - avoid.y) < 6) continue;
+      if (grid && traversalAt(grid, p.x, p.y) !== "open") continue;
       if (clear(buildings, props, p.x, p.y)) candidates.push(p);
     }
   }
@@ -836,6 +926,16 @@ function pickSpawn(
   }
   const chosen = candidates[Math.min(pick, Math.max(0, candidates.length - 1))];
   if (chosen) return chosen;
+  if (grid) {
+    for (const seg of pool) {
+      for (let t = 0.05; t <= 0.95; t += 0.05) {
+        const p = samplePolyline(seg.points, t);
+        if (avoid && len(p.x - avoid.x, p.y - avoid.y) < 6) continue;
+        if (traversalAt(grid, p.x, p.y) !== "open") continue;
+        if (clear(buildings, props, p.x, p.y)) return p;
+      }
+    }
+  }
   const fallback = samplePolyline(pool[0]!.points, 0.4);
   return { x: fallback.x, y: fallback.y, heading: fallback.heading };
 }
@@ -899,6 +999,10 @@ function placeCampaignLot(
 ): boolean {
   lot.zone = zoneForIndex(kept.length, targetCount, lot.frontage.segmentId, b.segments);
   lot.identity = identityForIndex(kept.length, targetCount, lot.frontage.segmentId, b.segments, rng);
+  if (lot.boundary.length >= 3 && kept.some((k) => k.boundary.length >= 3 && convexOverlap(lot.boundary, k.boundary))) {
+    rejected.push({ kind: "lot", reason: "overlap", points: lot.boundary });
+    return false;
+  }
   if (campaign && assignedId) {
     const assigned = archetypeById(assignedId);
     const size = archetypeFootprint(assigned);

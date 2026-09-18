@@ -52,8 +52,8 @@ describe("terrain features", () => {
       const town = createTown({ district: "d10", seed: 0x51a11, topology });
       const report = validateTown(town);
       expect(report.issues, report.issues.map((i) => i.detail).join("; ")).toEqual([]);
-      expect(terrainTraversalAt(town.features, town.spawnX, town.spawnY)).toBe("open");
-      expect(terrainTraversalAt(town.features, town.roadSpawnX, town.roadSpawnY)).toBe("open");
+      expect(terrainTraversalAt(town.features, town.spawnX, town.spawnY, town.surface)).toBe("open");
+      expect(terrainTraversalAt(town.features, town.roadSpawnX, town.roadSpawnY, town.surface)).toBe("open");
     }
   });
 

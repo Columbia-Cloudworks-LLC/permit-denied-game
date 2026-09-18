@@ -10,7 +10,7 @@ export type BiomeId =
 
 export type FieldCropId = "corn" | "wheat" | "soy";
 export type FieldState = "tilled" | "short" | "mature" | "stubble";
-export type BiomeGroundCover = "grass" | "scrub" | "dirt";
+export type BiomeGroundCover = "grass" | "scrub" | "dirt" | "prairie" | "duff" | "leaf-litter";
 
 export interface BiomeProfile {
   id: BiomeId;
@@ -43,7 +43,7 @@ export const BIOME_PROFILES: Record<BiomeId, BiomeProfile> = {
     waterLikelihood: 0.72,
     forestDensity: 0.7,
     fieldDensity: 0.35,
-    groundCover: ["grass", "scrub", "dirt"],
+    groundCover: ["grass", "leaf-litter", "dirt"],
   },
   "northern-conifer": {
     id: "northern-conifer",
@@ -54,7 +54,7 @@ export const BIOME_PROFILES: Record<BiomeId, BiomeProfile> = {
     waterLikelihood: 0.8,
     forestDensity: 0.85,
     fieldDensity: 0.15,
-    groundCover: ["grass", "scrub"],
+    groundCover: ["duff", "scrub", "grass"],
   },
   "mixed-woodland": {
     id: "mixed-woodland",
@@ -65,7 +65,7 @@ export const BIOME_PROFILES: Record<BiomeId, BiomeProfile> = {
     waterLikelihood: 0.78,
     forestDensity: 0.75,
     fieldDensity: 0.3,
-    groundCover: ["grass", "scrub"],
+    groundCover: ["grass", "scrub", "leaf-litter"],
   },
   "agricultural-plain": {
     id: "agricultural-plain",
@@ -76,7 +76,7 @@ export const BIOME_PROFILES: Record<BiomeId, BiomeProfile> = {
     waterLikelihood: 0.45,
     forestDensity: 0.22,
     fieldDensity: 0.95,
-    groundCover: ["grass", "dirt"],
+    groundCover: ["prairie", "grass", "dirt"],
   },
 };
 

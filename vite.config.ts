@@ -65,12 +65,19 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["src/**/*.test.ts"],
-    testTimeout: 180_000,
-    hookTimeout: 180_000,
-    teardownTimeout: 180_000,
-    // Vitest 3.2 birpc ACKs time out at 60s. Windows CI plus the 20-minute
-    // sandbox bench starves the host and fails a green run with
-    // Timeout calling "onTaskUpdate".
-    ...(process.env.CI && process.platform === "win32" ? { maxWorkers: 1 } : {}),
+    testTimeout: 240_000,
+    hookTimeout: 240_000,
+    teardownTimeout: 240_000,
+    // Vitest 3.2 birpc ACKs time out at 60s. The accelerated 20-minute sandbox
+    // is CPU-bound; extra workers on GitHub-hosted runners starve it, and
+    // suite-level onTaskUpdate still exceeds 60s even when cases are sliced.
+    // Disable the worker RPC timeout and run a single worker in CI.
+    pool: "forks",
+    poolOptions: {
+      forks: {
+        execArgv: ["--import", new URL("./scripts/vitest-rpc-timeout.mjs", import.meta.url).href],
+      },
+    },
+    ...(process.env.CI ? { maxWorkers: 1 } : {}),
   },
 });

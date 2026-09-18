@@ -75,10 +75,14 @@ export interface LeverReport {
   ok: boolean;
 }
 
-function ranchOf(town: ReturnType<typeof createTown>): Building {
-  const ranch = town.buildings.find((b) => b.archetypeId === "ranch");
-  if (!ranch) throw new Error("d10 town has no ranch");
-  return ranch;
+function ranchTown(): { town: ReturnType<typeof createTown>; ranch: Building; seed: number } {
+  const seeds = [DEFAULT_DISTRICT_SEEDS.d10, 0, 1, 3, 7, 11, 19, 77, 101, 0x51a11];
+  for (const seed of seeds) {
+    const town = createTown({ district: "d10", seed });
+    const ranch = town.buildings.find((b) => b.archetypeId === "ranch");
+    if (ranch) return { town, ranch, seed };
+  }
+  throw new Error("d10 town has no ranch");
 }
 
 function smash(building: Building, particles: ParticlePool, gx: number, gy: number, floor = 0): void {
@@ -349,9 +353,7 @@ ${cards}
 }
 
 export function runRanchLever(outDir = RANCH_LEVER_DIR): LeverReport {
-  const seed = DEFAULT_DISTRICT_SEEDS.d10;
-  const town = createTown({ district: "d10", seed });
-  const ranch = ranchOf(town);
+  const { town, ranch, seed } = ranchTown();
   const particles = new ParticlePool();
   const dozer = createDozer(ranch.x + (ranch.w * ranch.cellSize) * 0.5, ranch.y + ranch.d * ranch.cellSize + 3.4, -Math.PI / 2);
   let tick = 0;
@@ -401,7 +403,9 @@ export function runRanchLever(outDir = RANCH_LEVER_DIR): LeverReport {
   phases.push(capture("near-total", "near-total", "rubble", tick, ranch));
 
   const resetTown = createTown({ district: "d10", seed });
-  phases.push(capture("reset", "reset", "closed", 0, ranchOf(resetTown)));
+  const resetRanch = resetTown.buildings.find((b) => b.archetypeId === "ranch");
+  if (!resetRanch) throw new Error("d10 town has no ranch");
+  phases.push(capture("reset", "reset", "closed", 0, resetRanch));
 
   const failed: LeverReport["failed"] = [];
   for (const phase of phases) {

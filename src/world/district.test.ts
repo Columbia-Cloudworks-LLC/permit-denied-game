@@ -45,6 +45,8 @@ describe("district generation", () => {
     expect(town.buildings).toHaveLength(100);
     expect(town.props.length).toBeGreaterThan(40);
     expect(town.ground.length).toBeGreaterThan(20);
+    expect(town.surface.cols * town.surface.rows).toBeGreaterThan(20);
+    expect(town.ground.some((g) => g.w === 6.2 || g.z === -0.02)).toBe(false);
     expect(town.network.segments.length).toBeGreaterThan(3);
     const report = validateTown(town);
     expect(report.issues, report.issues.map((i) => i.detail).join("; ")).toEqual([]);

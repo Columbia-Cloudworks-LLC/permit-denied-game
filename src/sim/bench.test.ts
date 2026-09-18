@@ -11,6 +11,12 @@ import { stepWorld, type Upgrades } from "./worldSim";
 
 const upgrades: Upgrades = { blade: 0, engine: 0, push: 0 };
 
+/** Give the forked Vitest worker a full event-loop turn so `onTaskUpdate` ACKs
+ *  can run. A 0ms timer resumes in the timers phase, before poll. */
+function pumpVitestRpc(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 15));
+}
+
 function percentile(values: number[], p: number): number {
   const sorted = [...values].sort((a, b) => a - b);
   const i = Math.min(sorted.length - 1, Math.max(0, Math.ceil((p / 100) * sorted.length) - 1));
@@ -58,7 +64,7 @@ function smashNearest(town: ReturnType<typeof createTown>, n: number): void {
 }
 
 describe("district simulation benches", () => {
-  it("measures intact, collapse, push, and revisit costs", { timeout: 120_000 }, () => {
+  it("measures intact, collapse, push, and revisit costs", { timeout: 120_000 }, async () => {
     const districts: DistrictId[] = ["classic", "d10", "d30", "d100"];
     for (const district of districts) {
       const town = createTown({ district, seed: 9 });
@@ -84,10 +90,11 @@ describe("district simulation benches", () => {
       dozer.y = town.buildings[0]!.y + 1;
       report(`${district} revisit`, timeSteps(town, dozer, 90, false));
       expect(totalDebrisMass(town)).toBeGreaterThanOrEqual(0);
+      await pumpVitestRpc();
     }
   });
 
-  it("accelerates a 20-minute classic sandbox without losing wreckage", { timeout: 180_000 }, async () => {
+  it("accelerates a 20-minute classic sandbox without losing wreckage", { timeout: 240_000 }, async () => {
     const town = createTown();
     const dozer = createDozer(town.spawnX, town.spawnY, town.spawnHeading);
     const particles = new ParticlePool();
@@ -96,6 +103,7 @@ describe("district simulation benches", () => {
     const stride = 12;
     let lastMass = 0;
     const samples: number[] = [];
+    await pumpVitestRpc();
     for (let i = 0; i < steps; i += stride) {
       if (i === Math.floor(steps * 0.05)) smashNearest(town, 2);
       if (i === Math.floor(steps * 0.2)) {
@@ -115,8 +123,7 @@ describe("district simulation benches", () => {
       for (let k = 0; k < stride; k++) stepWorld(town, dozer, particles, upgrades, SIM_DT);
       samples.push((performance.now() - t0) / stride);
       lastMass = totalDebrisMass(town);
-      // Yield so the Vitest worker can answer RPC (birpc defaults to 60s).
-      if (samples.length % 80 === 0) await new Promise((resolve) => setTimeout(resolve, 0));
+      if (samples.length % 80 === 0) await pumpVitestRpc();
     }
     report("classic 20min accelerated (per step)", samples);
     expect(lastMass).toBeGreaterThan(0.5);
