@@ -382,12 +382,14 @@ export function stepWorld(
         dozer.vy *= 0.28;
       }
     }
-    const churnPts = [...bladePoints(dozer), { x: dozer.x, y: dozer.y }];
-    const flattened = churnFieldsUnder(town.features, churnPts, dozer.bladeDown ? 0.75 : 0.48);
-    if (flattened > 0) {
-      town.featureRevision += 1;
-      particles.burst("dust", dozer.x, dozer.y, 0.28, 0.45 + flattened * 0.02);
-      particles.burst("wood", dozer.x, dozer.y, 0.36, 0.28);
+    if (town.features.some((feature) => feature.kind === "field")) {
+      const churnPts = [...bladePoints(dozer), { x: dozer.x, y: dozer.y }];
+      const flattened = churnFieldsUnder(town.features, churnPts, dozer.bladeDown ? 0.75 : 0.48);
+      if (flattened > 0) {
+        town.featureRevision += 1;
+        particles.burst("dust", dozer.x, dozer.y, 0.28, 0.45 + flattened * 0.02);
+        particles.burst("wood", dozer.x, dozer.y, 0.36, 0.28);
+      }
     }
   }
   particles.step(dt);

@@ -235,9 +235,9 @@ export function lotCostAt(grid: SurfaceGrid, x: number, y: number, identity: Lot
 }
 
 export function traversalAt(grid: SurfaceGrid, x: number, y: number): "open" | "water" | "forest-core" {
-  const surface = surfaceAt(grid, x, y);
-  if (surface === "water") return "water";
-  if (surface === "forest-core") return "forest-core";
+  const id = surfaceIdAt(grid, x, y);
+  if (id === SURFACE_ID.water) return "water";
+  if (id === SURFACE_ID["forest-core"]) return "forest-core";
   return "open";
 }
 

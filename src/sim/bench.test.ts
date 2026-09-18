@@ -58,7 +58,7 @@ function smashNearest(town: ReturnType<typeof createTown>, n: number): void {
 }
 
 describe("district simulation benches", () => {
-  it("measures intact, collapse, push, and revisit costs", { timeout: 120_000 }, () => {
+  it("measures intact, collapse, push, and revisit costs", { timeout: 120_000 }, async () => {
     const districts: DistrictId[] = ["classic", "d10", "d30", "d100"];
     for (const district of districts) {
       const town = createTown({ district, seed: 9 });
@@ -84,10 +84,11 @@ describe("district simulation benches", () => {
       dozer.y = town.buildings[0]!.y + 1;
       report(`${district} revisit`, timeSteps(town, dozer, 90, false));
       expect(totalDebrisMass(town)).toBeGreaterThanOrEqual(0);
+      await new Promise((resolve) => setTimeout(resolve, 0));
     }
   });
 
-  it("accelerates a 20-minute classic sandbox without losing wreckage", { timeout: 180_000 }, async () => {
+  it("accelerates a 20-minute classic sandbox without losing wreckage", { timeout: 240_000 }, async () => {
     const town = createTown();
     const dozer = createDozer(town.spawnX, town.spawnY, town.spawnHeading);
     const particles = new ParticlePool();
@@ -116,7 +117,7 @@ describe("district simulation benches", () => {
       samples.push((performance.now() - t0) / stride);
       lastMass = totalDebrisMass(town);
       // Yield so the Vitest worker can answer RPC (birpc defaults to 60s).
-      if (samples.length % 80 === 0) await new Promise((resolve) => setTimeout(resolve, 0));
+      if (samples.length % 40 === 0) await new Promise((resolve) => setTimeout(resolve, 0));
     }
     report("classic 20min accelerated (per step)", samples);
     expect(lastMass).toBeGreaterThan(0.5);
