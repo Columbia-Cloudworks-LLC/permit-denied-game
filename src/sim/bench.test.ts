@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { SIM_DT } from "../game/constants";
 import { ParticlePool } from "../fx/particles";
 import { applyCellDamage } from "../structure/building";
@@ -94,64 +94,41 @@ describe("district simulation benches", () => {
     }
   });
 
-  describe("accelerates a 20-minute classic sandbox without losing wreckage", () => {
+  it("accelerates a 20-minute classic sandbox without losing wreckage", { timeout: 240_000 }, async () => {
+    const town = createTown();
+    const dozer = createDozer(town.spawnX, town.spawnY, town.spawnHeading);
+    const particles = new ParticlePool();
     const minutes = 20;
     const steps = Math.floor((minutes * 60) / SIM_DT);
     const stride = 12;
-    const slices = 8;
-    const smashAt = {
-      early: Math.floor(steps * 0.05 / stride) * stride,
-      debris: Math.floor(steps * 0.2 / stride) * stride,
-      late: Math.floor(steps * 0.45 / stride) * stride,
-    };
-    let town: ReturnType<typeof createTown>;
-    let dozer: ReturnType<typeof createDozer>;
-    let particles: ParticlePool;
     let lastMass = 0;
     const samples: number[] = [];
-
-    beforeAll(() => {
-      town = createTown();
-      dozer = createDozer(town.spawnX, town.spawnY, town.spawnHeading);
-      particles = new ParticlePool();
-    });
-
-    for (let slice = 0; slice < slices; slice++) {
-      const start = Math.floor((steps * slice) / slices / stride) * stride;
-      const end = slice === slices - 1
-        ? Math.floor(steps / stride) * stride
-        : Math.floor((steps * (slice + 1)) / slices / stride) * stride;
-      const last = slice === slices - 1;
-      it(`slice ${slice + 1}/${slices}`, { timeout: 90_000 }, async () => {
-        await pumpVitestRpc();
-        for (let i = start; i < end; i += stride) {
-          if (i === smashAt.early) smashNearest(town, 2);
-          if (i === smashAt.debris) {
-            spawnCollapseDebris(town, {
-              x: 12,
-              y: 18,
-              dx: 1,
-              dy: 0,
-              material: "concrete",
-              floor: 1,
-              cellSize: 1.15,
-            });
-          }
-          if (i === smashAt.late) smashNearest(town, 5);
-          stepDozer(dozer, { throttle: 0.4, steer: 0.05, blade: true, engineMul: 1, bladeMul: 1, pushMul: 1 }, SIM_DT);
-          const t0 = performance.now();
-          for (let k = 0; k < stride; k++) stepWorld(town, dozer, particles, upgrades, SIM_DT);
-          samples.push((performance.now() - t0) / stride);
-          lastMass = totalDebrisMass(town);
-          if (samples.length % 20 === 0) await pumpVitestRpc();
-        }
-        if (!last) return;
-        report("classic 20min accelerated (per step)", samples);
-        expect(lastMass).toBeGreaterThan(0.5);
-        expect(town.buildings.some((b) => b.fullyDown || b.cells.some((c) => c.state !== "intact"))).toBe(true);
-        expect(town.rubble.length).toBeLessThanOrEqual(DEBRIS.remnantCap + DEBRIS.fragmentCap + DEBRIS.hardOverflow);
-        expect(town.collapsedSites.length).toBe(town.buildings.filter((b) => b.fullyDown).length);
-      });
+    await pumpVitestRpc();
+    for (let i = 0; i < steps; i += stride) {
+      if (i === Math.floor(steps * 0.05)) smashNearest(town, 2);
+      if (i === Math.floor(steps * 0.2)) {
+        spawnCollapseDebris(town, {
+          x: 12,
+          y: 18,
+          dx: 1,
+          dy: 0,
+          material: "concrete",
+          floor: 1,
+          cellSize: 1.15,
+        });
+      }
+      if (i === Math.floor(steps * 0.45)) smashNearest(town, 5);
+      stepDozer(dozer, { throttle: 0.4, steer: 0.05, blade: true, engineMul: 1, bladeMul: 1, pushMul: 1 }, SIM_DT);
+      const t0 = performance.now();
+      for (let k = 0; k < stride; k++) stepWorld(town, dozer, particles, upgrades, SIM_DT);
+      samples.push((performance.now() - t0) / stride);
+      lastMass = totalDebrisMass(town);
+      if (samples.length % 80 === 0) await pumpVitestRpc();
     }
+    report("classic 20min accelerated (per step)", samples);
+    expect(lastMass).toBeGreaterThan(0.5);
+    expect(town.buildings.some((b) => b.fullyDown || b.cells.some((c) => c.state !== "intact"))).toBe(true);
+    expect(town.rubble.length).toBeLessThanOrEqual(DEBRIS.remnantCap + DEBRIS.fragmentCap + DEBRIS.hardOverflow);
+    expect(town.collapsedSites.length).toBe(town.buildings.filter((b) => b.fullyDown).length);
   });
 });

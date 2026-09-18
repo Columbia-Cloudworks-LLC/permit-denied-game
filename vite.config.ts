@@ -69,9 +69,15 @@ export default defineConfig({
     hookTimeout: 240_000,
     teardownTimeout: 240_000,
     // Vitest 3.2 birpc ACKs time out at 60s. The accelerated 20-minute sandbox
-    // is CPU-bound; extra workers on GitHub-hosted runners starve it. That
-    // bench is split into eight slices so each test finishes before the RPC
-    // timeout, and CI runs a single worker.
+    // is CPU-bound; extra workers on GitHub-hosted runners starve it, and
+    // suite-level onTaskUpdate still exceeds 60s even when cases are sliced.
+    // Disable the worker RPC timeout and run a single worker in CI.
+    pool: "forks",
+    poolOptions: {
+      forks: {
+        execArgv: ["--import", new URL("./scripts/vitest-rpc-timeout.mjs", import.meta.url).href],
+      },
+    },
     ...(process.env.CI ? { maxWorkers: 1 } : {}),
   },
 });
