@@ -447,14 +447,52 @@ function forestFromBlob(grid: SurfaceGrid, cells: number[], n: number): ForestFe
 
 function fieldFromBlob(grid: SurfaceGrid, cells: number[], ctx: FeatureContext, n: number): FieldFeature | undefined {
   if (cells.length < 10) return undefined;
-  const xs = cells.map((i) => grid.ox + (i % grid.cols));
-  const ys = cells.map((i) => grid.oy + ((i / grid.cols) | 0));
-  const x = Math.min(...xs);
-  const y = Math.min(...ys);
-  const w = Math.max(3.2, Math.max(...xs) - x + 1);
-  const d = Math.max(3.2, Math.max(...ys) - y + 1);
+  const cellSet = new Set(cells);
+  const blocked = (x: number, y: number): boolean => {
+    if (pointOnRoad(ctx.network, x, y)) return true;
+    for (const lot of ctx.lots) {
+      if (x >= lot.x && y >= lot.y && x <= lot.x + lot.w && y <= lot.y + lot.d) return true;
+    }
+    for (const building of ctx.buildings) {
+      const bw = building.w * building.cellSize;
+      const bd = building.d * building.cellSize;
+      if (x >= building.x - 1.6 && y >= building.y - 1.6 && x <= building.x + bw + 1.6 && y <= building.y + bd + 1.6) return true;
+    }
+    for (const prop of ctx.props) {
+      if (x >= prop.x - 1.2 && y >= prop.y - 1.2 && x <= prop.x + prop.w + 1.2 && y <= prop.y + prop.d + 1.2) return true;
+    }
+    return false;
+  };
+  let bestI = -1;
+  let bestN = -1;
+  for (const i of cells) {
+    const ix = i % grid.cols;
+    const iy = (i / grid.cols) | 0;
+    const x = grid.ox + ix + 0.5;
+    const y = grid.oy + iy + 0.5;
+    if (x < ctx.minX + 2 || y < ctx.minY + 2 || x > ctx.maxX - 2 || y > ctx.maxY - 2) continue;
+    if (blocked(x, y)) continue;
+    let n4 = 0;
+    for (let dy = -2; dy <= 2; dy++) {
+      for (let dx = -3; dx <= 3; dx++) {
+        const nx = ix + dx;
+        const ny = iy + dy;
+        if (nx < 0 || ny < 0 || nx >= grid.cols || ny >= grid.rows) continue;
+        if (cellSet.has(ny * grid.cols + nx)) n4++;
+      }
+    }
+    if (n4 > bestN) {
+      bestN = n4;
+      bestI = i;
+    }
+  }
+  if (bestI < 0) bestI = cells[0]!;
+  const cx = grid.ox + (bestI % grid.cols) + 0.5;
+  const cy = grid.oy + ((bestI / grid.cols) | 0) + 0.5;
+  const w = 8;
+  const d = 6;
   const rng = new Rng(ctx.seed ^ FIELD_SALT ^ (n * 13));
-  return makeField(x, y, w, d, w >= d ? 0 : Math.PI / 2, rng, ctx.biome, `field-${n}`);
+  return makeField(cx - w * 0.5, cy - d * 0.5, w, d, 0, rng, ctx.biome, `field-${n}`);
 }
 
 function outlineAround(pts: { x: number; y: number }[], cx: number, cy: number): { x: number; y: number }[] {

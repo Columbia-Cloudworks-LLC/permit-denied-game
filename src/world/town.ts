@@ -25,6 +25,7 @@ import { deriveTerrainFeatures, type TerrainFeature } from "./terrainFeatures";
 import {
   emptyGrassGrid,
   enforceOpenCorridors,
+  finalizeStampedSurface,
   generateSurfaceGrid,
   stampDeveloped,
   type SurfaceGrid,
@@ -231,6 +232,7 @@ function createClassicTown(seed: number, showcase = false): Town {
   enforceOpenCorridors(surface, network, lots, buildings);
   stampDeveloped(surface, network, lots, ground);
   const biome = defaultBiome();
+  finalizeStampedSurface(surface, biome, seed);
   const features = showcase
     ? []
     : deriveTerrainFeatures({

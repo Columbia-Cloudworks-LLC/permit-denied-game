@@ -521,8 +521,7 @@ export function expandStreets(b: RoadBuilder, rng: Rng, pass: number, grid?: Sur
     const reach = deadEnd ? lenOut * 0.72 : lenOut;
     const ex = p.x + Math.cos(heading) * reach;
     const ey = p.y + Math.sin(heading) * reach;
-    if (grid && expansionRejected(grid, p.x, p.y, ex, ey)) continue;
-    const cost = grid ? expansionCost(grid, p.x, p.y, ex, ey) : 1;
+    const cost = grid ? finiteExpansionCost(grid, p.x, p.y, ex, ey) : 1;
     if (best && cost >= best.cost) continue;
     const cand: Candidate = {
       host,
@@ -535,7 +534,7 @@ export function expandStreets(b: RoadBuilder, rng: Rng, pass: number, grid?: Sur
     if (!deadEnd && (pass + h) % 3 === 0 && ranked.length > 1) {
       const other = ranked[(pass + h + 1) % ranked.length]!;
       const q = samplePolyline(other.points, clamp(1 - t, 0.18, 0.82));
-      if (other.layer === host.layer && (!grid || !expansionRejected(grid, ex, ey, q.x, q.y))) {
+      if (other.layer === host.layer) {
         cand.other = { seg: other, q };
       }
     }
@@ -554,23 +553,14 @@ export function expandStreets(b: RoadBuilder, rng: Rng, pass: number, grid?: Sur
   return true;
 }
 
-function expansionRejected(grid: SurfaceGrid, x0: number, y0: number, x1: number, y1: number): boolean {
-  const dist = Math.hypot(x1 - x0, y1 - y0);
-  const n = Math.max(2, Math.ceil(dist));
-  for (let i = 0; i <= n; i++) {
-    const t = i / n;
-    if (!Number.isFinite(roadCostAt(grid, x0 + (x1 - x0) * t, y0 + (y1 - y0) * t))) return true;
-  }
-  return false;
-}
-
-function expansionCost(grid: SurfaceGrid, x0: number, y0: number, x1: number, y1: number): number {
+function finiteExpansionCost(grid: SurfaceGrid, x0: number, y0: number, x1: number, y1: number): number {
   const dist = Math.hypot(x1 - x0, y1 - y0);
   const n = Math.max(2, Math.ceil(dist));
   let sum = 0;
   for (let i = 0; i <= n; i++) {
     const t = i / n;
-    sum += roadCostAt(grid, x0 + (x1 - x0) * t, y0 + (y1 - y0) * t);
+    const c = roadCostAt(grid, x0 + (x1 - x0) * t, y0 + (y1 - y0) * t);
+    sum += Number.isFinite(c) ? c : 12;
   }
   return sum / (n + 1);
 }

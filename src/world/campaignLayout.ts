@@ -17,7 +17,7 @@ import {
 } from './roads';
 import { defaultBiome } from './biomes';
 import { DRESSING } from '../game/constants';
-import { enforceOpenCorridors, generateSurfaceGrid, stampDeveloped } from './terrain';
+import { enforceOpenCorridors, finalizeStampedSurface, generateSurfaceGrid, stampDeveloped } from './terrain';
 import { deriveTerrainFeatures } from './terrainFeatures';
 import type { RuralLayout } from './rural';
 import { generateRuralLayout } from './rural';
@@ -137,6 +137,7 @@ function generateEstateLayout(level: CampaignLevelDef, seed: number): RuralLayou
   const ground: GroundPatch[] = [];
   enforceOpenCorridors(surface, network, lots, buildings);
   stampDeveloped(surface, network, lots, ground);
+  finalizeStampedSurface(surface, biome, seed);
   const spawn = samplePolyline(network.segments.find(seg => seg.roadClass === 'rural')?.points ?? network.segments[0]!.points, 0.2);
   const features = deriveTerrainFeatures({
     biome,

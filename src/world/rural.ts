@@ -18,6 +18,7 @@ import {
   expandStreets,
   placeBuildingInLot,
   runWithParcelProfile,
+  convexOverlap,
   type NhoodDebug,
   type NhoodReject,
 } from "./parcels";
@@ -59,11 +60,10 @@ import {
   estimateRuralSurfaceBounds,
   enforceOpenCorridors,
   generateSurfaceGrid,
-  lotEnvelopeRejected,
   meanRoadCost,
   sampleSegmentCenterline,
-  segmentTouchesReject,
   stampDeveloped,
+  finalizeStampedSurface,
   traversalAt,
   type SurfaceGrid,
 } from "./terrain";
@@ -176,18 +176,16 @@ function generateRuralLayoutInner(
   const { builder: b, originX: usedOx, originY: usedOy } = pickSkeleton(surface, topology, count, originX, originY, seed, campaign);
   void usedOx;
   void usedOy;
-  dropRejectSegments(b, surface, count);
 
   for (let pass = 0; pass <= (campaign?.generation.parcel.maxExpand ?? PARCEL.maxExpand); pass++) {
     const slots = estimateSlots(b.segments, b.nodes);
     if (slots >= count * 1.7) break;
-    if (!expandStreets(b, rng, pass, surface)) {
+    if (!expandStreets(b, rng, pass, surface) && !expandStreets(b, rng, pass)) {
       if (slots >= count) break;
       continue;
     }
     b.normalizeJunctions();
   }
-  dropRejectSegments(b, surface, count);
 
   const clusterRng = new Rng(seed ^ 0x51a11);
   const developed = selectStreetCluster(
@@ -195,7 +193,6 @@ function generateRuralLayoutInner(
     b.nodes,
     campaign ? Math.ceil(count * 2.4) + 4 : Math.ceil(count * 1.7) + 6,
     clusterRng,
-    surface,
   );
   const alloc = allocateFrontage(developed, b.nodes, campaign ? count * 4 : count * 3, new Rng(seed ^ 0x51a11), [], b.segments);
   const pool = campaign
@@ -236,13 +233,13 @@ function generateRuralLayoutInner(
     if (kept.length >= count) break;
     if (lot.openSpaceName) continue;
     if (kept.some(k => k.id === lot.id)) continue;
-    if (!placeCampaignLot(campaign, lot, rng, buildings, kept, corridors, publicSegs, b, used, pick, assignedId.get(lot.id), pool, rejected, count, surface)) {
+    if (!placeCampaignLot(campaign, lot, rng, buildings, kept, corridors, publicSegs, b, used, pick, assignedId.get(lot.id), pool, rejected, count)) {
       continue;
     }
   }
 
   if (kept.length < count) {
-    const extraSegs = selectStreetCluster(b.segments, b.nodes, Math.ceil(count * 2.1), new Rng(seed ^ 0x222), surface);
+    const extraSegs = selectStreetCluster(b.segments, b.nodes, Math.ceil(count * 3.2), new Rng(seed ^ 0x222));
     const extra = allocateFrontage(extraSegs, b.nodes, count * 3, new Rng(seed ^ 0x222), kept, b.segments);
     rejected.push(...extra.rejected);
     if (campaign && extra.lots.length) {
@@ -253,7 +250,18 @@ function generateRuralLayoutInner(
     for (const lot of extra.lots) {
       if (kept.length >= count) break;
       if (kept.some((k) => k.id === lot.id)) continue;
-      if (!placeCampaignLot(campaign, lot, rng, buildings, kept, corridors, publicSegs, b, used, pick, undefined, extra.lots, rejected, count, surface)) {
+      if (!placeCampaignLot(campaign, lot, rng, buildings, kept, corridors, publicSegs, b, used, pick, undefined, extra.lots, rejected, count)) {
+        continue;
+      }
+    }
+  }
+
+  if (kept.length < count) {
+    for (const lot of ordinaryLots) {
+      if (kept.length >= count) break;
+      if (lot.openSpaceName) continue;
+      if (kept.some((k) => k.id === lot.id)) continue;
+      if (!placeCampaignLot(campaign, lot, rng, buildings, kept, corridors, publicSegs, b, used, pick, assignedId.get(lot.id), pool, rejected, count)) {
         continue;
       }
     }
@@ -321,11 +329,16 @@ function generateRuralLayoutInner(
     maxX = Math.max(maxX, lot.x + lot.w + 1);
     maxY = Math.max(maxY, lot.y + lot.d + 1);
   }
+  minX = Math.min(minX, surface.ox);
+  minY = Math.min(minY, surface.oy);
+  maxX = Math.max(maxX, surface.ox + surface.cols * surface.cell);
+  maxY = Math.max(maxY, surface.oy + surface.rows * surface.cell);
 
   const terrain = emptyTerrain(minX - 2, minY - 2, maxX - minX + 4, maxY - minY + 4);
   applyTerrain(terrain, topology, minX, maxX);
   enforceOpenCorridors(surface, network, kept, buildings);
   stampDeveloped(surface, network, kept, ground);
+  finalizeStampedSurface(surface, biome, seed);
 
   if (campaign && urban) {
     const keptIds = new Set(kept.map(lot => lot.id));
@@ -545,8 +558,7 @@ function selectStreetCluster(
       let d = (mid.x - cx) * (mid.x - cx) + (mid.y - cy) * (mid.y - cy);
       if (grid) {
         const cost = meanRoadCost(grid, sampleSegmentCenterline(s));
-        if (cost.reject) d = Infinity;
-        else d = d * 0.25 + cost.mean * 40;
+        d = d * 0.25 + (Number.isFinite(cost.mean) ? cost.mean : 8) * 40 + cost.reject * 12;
       }
       if (d < bestD) {
         bestD = d;
@@ -651,18 +663,6 @@ function identityForIndex(
   if (i % 5 === 2 || (roadClass === "rural" && i % 4 === 1)) return "farm";
   if (i === count - 1) return "utility";
   return "residence";
-}
-
-function dropRejectSegments(b: RoadBuilder, grid: SurfaceGrid, minSlots: number): void {
-  const ids = new Set<string>();
-  for (const seg of b.segments) {
-    if (seg.roadClass === "driveway" || seg.roadClass === "ramp") continue;
-    if (segmentTouchesReject(grid, seg)) ids.add(seg.id);
-  }
-  if (!ids.size) return;
-  const remaining = b.segments.filter((s) => s.roadClass === "driveway" || s.roadClass === "ramp" || !ids.has(s.id));
-  if (estimateSlots(remaining, b.nodes) < minSlots) return;
-  b.dropRejectedPublic(ids);
 }
 
 function pickSkeleton(
@@ -996,12 +996,11 @@ function placeCampaignLot(
   neighbors: Lot[],
   rejected: NhoodReject[],
   targetCount: number,
-  surface?: SurfaceGrid,
 ): boolean {
   lot.zone = zoneForIndex(kept.length, targetCount, lot.frontage.segmentId, b.segments);
   lot.identity = identityForIndex(kept.length, targetCount, lot.frontage.segmentId, b.segments, rng);
-  if (surface && lotEnvelopeRejected(surface, lot)) {
-    rejected.push({ kind: "lot", reason: "terrain", points: lot.boundary });
+  if (lot.boundary.length >= 3 && kept.some((k) => k.boundary.length >= 3 && convexOverlap(lot.boundary, k.boundary))) {
+    rejected.push({ kind: "lot", reason: "overlap", points: lot.boundary });
     return false;
   }
   if (campaign && assignedId) {

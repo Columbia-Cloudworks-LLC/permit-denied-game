@@ -264,6 +264,7 @@ export function generateSurfaceGrid(opts: GenerateSurfaceOpts): SurfaceGrid {
   ensureBiomeThirds(grid, opts.biome, seed);
   dropSmallComponents(grid, 8);
   paintWetEdge(grid);
+  dropSmallComponents(grid, 8);
   fillVariants(grid, seed);
   return grid;
 }
@@ -282,7 +283,6 @@ export function lotEnvelopeRejected(grid: SurfaceGrid, lot: { x: number; y: numb
       const surface = surfaceAt(grid, x, y);
       if (surface === "water" || surface === "forest-core") bad++;
       else if (surface === "field" && lot.identity !== "farm") bad++;
-      else if (surface === "wet-edge") bad++;
     }
   }
   return total > 0 && bad / total > 0.25;
@@ -391,6 +391,13 @@ export function stampDeveloped(
     }
   }
   grid.stampRevision++;
+}
+
+export function finalizeStampedSurface(grid: SurfaceGrid, biome: BiomeProfile, seed: number): void {
+  ensureBiomeThirds(grid, biome, (seed ^ TERRAIN_GEN_VERSION) >>> 0);
+  dropSmallComponents(grid, 8);
+  paintWetEdge(grid);
+  dropSmallComponents(grid, 8);
 }
 
 export function isolatedBaseCellCount(grid: SurfaceGrid): number {
@@ -886,7 +893,7 @@ function growSurfaceToQuota(
 function adjacentToDeveloped(grid: SurfaceGrid, i: number): boolean {
   const ix = i % grid.cols;
   const iy = (i / grid.cols) | 0;
-  for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+  for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]] as const) {
     const j = cellIndex(grid, ix + dx, iy + dy);
     if (j >= 0 && grid.surface[j] === SURFACE_ID.developed) return true;
   }
@@ -900,6 +907,7 @@ function paintWetEdge(grid: SurfaceGrid): void {
       const i = iy * grid.cols + ix;
       if (grid.surface[i] === SURFACE_ID.water) continue;
       if (grid.surface[i] === SURFACE_ID["forest-core"]) continue;
+      if (grid.surface[i] === SURFACE_ID.developed) continue;
       let wet = false;
       for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
         const j = cellIndex(grid, ix + dx, iy + dy);

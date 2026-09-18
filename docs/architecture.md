@@ -106,7 +106,7 @@ Density budgets live in `DRESSING`: per-lot caps and per-district maxima (`class
 
 ## Road graph (foundation)
 
-`src/world/roads.ts` is the source of truth for the graph. Districts are generated **terrain-first** (`src/world/rural.ts`): bounds, biome, and surface grid, then an orthogonal block-grid skeleton scored by `roadCostAt`, then frontage parcels (`lotCostAt` rejects water / forest-core / non-farm field), then buildings, developed stamp, and features derived from the grid. `town.roads` AABB boxes are a derived compatibility view. Classic Rivertown and the Governor's estate keep authored building and road positions and stamp developed cells afterward.
+`src/world/roads.ts` is the source of truth for the graph. Districts are generated **terrain-first** (`src/world/rural.ts`): bounds, biome, and surface grid, then an orthogonal block-grid skeleton scored by `roadCostAt`, then frontage parcels, then buildings. Water and forest-core under retained streets and lots convert to grass (`enforceOpenCorridors`) before the developed stamp; features are derived from the stamped grid. `town.roads` AABB boxes are a derived compatibility view. Classic Rivertown and the Governor's estate keep authored building and road positions and stamp developed cells afterward.
 
 Types: `RoadNode`, `RoadSegment` (polyline + class + width + layer + elevation), `Lane`, `RoadAccess`, `TerrainField`. Queries: `roadSurfaceAt`, `terrainHeightAt`, `nearestRoadAccess`, `projectPointToRoad`, `connectedLanes`, `canTransitionBetweenSurfaces`, `findRoadRoute`, `publicStreetsReachable`. A spatial hash indexes segments so vehicles do not scan the whole graph each step. `invalidateNetworkIndex` clears that cache after a finished network is mutated.
 
