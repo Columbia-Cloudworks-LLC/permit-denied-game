@@ -10,6 +10,7 @@ import { defaultDebugView } from "../debug/view";
 import { drawDebugOverlay } from "./debugOverlay";
 import { Container, Graphics, Text } from "pixi.js";
 import { emptyGrassGrid, TERRAIN_GEN_VERSION } from "../world/terrain";
+import { drawForestGarnish, planForestGarnish, type ForestGarnish } from "./forestCanopy";
 import { buildTerrainChunks, chunkCount, ensureTerrainAtlas, terrainAtlasRevision } from "./terrainTiles";
 import { DOZER, FLOOR_Z } from "../game/constants";
 import { Rng } from "../game/rng";
@@ -91,6 +92,8 @@ export class WorldRenderer {
   private viewH = 1;
   private groundKey = "";
   private terrainKey = "";
+  private garnishKey = "";
+  private garnish: ForestGarnish[] = [];
   private overlayKey = "";
   private siteKey = "";
   stats = {
@@ -118,6 +121,8 @@ export class WorldRenderer {
     this.drawing.clear();
     this.groundKey = "";
     this.terrainKey = "";
+    this.garnishKey = "";
+    this.garnish = [];
     this.overlayKey = "";
     this.siteKey = "";
   }
@@ -180,6 +185,11 @@ export class WorldRenderer {
       groundRebuilds++;
     }
     this.terrainLayer.visible = view.terrain;
+    const garnishKey = `${town.seed}:${town.biome.id}:${surface.ox}:${surface.oy}:${surface.cols}x${surface.rows}:${surface.stampRevision}`;
+    if (garnishKey !== this.garnishKey) {
+      this.garnish = planForestGarnish(surface, town.biome, town.seed);
+      this.garnishKey = garnishKey;
+    }
 
     const gKey = `${view.terrain}:${view.roads}:${town.district}:${town.seed}:${town.lots.length}:${town.network.mesh.length}:${town.ground.length}:${town.features?.length ?? 0}:${town.featureRevision ?? 0}`;
     if (gKey !== this.groundKey) {
@@ -482,6 +492,18 @@ export class WorldRenderer {
         version: [p.x, p.y, p.w, p.d, p.elev, p.heading, p.hp, JSON.stringify(p.pose)].join(':'),
         depth: depthKey(p.x + p.w / 2, p.y + p.d / 2, p.elev + 0.4),
         run: (g) => drawCatalogProp(g, p),
+      });
+    }
+
+    for (const tree of view.terrain ? this.garnish : []) {
+      total++;
+      if (!this.visibleBox(tree.x - 0.8, tree.y - 0.8, 1.6, 1.6, 0, 3.2)) continue;
+      visible++;
+      this.cmds.push({
+        key: `garnish:${tree.seed}`,
+        version: `${tree.x}:${tree.y}:${tree.heading}:${tree.species}:${tree.scale}`,
+        depth: depthKey(tree.x, tree.y, 1.2),
+        run: (g) => drawForestGarnish(g, tree),
       });
     }
 
@@ -811,7 +833,6 @@ function drawTerrainFeatures(g: Graphics, features: readonly TerrainFeature[]): 
   for (const feature of features) {
     switch (feature.kind) {
       case "forest":
-        drawForestCanopy(g, feature);
         break;
       case "field":
         drawFieldCrops(g, feature);
@@ -827,29 +848,6 @@ function drawTerrainFeatures(g: Graphics, features: readonly TerrainFeature[]): 
       }
     }
   }
-}
-
-function drawForestCanopy(g: Graphics, feature: Extract<TerrainFeature, { kind: "forest" }>): void {
-  const rng = new Rng(feature.seed);
-  const blobs = 6;
-  for (let i = 0; i < blobs; i++) {
-    const a = rng.range(0, Math.PI * 2);
-    const r = rng.range(feature.coreR * 0.55, feature.canopyR * 0.82);
-    const w = rng.range(2.2, 3.4);
-    const d = rng.range(1.9, 2.9);
-    drawOrientedGround(
-      g,
-      feature.cx + Math.cos(a) * r,
-      feature.cy + Math.sin(a) * r,
-      a,
-      w,
-      d,
-      i % 2 === 0 ? 0x3a5a30 : 0x2c4826,
-      0.55,
-      0.018,
-    );
-  }
-  drawOrientedGround(g, feature.cx, feature.cy, 0, feature.coreR * 1.65, feature.coreR * 1.5, 0x0c1810, 0.96, 0.028);
 }
 
 function cropRowStyle(feature: FieldFeature): { top: number; left: number; right: number; h: number; thick: number } {
