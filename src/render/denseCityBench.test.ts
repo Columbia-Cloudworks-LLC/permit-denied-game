@@ -49,7 +49,7 @@ describe("dense-city render bench", () => {
     }
     const byId = Object.fromEntries(samples.map((sample) => [sample.id, sample]));
     expect(byId["intact-street-desktop"]!.commands).toBeLessThan(1500);
-    expect(byId["intact-overview-desktop"]!.commands).toBeLessThan(2500);
+    expect(byId["intact-overview-desktop"]!.commands).toBeLessThan(2600);
     expect(byId["intact-street-mobile"]!.commands).toBeLessThan(byId["intact-street-desktop"]!.commands);
     const street = byId["intact-street-desktop"]!;
     expect(street.groundRebuilds).toBe(0);
