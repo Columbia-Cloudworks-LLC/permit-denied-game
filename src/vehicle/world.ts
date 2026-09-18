@@ -154,8 +154,8 @@ export function stepVehicleWorld(town: Town, dozer: Dozer, particles: ParticlePo
             obstacle ||= candidates.some(b => b.vehicle !== v && boxContact(nose, b) !== undefined);
             const prevX = v.x, prevY = v.y;
             stepVehicle(v, sub, obstacle);
-            if (town.features.length && terrainTraversalAt(town.features, v.x, v.y) !== 'open') {
-              const resolved = resolveTraversal(v.x, v.y, prevX, prevY, town.features);
+            if ((town.surface || town.features.length) && terrainTraversalAt(town.features, v.x, v.y, town.surface) !== 'open') {
+              const resolved = resolveTraversal(v.x, v.y, prevX, prevY, town.features, town.surface);
               v.x = resolved.x;
               v.y = resolved.y;
               if (resolved.blocked) { v.vx *= 0.2; v.vy *= 0.2; }

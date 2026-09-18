@@ -16,7 +16,9 @@
     "catalog:local": "npm run build && node scripts/catalog.mjs local",
     "catalog:generate": "node scripts/catalog.mjs generate",
     "test:catalog": "node --test scripts/catalog.test.mjs && node scripts/verify-catalog.mjs",
-    "screenshot:title": "node scripts/capture-title.mjs"
+    "screenshot:title": "node scripts/capture-title.mjs",
+    "build:terrain-atlas": "node scripts/build-terrain-atlas.mjs",
+    "capture:terrain": "node scripts/capture-terrain.mjs"
   },
   "dependencies": {
     "@vercel/analytics": "2.0.1",

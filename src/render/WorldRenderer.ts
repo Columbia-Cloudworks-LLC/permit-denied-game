@@ -9,6 +9,8 @@ import type { YardBay } from '../world/yardCatalog';
 import { defaultDebugView } from "../debug/view";
 import { drawDebugOverlay } from "./debugOverlay";
 import { Container, Graphics, Text } from "pixi.js";
+import { emptyGrassGrid, TERRAIN_GEN_VERSION } from "../world/terrain";
+import { buildTerrainChunks, chunkCount, ensureTerrainAtlas, terrainAtlasRevision } from "./terrainTiles";
 import { DOZER, FLOOR_Z } from "../game/constants";
 import { Rng } from "../game/rng";
 import { depthKey, screenAabbVisible, worldBoundsToScreen, worldToScreen } from "../world/iso";
@@ -61,6 +63,7 @@ export class WorldRenderer {
   yardPreviewValid = true;
   private yardLabels: Text[] = [];
   private yardLabelKey = "";
+  private readonly terrainLayer = new Container();
   private readonly ground = new Graphics();
   private readonly sites = new Graphics();
   private readonly overlay = new Graphics();
@@ -87,14 +90,25 @@ export class WorldRenderer {
   private viewW = 1;
   private viewH = 1;
   private groundKey = "";
+  private terrainKey = "";
   private overlayKey = "";
   private siteKey = "";
-  stats = { total: 0, visible: 0, commands: 0, surfaceGeometry: 0, cached: 0, rebuilt: 0 };
+  stats = {
+    total: 0,
+    visible: 0,
+    commands: 0,
+    surfaceGeometry: 0,
+    cached: 0,
+    rebuilt: 0,
+    terrainChunks: 0,
+    terrainCells: 0,
+    groundRebuilds: 0,
+  };
   dozerHidden = false;
 
   constructor() {
     this.nhood.addChild(this.nhoodGfx);
-    this.root.addChild(this.ground, this.sites, this.overlay, this.groundOverlays, this.drawing.root, this.world, this.nhood, this.debugOverlay);
+    this.root.addChild(this.terrainLayer, this.ground, this.sites, this.overlay, this.groundOverlays, this.drawing.root, this.world, this.nhood, this.debugOverlay);
     this.root.addChild(this.bowlingStrikes.root, this.landmarkPin);
     this.hudOverlay.addChild(this.landmarkArrow);
     this.root.sortableChildren = false;
@@ -103,6 +117,7 @@ export class WorldRenderer {
   invalidate(): void {
     this.drawing.clear();
     this.groundKey = "";
+    this.terrainKey = "";
     this.overlayKey = "";
     this.siteKey = "";
   }
@@ -152,9 +167,24 @@ export class WorldRenderer {
     let visible = 0;
     let occluded = false;
 
+    void ensureTerrainAtlas();
+    const surface = town.surface ?? emptyGrassGrid(town.minX, town.minY, town.maxX, town.maxY);
+    const terrainCounts = chunkCount(surface);
+    const tKey = `${view.terrain}:${TERRAIN_GEN_VERSION}:${surface.cols}x${surface.rows}:${surface.ox}:${surface.oy}:${surface.stampRevision}:${terrainAtlasRevision()}`;
+    let groundRebuilds = 0;
+    if (tKey !== this.terrainKey) {
+      this.terrainLayer.visible = view.terrain;
+      if (view.terrain) buildTerrainChunks(this.terrainLayer, surface);
+      else this.terrainLayer.removeChildren();
+      this.terrainKey = tKey;
+      groundRebuilds++;
+    }
+    this.terrainLayer.visible = view.terrain;
+
     const gKey = `${view.terrain}:${view.roads}:${town.district}:${town.seed}:${town.lots.length}:${town.network.mesh.length}:${town.ground.length}:${town.features?.length ?? 0}:${town.featureRevision ?? 0}`;
     if (gKey !== this.groundKey) {
       this.ground.clear();
+      groundRebuilds++;
       const covers = town.ground.length
         ? town.ground
         : town.lots.map((lot) => ({
@@ -167,7 +197,7 @@ export class WorldRenderer {
             seed: town.seed,
             z: 0,
           }));
-      for (const patch of view.terrain ? covers : []) {
+      for (const patch of view.terrain ? covers.filter((p) => p.w !== 6.2 && p.z !== -0.02) : []) {
         drawCover(this.ground, patch);
       }
       if (view.terrain) drawTerrainFeatures(this.ground, town.features ?? []);
@@ -526,7 +556,17 @@ export class WorldRenderer {
     drawDebugOverlay(this.debugOverlay, town, dozer, view);
     this.drawLandmarkMarkers();
     this.fades.end();
-    this.stats = { total, visible, commands: submitted.length, surfaceGeometry, cached: this.drawing.size, rebuilt: this.drawing.rebuilt };
+    this.stats = {
+      total,
+      visible,
+      commands: submitted.length,
+      surfaceGeometry,
+      cached: this.drawing.size,
+      rebuilt: this.drawing.rebuilt,
+      terrainChunks: terrainCounts.chunks,
+      terrainCells: terrainCounts.cells,
+      groundRebuilds,
+    };
   }
 
   private drawLandmarkMarkers(): void {

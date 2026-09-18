@@ -44,6 +44,9 @@ export interface DenseCitySample {
   cached: number;
   buildings: number;
   cells: number;
+  terrainChunks: number;
+  terrainCells: number;
+  groundRebuilds: number;
 }
 
 function percentile(values: number[], p: number): number {
@@ -152,6 +155,9 @@ export function measureDenseCityScene(
     cached: renderer.stats.cached,
     buildings: town.buildings.length,
     cells: town.buildings.reduce((n, building) => n + building.cells.length, 0),
+    terrainChunks: renderer.stats.terrainChunks,
+    terrainCells: renderer.stats.terrainCells,
+    groundRebuilds: renderer.stats.groundRebuilds,
   };
   renderer.invalidate();
   renderer.root.destroy({ children: true });

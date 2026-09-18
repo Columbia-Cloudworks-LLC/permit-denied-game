@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { campaignLevelById } from "../game/campaign";
 import { ARCHETYPES } from "../world/archetypes";
+import { SURFACE_CHUNK } from "../world/terrain";
 import { evaluateCampaignComposition } from "../world/campaignComposition";
 import {
   DENSE_CITY_LEVEL,
@@ -50,6 +51,14 @@ describe("dense-city render bench", () => {
     expect(byId["intact-street-desktop"]!.commands).toBeLessThan(1500);
     expect(byId["intact-overview-desktop"]!.commands).toBeLessThan(2500);
     expect(byId["intact-street-mobile"]!.commands).toBeLessThan(byId["intact-street-desktop"]!.commands);
+    const street = byId["intact-street-desktop"]!;
+    expect(street.groundRebuilds).toBe(0);
+    expect(street.terrainChunks).toBe(
+      Math.ceil(town.surface.cols / SURFACE_CHUNK) * Math.ceil(town.surface.rows / SURFACE_CHUNK),
+    );
+    expect(street.terrainChunks).toBeLessThanOrEqual(512);
+    expect(street.terrainCells).toBeLessThanOrEqual(512 * 512);
+    expect(town.ground.some((g) => g.w === 6.2 || g.z === -0.02)).toBe(false);
     // eslint-disable-next-line no-console
     console.log(formatDenseCityBench(samples));
   });

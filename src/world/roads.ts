@@ -1214,6 +1214,13 @@ export class RoadBuilder {
     }
   }
 
+  dropRejectedPublic(ids: ReadonlySet<string>): void {
+    for (const seg of [...this.segments]) {
+      if (ids.has(seg.id) && seg.roadClass !== "driveway" && seg.roadClass !== "ramp") this.detachSegment(seg);
+    }
+    this.stripDegenerate();
+  }
+
   /** Drop public streets and orphan driveways that sit outside the kept lot cluster. */
   dropPublicRoadsAwayFromLots(
     lots: readonly { x: number; y: number; w: number; d: number; drivewayId?: string; frontage?: { segmentId: string } }[],

@@ -15,6 +15,8 @@ import {
   type RoadNode,
   type RoadSegment,
 } from "./roads";
+import type { SurfaceGrid } from "./terrain";
+import { roadCostAt, sampleSegmentCenterline } from "./terrain";
 
 export const PARCEL = {
   minFront: 8.4,
@@ -486,36 +488,104 @@ export function parcelHitsRoad(
   return false;
 }
 
-export function expandStreets(b: RoadBuilder, rng: Rng, pass: number): boolean {
+export function expandStreets(b: RoadBuilder, rng: Rng, pass: number, grid?: SurfaceGrid): boolean {
   const publicSegs = b.segments.filter((s) => s.roadClass !== "driveway" && s.roadClass !== "ramp");
   if (!publicSegs.length) return false;
-  const ranked = [...publicSegs].sort((a, c) => polylineLength(c.points) - polylineLength(a.points));
-  const host = ranked.find((s) => polylineLength(s.points) >= 14) ?? ranked[0];
-  if (!host) return false;
-  const path = polylineLength(host.points);
-  if (path < 10) return false;
-  const t = 0.22 + ((pass * 0.173) % 0.56);
-  const p = samplePolyline(host.points, t);
-  const junction = b.joinAt(p.x, p.y, p.elev, host.layer);
-  const lenOut = rng.range(22, 38);
-  const side = pass % 2 === 0 ? 1 : -1;
-  const heading = p.heading + side * (Math.PI * 0.5);
-  const deadEnd = pass % 3 === 2;
-  const reach = deadEnd ? lenOut * 0.72 : lenOut;
-  const ex = junction.x + Math.cos(heading) * reach;
-  const ey = junction.y + Math.sin(heading) * reach;
-  const end = b.node(ex, ey, p.elev, undefined, host.layer);
-  const kind = pass % 4 === 1 ? "service" : "residential";
-  b.segment(junction, end, linePoints(pt(junction), pt(end)), { roadClass: kind, layer: host.layer });
-  if (!deadEnd && pass % 3 === 0 && ranked.length > 1) {
-    const other = ranked[(pass + 1) % ranked.length]!;
-    const q = samplePolyline(other.points, clamp(1 - t, 0.18, 0.82));
-    const join = b.joinAt(q.x, q.y, q.elev, other.layer);
-    if (join.id !== end.id && other.layer === host.layer) {
-      b.segment(end, join, linePoints(pt(end), pt(join)), { roadClass: "residential", layer: host.layer });
+  const ranked = [...publicSegs].sort((a, c) => {
+    const lenDelta = polylineLength(c.points) - polylineLength(a.points);
+    if (!grid || Math.abs(lenDelta) > 0.1) return lenDelta;
+    return meanSegCost(grid, a) - meanSegCost(grid, c);
+  });
+  const hosts = ranked.filter((s) => polylineLength(s.points) >= 14);
+  const pool = hosts.length ? hosts : ranked;
+  type Candidate = {
+    host: RoadSegment;
+    p: ReturnType<typeof samplePolyline>;
+    ex: number;
+    ey: number;
+    kind: RoadSegment["roadClass"];
+    other?: { seg: RoadSegment; q: ReturnType<typeof samplePolyline> };
+    cost: number;
+  };
+  let best: Candidate | null = null;
+  for (let h = 0; h < Math.min(4, pool.length); h++) {
+    const host = pool[h]!;
+    const path = polylineLength(host.points);
+    if (path < 10) continue;
+    const t = 0.22 + (((pass + h) * 0.173) % 0.56);
+    const p = samplePolyline(host.points, t);
+    const lenOut = rng.range(22, 38);
+    const side = (pass + h) % 2 === 0 ? 1 : -1;
+    const heading = p.heading + side * (Math.PI * 0.5);
+    const deadEnd = (pass + h) % 3 === 2;
+    const reach = deadEnd ? lenOut * 0.72 : lenOut;
+    const ex = p.x + Math.cos(heading) * reach;
+    const ey = p.y + Math.sin(heading) * reach;
+    if (grid && expansionRejected(grid, p.x, p.y, ex, ey)) continue;
+    const cost = grid ? expansionCost(grid, p.x, p.y, ex, ey) : 1;
+    if (best && cost >= best.cost) continue;
+    const cand: Candidate = {
+      host,
+      p,
+      ex,
+      ey,
+      kind: (pass + h) % 4 === 1 ? "service" : "residential",
+      cost,
+    };
+    if (!deadEnd && (pass + h) % 3 === 0 && ranked.length > 1) {
+      const other = ranked[(pass + h + 1) % ranked.length]!;
+      const q = samplePolyline(other.points, clamp(1 - t, 0.18, 0.82));
+      if (other.layer === host.layer && (!grid || !expansionRejected(grid, ex, ey, q.x, q.y))) {
+        cand.other = { seg: other, q };
+      }
+    }
+    best = cand;
+  }
+  if (!best) return false;
+  const junction = b.joinAt(best.p.x, best.p.y, best.p.elev, best.host.layer);
+  const end = b.node(best.ex, best.ey, best.p.elev, undefined, best.host.layer);
+  b.segment(junction, end, linePoints(pt(junction), pt(end)), { roadClass: best.kind, layer: best.host.layer });
+  if (best.other) {
+    const join = b.joinAt(best.other.q.x, best.other.q.y, best.other.q.elev, best.other.seg.layer);
+    if (join.id !== end.id) {
+      b.segment(end, join, linePoints(pt(end), pt(join)), { roadClass: "residential", layer: best.host.layer });
     }
   }
   return true;
+}
+
+function expansionRejected(grid: SurfaceGrid, x0: number, y0: number, x1: number, y1: number): boolean {
+  const dist = Math.hypot(x1 - x0, y1 - y0);
+  const n = Math.max(2, Math.ceil(dist));
+  for (let i = 0; i <= n; i++) {
+    const t = i / n;
+    if (!Number.isFinite(roadCostAt(grid, x0 + (x1 - x0) * t, y0 + (y1 - y0) * t))) return true;
+  }
+  return false;
+}
+
+function expansionCost(grid: SurfaceGrid, x0: number, y0: number, x1: number, y1: number): number {
+  const dist = Math.hypot(x1 - x0, y1 - y0);
+  const n = Math.max(2, Math.ceil(dist));
+  let sum = 0;
+  for (let i = 0; i <= n; i++) {
+    const t = i / n;
+    sum += roadCostAt(grid, x0 + (x1 - x0) * t, y0 + (y1 - y0) * t);
+  }
+  return sum / (n + 1);
+}
+
+function meanSegCost(grid: SurfaceGrid, seg: RoadSegment): number {
+  const samples = sampleSegmentCenterline(seg);
+  let sum = 0;
+  let n = 0;
+  for (const p of samples) {
+    const cost = roadCostAt(grid, p.x, p.y);
+    if (!Number.isFinite(cost)) return Infinity;
+    sum += cost;
+    n++;
+  }
+  return n ? sum / n : Infinity;
 }
 
 function remapLotFrontage(lot: Lot, oldId: string, first: RoadSegment, second: RoadSegment, cut: number): void {

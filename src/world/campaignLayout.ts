@@ -5,7 +5,6 @@ import type { Building, GroundPatch, Lot, Prop } from '../structure/types';
 import { BUILDING_SITES, instantiateBuildingSite } from './buildingSites';
 import { getAsset } from './catalog';
 import { campaignEligible } from './campaignPlacement';
-import { fillWorldGround } from './dressing';
 import { attachDriveway, completeLot } from './parcels';
 import {
   derivedRoadBoxes,
@@ -17,6 +16,9 @@ import {
   samplePolyline,
 } from './roads';
 import { defaultBiome } from './biomes';
+import { DRESSING } from '../game/constants';
+import { enforceOpenCorridors, generateSurfaceGrid, stampDeveloped } from './terrain';
+import { deriveTerrainFeatures } from './terrainFeatures';
 import type { RuralLayout } from './rural';
 import { generateRuralLayout } from './rural';
 
@@ -61,6 +63,16 @@ function generateEstateLayout(level: CampaignLevelDef, seed: number): RuralLayou
   const approach = b.node((left + right) * 0.5, bottom + 16, 0);
   b.segment(midS, approach, linePoints(pt(midS), pt(approach)), { roadClass: 'rural' });
   b.normalizeJunctions();
+  const biome = defaultBiome();
+  const surface = generateSurfaceGrid({
+    seed,
+    biome,
+    minX: left - 4,
+    minY: top - 4,
+    maxX: right + 8,
+    maxY: bottom + 20,
+    spawnBand: { x: (left + right) * 0.5 - 4, y: bottom + 8, w: 8, d: 10 },
+  });
 
   const buildings: Building[] = [];
   const props: Prop[] = placed.props.filter(prop => campaignEligible(getAsset(prop.assetId).campaign, level.id));
@@ -122,8 +134,29 @@ function generateEstateLayout(level: CampaignLevelDef, seed: number): RuralLayou
     maxY = Math.max(maxY, building.y + building.d * building.cellSize + 1);
   }
 
-  const ground: GroundPatch[] = fillWorldGround(minX - 1, minY - 1, maxX + 1, maxY + 1, seed);
+  const ground: GroundPatch[] = [];
+  enforceOpenCorridors(surface, network, lots, buildings);
+  stampDeveloped(surface, network, lots, ground);
   const spawn = samplePolyline(network.segments.find(seg => seg.roadClass === 'rural')?.points ?? network.segments[0]!.points, 0.2);
+  const features = deriveTerrainFeatures({
+    biome,
+    seed,
+    minX,
+    minY,
+    maxX,
+    maxY,
+    network,
+    lots,
+    buildings,
+    props,
+    ground,
+    spawnX: spawn.x,
+    spawnY: spawn.y,
+    roadSpawnX: spawn.x,
+    roadSpawnY: spawn.y,
+    propBudget: level.generation.dressingBudget ?? DRESSING.districtMax.d30,
+    surface,
+  });
 
   return {
     buildings,
@@ -146,8 +179,9 @@ function generateEstateLayout(level: CampaignLevelDef, seed: number): RuralLayou
     district: 'd30',
     seed,
     topology: 'loop',
-    biome: defaultBiome(),
-    features: [],
+    biome,
+    surface,
+    features,
     campaignLevel: level.id,
     diagnostic: { ok: !!mansion, issues: mansion ? [] : [{ code: 'landmark', detail: 'estate missing mansion' }] },
     nhood: {

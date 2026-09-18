@@ -4,7 +4,7 @@ import { resetVehicleIds } from '../vehicle/runtime';
 import { populateTowerTest } from './towerTest';
 import { populateTestYard, type TestYard } from './testYard';
 import type { TestMapRequest } from './testMapRequest';
-import { CELL } from "../game/constants";
+import { CELL, DRESSING } from "../game/constants";
 import { Rng } from "../game/rng";
 import type { CampaignLevelDef, CampaignLevelId } from "../game/campaign";
 import { DEFAULT_DISTRICT_SEEDS, type DistrictId } from "../game/session";
@@ -15,13 +15,20 @@ import type { Building, CollapsedSite, GroundMark, GroundPatch, Lot, Prop, Rubbl
 import { resetPropIds, spawnAsset } from "./catalog";
 import type { DistrictReport } from "./districts";
 import { generateDistrictLayout } from "./districts";
-import { buildingOccupy, dressLot, fillWorldGround, pickTemplate } from "./dressing";
+import { buildingOccupy, dressLot, pickTemplate } from "./dressing";
 import { CLASSIC_PLACEMENTS } from "./families";
 import { completeLot, type NhoodDebug } from "./parcels";
 import { linePoints, pt, RoadBuilder, emptyTerrain, type RoadNetwork, type TerrainField } from "./roads";
 import { defaultBiome, type BiomeProfile } from "./biomes";
 import type { TopologyFamily } from "./rural";
-import type { TerrainFeature } from "./terrainFeatures";
+import { deriveTerrainFeatures, type TerrainFeature } from "./terrainFeatures";
+import {
+  emptyGrassGrid,
+  enforceOpenCorridors,
+  generateSurfaceGrid,
+  stampDeveloped,
+  type SurfaceGrid,
+} from "./terrain";
 
 export interface Town {
   yard?: TestYard;
@@ -59,6 +66,7 @@ export interface Town {
   nhood: NhoodDebug;
   topology?: TopologyFamily;
   biome: BiomeProfile;
+  surface: SurfaceGrid;
   features: TerrainFeature[];
   featureRevision: number;
 }
@@ -117,7 +125,7 @@ function emptyTestTown(seed: number): Town {
     minX: 0, minY: 0, maxX: 32, maxY: 32, district: 'classic', seed,
     roadSpawnX: 4, roadSpawnY: 4, roadSpawnHeading: 0, visualRevision: 1, siteRevision: 1,
     collapsedSites: [], diagnostic: { ok: true, issues: [] }, nhood: { rejected: [] },
-    biome: defaultBiome(), features: [], featureRevision: 0,
+    biome: defaultBiome(), features: [], featureRevision: 0, surface: emptyGrassGrid(0, 0, 32, 32),
   };
 }
 
@@ -202,7 +210,6 @@ function createClassicTown(seed: number, showcase = false): Town {
     });
   });
   const ground: GroundPatch[] = [
-    ...fillWorldGround(1, 1, 38, 34, seed),
     { x: 12.2, y: 20.4, w: 4.2, d: 2.4, heading: 0, cover: "dirt", seed: seed ^ 5, z: 0.01 },
   ];
   for (let i = 0; i < lots.length; i++) {
@@ -211,6 +218,40 @@ function createClassicTown(seed: number, showcase = false): Town {
     ground.push(...dressed.patches);
     for (const p of dressed.props) occBoxes.push({ x: p.x, y: p.y, w: p.w, d: p.d });
   }
+
+  const surface = generateSurfaceGrid({
+    seed,
+    biome: defaultBiome(),
+    minX: 1,
+    minY: 1,
+    maxX: 38,
+    maxY: 34,
+    spawnBand: { x: 18, y: 24, w: 8, d: 6 },
+  });
+  enforceOpenCorridors(surface, network, lots, buildings);
+  stampDeveloped(surface, network, lots, ground);
+  const biome = defaultBiome();
+  const features = showcase
+    ? []
+    : deriveTerrainFeatures({
+      biome,
+      seed,
+      minX: 1,
+      minY: 1,
+      maxX: 38,
+      maxY: 34,
+      network,
+      lots,
+      buildings,
+      props,
+      ground,
+      spawnX: 20.6,
+      spawnY: 27.2,
+      roadSpawnX: 3.4,
+      roadSpawnY: 17.6,
+      propBudget: DRESSING.districtMax.classic,
+      surface,
+    });
 
   return {
     buildings,
@@ -245,8 +286,9 @@ function createClassicTown(seed: number, showcase = false): Town {
     siteRevision: 1,
     diagnostic: { ok: true, issues: [] },
     nhood: { rejected: [] },
-    biome: defaultBiome(),
-    features: [],
+    biome,
+    surface,
+    features,
     featureRevision: 0,
   };
 }

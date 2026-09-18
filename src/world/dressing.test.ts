@@ -81,10 +81,9 @@ describe("lot dressing", () => {
     const yard = town.props.filter((p) => yardIds.has(p.assetId));
     expect(yard.length).toBeGreaterThanOrEqual(10);
     expect(town.props.some((p) => p.assetId === "mailbox")).toBe(true);
-    const field = town.ground.filter((g) => g.cover === "grass" || g.cover === "scrub");
-    expect(field.length).toBeGreaterThan(8);
-    const area = field.reduce((sum, g) => sum + g.w * g.d, 0);
-    expect(area).toBeGreaterThan((town.maxX - town.minX) * (town.maxY - town.minY) * 0.45);
+    expect(town.surface.cols * town.surface.rows).toBeGreaterThan(20);
+    expect(town.ground.some((g) => g.w === 6.2 || g.z === -0.02)).toBe(false);
+    expect(town.ground.filter((g) => g.cover === "grass" || g.cover === "dirt" || g.cover === "gravel").length).toBeGreaterThan(0);
   });
 
   it("keeps lot-front gravel off public pavement", () => {
