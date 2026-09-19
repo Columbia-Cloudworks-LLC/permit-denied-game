@@ -238,4 +238,46 @@ describe('modular vehicle contract', () => {
         times.sort((a, b) => a - b);
         console.log(JSON.stringify({ scenario: '120-wrecks-12-active', p95Ms: times[Math.floor(times.length * .95)], ...vehicleStats }));
     });
+    it('gives the excavator a scoop bucket parented through a stick pivot', () => {
+        const d = vehicleDefinition('excavator');
+        const byId = (id: string) => d.parts.find(p => p.id === id)!;
+        expect(byId('boom').parent).toBe('arm');
+        expect(byId('coupler').parent).toBe('boom');
+        expect(byId('bucket').parent).toBe('coupler');
+        expect(['bucket-floor', 'bucket-lip', 'bucket-side--1', 'bucket-side-1'].every(id => byId(id).parent === 'bucket')).toBe(true);
+        expect(byId('bucket').shape).toBe('box');
+        expect(byId('bucket').height).toBeGreaterThan(byId('bucket-floor').height * 3);
+        expect(byId('bucket').width).toBeLessThan(d.width * .4);
+        expect(byId('bucket-floor').x).toBeGreaterThan(byId('bucket').x);
+        expect(byId('bucket-lip').x).toBeGreaterThan(byId('bucket-floor').x);
+        const a = createVehicle('excavator', 0, 0, 0, 0), b = createVehicle('excavator', 0, 0, 0, 1);
+        expect(a.parts.map((_, i) => partPose(a, i)).map(p => [p.x, p.y, p.z, p.length, p.width, p.height, p.pitch]))
+            .toEqual(b.parts.map((_, i) => partPose(b, i)).map(p => [p.x, p.y, p.z, p.length, p.width, p.height, p.pitch]));
+        const aabb = (id: string) => {
+            const i = d.parts.findIndex(p => p.id === id), p = d.parts[i]!, q = partPose(a, i);
+            const xs: number[] = [], ys: number[] = [], zs: number[] = [];
+            for (const la of [-q.length / 2, q.length / 2])
+                for (const lb of [-q.width / 2, q.width / 2])
+                    for (const t of [0, 1]) {
+                        const top = q.height * (p.shape === 'slope' ? 1 - .4 * (la / q.length + .5) : 1);
+                        xs.push(q.x + la); ys.push(q.y + lb); zs.push(q.z + top * t + q.pitch * la);
+                    }
+            return { minX: Math.min(...xs), maxX: Math.max(...xs), minY: Math.min(...ys), maxY: Math.max(...ys), minZ: Math.min(...zs), maxZ: Math.max(...zs) };
+        };
+        const overlap = (u: ReturnType<typeof aabb>, v: ReturnType<typeof aabb>) =>
+            u.minX <= v.maxX && u.maxX >= v.minX && u.minY <= v.maxY && u.maxY >= v.minY && u.minZ <= v.maxZ && u.maxZ >= v.minZ;
+        expect(overlap(aabb('boom'), aabb('coupler'))).toBe(true);
+        expect(overlap(aabb('coupler'), aabb('bucket'))).toBe(true);
+        expect(overlap(aabb('bucket'), aabb('bucket-floor'))).toBe(true);
+        expect(aabb('bucket-floor').minZ).toBeGreaterThan(-.02);
+        expect(aabb('bucket').maxZ).toBeGreaterThan(aabb('bucket-floor').maxZ);
+        hitVehicle(a, [contact(a, 'boom', 80)]);
+        const boom = d.parts.findIndex(p => p.id === 'boom'), bucket = d.parts.findIndex(p => p.id === 'bucket');
+        expect(a.parts[boom]!.detached).toBe(true);
+        expect(detachedRoot(a, bucket)).toBe(boom);
+        const dropped = createVehicle('excavator', 10, 10);
+        hitVehicle(dropped, [contact(dropped, 'bucket', 80)]);
+        expect(dropped.parts[bucket]!.detached).toBe(true);
+        expect(detachedRoot(dropped, d.parts.findIndex(p => p.id === 'bucket-lip'))).toBe(bucket);
+    });
 });

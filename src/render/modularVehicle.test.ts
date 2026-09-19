@@ -104,4 +104,21 @@ describe('vehicle surface rendering', () => {
             }
         expect(largest).toBeLessThan(1500);
     });
+    it('paints an excavator scoop mouth instead of a single slab at every heading', () => {
+        for (let heading = 0; heading < 4; heading++) {
+            const v = createVehicle('excavator', 0, 0, heading * Math.PI / 2);
+            const faces = vehicleFaces(v);
+            const ids = new Set(faces.map(f => f.part));
+            expect(ids.has('coupler')).toBe(true);
+            expect(ids.has('bucket')).toBe(true);
+            expect(ids.has('bucket-floor')).toBe(true);
+            expect(ids.has('bucket-lip')).toBe(true);
+            const along = (id: string) => faces.filter(f => f.part === id).flatMap(f => f.points.map(p =>
+                Math.cos(v.heading) * p.x + Math.sin(v.heading) * p.y));
+            expect(Math.max(...along('bucket-lip'))).toBeGreaterThan(Math.max(...along('bucket')));
+            if (heading === 0)
+                expect(faces.filter(f => f.part === 'bucket-lip' && f.color === 0xb5b8a1).length).toBeGreaterThan(0);
+            expect(faces.every(f => f.points.every(p => Number.isFinite(p.z) && p.z >= -1e-6))).toBe(true);
+        }
+    });
 });

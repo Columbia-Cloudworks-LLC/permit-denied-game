@@ -86,9 +86,10 @@ export function buildVehicle(s: Source): VehicleDefinition {
     }
     if (s.body === 'skid' || s.body === 'excavator') {
         add('arm', 'equipment', .27 * l, -.3 * w, .68, l * .85, .18, .22, 'cab', 'slope');
-        add('bucket', 'equipment', .76 * l, 0, .12, l * .26, w * .85, .38, 'arm', 'slope', 'steel');
-        if (s.body === 'skid')
+        if (s.body === 'skid') {
+            add('bucket', 'equipment', .76 * l, 0, .12, l * .26, w * .85, .38, 'arm', 'slope', 'steel');
             Object.assign(parts.find(p => p.id === 'arm')!, { z: .65, pitch: -.26 });
+        }
         if (s.body === 'excavator')
             add('boom', 'equipment', .45 * l, -.3 * w, .9, .24, .23, h * .7, 'arm', 'slope');
     }
@@ -99,10 +100,17 @@ export function buildVehicle(s: Source): VehicleDefinition {
             add(`trailer-wheel-${side}`, 'wheel', -l * 1.15, side * w * .47, 0, .64, .2, .64, 'trailer', 'wheel', 'dark');
     }
     if (s.body === 'excavator') {
-        const arm = parts.find(p => p.id === 'arm')!, boom = parts.find(p => p.id === 'boom')!, bucket = parts.find(p => p.id === 'bucket')!;
+        const arm = parts.find(p => p.id === 'arm')!, boom = parts.find(p => p.id === 'boom')!;
         Object.assign(arm, { x: l * .21, y: 0, z: 1.35, length: l * .55, height: .22, pitch: .7 });
         Object.assign(boom, { x: l * .61, y: 0, z: 1.2, length: l * .4, height: .18, pitch: -1.15, parent: 'arm' });
-        Object.assign(bucket, { x: l * .85, y: 0, z: .25, height: .48, width: w * .55, parent: 'boom' });
+        const tip = boom.x + boom.length / 2, mouth = w * .32;
+        add('coupler', 'equipment', tip, 0, .5, .22, .2, .22, 'boom', 'box', 'steel');
+        add('bucket', 'equipment', tip + .12, 0, .26, .12, mouth, .4, 'coupler', 'box', 'steel');
+        add('bucket-floor', 'equipment', tip + .28, 0, .2, .32, mouth, .07, 'bucket', 'box', 'steel');
+        add('bucket-lip', 'equipment', tip + .46, 0, .2, .07, mouth + .04, .13, 'bucket', 'box', 'steel');
+        for (const side of [-1, 1])
+            add(`bucket-side-${side}`, 'equipment', tip + .28, side * (mouth / 2 - .02), .26, .3, .05, .22, 'bucket', 'box', 'steel');
+        Object.assign(parts.find(p => p.id === 'bucket-floor')!, { pitch: -.22 });
     }
     if (tractor)
         for (const p of parts)
