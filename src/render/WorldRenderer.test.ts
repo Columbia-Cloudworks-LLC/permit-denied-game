@@ -156,3 +156,23 @@ it('draws the neighborhood overlay without parenting labels onto Graphics', () =
   renderer.invalidate();
   renderer.root.destroy({ children: true });
 });
+
+it('rebuilds cached ground when the map ground condition changes', () => {
+  const town = createTown();
+  expect(town.groundCondition).toBe('clear');
+  const renderer = new WorldRenderer();
+  const dozer = createDozer(town.spawnX, town.spawnY, town.spawnHeading);
+  const particles = new ParticlePool();
+  renderer.debug.effects = false;
+  renderer.debug.debris = false;
+  renderer.layout(640, 360, 0, 0);
+  renderer.draw(town, dozer, particles, []);
+  expect(renderer.stats.groundRebuilds).toBeGreaterThan(0);
+  renderer.draw(town, dozer, particles, []);
+  expect(renderer.stats.groundRebuilds).toBe(0);
+  town.groundCondition = 'snow';
+  renderer.draw(town, dozer, particles, []);
+  expect(renderer.stats.groundRebuilds).toBeGreaterThan(0);
+  renderer.invalidate();
+  renderer.root.destroy({ children: true });
+});

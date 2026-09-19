@@ -38,6 +38,20 @@ const SOLIDS = {
   water: PAL.water,
 };
 
+const SNOW_SOLIDS = {
+  grass: 0xd6e2ee,
+  scrub: 0xc8d4e0,
+  dirt: 0xc4c8c0,
+  prairie: 0xd4dce4,
+  duff: 0xb8c4cc,
+  "leaf-litter": 0xcac8c0,
+  gravel: 0x9aa0a4,
+  "forest-floor": 0xb8c4cc,
+  field: 0xc8d4dc,
+  "wet-edge": 0xb0c8d8,
+  water: PAL.water,
+};
+
 const DIRT_FROM = ["grass", "prairie", "leaf-litter", "duff", "scrub"];
 const FOREST_TO = ["grass", "duff", "leaf-litter"];
 const FIELD_TO = ["grass", "prairie", "dirt"];
@@ -175,6 +189,9 @@ function drawBlob(color, mask, variant = 1) {
 const frames = [];
 for (const [name, color] of Object.entries(SOLIDS)) {
   for (let v = 0; v < 3; v++) frames.push({ name: `${name}-${v}`, buf: drawSolid(color, v) });
+}
+for (const [name, color] of Object.entries(SNOW_SOLIDS)) {
+  for (let v = 0; v < 3; v++) frames.push({ name: `snow-${name}-${v}`, buf: drawSolid(color, v) });
 }
 for (const from of DIRT_FROM) {
   for (let i = 0; i < BLOB47.length; i++) {
