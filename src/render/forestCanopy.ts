@@ -174,7 +174,7 @@ function pickChunkCells(
   const interior: { ix: number; iy: number; form: ForestForm }[] = [];
   for (const cell of core) {
     if (coreIsEdge(grid, cell.ix, cell.iy)) edge.push({ ...cell, form: "edge" });
-    else if (((cell.ix + cell.iy) & 1) === (seed & 1)) interior.push({ ...cell, form: "interior" });
+    else interior.push({ ...cell, form: "interior" });
   }
   edge.sort((a, b) => hashCell(a.ix, a.iy, seed) - hashCell(b.ix, b.iy, seed) || a.ix - b.ix || a.iy - b.iy);
   interior.sort((a, b) => hashCell(a.ix, a.iy, seed) - hashCell(b.ix, b.iy, seed) || a.ix - b.ix || a.iy - b.iy);
