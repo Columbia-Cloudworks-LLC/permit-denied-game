@@ -4,6 +4,7 @@ import { aabbOverlap, pointInAabb } from "../game/math";
 import type { DistrictId } from "../game/session";
 import type { Building, Prop } from "../structure/types";
 import { speciesCompatible } from "./biomes";
+import { mapGroundCondition } from "./groundCondition";
 import { getAsset, validateCatalog } from "./catalog";
 import { terrainTraversalAt, validateFeatureLayout } from "./terrainFeatures";
 import { aabbContainedInBox, aabbContainedInPoly, convexOverlap, parcelHitsRoad } from "./parcels";
@@ -66,6 +67,7 @@ export function generateDistrictLayout(
     nhood: rural.nhood,
     topology: rural.topology,
     biome: rural.biome,
+    groundCondition: mapGroundCondition(rural.biome),
     surface: rural.surface,
     features: rural.features,
     featureRevision: 0,
