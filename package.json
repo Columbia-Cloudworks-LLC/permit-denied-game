@@ -1,13 +1,14 @@
 {
   "name": "permit-denied",
   "private": true,
-  "version": "1.0.30",
+  "version": "1.0.31",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "test": "vitest run",
+    "repo:preflight": "node scripts/repo-preflight.mjs",
     "test:mobile": "node scripts/verify-mobile.mjs",
     "test:pwa": "node scripts/verify-pwa.mjs",
     "test:debug": "node scripts/verify-debug-binder.mjs",

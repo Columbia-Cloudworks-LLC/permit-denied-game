@@ -11,7 +11,7 @@ Every ship **must** bump the game version. About & Credits, `build.json`, and th
 
 ## Do
 
-1. Inspect remaining work in parallel: status, diff, log, and whether this branch tracks a remote.
+1. Run `npm run repo:preflight` first so review starts from fetched `origin/main`, then inspect remaining work in parallel: status, diff, log, and whether this branch tracks a remote. Do not treat a clean `git status` as proof the checkout is current.
 2. Bump `package.json` and `package-lock.json` to the next `1.0.N` **before** the release commit.
    - Read the current `version` from `package.json` (and confirm `package-lock.json` matches).
    - Increment the patch (`1.0.15` → `1.0.16`) unless the user specified a different `1.0.N` bump.
