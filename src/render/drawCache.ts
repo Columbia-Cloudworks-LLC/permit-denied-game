@@ -12,6 +12,7 @@ export class DrawCache {
   private entries = new Map<string, { graphic: Graphics; version?: string | number }>();
   rebuilt = 0;
   get size(): number { return this.entries.size; }
+  keys(): string[] { return [...this.entries.keys()].sort(); }
   draw(commands: readonly CachedDraw[]): void {
     this.rebuilt = 0;
     const used = new Set<string>();
