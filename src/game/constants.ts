@@ -112,4 +112,5 @@ export const COPY = {
   engineCooked: "ENGINE COOKED",
   trackThrown: "TRACK THROWN",
   countyClock: "COUNTY CLOCK",
+  fieldCleared: "FIELD CLEARED",
 } as const;

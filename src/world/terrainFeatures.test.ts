@@ -135,7 +135,22 @@ describe("terrain features", () => {
     const town = createTown({ district: "d10", seed: 11, topology: "curve-farm" });
     const live = town.features.find((f): f is FieldFeature => f.kind === "field");
     expect(live).toBeDefined();
-    const dozer = createDozer(live!.x + live!.w * 0.5, live!.y + live!.d * 0.5, live!.heading);
+    let sample = { x: live!.x + live!.w * 0.5, y: live!.y + live!.d * 0.5 };
+    search: for (let row = 0; row < live!.rows; row++) {
+      for (let col = 0; col < live!.cols; col++) {
+        if (live!.mask && !live!.mask[row * live!.cols + col]) continue;
+        const fx = Math.cos(live!.heading);
+        const fy = Math.sin(live!.heading);
+        const ox = live!.x + live!.w * 0.5;
+        const oy = live!.y + live!.d * 0.5;
+        sample = {
+          x: ox + fx * ((col + 0.5) * live!.cell - live!.w * 0.5) - fy * ((row + 0.5) * live!.cell - live!.d * 0.5),
+          y: oy + fy * ((col + 0.5) * live!.cell - live!.w * 0.5) + fx * ((row + 0.5) * live!.cell - live!.d * 0.5),
+        };
+        break search;
+      }
+    }
+    const dozer = createDozer(sample.x, sample.y, live!.heading);
     dozer.bladeDown = true;
     const before = live!.churn.reduce((sum, cell) => sum + cell, 0);
     stepWorld(town, dozer, new ParticlePool(), { blade: 0, engine: 0, push: 0 }, 1 / 60);

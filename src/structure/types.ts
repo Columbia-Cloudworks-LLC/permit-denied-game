@@ -429,7 +429,7 @@ export interface Bird {
   life: number;
 }
 
-export type ParticleKind = "brick" | "concrete" | "wood" | "glass" | "metal" | "dust";
+export type ParticleKind = "brick" | "concrete" | "wood" | "glass" | "metal" | "dust" | "crop";
 
 export interface Particle {
   yardOwner?: string;
@@ -447,6 +447,7 @@ export interface Particle {
   rot: number;
   spin: number;
   settled: boolean;
+  tint?: number;
 }
 
 export interface WorldEvent {

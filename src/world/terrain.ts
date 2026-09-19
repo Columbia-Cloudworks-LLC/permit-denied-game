@@ -678,7 +678,9 @@ function paintForestCore(grid: SurfaceGrid): void {
 }
 
 function reserveFields(grid: SurfaceGrid, biome: BiomeProfile, seed: number): void {
-  const target = Math.floor(grid.cols * grid.rows * biome.fieldDensity * (biome.id === "agricultural-plain" ? 0.28 : 0.12));
+  const agricultural = biome.id === "agricultural-plain";
+  const share = agricultural ? 0.24 : biome.fieldDensity >= 0.3 ? 0.2 : Math.max(0.04, biome.fieldDensity * 0.45);
+  const target = Math.floor(grid.cols * grid.rows * share);
   if (target < 8) return;
   const scores: { i: number; s: number }[] = [];
   for (let iy = 0; iy < grid.rows; iy++) {
@@ -691,43 +693,67 @@ function reserveFields(grid: SurfaceGrid, biome: BiomeProfile, seed: number): vo
       const rough = fbm2(x, y, seed ^ 0x33, 0.05);
       const elev = fbm2(x, y, seed ^ 0x11, 0.032);
       const s = (1 - rough) * 0.7 + elev * 0.3;
-      if (s > 0.48) scores.push({ i, s });
+      if (s > 0.42) scores.push({ i, s });
     }
   }
   scores.sort((a, b) => b.s - a.s);
   const marked = new Uint8Array(grid.surface.length);
   let placed = 0;
-  for (const start of scores) {
-    if (placed >= target) break;
-    if (marked[start.i]) continue;
-    const q = [start.i];
-    marked[start.i] = 1;
-    let qi = 0;
+  const paint = (start: number, vertical: boolean, longCells: number, shortCells: number, minCells: number): number => {
+    const ix0 = start % grid.cols;
+    const iy0 = (start / grid.cols) | 0;
+    const halfShort = Math.max(1, (shortCells / 2) | 0);
     const blob: number[] = [];
-    const cap = biome.id === "agricultural-plain" ? 140 : 70;
-    while (qi < q.length && blob.length < cap && placed + blob.length < target) {
-      const i = q[qi++]!;
-      const id = grid.surface[i]!;
-      if (id === SURFACE_ID.water || id === SURFACE_ID["forest-core"]) continue;
-      blob.push(i);
-      const ix = i % grid.cols;
-      const iy = (i / grid.cols) | 0;
-      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
-        const j = cellIndex(grid, ix + dx, iy + dy);
-        if (j < 0 || marked[j]) continue;
-        const nid = grid.surface[j]!;
-        if (nid === SURFACE_ID.water || nid === SURFACE_ID["forest-core"] || nid === SURFACE_ID["forest-floor"]) continue;
-        marked[j] = 1;
-        q.push(j);
+    const tryAdd = (ix: number, iy: number): void => {
+      const j = cellIndex(grid, ix, iy);
+      if (j < 0 || marked[j]) return;
+      const id = grid.surface[j]!;
+      if (id === SURFACE_ID.water || id === SURFACE_ID["forest-core"] || id === SURFACE_ID["forest-floor"]) return;
+      marked[j] = 1;
+      blob.push(j);
+    };
+    for (let t = 0; t < longCells && blob.length + placed < target; t++) {
+      for (let s = -halfShort; s <= halfShort && blob.length + placed < target; s++) {
+        if (vertical) {
+          tryAdd(ix0 + s, iy0 + t);
+          if (t) tryAdd(ix0 + s, iy0 - t);
+        } else {
+          tryAdd(ix0 + t, iy0 + s);
+          if (t) tryAdd(ix0 - t, iy0 + s);
+        }
       }
     }
-    if (blob.length < 12) continue;
+    if (blob.length < minCells) {
+      for (const i of blob) marked[i] = 0;
+      return 0;
+    }
     for (const i of blob) {
       if (grid.surface[i] !== SURFACE_ID.water && grid.surface[i] !== SURFACE_ID["forest-core"]) {
         grid.surface[i] = SURFACE_ID.field;
       }
     }
-    placed += blob.length;
+    return blob.length;
+  };
+  if (agricultural) {
+    for (const start of scores) {
+      if (placed >= target) break;
+      if (marked[start.i]) continue;
+      const vertical = fbm2(grid.ox + (start.i % grid.cols), grid.oy + ((start.i / grid.cols) | 0), seed ^ 0x91, 0.04) > 0.5;
+      const n = paint(start.i, vertical, 30, 12, 240);
+      if (n) {
+        placed += n;
+        break;
+      }
+    }
+  }
+  const longCells = agricultural ? 26 : 18;
+  const shortCells = agricultural ? 12 : 9;
+  const minCells = agricultural ? 80 : 28;
+  for (const start of scores) {
+    if (placed >= target) break;
+    if (marked[start.i]) continue;
+    const vertical = fbm2(grid.ox + (start.i % grid.cols), grid.oy + ((start.i / grid.cols) | 0), seed ^ 0x91, 0.04) > 0.5;
+    placed += paint(start.i, vertical, longCells, shortCells, minCells);
   }
 }
 
@@ -739,7 +765,7 @@ function majorityFilter(grid: SurfaceGrid, passes: number): void {
       for (let ix = 0; ix < grid.cols; ix++) {
         const i = iy * grid.cols + ix;
         const self = grid.surface[i]!;
-        if (self === SURFACE_ID["wet-edge"]) continue;
+        if (self === SURFACE_ID["wet-edge"] || self === SURFACE_ID.field) continue;
         counts.fill(0);
         for (let dy = -1; dy <= 1; dy++) {
           for (let dx = -1; dx <= 1; dx++) {
@@ -774,6 +800,7 @@ function dropSmallComponents(grid: SurfaceGrid, minSize: number): void {
       seen[start] = 1;
       continue;
     }
+    const fieldFloor = id === SURFACE_ID.field ? Math.max(minSize, 24) : minSize;
     const cells: number[] = [];
     const q = [start];
     seen[start] = 1;
@@ -789,7 +816,7 @@ function dropSmallComponents(grid: SurfaceGrid, minSize: number): void {
         q.push(j);
       }
     }
-    if (cells.length >= minSize) continue;
+    if (cells.length >= fieldFloor) continue;
     const fill = neighborMajority(grid, cells, id);
     for (const i of cells) grid.surface[i] = fill;
   }
