@@ -53,6 +53,7 @@ export interface HudState {
   death: string | null;
   won: boolean;
   campaign?: CampaignHud;
+  fieldNotice?: string;
 }
 
 export class Hud {
@@ -462,7 +463,7 @@ export class Hud {
       el.setAttribute('aria-valuenow', String(Math.round(clamped)));
       el.querySelector('output')!.textContent = Math.round(clamped) + '%';
     }
-    const advisory = s.heat > 65 ? 'HIGH HEAT · RELEASE BLADE' : s.track > 65 ? 'TRACK STRESS · BACK OFF' : (s.pileResistance ?? 0) > .4 ? 'DENSE RUBBLE · CLEAR A PATH' : '';
+    const advisory = s.heat > 65 ? 'HIGH HEAT · RELEASE BLADE' : s.track > 65 ? 'TRACK STRESS · BACK OFF' : (s.pileResistance ?? 0) > .4 ? 'DENSE RUBBLE · CLEAR A PATH' : (s.fieldNotice ?? '');
     const advisoryEl = this.root.querySelector('#hud-advisory')!;
     if (advisoryEl.textContent !== advisory) advisoryEl.textContent = advisory;
     (advisoryEl as HTMLElement).hidden = !advisory;

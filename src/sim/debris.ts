@@ -1247,7 +1247,7 @@ export function stepDebris(
 
 export function depositSettledParticles(town: Town, particles: ParticlePool): void {
   for (const p of particles.items) {
-    if (!p.alive || !p.settled || p.kind === "dust") continue;
+    if (!p.alive || !p.settled || p.kind === "dust" || p.kind === "crop") continue;
     if (p.life > 0.4) continue;
     const kind: GroundKind = p.kind === "glass" ? "glass" : p.kind === "wood" ? "splinter" : "chip";
     const material: Material = p.kind;

@@ -16,7 +16,7 @@ import {
 } from "../structure/building";
 import { applyFixtureDamage, fixtureSolid, fixtureWorldBox, interiorFloorCoverage, type FixtureFrag } from "../structure/interior";
 import { cellPresent, cellWorldBox, type Building, type Cell, type InteriorFixture, type Prop, type WorldEvent } from "../structure/types";
-import { bladePoints, clampDozer, dozerSpeed, resolveCircleSolid, type Dozer } from "../vehicle/dozer";
+import { bladePoints, clampDozer, dozerForward, dozerSpeed, resolveCircleSolid, type Dozer } from "../vehicle/dozer";
 import { stepRoadVehicle } from "../vehicle/roadVehicle";
 import type { Town } from "../world/town";
 import { applyAssetHit, destroyProp, trackFromAsset } from "./assets";
@@ -24,7 +24,18 @@ import { addDebrisBody, depositSettledParticles, spawnCollapseDebris, stepDebris
 import { SpatialHash } from "./spatial";
 import { ensureCollapsedSite, siteContaining, siteFeel } from "../structure/site";
 import { getAsset } from "../world/catalog";
-import { churnFieldsUnder, resolveTraversal, terrainTraversalAt } from "../world/terrainFeatures";
+import {
+  CHURN_SWATH,
+  CHURN_TRACK,
+  FIELD_CROP_FRAGS_PER_TICK,
+  FIELD_SOUNDS_PER_SEC,
+  FIELD_SWATH_RADIUS,
+  FIELD_TRACK_RADIUS,
+  FIELD_TRACK_SEP,
+  cropFragmentColor,
+  payFieldDamage,
+} from "../world/fields";
+import { churnFieldAt, resolveTraversal, terrainTraversalAt } from "../world/terrainFeatures";
 
 
 
@@ -62,6 +73,7 @@ let hashedTown: Town | null = null;
 let hashValid = false;
 let propsBrokenStamp = -1;
 let buildingHashTown: Town | null = null;
+let cropSoundCredit = 0;
 
 /** Editing changes membership as well as damage; invalidate both broad phases. */
 export function invalidateWorldCollision(): void {
@@ -383,13 +395,7 @@ export function stepWorld(
       }
     }
     if (town.features.some((feature) => feature.kind === "field")) {
-      const churnPts = [...bladePoints(dozer), { x: dozer.x, y: dozer.y }];
-      const flattened = churnFieldsUnder(town.features, churnPts, dozer.bladeDown ? 0.75 : 0.48);
-      if (flattened > 0) {
-        town.featureRevision += 1;
-        particles.burst("dust", dozer.x, dozer.y, 0.28, 0.45 + flattened * 0.02);
-        particles.burst("wood", dozer.x, dozer.y, 0.36, 0.28);
-      }
+      cash += flattenCrops(town, dozer, particles, events, dt);
     }
   }
   particles.step(dt);
@@ -406,4 +412,59 @@ export function stepWorld(
       collisionRebuilds: rebuilt ? 1 : 0,
     },
   };
+}
+
+function cropTrackPoints(dozer: Dozer): { x: number; y: number }[] {
+  const f = dozerForward(dozer);
+  const rx = -f.y;
+  const ry = f.x;
+  return [
+    { x: dozer.x + rx * FIELD_TRACK_SEP, y: dozer.y + ry * FIELD_TRACK_SEP },
+    { x: dozer.x - rx * FIELD_TRACK_SEP, y: dozer.y - ry * FIELD_TRACK_SEP },
+  ];
+}
+
+function flattenCrops(
+  town: Town,
+  dozer: Dozer,
+  particles: ParticlePool,
+  events: WorldEvent[],
+  dt: number,
+): number {
+  const bladeDown = dozer.bladeDown;
+  const points = bladeDown ? bladePoints(dozer) : cropTrackPoints(dozer);
+  const radius = bladeDown ? FIELD_SWATH_RADIUS : FIELD_TRACK_RADIUS;
+  const mark = bladeDown ? CHURN_SWATH : CHURN_TRACK;
+  cropSoundCredit = Math.min(FIELD_SOUNDS_PER_SEC, cropSoundCredit + FIELD_SOUNDS_PER_SEC * dt);
+  let cash = 0;
+  let frags = 0;
+  let flattened = 0;
+  for (const feature of town.features) {
+    if (feature.kind !== "field") continue;
+    let newly = 0;
+    for (const point of points) {
+      newly += churnFieldAt(feature, point.x, point.y, radius, mark);
+    }
+    if (newly <= 0) continue;
+    flattened += newly;
+    const wasCleared = !!feature.cleared;
+    cash += payFieldDamage(feature, newly);
+    const take = Math.min(FIELD_CROP_FRAGS_PER_TICK - frags, Math.min(4, 1 + Math.floor(newly / 6)));
+    if (take > 0 && feature.state !== "tilled") {
+      particles.cropFrags(dozer.x, dozer.y, 0.32, take, cropFragmentColor(feature.crop));
+      frags += take;
+    }
+    if (cropSoundCredit >= 1) {
+      cropSoundCredit -= 1;
+      events.push({ kind: "crush", x: dozer.x, y: dozer.y, z: 0.2, mag: bladeDown ? 0.38 : 0.22 });
+    }
+    if (!wasCleared && feature.cleared) {
+      events.push({ kind: "cash", x: dozer.x, y: dozer.y, z: 0.4, mag: 1.2, cash: Math.max(1, Math.floor((feature.value ?? 0) * 0.2)) });
+    }
+  }
+  if (flattened > 0) {
+    town.featureRevision += 1;
+    particles.burst("dust", dozer.x, dozer.y, 0.22, 0.28 + Math.min(0.2, flattened * 0.01));
+  }
+  return cash;
 }
