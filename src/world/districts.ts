@@ -211,6 +211,7 @@ export function validateTown(town: Town): DistrictReport {
     town.roadSpawnX,
     town.roadSpawnY,
     town.surface,
+    town.lots,
   )) {
     issues.push({ code: "terrain-feature", detail });
   }

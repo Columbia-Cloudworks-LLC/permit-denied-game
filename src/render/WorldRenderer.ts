@@ -496,14 +496,17 @@ export class WorldRenderer {
     }
 
     for (const tree of view.terrain ? this.garnish : []) {
+      if (hideDressing && tree.form !== "edge") continue;
       total++;
-      if (!this.visibleBox(tree.x - 0.8, tree.y - 0.8, 1.6, 1.6, 0, 3.2)) continue;
+      if (!this.visibleBox(tree.x - 1.1, tree.y - 1.1, 2.2, 2.2, 0, 3.6)) continue;
       visible++;
+      const treeTop = tree.form === "understory" ? 0.58 : 2.6;
+      const alpha = objectOcclusionFade(dozer, tree.x - 0.75, tree.y - 0.75, 1.5, 1.5, 0, treeTop);
       this.cmds.push({
         key: `garnish:${tree.seed}`,
-        version: `${tree.x}:${tree.y}:${tree.heading}:${tree.species}:${tree.scale}`,
-        depth: depthKey(tree.x, tree.y, 1.2),
-        run: (g) => drawForestGarnish(g, tree),
+        version: `${tree.x}:${tree.y}:${tree.heading}:${tree.species}:${tree.form}:${tree.scale}:${tree.tint}:${alpha.toFixed(2)}`,
+        depth: depthKey(tree.x, tree.y, tree.form === "understory" ? 0.5 : 1.35),
+        run: (g) => drawForestGarnish(g, tree, alpha),
       });
     }
 

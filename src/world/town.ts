@@ -232,7 +232,7 @@ function createClassicTown(seed: number, showcase = false): Town {
   enforceOpenCorridors(surface, network, lots, buildings);
   stampDeveloped(surface, network, lots, ground);
   const biome = defaultBiome();
-  finalizeStampedSurface(surface, biome, seed);
+  finalizeStampedSurface(surface, biome, seed, { network, lots, buildings });
   const features = showcase
     ? []
     : deriveTerrainFeatures({

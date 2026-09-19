@@ -105,7 +105,6 @@ const SOLID_SURFACES: readonly TerrainSurface[] = [
 ];
 
 const DIRT_FROM: readonly TerrainSurface[] = ["grass", "prairie", "leaf-litter", "duff", "scrub"];
-const FOREST_TO: readonly TerrainSurface[] = ["grass", "duff", "leaf-litter"];
 const FIELD_TO: readonly TerrainSurface[] = ["grass", "prairie", "dirt"];
 
 const ATLAS_URL = "/terrain/ground.json";
@@ -271,8 +270,8 @@ function describeCell(grid: SurfaceGrid, ix: number, iy: number): { base: string
   if (surface === "developed") {
     return { base: `gravel-${variant}` };
   }
-  if (surface === "forest-core") {
-    return { base: `forest-floor-${variant}` };
+  if (surface === "forest-core" || surface === "forest-floor") {
+    return { base: `duff-${variant}` };
   }
   const baseKind = baseSurface(surface);
   const base = `${baseKind}-${variant}`;
@@ -320,11 +319,6 @@ function pickOverlay(grid: SurfaceGrid, ix: number, iy: number, surface: Terrain
     const to = majorityNeighbor(grid, ix, iy, FIELD_TO) ?? "grass";
     const idx = neighborBlob(grid, ix, iy, (id) => id === SURFACE_ID.field);
     return `field__${to}-${idx}`;
-  }
-  if (surface === "forest-floor") {
-    const to = majorityNeighbor(grid, ix, iy, FOREST_TO) ?? "grass";
-    const idx = neighborBlob(grid, ix, iy, (id) => id === SURFACE_ID["forest-floor"] || id === SURFACE_ID["forest-core"]);
-    return `forest-floor__${to}-${idx}`;
   }
   if (DIRT_FROM.includes(surface) && hasNeighbor(grid, ix, iy, SURFACE_ID.dirt)) {
     const idx = neighborBlob(grid, ix, iy, (id) => id === SURFACE_ID[surface]);

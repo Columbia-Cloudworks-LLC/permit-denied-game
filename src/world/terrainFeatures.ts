@@ -1005,6 +1005,7 @@ export function validateFeatureLayout(
   roadSpawnX: number,
   roadSpawnY: number,
   grid?: SurfaceGrid | null,
+  lots: readonly Lot[] = [],
 ): string[] {
   const issues: string[] = [];
   if (terrainTraversalAt(features, spawnX, spawnY, grid) !== "open") issues.push("spawn blocked by terrain");
@@ -1014,10 +1015,10 @@ export function validateFeatureLayout(
     for (let iy = 0; iy < grid.rows; iy++) {
       for (let ix = 0; ix < grid.cols; ix++) {
         const id = grid.surface[iy * grid.cols + ix]!;
-        if (id !== SURFACE_ID.water && id !== SURFACE_ID["forest-core"]) continue;
+        if (id !== SURFACE_ID.water && id !== SURFACE_ID["forest-core"] && id !== SURFACE_ID["forest-floor"]) continue;
         const x = grid.ox + (ix + 0.5) * grid.cell;
         const y = grid.oy + (iy + 0.5) * grid.cell;
-        const label = id === SURFACE_ID.water ? "water" : "forest-core";
+        const label = id === SURFACE_ID.water ? "water" : id === SURFACE_ID["forest-core"] ? "forest-core" : "forest-floor";
         if (pointOnRoad(network, x, y)) {
           const msg = `${label} overlaps a road`;
           if (!seen.has(msg)) {
@@ -1033,6 +1034,17 @@ export function validateFeatureLayout(
             if (!seen.has(msg)) {
               seen.add(msg);
               issues.push(msg);
+            }
+          }
+        }
+        if (id !== SURFACE_ID.water) {
+          for (const lot of lots) {
+            if (x >= lot.x && y >= lot.y && x <= lot.x + lot.w && y <= lot.y + lot.d) {
+              const msg = `${label} overlaps lot ${lot.id}`;
+              if (!seen.has(msg)) {
+                seen.add(msg);
+                issues.push(msg);
+              }
             }
           }
         }

@@ -338,7 +338,7 @@ function generateRuralLayoutInner(
   applyTerrain(terrain, topology, minX, maxX);
   enforceOpenCorridors(surface, network, kept, buildings);
   stampDeveloped(surface, network, kept, ground);
-  finalizeStampedSurface(surface, biome, seed);
+  finalizeStampedSurface(surface, biome, seed, { network, lots: kept, buildings });
 
   if (campaign && urban) {
     const keptIds = new Set(kept.map(lot => lot.id));

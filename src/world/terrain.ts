@@ -6,6 +6,7 @@ export const TERRAIN_GEN_VERSION = 1;
 export const SURFACE_CELL = 1;
 export const SURFACE_CHUNK = 16;
 export const SURFACE_MAX = 512;
+export const FOREST_DEVELOPMENT_CLEAR = 1.6;
 
 export const TERRAIN_SURFACES = [
   "grass",
@@ -323,17 +324,22 @@ export function enforceOpenCorridors(
   lots: readonly Lot[],
   buildings: readonly { x: number; y: number; w: number; d: number; cellSize: number }[],
 ): void {
+  const pad = FOREST_DEVELOPMENT_CLEAR;
   for (let iy = 0; iy < grid.rows; iy++) {
     for (let ix = 0; ix < grid.cols; ix++) {
       const i = iy * grid.cols + ix;
       const id = grid.surface[i]!;
-      if (id !== SURFACE_ID.water && id !== SURFACE_ID["forest-core"]) continue;
+      const wooded = id === SURFACE_ID["forest-core"] || id === SURFACE_ID["forest-floor"];
+      const water = id === SURFACE_ID.water;
+      if (!wooded && !water) continue;
       const x = grid.ox + (ix + 0.5) * grid.cell;
       const y = grid.oy + (iy + 0.5) * grid.cell;
-      let blocked = pointOnRoad(network, x, y);
+      const jitter = wooded ? (hash2(ix, iy, 0xf02e57) - 0.5) * 0.55 : 0;
+      const clear = wooded ? Math.max(0.85, pad + jitter) : 0;
+      let blocked = nearRoad(network, x, y, clear);
       if (!blocked) {
         for (const lot of lots) {
-          if (x >= lot.x && y >= lot.y && x <= lot.x + lot.w && y <= lot.y + lot.d) {
+          if (inExpandedBox(x, y, lot.x, lot.y, lot.w, lot.d, clear)) {
             blocked = true;
             break;
           }
@@ -343,13 +349,13 @@ export function enforceOpenCorridors(
         for (const b of buildings) {
           const bw = b.w * b.cellSize;
           const bd = b.d * b.cellSize;
-          if (x >= b.x && y >= b.y && x <= b.x + bw && y <= b.y + bd) {
+          if (inExpandedBox(x, y, b.x, b.y, bw, bd, clear)) {
             blocked = true;
             break;
           }
         }
       }
-      if (blocked) grid.surface[i] = SURFACE_ID.grass;
+      if (blocked) grid.surface[i] = openReplacement(grid, i);
     }
   }
   paintWetEdge(grid);
@@ -366,7 +372,7 @@ export function stampDeveloped(
     for (let ix = 0; ix < grid.cols; ix++) {
       const i = iy * grid.cols + ix;
       const id = grid.surface[i]!;
-      if (id === SURFACE_ID.water || id === SURFACE_ID["forest-core"]) continue;
+      if (id === SURFACE_ID.water) continue;
       const x = grid.ox + (ix + 0.5) * grid.cell;
       const y = grid.oy + (iy + 0.5) * grid.cell;
       let stamp = false;
@@ -393,11 +399,22 @@ export function stampDeveloped(
   grid.stampRevision++;
 }
 
-export function finalizeStampedSurface(grid: SurfaceGrid, biome: BiomeProfile, seed: number): void {
+export function finalizeStampedSurface(
+  grid: SurfaceGrid,
+  biome: BiomeProfile,
+  seed: number,
+  corridors?: {
+    network: RoadNetwork;
+    lots: readonly Lot[];
+    buildings: readonly { x: number; y: number; w: number; d: number; cellSize: number }[];
+  },
+): void {
   ensureBiomeThirds(grid, biome, (seed ^ TERRAIN_GEN_VERSION) >>> 0);
   dropSmallComponents(grid, 8);
   paintWetEdge(grid);
   dropSmallComponents(grid, 8);
+  if (corridors) enforceOpenCorridors(grid, corridors.network, corridors.lots, corridors.buildings);
+  ensureBiomeThirds(grid, biome, (seed ^ 0x51a11 ^ TERRAIN_GEN_VERSION) >>> 0);
 }
 
 export function isolatedBaseCellCount(grid: SurfaceGrid): number {
@@ -843,50 +860,49 @@ function growSurfaceToQuota(
     if (id === SURFACE_ID.gravel) return true;
     return counts[id]! > keepFloor;
   };
-  let start = -1;
-  for (let i = 0; i < grid.surface.length; i++) {
-    if (grid.surface[i] === want) {
-      start = i;
-      break;
+  const seen = new Uint8Array(grid.surface.length);
+  let placed = 0;
+  const flood = (start: number, target: number): void => {
+    const q = [start];
+    seen[start] = 1;
+    let qi = 0;
+    while (qi < q.length && placed < target) {
+      const i = q[qi++]!;
+      const id = grid.surface[i]!;
+      if (id !== want && convertible(id)) {
+        counts[id]!--;
+        counts[want]++;
+        grid.surface[i] = want;
+        placed++;
+      }
+      const ix = i % grid.cols;
+      const iy = (i / grid.cols) | 0;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+        const j = cellIndex(grid, ix + dx, iy + dy);
+        if (j < 0 || seen[j]) continue;
+        seen[j] = 1;
+        const nid = grid.surface[j]!;
+        if (nid === want || convertible(nid)) q.push(j);
+      }
     }
+  };
+  for (let i = 0; i < grid.surface.length && placed < need; i++) {
+    if (grid.surface[i] === want && !seen[i]) flood(i, need);
   }
-  if (start < 0) {
+  while (placed < need) {
     let best = -1;
     let bestH = 1;
     for (let i = 0; i < grid.surface.length; i++) {
-      if (!convertible(grid.surface[i]!)) continue;
-      const h = hash2(i % grid.cols, (i / grid.cols) | 0, seed);
+      if (seen[i] || !convertible(grid.surface[i]!)) continue;
+      const h = hash2(i % grid.cols, (i / grid.cols) | 0, seed ^ placed);
       if (h < bestH) {
         bestH = h;
         best = i;
       }
     }
-    start = best;
-  }
-  if (start < 0) return;
-  const q = [start];
-  const seen = new Uint8Array(grid.surface.length);
-  seen[start] = 1;
-  let placed = 0;
-  let qi = 0;
-  while (qi < q.length && placed < need) {
-    const i = q[qi++]!;
-    const id = grid.surface[i]!;
-    if (id !== want && convertible(id)) {
-      counts[id]!--;
-      counts[want]++;
-      grid.surface[i] = want;
-      placed++;
-    }
-    const ix = i % grid.cols;
-    const iy = (i / grid.cols) | 0;
-    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
-      const j = cellIndex(grid, ix + dx, iy + dy);
-      if (j < 0 || seen[j]) continue;
-      seen[j] = 1;
-      const nid = grid.surface[j]!;
-      if (nid === want || convertible(nid)) q.push(j);
-    }
+    if (best < 0) break;
+    flood(best, Math.max(need, placed + 8));
+    if (!seen[best]) break;
   }
 }
 
@@ -1011,6 +1027,33 @@ function floodCount(grid: SurfaceGrid, start: number, id: number, seen: Uint8Arr
     }
   }
   return n;
+}
+
+function nearRoad(network: RoadNetwork, x: number, y: number, pad: number): boolean {
+  if (pointOnRoad(network, x, y)) return true;
+  if (pad <= 0) return false;
+  const d = pad * 0.7071;
+  return (
+    pointOnRoad(network, x + pad, y) ||
+    pointOnRoad(network, x - pad, y) ||
+    pointOnRoad(network, x, y + pad) ||
+    pointOnRoad(network, x, y - pad) ||
+    pointOnRoad(network, x + d, y + d) ||
+    pointOnRoad(network, x + d, y - d) ||
+    pointOnRoad(network, x - d, y + d) ||
+    pointOnRoad(network, x - d, y - d)
+  );
+}
+
+function openReplacement(grid: SurfaceGrid, i: number): number {
+  const fill = neighborMajority(grid, [i], grid.surface[i]!);
+  const name = SURFACE_FROM_ID[fill];
+  if (name && BASE_NATURAL.includes(name)) return fill;
+  return SURFACE_ID.grass;
+}
+
+function inExpandedBox(x: number, y: number, bx: number, by: number, bw: number, bd: number, pad: number): boolean {
+  return x >= bx - pad && y >= by - pad && x <= bx + bw + pad && y <= by + bd + pad;
 }
 
 function clampInt(v: number, lo: number, hi: number): number {

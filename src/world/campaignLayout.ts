@@ -137,7 +137,7 @@ function generateEstateLayout(level: CampaignLevelDef, seed: number): RuralLayou
   const ground: GroundPatch[] = [];
   enforceOpenCorridors(surface, network, lots, buildings);
   stampDeveloped(surface, network, lots, ground);
-  finalizeStampedSurface(surface, biome, seed);
+  finalizeStampedSurface(surface, biome, seed, { network, lots, buildings });
   const spawn = samplePolyline(network.segments.find(seg => seg.roadClass === 'rural')?.points ?? network.segments[0]!.points, 0.2);
   const features = deriveTerrainFeatures({
     biome,
