@@ -111,3 +111,22 @@ About & Credits includes the package version, publisher website, email contact, 
 ## Stack
 
 TypeScript + Vite + PixiJS v8. Simulation is world-space; isometric projection is render-only. Fixed 60 Hz step.
+
+## Repository freshness
+
+Cursor Cloud Agents and the Windows checkout (`C:\Users\viral\PERMIT-DENIED`) are independent clones. Merging a pull request updates GitHub; it does not fast-forward the other worktree.
+
+Before repository-dependent review or implementation, run:
+
+```
+npm run repo:preflight
+```
+
+That command fetches and prunes `origin` (including current GitHub `main`) and fast-forwards only when it is safe: a clean `main` that is behind, or a clean branch with **zero** unique commits that is only behind `origin/main`. Dirty files, unique commits, divergence, and detached HEAD are left untouched. Fetch or auth failure prints `FRESHNESS UNVERIFIED` and changes nothing. The session-start hook runs the same check. It is not part of `npm install`, `npm run build`, the game runtime, or CI production builds.
+
+Cursor Cloud Builds are an operational prerequisite stored by Cursor, not Git. They cannot be guaranteed by `.cursor/environment.json` or an install command:
+
+1. Cloud Agents environment → **Builds**.
+2. Enable **Update stale builds**.
+3. Set **Staleness threshold** to **0** so default-branch runs pull the latest default-branch code at startup.
+4. Start new tasks from `main`. Resuming an old agent or selecting an old feature branch intentionally preserves that older branch state.

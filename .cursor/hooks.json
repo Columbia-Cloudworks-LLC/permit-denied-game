@@ -3,39 +3,14 @@
   "hooks": {
     "sessionStart": [
       {
-        "command": "powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File .\\.cursor\\hooks\\session-start.ps1",
-        "timeout": 8
-      }
-    ],
-    "afterFileEdit": [
-      {
-        "command": "powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File .\\.cursor\\hooks\\gofmt-on-edit.ps1",
-        "timeout": 20
-      }
-    ],
-    "afterTabFileEdit": [
-      {
-        "command": "powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File .\\.cursor\\hooks\\gofmt-on-edit.ps1",
-        "timeout": 20
-      }
-    ],
-    "afterShellExecution": [
-      {
-        "command": "powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File .\\.cursor\\hooks\\record-go-test.ps1",
-        "timeout": 8
+        "command": "node .cursor/hooks/session-start.mjs",
+        "timeout": 25
       }
     ],
     "beforeShellExecution": [
       {
-        "command": "powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File .\\.cursor\\hooks\\shell-guard.ps1",
+        "command": "node .cursor/hooks/shell-guard.mjs",
         "timeout": 8
-      }
-    ],
-    "stop": [
-      {
-        "command": "powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File .\\.cursor\\hooks\\verify-on-stop.ps1",
-        "timeout": 10,
-        "loop_limit": 1
       }
     ]
   }
