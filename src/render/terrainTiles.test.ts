@@ -43,6 +43,12 @@ describe("snow terrain frames", () => {
     expect(describeCell(grid, 0, 0, "snow")).toEqual({ base: "snow-gravel-1" });
     expect(describeCell(grid, 0, 0, "clear")).toEqual({ base: "gravel-1" });
 
+    grid.surface[0] = SURFACE_ID["forest-core"];
+    expect(describeCell(grid, 0, 0, "clear")).toEqual({ base: "duff-1" });
+    expect(describeCell(grid, 0, 0, "snow")).toEqual({ base: "snow-duff-1" });
+    grid.surface[0] = SURFACE_ID["forest-floor"];
+    expect(describeCell(grid, 0, 0, "snow")).toEqual({ base: "snow-duff-1" });
+
     grid.surface[0] = SURFACE_ID.water;
     const waterSnow = describeCell(grid, 0, 0, "snow");
     expect(waterSnow?.base).toBe("water-1");

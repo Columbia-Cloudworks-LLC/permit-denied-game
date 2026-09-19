@@ -1,15 +1,19 @@
 import { describe, expect, it } from "vitest";
 import { BIOME_PROFILES, selectBiome } from "./biomes";
 import { createTown } from "./town";
+import { pointOnRoad } from "./roads";
 import {
+  FOREST_DEVELOPMENT_CLEAR,
   TERRAIN_GEN_VERSION,
   SURFACE_CHUNK,
+  SURFACE_ID,
   hashSurfaceBytes,
   isolatedBaseCellCount,
   lotCostAt,
   naturalCellTotal,
   countNatural,
   roadCostAt,
+  surfaceAt,
   traversalAt,
   type TerrainSurface,
 } from "./terrain";
@@ -126,7 +130,10 @@ describe("terrain surface grid", () => {
       const counts = countNatural(town.surface);
       const natural = naturalCellTotal(town.surface);
       for (const base of biome.groundCover) {
-        expect(counts[base] / Math.max(1, natural)).toBeGreaterThanOrEqual(0.05);
+        expect(
+          counts[base] / Math.max(1, natural),
+          `${biome.id} ${fixture.topology} seed=${fixture.seed} ${base} ${counts[base]}/${natural}`,
+        ).toBeGreaterThanOrEqual(0.05);
       }
       seen.add(biome.id);
     }
@@ -142,6 +149,39 @@ describe("terrain surface grid", () => {
       const t = traversalAt(town.surface, x, y);
       expect(t).not.toBe("water");
       expect(t).not.toBe("forest-core");
+    }
+  });
+
+  it("keeps forest cells off lots, roads, and building footprints", () => {
+    const seeds = [
+      { seed: 1, topology: "tjunction" as const },
+      { seed: 19, topology: "county" as const },
+      { seed: 77, topology: "loop" as const },
+    ];
+    const pad = Math.min(1, FOREST_DEVELOPMENT_CLEAR);
+    for (const fixture of seeds) {
+      const town = createTown({ district: "d10", seed: fixture.seed, topology: fixture.topology });
+      const grid = town.surface;
+      const counts = countNatural(grid);
+      expect(counts["forest-core"] + counts["forest-floor"]).toBeGreaterThan(0);
+      for (let iy = 0; iy < grid.rows; iy++) {
+        for (let ix = 0; ix < grid.cols; ix++) {
+          const id = grid.surface[iy * grid.cols + ix]!;
+          if (id !== SURFACE_ID["forest-core"] && id !== SURFACE_ID["forest-floor"]) continue;
+          const x = grid.ox + (ix + 0.5) * grid.cell;
+          const y = grid.oy + (iy + 0.5) * grid.cell;
+          expect(pointOnRoad(town.network, x, y)).toBe(false);
+          expect(traversalAt(grid, x, y) === "forest-core" || surfaceAt(grid, x, y) === "forest-floor").toBe(true);
+          for (const lot of town.lots) {
+            expect(x < lot.x - pad || y < lot.y - pad || x > lot.x + lot.w + pad || y > lot.y + lot.d + pad).toBe(true);
+          }
+          for (const building of town.buildings) {
+            const bw = building.w * building.cellSize;
+            const bd = building.d * building.cellSize;
+            expect(x < building.x - pad || y < building.y - pad || x > building.x + bw + pad || y > building.y + bd + pad).toBe(true);
+          }
+        }
+      }
     }
   });
 

@@ -87,18 +87,17 @@ Traffic cameras still use the bird-escape gag (`birdGag`). Light poles and power
 
 `src/world/dressing.ts` templates (rural residence, family yard, farmstead, roadside service, contractor yard, utility lot, small commercial) place assets relative to lot + building, test occupancy, and keep a driveway corridor. Same seed reproduces selection, variants, headings, and ground patches.
 
-Natural ground is a versioned surface grid (`src/world/terrain.ts`, `TERRAIN_GEN_VERSION = 1`) generated **before** roads. `TerrainField.height` stays a separate 2.4-unit height field and does not drive vehicles. Gameplay queries `surfaceAt` / `roadCostAt` / `lotCostAt` / `traversalAt`; it never switches on sprite names. `CoverKind` is leftover polygon garnish (lot pads, driveways, parking, field crop tints). Map-level `GroundCondition` (`clear` | `snow`) comes from biome (`northern-conifer` → snow) and tints both atlas solids and lot covers; CoverKind identities and collision stay the same. Ground cache keys include that condition.
+Natural ground is a versioned surface grid (`src/world/terrain.ts`, `TERRAIN_GEN_VERSION = 1`) generated **before** roads. `TerrainField.height` stays a separate 2.4-unit height field and does not drive vehicles. Gameplay queries `surfaceAt` / `roadCostAt` / `lotCostAt` / `traversalAt`; it never switches on sprite names. `CoverKind` is leftover polygon garnish (lot pads, driveways, parking, field crop tints). Map-level `GroundCondition` (`clear` | `snow`) comes from biome (`northern-conifer` → snow) and tints both atlas solids and lot covers; CoverKind identities and collision stay the same. Ground cache keys include that condition. Forest-core is impassable; forest-floor is slow but open. `enforceOpenCorridors` clears wooded cells from lots, roads, buildings, and a 1.6-unit setback so woods do not swallow yards. Rendered forest garnish (layered oak/pine masses, edge trees, understory) sits on those cells so the visual footprint matches collision.
 
 Overlay precedence, later wins:
 
 1. Base classified cell (`grass` / `scrub` / `dirt` / `prairie` / `duff` / `leaf-litter` / `gravel`)
-2. `forest-floor` blob overlay
-3. `field` blob overlay
-4. `wet-edge`
-5. `water`
-6. Lot dressing pads — lot wins over forest-floor
-7. Driveway / parking patches
-8. Road mesh
+2. `field` blob overlay
+3. `wet-edge`
+4. `water`
+5. Lot dressing pads
+6. Driveway / parking patches
+7. Road mesh
 
 Autotiles load `/terrain/ground.json` (atlas PNG + TexturePacker hash frames) into chunked Pixi meshes (`SURFACE_CHUNK = 16`). Camera pan does not rebuild tiles. The old 6.2-unit world-fill checker is gone.
 
@@ -106,7 +105,7 @@ Density budgets live in `DRESSING`: per-lot caps and per-district maxima (`class
 
 ## Road graph (foundation)
 
-`src/world/roads.ts` is the source of truth for the graph. Districts are generated **terrain-first** (`src/world/rural.ts`): bounds, biome, and surface grid, then an orthogonal block-grid skeleton scored by `roadCostAt`, then frontage parcels, then buildings. Water and forest-core under retained streets and lots convert to grass (`enforceOpenCorridors`) before the developed stamp; features are derived from the stamped grid. `town.roads` AABB boxes are a derived compatibility view. Classic Rivertown and the Governor's estate keep authored building and road positions and stamp developed cells afterward.
+`src/world/roads.ts` is the source of truth for the graph. Districts are generated **terrain-first** (`src/world/rural.ts`): bounds, biome, and surface grid, then an orthogonal block-grid skeleton scored by `roadCostAt`, then frontage parcels, then buildings. Water and wooded cells under retained streets, lots, and a short setback convert to grass (`enforceOpenCorridors`) before the developed stamp, and again after `finalizeStampedSurface`; features are derived from the stamped grid. `town.roads` AABB boxes are a derived compatibility view. Classic Rivertown and the Governor's estate keep authored building and road positions and stamp developed cells afterward.
 
 Types: `RoadNode`, `RoadSegment` (polyline + class + width + layer + elevation), `Lane`, `RoadAccess`, `TerrainField`. Queries: `roadSurfaceAt`, `terrainHeightAt`, `nearestRoadAccess`, `projectPointToRoad`, `connectedLanes`, `canTransitionBetweenSurfaces`, `findRoadRoute`, `publicStreetsReachable`. A spatial hash indexes segments so vehicles do not scan the whole graph each step. `invalidateNetworkIndex` clears that cache after a finished network is mutated.
 

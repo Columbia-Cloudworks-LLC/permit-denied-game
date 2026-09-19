@@ -5,6 +5,7 @@ import { destroyProp } from "../sim/assets";
 import { stepWorld } from "../sim/worldSim";
 import { BIOME_PROFILES } from "./biomes";
 import { spawnAsset } from "./catalog";
+import { SURFACE_ID } from "./terrain";
 import { createTown } from "./town";
 import { validateTown } from "./districts";
 import {
@@ -91,13 +92,25 @@ describe("terrain features", () => {
     const water = town.features.find((f): f is BasinFeature => f.kind === "pond" || f.kind === "lake");
     const river = town.features.find((f) => f.kind === "river");
     expect(forest ?? water ?? river).toBeDefined();
-    const cx = forest ? forest.cx : water ? water.poly.reduce((sum, p) => sum + p.x, 0) / water.poly.length : river!.path[1]!.x;
-    const cy = forest ? forest.cy : water ? water.poly.reduce((sum, p) => sum + p.y, 0) / water.poly.length : river!.path[1]!.y;
+    let cx = forest ? forest.cx : water ? water.poly.reduce((sum, p) => sum + p.x, 0) / water.poly.length : river!.path[1]!.x;
+    let cy = forest ? forest.cy : water ? water.poly.reduce((sum, p) => sum + p.y, 0) / water.poly.length : river!.path[1]!.y;
+    if (forest) {
+      const grid = town.surface;
+      outer: for (let iy = 0; iy < grid.rows; iy++) {
+        for (let ix = 0; ix < grid.cols; ix++) {
+          if (grid.surface[iy * grid.cols + ix] !== SURFACE_ID["forest-core"]) continue;
+          cx = grid.ox + (ix + 0.5) * grid.cell;
+          cy = grid.oy + (iy + 0.5) * grid.cell;
+          break outer;
+        }
+      }
+      expect(terrainTraversalAt(town.features, cx, cy, town.surface)).toBe("forest-core");
+    }
     const dozer = createDozer(cx, cy, 0);
     dozer.motionStartX = cx - 4;
     dozer.motionStartY = cy;
     stepWorld(town, dozer, new ParticlePool(), { blade: 0, engine: 0, push: 0 }, 1 / 60);
-    expect(terrainTraversalAt(town.features, dozer.x, dozer.y)).toBe("open");
+    expect(terrainTraversalAt(town.features, dozer.x, dozer.y, town.surface)).toBe("open");
   });
 
   it("flattens crop rows without spawning stalk props", () => {
