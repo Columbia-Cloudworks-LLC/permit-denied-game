@@ -3,6 +3,7 @@ import { expect, it, vi } from 'vitest';
 import { frameIsolateLot, instantiateIsolateDefinition } from '../debug/isolateLot';
 import { ParticlePool } from '../fx/particles';
 import { archetypeById } from '../world/archetypes';
+import { worldToScreen } from '../world/iso';
 import { createDozer } from '../vehicle/dozer';
 import { createTown } from '../world/town';
 import { WorldRenderer } from './WorldRenderer';
@@ -21,6 +22,53 @@ function spyPixiAddChildWarnings(): { messages: () => string[]; restore: () => v
       group.mockRestore();
     },
   };
+}
+
+function dropStaticBuildingCache(renderer: WorldRenderer): void {
+  Object.assign(renderer, { staticBuildingCmds: new WeakMap() });
+}
+
+function framePartialBuilding(
+  renderer: WorldRenderer,
+  town: ReturnType<typeof createTown>,
+  dozer: ReturnType<typeof createDozer>,
+  particles: ParticlePool,
+  viewW: number,
+  viewH: number,
+): { edgeKeys: string[]; pannedKeys: string[] } {
+  const building = town.buildings[0]!;
+  expect(building).toBeTruthy();
+  renderer.debug.effects = false;
+  renderer.debug.debris = false;
+  renderer.debug.terrain = false;
+  renderer.zoom = 1.15;
+  const mid = worldToScreen(
+    building.x + building.w * building.cellSize / 2,
+    building.y + building.d * building.cellSize / 2,
+  );
+  const originX = mid.x * renderer.zoom;
+  const originY = mid.y * renderer.zoom;
+  const pan = 28;
+  const offsets = [90, 130, 170, 210, 250, 290, 330, 370, 420, 480, 560, 640];
+  for (const axis of ["x", "y"] as const) {
+    for (const sign of [1, -1]) {
+      for (const offset of offsets) {
+        renderer.camX = originX + (axis === "x" ? sign * offset : 0);
+        renderer.camY = originY + (axis === "y" ? sign * offset : 0);
+        renderer.layout(viewW, viewH, 0, 0);
+        renderer.draw(town, dozer, particles, [], 1, false);
+        const edgeKeys = renderer.submittedKeys();
+        if (edgeKeys.length === 0) continue;
+        renderer.camX += axis === "x" ? -sign * pan : 0;
+        renderer.camY += axis === "y" ? -sign * pan : 0;
+        renderer.layout(viewW, viewH, 0, 0);
+        renderer.draw(town, dozer, particles, [], 1, false);
+        const pannedKeys = renderer.submittedKeys();
+        if (pannedKeys.join("\0") !== edgeKeys.join("\0")) return { edgeKeys, pannedKeys };
+      }
+    }
+  }
+  throw new Error("no camera offset revealed additional static building commands");
 }
 
 it('reuses visible building geometry when panning and zooming, and rebuilds after damage', () => {
@@ -42,6 +90,23 @@ it('reuses visible building geometry when panning and zooming, and rebuilds afte
   renderer.draw(town, dozer, particles, []);
   expect(renderer.stats.rebuilt).toBeGreaterThan(stationary);
   renderer.invalidate(); renderer.root.destroy({ children: true });
+});
+
+it('submits newly visible static pieces after a sub-bucket pan, matching a fresh rebuild', () => {
+  for (const id of ['office-slab-eight', 'parking-garage'] as const) {
+    const lot = instantiateIsolateDefinition(archetypeById(id));
+    const renderer = new WorldRenderer();
+    const particles = new ParticlePool();
+    lot.town.props = [];
+    const { edgeKeys, pannedKeys } = framePartialBuilding(renderer, lot.town, lot.dozer, particles, 280, 200);
+    expect(pannedKeys).not.toEqual(edgeKeys);
+    expect(pannedKeys.length).toBeGreaterThan(0);
+    dropStaticBuildingCache(renderer);
+    renderer.draw(lot.town, lot.dozer, particles, [], 1, false);
+    expect(renderer.submittedKeys()).toEqual(pannedKeys);
+    renderer.invalidate();
+    renderer.root.destroy({ children: true });
+  }
 });
 
 it('keeps isolated intact stats after a static cache hit and DrawCache invalidate', () => {

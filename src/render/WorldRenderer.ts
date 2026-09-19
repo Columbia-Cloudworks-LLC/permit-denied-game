@@ -49,6 +49,15 @@ import {
   debugViewSignature,
 } from "./buildingLod";
 
+interface CullBox {
+  x: number;
+  y: number;
+  w: number;
+  d: number;
+  z0: number;
+  z1: number;
+}
+
 interface Cmd {
   floor?: number;
   key?: string;
@@ -56,6 +65,7 @@ interface Cmd {
   chunk?: string;
   depth: number;
   run: (g: Graphics) => void;
+  cull?: CullBox;
 }
 
 export class WorldRenderer {
@@ -75,7 +85,7 @@ export class WorldRenderer {
   private readonly groundOverlays = new Graphics();
   private readonly drawing = new DrawCache();
   private readonly cmds: Cmd[] = [];
-  private readonly staticBuildingCmds = new WeakMap<Building, { key: string; cmds: Cmd[]; visible: number }>();
+  private readonly staticBuildingCmds = new WeakMap<Building, { key: string; cmds: Cmd[] }>();
   readonly debug = defaultDebugView();
   jobTarget?: Building;
   landmarkTarget?: Building;
@@ -144,6 +154,34 @@ export class WorldRenderer {
       this.camY,
       this.zoom,
     );
+  }
+
+  private cmdOnScreen(cmd: Cmd): boolean {
+    const box = cmd.cull;
+    if (!box) return true;
+    return this.visibleBox(box.x, box.y, box.w, box.d, box.z0, box.z1);
+  }
+
+  /** Filter cached geometry against the current camera, then keep open-deck painter order. */
+  private takeStaticBuildingCmds(built: Cmd[], openDecks: boolean): Cmd[] {
+    const shown = built.filter((cmd) => this.cmdOnScreen(cmd));
+    if (!openDecks || shown.length === 0) return shown;
+    const decks = shown.slice().sort((a, c) => (a.floor ?? -1) - (c.floor ?? -1) || a.depth - c.depth);
+    const head = decks[0]!;
+    const last = decks[decks.length - 1]!;
+    return [{
+      key: `chunk:${head.chunk ?? "deck"}:${head.depth}:${last.depth}:${decks.length}`,
+      version: head.version,
+      chunk: head.chunk,
+      depth: Math.max(...decks.map((cmd) => cmd.depth)),
+      run: (g) => {
+        for (const cmd of decks) cmd.run(g);
+      },
+    }];
+  }
+
+  submittedKeys(): string[] {
+    return this.drawing.keys();
   }
 
   draw(town: Town, dozer: Dozer, particles: ParticlePool, birds: Bird[], dt = 1 / 60, showPlayer = true): void {
@@ -262,7 +300,6 @@ export class WorldRenderer {
 
     let surfaceGeometry = 0;
     const viewSig = debugViewSignature(view);
-    const camLod = `${Math.round(this.camX / 40)}:${Math.round(this.camY / 40)}:${this.zoom.toFixed(2)}:${this.viewW}x${this.viewH}`;
     const hideDressing = view.overview || this.zoom < 0.55;
     for (const b of town.buildings) {
       if (b.retired) { releaseBuildingSurfaces(b); continue; }
@@ -312,19 +349,25 @@ export class WorldRenderer {
         // Ground layer only: a depth-sorted footprint shadow paints over far gable bays.
         drawBuildingFootprintShadow(this.groundOverlays, surfaces.footprint, 1);
       }
-      const cacheKey = live ? "" : `${b.visualRevision}:${viewSig}:${camLod}:${needsInterior ? 1 : 0}:${needsDetails ? 1 : 0}`;
+      const visBefore = visible;
+      const cacheKey = live ? "" : `${b.visualRevision}:${viewSig}:${needsInterior ? 1 : 0}:${needsDetails ? 1 : 0}`;
       if (cacheKey) {
         const hit = this.staticBuildingCmds.get(b);
         if (hit && hit.key === cacheKey) {
-          visible += hit.visible;
-          this.cmds.push(...hit.cmds);
+          const shown = this.takeStaticBuildingCmds(hit.cmds, !!b.openDecks);
+          visible = visBefore + shown.length;
+          this.cmds.push(...shown);
           continue;
         }
       }
       for (const c of b.cells) if (c.coreSupport && cellPresent(c) && view.walls) {
         const box = cellWorldBox(b, c);
         const alpha = !live || view.reveal || view.maxFloor === 0 ? 1 : objectOcclusionFade(dozer, box.x, box.y, box.w, box.d, 0, FLOOR_Z);
-        this.cmds.push({ depth: depthKey(box.x + .3, box.y + .3, .1), run: g => drawIsoBox(g, box.x, box.y, box.w, box.d, 0, FLOOR_Z, 0xb6a784, 0x827754, 0x9c8d68, alpha) });
+        this.cmds.push({
+          depth: depthKey(box.x + .3, box.y + .3, .1),
+          cull: { x: box.x, y: box.y, w: box.w, d: box.d, z0: 0, z1: FLOOR_Z },
+          run: g => drawIsoBox(g, box.x, box.y, box.w, box.d, 0, FLOOR_Z, 0xb6a784, 0x827754, 0x9c8d68, alpha),
+        });
       }
       const fadeBox = (key: string, x: number, y: number, w: number, d: number, z: number, top: number) => {
         if (!live) return 1;
@@ -336,42 +379,43 @@ export class WorldRenderer {
       for (const detail of needsDetails ? b.facadeDetails : []) {
         if (detail.floor > view.maxFloor) continue;
         const z0 = detail.floor * FLOOR_Z;
-        if (!this.visibleBox(
-          b.x + detail.gx * b.cellSize,
-          b.y + detail.gy * b.cellSize,
-          (detail.side === "south" ? detail.width : 1) * b.cellSize,
-          (detail.side === "east" ? detail.width : 1) * b.cellSize,
+        const detailBox = {
+          x: b.x + detail.gx * b.cellSize,
+          y: b.y + detail.gy * b.cellSize,
+          w: (detail.side === "south" ? detail.width : 1) * b.cellSize,
+          d: (detail.side === "east" ? detail.width : 1) * b.cellSize,
           z0,
-          z0 + FLOOR_Z,
-        )) continue;
+          z1: z0 + FLOOR_Z,
+        };
+        if (live && !this.visibleBox(detailBox.x, detailBox.y, detailBox.w, detailBox.d, detailBox.z0, detailBox.z1)) continue;
         const command = facadeDetailCommand(b, detail, fadeBox(`detail:${detail.id}`,
-          b.x + detail.gx * b.cellSize, b.y + detail.gy * b.cellSize,
-          (detail.side === 'south' ? detail.width : 1) * b.cellSize,
-          (detail.side === 'east' ? detail.width : 1) * b.cellSize,
-          detail.floor * FLOOR_Z, (detail.floor + 1) * FLOOR_Z));
-        if (command) { visible++; this.cmds.push(command); }
+          detailBox.x, detailBox.y, detailBox.w, detailBox.d, detailBox.z0, detailBox.z1));
+        if (command) { visible++; this.cmds.push({ ...command, cull: detailBox }); }
       }
       // Split long facades only when interior slabs can cover them in painter order.
       const walls = wallPaintSpans(b, needsInterior);
       if ((b.canopy || b.openDecks) && view.walls) for (const c of b.cells) {
         if (c.state === 'gone' || c.state === 'falling' || c.floor > view.maxFloor) continue;
-        if (!this.visibleBox(b.x, b.y, bw, bd, c.floor * FLOOR_Z, (c.floor + 1) * FLOOR_Z)) continue;
+        const deckBox = { x: b.x, y: b.y, w: bw, d: bd, z0: c.floor * FLOOR_Z, z1: (c.floor + 1) * FLOOR_Z };
+        if (live && !this.visibleBox(deckBox.x, deckBox.y, deckBox.w, deckBox.d, deckBox.z0, deckBox.z1)) continue;
         const box = cellWorldBox(b, c);
         this.cmds.push({ floor:c.floor, depth: depthKey(box.x + box.w / 2, box.y + box.d / 2, c.floor * FLOOR_Z),
+          cull: deckBox,
           run: g => drawIsoBox(g, box.x, box.y, box.w, box.d, c.floor * FLOOR_Z, FLOOR_Z, 0xb7bab0, 0x697a70, 0x8d9c91) });
       }
       if (b.openDecks) for (const tile of b.floorTiles) {
         if (tile.void || tile.state === 'gone' || tile.floor > view.maxFloor || !paintsFloorSlab(tile.floor)) continue;
         const cs=b.cellSize, x=b.x+tile.gx*cs, y=b.y+tile.gy*cs;
         const z=tile.floor*FLOOR_Z*(1-tile.fallT)+.18;
+        const tileBox = { x, y, w: cs, d: cs, z0: z, z1: z + .45 };
         // Low barriers belong to their deck tile and descend with it.
         if (view.walls && tile.floor>0) for (const [bx,by,bw,bd] of [
           ...(tile.gx===0 ? [[x,y,.12,cs]] : []), ...(tile.gx===b.w-1 ? [[x+cs-.12,y,.12,cs]] : []),
           ...(tile.gy===0 ? [[x,y,cs,.12]] : []), ...(tile.gy===b.d-1 ? [[x,y+cs-.12,cs,.12]] : []),
-        ]) this.cmds.push({floor:tile.floor,depth:depthKey(bx!+bw!/2,by!+bd!/2,z),run:g=>drawIsoBox(g,bx!,by!,bw!,bd!,z,.45*(1-tile.fallT),0xb9b7a8,0x777f75,0x929b8e)});
+        ]) this.cmds.push({floor:tile.floor,depth:depthKey(bx!+bw!/2,by!+bd!/2,z),cull:tileBox,run:g=>drawIsoBox(g,bx!,by!,bw!,bd!,z,.45*(1-tile.fallT),0xb9b7a8,0x777f75,0x929b8e)});
         // Short end-of-deck parking bays stay clear of the alternating ramp lanes.
         if(needsDetails && tile.gx>=b.w-3 && tile.gx<b.w-1 && [2,5,8].includes(tile.gy))
-          this.cmds.push({floor:tile.floor,depth:depthKey(x+cs/2,y+.02,z+.01),run:g=>drawIsoBox(g,x,y,cs,.055,z,.012,0xe0dfc7,0xe0dfc7,0xe0dfc7)});
+          this.cmds.push({floor:tile.floor,depth:depthKey(x+cs/2,y+.02,z+.01),cull:tileBox,run:g=>drawIsoBox(g,x,y,cs,.055,z,.012,0xe0dfc7,0xe0dfc7,0xe0dfc7)});
       }
       for (const span of view.walls && !b.canopy && !b.openDecks ? walls : []) {
         if (span.floor > view.maxFloor) continue;
@@ -382,7 +426,7 @@ export class WorldRenderer {
         const wallD = span.dir === "south" ? .08 : (span.gy1 - span.gy0 + 1) * cs;
         const wallZ = span.floor * FLOOR_Z;
         const wallTop = (span.floor + 1) * FLOOR_Z;
-        if (!this.visibleBox(wallX, wallY, wallW, wallD, wallZ, wallTop)) continue;
+        if (live && !this.visibleBox(wallX, wallY, wallW, wallD, wallZ, wallTop)) continue;
         const runs = live ? wallSpanFadeRuns(b, span, dozer) : [{ span, fade: 1 }];
         for (const run of runs) {
           const s = run.span;
@@ -402,6 +446,7 @@ export class WorldRenderer {
           this.cmds.push({
             key: `building:${b.id}:wall:${s.dir}:${s.floor}:${s.gx0}:${s.gy0}`,
             depth: run.span.depth,
+            cull: { x: runX, y: runY, w: runW, d: runD, z0: wallZ, z1: wallTop },
             run: (g) => drawWallSpan(g, b, run.span, alpha),
           });
         }
@@ -438,12 +483,13 @@ export class WorldRenderer {
             const xs = moved.map(v => v.x), ys = moved.map(v => v.y), zs = moved.map(v => v.z);
             const rx = Math.min(...xs), ry = Math.min(...ys), rw = Math.max(...xs) - rx, rd = Math.max(...ys) - ry;
             const rz0 = Math.min(...zs), rz1 = Math.max(...zs) + .2;
-            if (!this.visibleBox(rx, ry, rw, rd, rz0, rz1)) continue;
+            if (live && !this.visibleBox(rx, ry, rw, rd, rz0, rz1)) continue;
             const alpha = fadeBox(`roof:${roof.id}`, rx, ry, rw, rd, rz0, rz1);
             visible++;
             this.cmds.push({
               key: `building:${b.id}:roof:${roof.id}`,
               depth: roofCommandDepth(b, roof, moved),
+              cull: { x: rx, y: ry, w: rw, d: rd, z0: rz0, z1: rz1 },
               run: (g) => drawRoofBay(g, b, roof, alpha),
             });
           }
@@ -453,14 +499,16 @@ export class WorldRenderer {
               visible++;
               this.cmds.push({
                 depth: depthKey(ch.x, ch.y, ch.z + 0.4),
+                cull: { x: ch.x, y: ch.y, w: 0.32, d: 0.32, z0: ch.z, z1: ch.z + 0.85 },
                 run: (g) => drawChimney(g, ch, 1),
               });
             }
           }
         }
       }
-      // Whole-building culling keeps command identities stable while the camera moves.
-      if (b.openDecks) {
+      // Live decks still bake painter order here. Static decks keep per-piece commands
+      // so submit-time culling can reveal floors without waiting on a cache rebuild.
+      if (b.openDecks && live) {
         const decks = this.cmds.splice(commandStart).sort((a,c)=>(a.floor??-1)-(c.floor??-1)||a.depth-c.depth);
         if(decks.length) this.cmds.push({depth:Math.max(...decks.map(c=>c.depth)),run:g=>{for(const c of decks)c.run(g);}});
       }
@@ -475,11 +523,12 @@ export class WorldRenderer {
         if (chunk) cmd.chunk = chunk;
       }
       if (cacheKey) {
-        this.staticBuildingCmds.set(b, {
-          key: cacheKey,
-          visible: this.cmds.length - commandStart,
-          cmds: this.cmds.slice(commandStart),
-        });
+        const built = this.cmds.slice(commandStart);
+        this.staticBuildingCmds.set(b, { key: cacheKey, cmds: built });
+        const shown = this.takeStaticBuildingCmds(built, !!b.openDecks);
+        this.cmds.length = commandStart;
+        this.cmds.push(...shown);
+        visible = visBefore + shown.length;
       }
     }
 
