@@ -19,6 +19,7 @@ import type { ParticlePool } from "../fx/particles";
 import { applyBrokenRoofEdge, displacedRoofVerts, roofHeightAt, sectionOwnsRidge, sawtoothClosures } from "../structure/roof";
 import type { Bird, Building, CollapsedSite, CoverKind, GroundMark, GroundPatch, Particle, RoofSection, Rubble } from "../structure/types";
 import type { FieldFeature, TerrainFeature } from "../world/terrainFeatures";
+import { CHURN_SWATH, CHURN_TRACK } from "../world/fields";
 import type { Dozer } from "../vehicle/dozer";
 import type { Town } from "../world/town";
 import { getBuildingSurfaces, releaseBuildingSurfaces } from "./buildingSurfaces";
@@ -888,30 +889,41 @@ function cropRowStyle(feature: FieldFeature): { top: number; left: number; right
 function drawFieldCrops(g: Graphics, feature: FieldFeature): void {
   if (feature.state === "tilled") return;
   const style = cropRowStyle(feature);
-  const gap = 0.62;
-  const rows = Math.min(14, Math.max(5, Math.floor(feature.d / gap)));
+  const gap = Math.max(0.55, Math.min(0.8, feature.cell));
   const fx = Math.cos(feature.heading);
   const fy = Math.sin(feature.heading);
   const ox = feature.x + feature.w * 0.5;
   const oy = feature.y + feature.d * 0.5;
-  for (let i = 0; i < rows; i++) {
-    const t = (i + 0.5) / rows - 0.5;
-    const cx = ox - fy * t * feature.d;
-    const cy = oy + fx * t * feature.d;
-    drawOrientedIsoBox(
-      g,
-      cx,
-      cy,
-      feature.heading,
-      feature.w * 0.88,
-      style.thick,
-      0.012,
-      style.h,
-      style.top,
-      style.left,
-      style.right,
-      feature.state === "stubble" ? 0.7 : 1,
-    );
+  for (let row = 0; row < feature.rows; row++) {
+    let run = -1;
+    for (let col = 0; col <= feature.cols; col++) {
+      const live = col < feature.cols
+        && (!feature.mask || feature.mask[row * feature.cols + col])
+        && !feature.churn[row * feature.cols + col];
+      if (live && run < 0) run = col;
+      if (live && col < feature.cols) continue;
+      if (run < 0) continue;
+      const end = col - 1;
+      const span = (end - run + 1) * feature.cell;
+      const mid = (run + end + 1) * 0.5;
+      const cx = ox + fx * (mid * feature.cell - feature.w * 0.5) - fy * ((row + 0.5) * feature.cell - feature.d * 0.5);
+      const cy = oy + fy * (mid * feature.cell - feature.w * 0.5) + fx * ((row + 0.5) * feature.cell - feature.d * 0.5);
+      drawOrientedIsoBox(
+        g,
+        cx,
+        cy,
+        feature.heading,
+        span,
+        Math.min(style.thick, gap * 0.72),
+        0.012,
+        style.h,
+        style.top,
+        style.left,
+        style.right,
+        feature.state === "stubble" ? 0.7 : 1,
+      );
+      run = -1;
+    }
   }
 }
 
@@ -920,25 +932,39 @@ function drawFieldChurn(g: Graphics, feature: FieldFeature): void {
   const fy = Math.sin(feature.heading);
   const ox = feature.x + feature.w * 0.5;
   const oy = feature.y + feature.d * 0.5;
-  for (let iy = 0; iy < feature.rows; iy++) {
-    for (let ix = 0; ix < feature.cols; ix++) {
-      if (!feature.churn[iy * feature.cols + ix]) continue;
-      const cx = ox + fx * ((ix + 0.5) * feature.cell - feature.w * 0.5) - fy * ((iy + 0.5) * feature.cell - feature.d * 0.5);
-      const cy = oy + fy * ((ix + 0.5) * feature.cell - feature.w * 0.5) + fx * ((iy + 0.5) * feature.cell - feature.d * 0.5);
-      drawOrientedIsoBox(
+  for (let row = 0; row < feature.rows; row++) {
+    let run = -1;
+    let mark = 0;
+    for (let col = 0; col <= feature.cols; col++) {
+      const next = col < feature.cols ? feature.churn[row * feature.cols + col]! : 0;
+      const valid = col < feature.cols && (!feature.mask || feature.mask[row * feature.cols + col]);
+      const cur = valid ? next : 0;
+      if (cur && run < 0) {
+        run = col;
+        mark = cur;
+        continue;
+      }
+      if (cur === mark && run >= 0) continue;
+      if (run < 0) continue;
+      const end = col - 1;
+      const span = (end - run + 1) * feature.cell;
+      const mid = (run + end + 1) * 0.5;
+      const cx = ox + fx * (mid * feature.cell - feature.w * 0.5) - fy * ((row + 0.5) * feature.cell - feature.d * 0.5);
+      const cy = oy + fy * (mid * feature.cell - feature.w * 0.5) + fx * ((row + 0.5) * feature.cell - feature.d * 0.5);
+      const width = mark === CHURN_SWATH ? feature.cell * 1.02 : feature.cell * 0.62;
+      drawOrientedGround(
         g,
         cx,
         cy,
         feature.heading,
-        feature.cell * 1.15,
-        feature.cell * 1.15,
-        0.01,
-        0.06,
-        0x6a4a28,
-        0x3a2814,
-        0x52381c,
-        1,
+        span + feature.cell * 0.08,
+        width,
+        mark === CHURN_TRACK ? 0x8a6a38 : PAL.fieldStubble,
+        0.92,
+        0.016,
       );
+      run = cur ? col : -1;
+      mark = cur;
     }
   }
 }
@@ -1025,6 +1051,24 @@ function drawParticle(g: Graphics, p: Particle): void {
     const r = 5 + p.size * 10;
     g.rect(c.x - r / 2, c.y - r / 2, r, r);
     g.fill({ color: PAL.dust, alpha: 0.32 * fade });
+    return;
+  }
+  if (p.kind === "crop") {
+    const color = p.tint ?? 0xd4c44a;
+    drawOrientedIsoBox(
+      g,
+      p.x,
+      p.y,
+      p.rot,
+      0.09 + p.size * 0.18,
+      0.04 + p.size * 0.06,
+      p.z,
+      Math.max(0.03, p.size * 0.12),
+      color,
+      shade(color, 0.65),
+      shade(color, 0.8),
+      0.88 * fade,
+    );
     return;
   }
   const color =

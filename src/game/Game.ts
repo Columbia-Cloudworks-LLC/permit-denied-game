@@ -31,6 +31,13 @@ import { pickVerificationRoute } from "../world/routing";
 import { worldBoundsToScreen, worldToScreen } from "../world/iso";
 import { createTown } from "../world/town";
 import {
+  FIELD_CLEARED_SECONDS,
+  FIELD_NOTICE_SECONDS,
+  fieldDamagedCount,
+  fieldNoticeText,
+} from "../world/fields";
+import type { FieldFeature } from "../world/terrainFeatures";
+import {
   applyCampaignOutcome,
   advanceCampaignLevel,
   campaignBriefingText,
@@ -122,6 +129,8 @@ export class Game {
   private scrapeCd = 0;
   private droppedSimSec = 0;
   private detachInput: (() => void) | null = null;
+  private fieldNotice = "";
+  private fieldNoticeUntil = 0;
 
   async start(root: HTMLElement, hudRoot: HTMLElement): Promise<void> {
     document.title = TITLE;
@@ -373,6 +382,8 @@ export class Game {
     this.timeLeft = this.campaign ? currentLevel(this.campaign).timeLimit : MATCH_SECONDS;
     this.elapsed = 0;
     this.hint = 1;
+    this.fieldNotice = "";
+    this.fieldNoticeUntil = 0;
     this.mode = this.campaign?.briefing ? "briefing" : "play";
     this.death = null;
     if (this.campaign) {
@@ -558,6 +569,7 @@ export class Game {
       this.cash = this.campaign.spendable;
     } else this.cash += out.cash;
     this.react(out.events);
+    this.syncFieldNotice(dt);
     for (const b of out.birds) {
       this.birds.push({
         x: b.x,
@@ -644,6 +656,27 @@ export class Game {
     this.mode = "results";
     this.death = won ? null : death;
     if (won) this.death = null;
+  }
+
+  private syncFieldNotice(dt: number): void {
+    this.fieldNoticeUntil = Math.max(0, this.fieldNoticeUntil - dt);
+    for (const feature of this.town.features) {
+      if (feature.kind !== "field") continue;
+      const field = feature as FieldFeature;
+      if (field.cleared && !field.clearedAnnounced) {
+        field.clearedAnnounced = true;
+        field.noticed = true;
+        this.fieldNotice = COPY.fieldCleared;
+        this.fieldNoticeUntil = FIELD_CLEARED_SECONDS;
+        continue;
+      }
+      if (fieldDamagedCount(field) > 0 && !field.noticed) {
+        field.noticed = true;
+        this.fieldNotice = fieldNoticeText(field, true);
+        this.fieldNoticeUntil = FIELD_NOTICE_SECONDS;
+      }
+    }
+    if (this.fieldNoticeUntil <= 0) this.fieldNotice = "";
   }
 
   private react(events: WorldEvent[]): void {
@@ -869,6 +902,7 @@ export class Game {
       overlay: this.mode === "play" ? "none" : this.mode,
       death: this.death,
       won: this.mode === "results" && (this.campaign ? this.campaign.complete : this.cash >= CASH_TARGET && !this.death),
+      fieldNotice: this.fieldNotice,
       campaign: this.campaign ? (() => {
         const level = currentLevel(this.campaign);
         const landmark = landmarkDemolitionStatus(this.town.buildings, level);
