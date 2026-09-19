@@ -7,6 +7,7 @@ import {
   type SurfaceGrid,
   type TerrainSurface,
 } from "../world/terrain";
+import type { GroundCondition } from "../world/groundCondition";
 
 function validBlobMask(mask: number): boolean {
   const n = (mask & 1) !== 0;
@@ -173,7 +174,10 @@ function fallbackAtlas(): TerrainAtlas {
   const frames = new Map<string, AtlasFrame>();
   const dummy: AtlasFrame = { name: "white", u0: 0, v0: 0, u1: 1, v1: 1 };
   for (const surface of SOLID_SURFACES) {
-    for (let v = 0; v < 3; v++) frames.set(`${surface}-${v}`, dummy);
+    for (let v = 0; v < 3; v++) {
+      frames.set(`${surface}-${v}`, dummy);
+      frames.set(`snow-${surface}-${v}`, dummy);
+    }
   }
   frames.set("wet-edge__any-0", dummy);
   frames.set("water__wet-edge-0", dummy);
@@ -186,7 +190,12 @@ export function chunkCount(grid: SurfaceGrid): { chunks: number; cells: number }
   return { chunks: chunksX * chunksY, cells: grid.cols * grid.rows };
 }
 
-export function buildTerrainChunks(parent: Container, grid: SurfaceGrid, atlas?: TerrainAtlas | null): number {
+export function buildTerrainChunks(
+  parent: Container,
+  grid: SurfaceGrid,
+  atlas?: TerrainAtlas | null,
+  condition: GroundCondition = "clear",
+): number {
   parent.removeChildren().forEach((child) => {
     child.destroy({ children: true });
   });
@@ -195,14 +204,20 @@ export function buildTerrainChunks(parent: Container, grid: SurfaceGrid, atlas?:
   const chunksY = Math.ceil(grid.rows / SURFACE_CHUNK);
   for (let cy = 0; cy < chunksY; cy++) {
     for (let cx = 0; cx < chunksX; cx++) {
-      const mesh = buildChunkMesh(grid, cx, cy, sheet);
+      const mesh = buildChunkMesh(grid, cx, cy, sheet, condition);
       if (mesh) parent.addChild(mesh);
     }
   }
   return chunksX * chunksY;
 }
 
-function buildChunkMesh(grid: SurfaceGrid, cx: number, cy: number, atlas: TerrainAtlas): Mesh | null {
+function buildChunkMesh(
+  grid: SurfaceGrid,
+  cx: number,
+  cy: number,
+  atlas: TerrainAtlas,
+  condition: GroundCondition,
+): Mesh | null {
   const x0 = cx * SURFACE_CHUNK;
   const y0 = cy * SURFACE_CHUNK;
   const x1 = Math.min(grid.cols, x0 + SURFACE_CHUNK);
@@ -210,7 +225,7 @@ function buildChunkMesh(grid: SurfaceGrid, cx: number, cy: number, atlas: Terrai
   const quads: { x: number; y: number; frame: AtlasFrame }[] = [];
   for (let iy = y0; iy < y1; iy++) {
     for (let ix = x0; ix < x1; ix++) {
-      const cell = describeCell(grid, ix, iy);
+      const cell = describeCell(grid, ix, iy, condition);
       if (!cell) continue;
       const wx = grid.ox + ix;
       const wy = grid.oy + iy;
@@ -263,24 +278,41 @@ function buildChunkMesh(grid: SurfaceGrid, cx: number, cy: number, atlas: Terrai
   return new Mesh({ geometry, texture: atlas.texture });
 }
 
-function describeCell(grid: SurfaceGrid, ix: number, iy: number): { base: string; overlay?: string } | null {
+export function describeCell(
+  grid: SurfaceGrid,
+  ix: number,
+  iy: number,
+  condition: GroundCondition = "clear",
+): { base: string; overlay?: string } | null {
   const i = iy * grid.cols + ix;
   const id = grid.surface[i]!;
   const variant = grid.variant[i] ?? 0;
   const surface = SURFACE_FROM_ID[id] ?? "grass";
   if (surface === "developed") {
-    return { base: `gravel-${variant}` };
+    return { base: terrainSolidFrame("gravel", variant, condition) };
   }
   if (surface === "forest-core") {
-    return { base: `forest-floor-${variant}` };
+    return { base: terrainSolidFrame("forest-floor", variant, condition) };
   }
   const baseKind = baseSurface(surface);
-  const base = `${baseKind}-${variant}`;
+  const base = terrainSolidFrame(baseKind, variant, condition);
+  if (condition === "snow" && surface !== "water") {
+    return { base };
+  }
   const overlay = pickOverlay(grid, ix, iy, surface);
   return overlay ? { base, overlay } : { base };
 }
 
-function baseSurface(surface: TerrainSurface): TerrainSurface {
+export function terrainSolidFrame(
+  surface: Exclude<TerrainSurface, "developed" | "forest-core">,
+  variant: number,
+  condition: GroundCondition = "clear",
+): string {
+  const name = `${surface}-${variant}`;
+  return condition === "snow" && surface !== "water" ? `snow-${name}` : name;
+}
+
+function baseSurface(surface: TerrainSurface): Exclude<TerrainSurface, "developed" | "forest-core"> {
   switch (surface) {
     case "grass":
     case "scrub":

@@ -87,7 +87,7 @@ Traffic cameras still use the bird-escape gag (`birdGag`). Light poles and power
 
 `src/world/dressing.ts` templates (rural residence, family yard, farmstead, roadside service, contractor yard, utility lot, small commercial) place assets relative to lot + building, test occupancy, and keep a driveway corridor. Same seed reproduces selection, variants, headings, and ground patches.
 
-Natural ground is a versioned surface grid (`src/world/terrain.ts`, `TERRAIN_GEN_VERSION = 1`) generated **before** roads. `TerrainField.height` stays a separate 2.4-unit height field and does not drive vehicles. Gameplay queries `surfaceAt` / `roadCostAt` / `lotCostAt` / `traversalAt`; it never switches on sprite names. `CoverKind` is leftover polygon garnish (lot pads, driveways, parking, field crop tints).
+Natural ground is a versioned surface grid (`src/world/terrain.ts`, `TERRAIN_GEN_VERSION = 1`) generated **before** roads. `TerrainField.height` stays a separate 2.4-unit height field and does not drive vehicles. Gameplay queries `surfaceAt` / `roadCostAt` / `lotCostAt` / `traversalAt`; it never switches on sprite names. `CoverKind` is leftover polygon garnish (lot pads, driveways, parking, field crop tints). Map-level `GroundCondition` (`clear` | `snow`) comes from biome (`northern-conifer` → snow) and tints both atlas solids and lot covers; CoverKind identities and collision stay the same. Ground cache keys include that condition.
 
 Overlay precedence, later wins:
 

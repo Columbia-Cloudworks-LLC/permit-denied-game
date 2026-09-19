@@ -86,6 +86,14 @@ describe("lot dressing", () => {
     expect(town.ground.filter((g) => g.cover === "grass" || g.cover === "dirt" || g.cover === "gravel").length).toBeGreaterThan(0);
   });
 
+  it("keeps lot cover identities on snow maps", () => {
+    const town = createTown({ district: "d10", seed: 1, topology: "tjunction" });
+    expect(town.groundCondition).toBe("snow");
+    expect(town.ground.some((g) => g.cover === "grass" || g.cover === "dirt" || g.cover === "gravel")).toBe(true);
+    expect(town.ground.some((g) => g.cover === "driveway")).toBe(true);
+    expect(town.surface.surface.some((id) => id !== undefined)).toBe(true);
+  });
+
   it("keeps lot-front gravel off public pavement", () => {
     const patchPoly = (g: GroundPatch) =>
       meshQuadPolygon({

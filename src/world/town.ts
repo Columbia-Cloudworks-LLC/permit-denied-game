@@ -20,6 +20,7 @@ import { CLASSIC_PLACEMENTS } from "./families";
 import { completeLot, type NhoodDebug } from "./parcels";
 import { linePoints, pt, RoadBuilder, emptyTerrain, type RoadNetwork, type TerrainField } from "./roads";
 import { defaultBiome, type BiomeProfile } from "./biomes";
+import { mapGroundCondition, type GroundCondition } from "./groundCondition";
 import type { TopologyFamily } from "./rural";
 import { deriveTerrainFeatures, type TerrainFeature } from "./terrainFeatures";
 import {
@@ -67,6 +68,7 @@ export interface Town {
   nhood: NhoodDebug;
   topology?: TopologyFamily;
   biome: BiomeProfile;
+  groundCondition: GroundCondition;
   surface: SurfaceGrid;
   features: TerrainFeature[];
   featureRevision: number;
@@ -126,7 +128,7 @@ function emptyTestTown(seed: number): Town {
     minX: 0, minY: 0, maxX: 32, maxY: 32, district: 'classic', seed,
     roadSpawnX: 4, roadSpawnY: 4, roadSpawnHeading: 0, visualRevision: 1, siteRevision: 1,
     collapsedSites: [], diagnostic: { ok: true, issues: [] }, nhood: { rejected: [] },
-    biome: defaultBiome(), features: [], featureRevision: 0, surface: emptyGrassGrid(0, 0, 32, 32),
+    biome: defaultBiome(), groundCondition: mapGroundCondition(defaultBiome()), features: [], featureRevision: 0, surface: emptyGrassGrid(0, 0, 32, 32),
   };
 }
 
@@ -289,6 +291,7 @@ function createClassicTown(seed: number, showcase = false): Town {
     diagnostic: { ok: true, issues: [] },
     nhood: { rejected: [] },
     biome,
+    groundCondition: mapGroundCondition(biome),
     surface,
     features,
     featureRevision: 0,

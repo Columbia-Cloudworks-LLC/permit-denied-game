@@ -25,7 +25,9 @@ import { getBuildingSurfaces, releaseBuildingSurfaces } from "./buildingSurfaces
 import { wallPaintSpans } from "./wallPaint";
 import { drawCatalogProp } from "./assets";
 import { drawRoofFrame, interiorCmds, roofCommandDepth, roofShowsFrame } from "./interiorDraw";
+import { coverColor, coverDark } from "./coverPalette";
 import { cellColors, drawGroundPoly, drawIsoBox, drawOrientedGround, drawOrientedIsoBox, drawShadow, drawSlopedQuad, drawWorldPoly, PAL, shade } from "./drawIso";
+import type { GroundCondition } from "../world/groundCondition";
 import {
   drawBuildingFootprintShadow,
   drawFallingCell,
@@ -175,11 +177,12 @@ export class WorldRenderer {
     void ensureTerrainAtlas();
     const surface = town.surface ?? emptyGrassGrid(town.minX, town.minY, town.maxX, town.maxY);
     const terrainCounts = chunkCount(surface);
-    const tKey = `${view.terrain}:${TERRAIN_GEN_VERSION}:${surface.cols}x${surface.rows}:${surface.ox}:${surface.oy}:${surface.stampRevision}:${terrainAtlasRevision()}`;
+    const condition = town.groundCondition;
+    const tKey = `${view.terrain}:${TERRAIN_GEN_VERSION}:${surface.cols}x${surface.rows}:${surface.ox}:${surface.oy}:${surface.stampRevision}:${terrainAtlasRevision()}:${condition}`;
     let groundRebuilds = 0;
     if (tKey !== this.terrainKey) {
       this.terrainLayer.visible = view.terrain;
-      if (view.terrain) buildTerrainChunks(this.terrainLayer, surface);
+      if (view.terrain) buildTerrainChunks(this.terrainLayer, surface, undefined, condition);
       else this.terrainLayer.removeChildren();
       this.terrainKey = tKey;
       groundRebuilds++;
@@ -191,7 +194,7 @@ export class WorldRenderer {
       this.garnishKey = garnishKey;
     }
 
-    const gKey = `${view.terrain}:${view.roads}:${town.district}:${town.seed}:${town.lots.length}:${town.network.mesh.length}:${town.ground.length}:${town.features?.length ?? 0}:${town.featureRevision ?? 0}`;
+    const gKey = `${view.terrain}:${view.roads}:${town.district}:${town.seed}:${town.lots.length}:${town.network.mesh.length}:${town.ground.length}:${town.features?.length ?? 0}:${town.featureRevision ?? 0}:${condition}`;
     if (gKey !== this.groundKey) {
       this.ground.clear();
       groundRebuilds++;
@@ -208,9 +211,9 @@ export class WorldRenderer {
             z: 0,
           }));
       for (const patch of view.terrain ? covers.filter((p) => p.w !== 6.2 && p.z !== -0.02) : []) {
-        drawCover(this.ground, patch);
+        drawCover(this.ground, patch, condition);
       }
-      if (view.terrain) drawTerrainFeatures(this.ground, town.features ?? []);
+      if (view.terrain) drawTerrainFeatures(this.ground, town.features ?? [], condition);
       const mesh = town.network.mesh;
       if (view.roads && mesh.length) {
         // RoadMeshQuad x/y are world centers; drawOrientedGround uses the same convention.
@@ -790,8 +793,8 @@ function drawCollapsedSite(g: Graphics, site: CollapsedSite): void {
   void rng;
 }
 
-function drawCover(g: Graphics, patch: GroundPatch): void {
-  const color = coverColor(patch.cover);
+function drawCover(g: Graphics, patch: GroundPatch, condition: GroundCondition): void {
+  const color = coverColor(patch.cover, condition);
   if (patch.poly && patch.poly.length >= 3) {
     drawWorldPoly(g, patch.poly.map((p) => ({ x: p.x, y: p.y, z: patch.z })), color, 1);
   } else if (Math.abs(patch.heading) > 0.05) {
@@ -800,11 +803,11 @@ function drawCover(g: Graphics, patch: GroundPatch): void {
     drawGroundPoly(g, patch.x, patch.y, patch.w, patch.d, color, 1, patch.z);
   }
   if (patch.cover === "water" || patch.cover === "forest-floor" || patch.cover.startsWith("field-")) {
-    if (patch.cover.startsWith("field-")) drawFieldRows(g, patch);
+    if (patch.cover.startsWith("field-")) drawFieldRows(g, patch, condition);
     return;
   }
   const speckle = patch.z < 0 ? 1 : Math.min(40, Math.max(4, Math.floor((patch.w * patch.d) / 18)));
-  const dark = coverDark(patch.cover);
+  const dark = coverDark(patch.cover, condition);
   for (let i = 0; i < speckle; i++) {
     const gx = patch.x + ((i * 17 + (patch.seed % 13)) % 97) * 0.12 * (patch.w / 8);
     const gy = patch.y + ((i * 29 + (patch.seed % 17)) % 89) * 0.1 * (patch.d / 8);
@@ -813,10 +816,10 @@ function drawCover(g: Graphics, patch: GroundPatch): void {
   }
 }
 
-function drawFieldRows(g: Graphics, patch: GroundPatch): void {
+function drawFieldRows(g: Graphics, patch: GroundPatch, condition: GroundCondition): void {
   const gap = patch.cover === "field-mature" ? 0.7 : 0.52;
   const rows = Math.min(16, Math.max(5, Math.floor(patch.d / gap)));
-  const color = coverDark(patch.cover);
+  const color = coverDark(patch.cover, condition);
   const thick = patch.cover === "field-tilled" ? 0.22 : patch.cover === "field-stubble" ? 0.16 : patch.cover === "field-mature" ? 0.28 : 0.2;
   const z = patch.z + 0.006;
   for (let i = 0; i < rows; i++) {
@@ -829,13 +832,13 @@ function drawFieldRows(g: Graphics, patch: GroundPatch): void {
   }
 }
 
-function drawTerrainFeatures(g: Graphics, features: readonly TerrainFeature[]): void {
+function drawTerrainFeatures(g: Graphics, features: readonly TerrainFeature[], condition: GroundCondition): void {
   for (const feature of features) {
     switch (feature.kind) {
       case "forest":
         break;
       case "field":
-        drawFieldCrops(g, feature);
+        drawFieldCrops(g, feature, condition);
         drawFieldChurn(g, feature);
         break;
       case "pond":
@@ -850,7 +853,17 @@ function drawTerrainFeatures(g: Graphics, features: readonly TerrainFeature[]): 
   }
 }
 
-function cropRowStyle(feature: FieldFeature): { top: number; left: number; right: number; h: number; thick: number } {
+function cropRowStyle(feature: FieldFeature, condition: GroundCondition): { top: number; left: number; right: number; h: number; thick: number } {
+  if (condition === "snow") {
+    const dormant = feature.state === "mature" || feature.state === "stubble";
+    return {
+      top: 0xd0d8de,
+      left: 0x8a9094,
+      right: 0xa0a8ac,
+      h: dormant ? 0.12 : feature.state === "short" ? 0.08 : 0.04,
+      thick: 0.2,
+    };
+  }
   const mature = feature.state === "mature";
   const short = feature.state === "short";
   switch (feature.crop) {
@@ -885,9 +898,9 @@ function cropRowStyle(feature: FieldFeature): { top: number; left: number; right
   }
 }
 
-function drawFieldCrops(g: Graphics, feature: FieldFeature): void {
+function drawFieldCrops(g: Graphics, feature: FieldFeature, condition: GroundCondition): void {
   if (feature.state === "tilled") return;
-  const style = cropRowStyle(feature);
+  const style = cropRowStyle(feature, condition);
   const gap = 0.62;
   const rows = Math.min(14, Math.max(5, Math.floor(feature.d / gap)));
   const fx = Math.cos(feature.heading);
@@ -939,78 +952,6 @@ function drawFieldChurn(g: Graphics, feature: FieldFeature): void {
         0x52381c,
         1,
       );
-    }
-  }
-}
-
-function coverColor(cover: CoverKind): number {
-  switch (cover) {
-    case "grass":
-      return PAL.grass;
-    case "scrub":
-      return PAL.grassDark;
-    case "dirt":
-      return PAL.dirt;
-    case "gravel":
-      return PAL.gravel;
-    case "tracks":
-      return PAL.lotDark;
-    case "concrete":
-    case "parking":
-      return PAL.concrete;
-    case "driveway":
-      return 0x5a5248;
-    case "planted":
-      return PAL.planted;
-    case "lot":
-      return PAL.lot;
-    case "water":
-      return PAL.water;
-    case "forest-floor":
-      return PAL.forestFloor;
-    case "field-tilled":
-      return PAL.fieldTilled;
-    case "field-short":
-      return PAL.fieldShort;
-    case "field-mature":
-      return PAL.fieldMature;
-    case "field-stubble":
-      return PAL.fieldStubble;
-    default: {
-      const _never: never = cover;
-      return _never;
-    }
-  }
-}
-
-function coverDark(cover: CoverKind): number {
-  switch (cover) {
-    case "grass":
-    case "scrub":
-    case "planted":
-      return PAL.grassDark;
-    case "dirt":
-    case "tracks":
-    case "lot":
-      return PAL.lotDark;
-    case "gravel":
-    case "driveway":
-      return 0x5a5448;
-    case "concrete":
-    case "parking":
-      return PAL.concreteDark;
-    case "water":
-      return PAL.waterDark;
-    case "forest-floor":
-    case "field-short":
-    case "field-mature":
-      return 0x1e381c;
-    case "field-tilled":
-    case "field-stubble":
-      return 0x5a3a1c;
-    default: {
-      const _never: never = cover;
-      return _never;
     }
   }
 }

@@ -1,7 +1,7 @@
 {
   "name": "permit-denied",
   "private": true,
-  "version": "1.0.32",
+  "version": "1.0.33",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -19,7 +19,8 @@
     "test:catalog": "node --test scripts/catalog.test.mjs && node scripts/verify-catalog.mjs",
     "screenshot:title": "node scripts/capture-title.mjs",
     "build:terrain-atlas": "node scripts/build-terrain-atlas.mjs",
-    "capture:terrain": "node scripts/capture-terrain.mjs"
+    "capture:terrain": "node scripts/capture-terrain.mjs",
+    "capture:winter-lots": "node scripts/capture-winter-lots.mjs"
   },
   "dependencies": {
     "@vercel/analytics": "2.0.1",
