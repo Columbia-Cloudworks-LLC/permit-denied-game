@@ -46,6 +46,7 @@ export class ParticlePool {
     speed: number,
     up = 3.2,
     owner?: string,
+    tint?: number,
   ): void {
     let n = 0;
     for (const p of this.items) {
@@ -62,14 +63,19 @@ export class ParticlePool {
       p.vx = Math.cos(ang) * sp;
       p.vy = Math.sin(ang) * sp;
       p.vz = this.rng.range(0.4, 1) * up;
-      p.maxLife = kind === "dust" ? this.rng.range(0.28, 0.7) : this.rng.range(0.9, 2.4);
+      p.maxLife = kind === "dust" || kind === "crop" ? this.rng.range(0.28, 0.7) : this.rng.range(0.9, 2.4);
       p.life = p.maxLife;
-      p.size = kind === "dust" ? this.rng.range(0.18, 0.45) : this.rng.range(0.08, 0.22);
+      p.size = kind === "dust" ? this.rng.range(0.18, 0.45) : kind === "crop" ? this.rng.range(0.06, 0.14) : this.rng.range(0.08, 0.22);
       p.rot = this.rng.range(0, Math.PI * 2);
       p.spin = this.rng.range(-8, 8);
       p.settled = false;
+      p.tint = tint;
       n++;
     }
+  }
+
+  cropFrags(x: number, y: number, z: number, count: number, tint: number, owner?: string): void {
+    this.spawn("crop", x, y, z, count, 1.35, 2.1, owner, tint);
   }
 
   radialDust(x: number, y: number, radius: number, count: number, owner?: string): void {
@@ -87,7 +93,7 @@ export class ParticlePool {
   }
 
   burst(kind: ParticleKind, x: number, y: number, z: number, mag: number, owner?: string): void {
-    const chunks = kind === "dust" ? 0 : Math.min(18, 4 + Math.floor(mag * 3));
+    const chunks = kind === "dust" || kind === "crop" ? 0 : Math.min(18, 4 + Math.floor(mag * 3));
     const dust = Math.min(22, 6 + Math.floor(mag * 4));
     if (chunks) this.spawn(kind, x, y, z, chunks, 2.4 + mag, 4 + mag, owner);
     this.spawn("dust", x, y, z, dust, 1.6 + mag * 0.6, 1.8, owner);
@@ -114,7 +120,7 @@ export class ParticlePool {
       if (p.settled) continue;
       p.vx *= 1 - 1.4 * dt;
       p.vy *= 1 - 1.4 * dt;
-      p.vz -= (p.kind === "dust" ? 4.5 : 18) * dt;
+      p.vz -= (p.kind === "dust" || p.kind === "crop" ? 4.5 : 18) * dt;
       p.x += p.vx * dt;
       p.y += p.vy * dt;
       p.z += p.vz * dt;
@@ -124,12 +130,12 @@ export class ParticlePool {
         p.vz *= -0.28;
         p.vx *= 0.55;
         p.vy *= 0.55;
-        if (p.kind === "dust" || Math.abs(p.vz) < 1.1) {
+        if (p.kind === "dust" || p.kind === "crop" || Math.abs(p.vz) < 1.1) {
           p.settled = true;
           p.vz = 0;
           p.vx = 0;
           p.vy = 0;
-          if (p.kind === "dust") p.life = Math.min(p.life, 0.35);
+          if (p.kind === "dust" || p.kind === "crop") p.life = Math.min(p.life, 0.35);
         }
       }
     }

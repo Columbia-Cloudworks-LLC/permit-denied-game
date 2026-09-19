@@ -4,6 +4,14 @@ import type { Building, GroundPatch, Lot, Prop } from "../structure/types";
 import type { FieldCropId, FieldState, BiomeProfile } from "./biomes";
 import { getAsset, spawnAsset } from "./catalog";
 import { drivewayPatch, lotAxisSizes, lotLocalToWorld } from "./dressing";
+import {
+  FIELD_CELL,
+  FIELD_FARM_RANGE,
+  fieldValidCount,
+  fieldValue,
+  fieldWorldBox,
+  isPrimaryField,
+} from "./fields";
 import { derivedRoadBoxes, pointOnRoad, type RoadNetwork } from "./roads";
 import { SURFACE_ID, traversalAt, type SurfaceGrid } from "./terrain";
 
@@ -55,6 +63,14 @@ export interface FieldFeature {
   cols: number;
   rows: number;
   churn: Uint8Array;
+  mask?: Uint8Array;
+  valid?: number;
+  value?: number;
+  paid?: number;
+  cleared?: boolean;
+  primary?: boolean;
+  noticed?: boolean;
+  clearedAnnounced?: boolean;
 }
 
 export type TerrainFeature = ForestFeature | BasinFeature | RiverFeature | FieldFeature;
@@ -150,7 +166,7 @@ export function featureBounds(feature: TerrainFeature): { x: number; y: number; 
       return { x, y, w: Math.max(...xs) - x + pad * 2, d: Math.max(...ys) - y + pad * 2 };
     }
     case "field":
-      return { x: feature.x, y: feature.y, w: feature.w, d: feature.d };
+      return fieldWorldBox(feature);
     default: {
       const _never: never = feature;
       return _never;
@@ -174,20 +190,22 @@ export function churnFieldsUnder(
   features: TerrainFeature[] | undefined,
   points: readonly { x: number; y: number }[],
   radius: number,
+  mark = 1,
 ): number {
   if (!features?.length) return 0;
   let marked = 0;
   for (const feature of features) {
     if (feature.kind !== "field") continue;
     for (const point of points) {
-      marked += churnFieldAt(feature, point.x, point.y, radius);
+      marked += churnFieldAt(feature, point.x, point.y, radius, mark);
     }
   }
   return marked;
 }
 
-export function churnFieldAt(feature: FieldFeature, x: number, y: number, radius: number): number {
-  if (!pointInField(feature, x, y) && !pointInAabb(x, y, feature.x - radius, feature.y - radius, feature.w + radius * 2, feature.d + radius * 2)) {
+export function churnFieldAt(feature: FieldFeature, x: number, y: number, radius: number, mark = 1): number {
+  const box = fieldWorldBox(feature);
+  if (!pointInField(feature, x, y) && !pointInAabb(x, y, box.x - radius, box.y - radius, box.w + radius * 2, box.d + radius * 2)) {
     return 0;
   }
   const fx = Math.cos(feature.heading);
@@ -207,8 +225,13 @@ export function churnFieldAt(feature: FieldFeature, x: number, y: number, radius
       const wy = cy + fy * ((ix + 0.5) * feature.cell - feature.w * 0.5) + fx * ((iy + 0.5) * feature.cell - feature.d * 0.5);
       if (len(wx - x, wy - y) > radius) continue;
       const index = iy * feature.cols + ix;
-      if (feature.churn[index]) continue;
-      feature.churn[index] = 1;
+      if (feature.mask && !feature.mask[index]) continue;
+      const prev = feature.churn[index]!;
+      if (prev) {
+        if (mark > prev) feature.churn[index] = mark;
+        continue;
+      }
+      feature.churn[index] = mark;
       marked++;
     }
   }
@@ -357,6 +380,7 @@ export function deriveTerrainFeatures(ctx: FeatureContext): TerrainFeature[] {
       if (forest) features.push(forest);
     }
   }
+  promotePrimaryField(features, ctx);
   for (const feature of features) {
     if (feature.kind === "field") ctx.ground.push(...featurePatches(feature));
   }
@@ -446,53 +470,103 @@ function forestFromBlob(grid: SurfaceGrid, cells: number[], n: number): ForestFe
 }
 
 function fieldFromBlob(grid: SurfaceGrid, cells: number[], ctx: FeatureContext, n: number): FieldFeature | undefined {
-  if (cells.length < 10) return undefined;
-  const cellSet = new Set(cells);
+  if (cells.length < 16) return undefined;
   const blocked = (x: number, y: number): boolean => {
     if (pointOnRoad(ctx.network, x, y)) return true;
+    if (traversalAt(grid, x, y) === "water") return true;
     for (const lot of ctx.lots) {
       if (x >= lot.x && y >= lot.y && x <= lot.x + lot.w && y <= lot.y + lot.d) return true;
     }
     for (const building of ctx.buildings) {
       const bw = building.w * building.cellSize;
       const bd = building.d * building.cellSize;
-      if (x >= building.x - 1.6 && y >= building.y - 1.6 && x <= building.x + bw + 1.6 && y <= building.y + bd + 1.6) return true;
-    }
-    for (const prop of ctx.props) {
-      if (x >= prop.x - 1.2 && y >= prop.y - 1.2 && x <= prop.x + prop.w + 1.2 && y <= prop.y + prop.d + 1.2) return true;
+      if (x >= building.x - 1.2 && y >= building.y - 1.2 && x <= building.x + bw + 1.2 && y <= building.y + bd + 1.2) return true;
     }
     return false;
   };
-  let bestI = -1;
-  let bestN = -1;
+  const open: { x: number; y: number }[] = [];
   for (const i of cells) {
-    const ix = i % grid.cols;
-    const iy = (i / grid.cols) | 0;
-    const x = grid.ox + ix + 0.5;
-    const y = grid.oy + iy + 0.5;
-    if (x < ctx.minX + 2 || y < ctx.minY + 2 || x > ctx.maxX - 2 || y > ctx.maxY - 2) continue;
+    const x = grid.ox + (i % grid.cols) + 0.5;
+    const y = grid.oy + ((i / grid.cols) | 0) + 0.5;
+    if (x < ctx.minX + 1.2 || y < ctx.minY + 1.2 || x > ctx.maxX - 1.2 || y > ctx.maxY - 1.2) continue;
+    if (grid.surface[i] !== SURFACE_ID.field) continue;
     if (blocked(x, y)) continue;
-    let n4 = 0;
-    for (let dy = -2; dy <= 2; dy++) {
-      for (let dx = -3; dx <= 3; dx++) {
-        const nx = ix + dx;
-        const ny = iy + dy;
-        if (nx < 0 || ny < 0 || nx >= grid.cols || ny >= grid.rows) continue;
-        if (cellSet.has(ny * grid.cols + nx)) n4++;
-      }
-    }
-    if (n4 > bestN) {
-      bestN = n4;
-      bestI = i;
+    open.push({ x, y });
+  }
+  if (open.length < 16) return undefined;
+  const minX = Math.min(...open.map((p) => p.x)) - 0.5;
+  const maxX = Math.max(...open.map((p) => p.x)) + 0.5;
+  const minY = Math.min(...open.map((p) => p.y)) - 0.5;
+  const maxY = Math.max(...open.map((p) => p.y)) + 0.5;
+  const width = maxX - minX;
+  const height = maxY - minY;
+  const heading = width >= height ? 0 : Math.PI / 2;
+  const cx = (minX + maxX) * 0.5;
+  const cy = (minY + maxY) * 0.5;
+  const w = heading === 0 ? width : height;
+  const d = heading === 0 ? height : width;
+  const x = cx - w * 0.5;
+  const y = cy - d * 0.5;
+  const rng = new Rng(ctx.seed ^ FIELD_SALT ^ (n * 13));
+  const feature = makeField(x, y, w, d, heading, rng, ctx.biome, `field-${n}`);
+  const occupied = new Set(open.map((p) => `${Math.floor(p.x)}:${Math.floor(p.y)}`));
+  const mask = new Uint8Array(feature.cols * feature.rows);
+  for (let row = 0; row < feature.rows; row++) {
+    for (let col = 0; col < feature.cols; col++) {
+      const px = cx + Math.cos(heading) * ((col + 0.5) * feature.cell - w * 0.5) - Math.sin(heading) * ((row + 0.5) * feature.cell - d * 0.5);
+      const py = cy + Math.sin(heading) * ((col + 0.5) * feature.cell - w * 0.5) + Math.cos(heading) * ((row + 0.5) * feature.cell - d * 0.5);
+      if (blocked(px, py)) continue;
+      if (occupied.has(`${Math.floor(px)}:${Math.floor(py)}`)) mask[row * feature.cols + col] = 1;
     }
   }
-  if (bestI < 0) bestI = cells[0]!;
-  const cx = grid.ox + (bestI % grid.cols) + 0.5;
-  const cy = grid.oy + ((bestI / grid.cols) | 0) + 0.5;
-  const w = 8;
-  const d = 6;
-  const rng = new Rng(ctx.seed ^ FIELD_SALT ^ (n * 13));
-  return makeField(cx - w * 0.5, cy - d * 0.5, w, d, 0, rng, ctx.biome, `field-${n}`);
+  feature.mask = mask;
+  feature.valid = fieldValidCount(feature);
+  if (feature.valid < 24) return undefined;
+  feature.value = fieldValue(feature.valid * feature.cell * feature.cell);
+  feature.primary = isPrimaryField(feature);
+  const farms = ctx.lots.filter((lot) => lot.identity === "farm");
+  const blobBox = { x: minX, y: minY, w: width, d: height };
+  let bestLot: Lot | undefined;
+  let bestD = FIELD_FARM_RANGE;
+  for (const lot of farms) {
+    const dist = aabbGap(blobBox, lot);
+    if (dist <= bestD) {
+      bestD = dist;
+      bestLot = lot;
+    }
+  }
+  if (farms.length && !bestLot) return undefined;
+  if (bestLot) feature.lotId = bestLot.id;
+  if (ctx.biome.id === "agricultural-plain" && feature.primary) {
+    feature.state = rng.chance(0.35) ? "short" : "mature";
+  }
+  return feature;
+}
+
+function aabbGap(
+  a: { x: number; y: number; w: number; d: number },
+  b: { x: number; y: number; w: number; d: number },
+): number {
+  const dx = Math.max(0, a.x - (b.x + b.w), b.x - (a.x + a.w));
+  const dy = Math.max(0, a.y - (b.y + b.d), b.y - (a.y + a.d));
+  return Math.hypot(dx, dy);
+}
+
+function promotePrimaryField(features: TerrainFeature[], ctx: FeatureContext): void {
+  if (ctx.biome.id !== "agricultural-plain") return;
+  const fields = features.filter((f): f is FieldFeature => f.kind === "field");
+  if (!fields.length) return;
+  let best = fields[0]!;
+  let bestArea = (best.valid ?? fieldValidCount(best)) * best.cell * best.cell;
+  for (const field of fields) {
+    const area = (field.valid ?? fieldValidCount(field)) * field.cell * field.cell;
+    if (area > bestArea) {
+      best = field;
+      bestArea = area;
+    }
+  }
+  best.primary = isPrimaryField(best) || best.primary;
+  if (best.state === "tilled" || best.state === "stubble") best.state = "mature";
 }
 
 function outlineAround(pts: { x: number; y: number }[], cx: number, cy: number): { x: number; y: number }[] {
@@ -742,10 +816,10 @@ function makeField(
   id: string,
   lotId?: string,
 ): FieldFeature {
-  const cell = 0.85;
+  const cell = FIELD_CELL;
   const cols = Math.max(2, Math.ceil(w / cell));
   const rows = Math.max(2, Math.ceil(d / cell));
-  return {
+  const feature: FieldFeature = {
     kind: "field",
     id,
     x,
@@ -764,7 +838,13 @@ function makeField(
     cols,
     rows,
     churn: new Uint8Array(cols * rows),
+    paid: 0,
+    cleared: false,
   };
+  feature.valid = fieldValidCount(feature);
+  feature.value = fieldValue(feature.valid * cell * cell);
+  feature.primary = isPrimaryField(feature);
+  return feature;
 }
 
 function placeEdgeTrees(ctx: FeatureContext, features: TerrainFeature[]): void {
