@@ -145,6 +145,11 @@ function partFaces(v: VehicleState, i: number): VehicleFace[] {
     if (p.role === 'frame')
         for (const side of [-1, 1])
             strip(skin(-q.length * .47, side * q.width * .36, 1.003), skin(q.length * .47, side * q.width * .36, 1.003), topNormal, 0x303934, .035);
+    if (p.id === 'bucket-lip') {
+        const a = q.length / 2 + .002;
+        for (let k = 0; k < 5; k++)
+            strip(skin(a, -q.width * .36 + k * q.width * .18, .12), skin(a, -q.width * .36 + k * q.width * .18, .92), frontNormal, 0xb5b8a1, .03);
+    }
     if (s.damage > .12 && p.role !== 'glass') {
         strip(skin(-q.length * .3, 0, 1.003), skin(q.length * .12, q.width * .18, 1.003), topNormal, shade(color, .5), .022);
         strip(skin(q.length * .12, q.width * .18, 1.003), skin(q.length * .32, -q.width * .1, 1.003), topNormal, shade(color, .55), .015);
