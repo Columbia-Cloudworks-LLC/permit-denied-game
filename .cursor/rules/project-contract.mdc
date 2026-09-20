@@ -5,7 +5,7 @@ alwaysApply: true
 
 # PERMIT DENIED — project contract
 
-One compact demolition arcade. Same town every run. No meta, no campaign, no second map.
+One compact demolition arcade. Same town every run. Seven-level Time Challenge campaign on that town. No between-run metagame, no second map.
 
 **Title** on the page: `PERMIT DENIED`. Tagline: “The County Said No.”
 
@@ -19,7 +19,7 @@ TypeScript + Vite + PixiJS v8. Entirely client-side. Simulation in world coordin
 
 ## Stay on the lot
 
-Keep out of this build: title/campaign/meta, JSON schemas, plugin systems, between-run unlocks, a second town, ECS, React wrappers around the canvas.
+Keep out of this build: JSON schemas, plugin systems, between-run unlocks, a second town, ECS, React wrappers around the canvas. The seven-level Time Challenge campaign on this town is in-scope.
 
 Buildings are per-cell destructible with a support/collapse model. Visual debris is garnish; rubble collides and matches the wreck.
 

@@ -6,7 +6,7 @@ Fixes #
 
 ## Scope
 
-- [ ] Same town, same run loop (no campaign, meta, or second map)
+- [ ] Same town every run (seven-level Time Challenge campaign is in-scope; no second map or between-run metagame)
 - [ ] No secrets, backend, or `dist/` artifacts in the diff
 - [ ] Copy stays on-spec (`PERMIT DENIED`, no Heemeyer / Granby / wanted stars)
 

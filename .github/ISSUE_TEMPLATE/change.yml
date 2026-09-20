@@ -6,25 +6,27 @@ body:
   - type: markdown
     attributes:
       value: |
-        Stay on this town. A change that does not affect driving or demolition probably does not ship.
+        Stay on this town. Time Challenge is a seven-level campaign here; a change that does not affect driving, demolition, or that campaign probably does not ship.
 
-        Out of spec (do not file): campaign, between-run meta, second town, backend, title names the copy forbids.
+        Out of spec (do not file): second town, between-run unlocks or metagame, backend, title names the copy forbids.
+
+        Campaign bug reports and campaign maintenance (level timing, landmarks, HUD copy) belong here or in Bug.
 
   - type: checkboxes
     id: scope
     attributes:
       label: Scope
       options:
-        - label: This stays on the current town (no campaign, meta, or second map)
+        - label: This stays on the current town (no second map or between-run metagame)
           required: true
-        - label: I read `README.md`
+        - label: I read `README.md` and `docs/campaign.md` if this touches Time Challenge
           required: true
 
   - type: textarea
     id: problem
     attributes:
       label: Problem
-      description: What a player cannot do, or which destruction feel fails.
+      description: What a player cannot do, or which destruction or campaign feel fails.
     validations:
       required: true
 
@@ -43,6 +45,7 @@ body:
       options:
         - Tune existing numbers
         - Fix existing system
+        - Time Challenge campaign maintenance
         - Visual / audio
         - Docs only
         - New system (justify)

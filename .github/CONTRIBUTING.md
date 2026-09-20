@@ -1,6 +1,8 @@
 # Contributing
 
-PERMIT DENIED is a one-town isometric demolition arcade. Same lot every run. No campaign, no between-run meta, no second map.
+PERMIT DENIED is a one-town isometric demolition arcade. Same town every run.
+
+Time Challenge is a **seven-level campaign** on that town (County through Governor's Mansion). There is no second map, no unlock tree, and no between-run metagame. Sandbox, the Asset Test Yard, captures, and development scenarios stay on their own paths. See [`docs/campaign.md`](../docs/campaign.md).
 
 1. [`README.md`](../README.md) — run, controls, scope, and hosting
 2. Stay client-side: TypeScript + Vite + PixiJS. Simulation is world-space; isometric projection is render-only.
