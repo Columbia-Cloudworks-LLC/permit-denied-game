@@ -11,6 +11,7 @@ import {
   exposeDebugBridge,
   serializeTownFeature,
   shouldInstallDebugBridge,
+  carryDebugQuery,
   type DebugHost,
   type GameSnapshot,
 } from "../debug/bridge";
@@ -324,7 +325,7 @@ export class Game {
         : { mode: this.rules.kind, district: this.rules.district, seed: String(this.rules.seed) });
     if (this.rules.topology) params.set('topology', this.rules.topology);
     const previous = new URLSearchParams(location.search);
-    for (const key of ['controls', 'perf']) if (previous.has(key)) params.set(key, previous.get(key)!);
+    carryDebugQuery(previous, params);
     history.replaceState(null, '', '?' + params);
   }
 

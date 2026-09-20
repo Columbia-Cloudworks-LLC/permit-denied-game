@@ -88,7 +88,7 @@ try {
   assert.equal(await page.locator('#analytics-allow').isDisabled(), true);
   assert.equal(events.length, 0); assert.equal(scripts.length, 0);
   await page.locator('#analytics-decline').click();
-  await page.waitForFunction(() => window.__pd.snapshot().elapsed > 0);
+  await page.waitForFunction(() => window.__pd?.ready?.() === true && window.__pd.snapshot().elapsed > 0);
   await page.reload(); await page.waitForFunction(() => window.__pd?.version === 1);
   assert.equal(await page.locator('.privacy-dialog').count(), 0);
   assert.equal(events.length, 0);

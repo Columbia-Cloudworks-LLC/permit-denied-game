@@ -192,7 +192,7 @@ export function serializeTownFeature(feature: TerrainFeature): TownFeatureSnapsh
 
 export type DebugHost = Omit<DebugBridge, "version">;
 
-const DEBUG_QUERY_KEYS = [
+export const DEBUG_QUERY_KEYS = [
   "debug",
   "yard",
   "testAsset",
@@ -203,6 +203,15 @@ const DEBUG_QUERY_KEYS = [
   "perf",
   "nhood",
 ] as const;
+
+const CARRIED_QUERY_KEYS = ["controls", "variant", ...DEBUG_QUERY_KEYS] as const;
+
+/** Keep debug/capture query flags when the session URL is rewritten. */
+export function carryDebugQuery(previous: URLSearchParams, next: URLSearchParams): void {
+  for (const key of CARRIED_QUERY_KEYS) {
+    if (previous.has(key) && !next.has(key)) next.set(key, previous.get(key)!);
+  }
+}
 
 export function shouldInstallDebugBridge(search: string, isDev: boolean): boolean {
   if (isDev) return true;

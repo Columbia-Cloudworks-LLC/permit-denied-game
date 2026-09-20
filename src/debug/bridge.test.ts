@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   DEBUG_BRIDGE_VERSION,
+  carryDebugQuery,
   createDebugBridge,
   shouldInstallDebugBridge,
   type DebugHost,
@@ -69,6 +70,16 @@ describe("debug bridge gating", () => {
     expect(shouldInstallDebugBridge("?yard=1", false)).toBe(true);
     expect(shouldInstallDebugBridge("?testAsset=vehicle:bus", false)).toBe(true);
     expect(shouldInstallDebugBridge("?tower=1", false)).toBe(true);
+  });
+
+  it("carries debug and control flags when the session URL is rewritten", () => {
+    const next = new URLSearchParams("mode=sandbox&district=d10&seed=1");
+    carryDebugQuery(new URLSearchParams("debug=1&controls=1&perf=1&variant=2"), next);
+    expect(next.get("debug")).toBe("1");
+    expect(next.get("controls")).toBe("1");
+    expect(next.get("perf")).toBe("1");
+    expect(next.get("variant")).toBe("2");
+    expect(next.get("mode")).toBe("sandbox");
   });
 });
 
