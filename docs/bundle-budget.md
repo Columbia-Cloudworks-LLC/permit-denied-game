@@ -18,3 +18,5 @@ npm run analyze:bundle
 ```
 
 The analyzer prints each initial chunk and its uncompressed size. Catalog, designer, privacy, and terms remain separate Vite entries and are not counted in the game initial budget.
+
+Mobile startup on a production build: `npm run preview`, then `MOBILE_TEST_URL=http://127.0.0.1:4173 npm run test:mobile`. The script skips the Vite-source HUD fixture when `/src/render/hud.ts` is not served as a module.
