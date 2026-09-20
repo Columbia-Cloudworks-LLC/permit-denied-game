@@ -74,12 +74,28 @@ describe("debug bridge gating", () => {
 
   it("carries debug and control flags when the session URL is rewritten", () => {
     const next = new URLSearchParams("mode=sandbox&district=d10&seed=1");
-    carryDebugQuery(new URLSearchParams("debug=1&controls=1&perf=1&variant=2"), next);
+    carryDebugQuery(new URLSearchParams("debug=1&controls=1&perf=1&nhood=1"), next);
     expect(next.get("debug")).toBe("1");
     expect(next.get("controls")).toBe("1");
     expect(next.get("perf")).toBe("1");
-    expect(next.get("variant")).toBe("2");
+    expect(next.get("nhood")).toBe("1");
     expect(next.get("mode")).toBe("sandbox");
+  });
+
+  it("does not restore scenario keys that setSession and setDistrict already cleared", () => {
+    const next = new URLSearchParams("mode=sandbox&district=d10&seed=1");
+    carryDebugQuery(
+      new URLSearchParams("yard=1&testAsset=building:ranch&variant=2&tower=1&demo=ranch&job=brick&ranch=1&debug=1"),
+      next,
+    );
+    expect(next.get("debug")).toBe("1");
+    expect(next.has("yard")).toBe(false);
+    expect(next.has("testAsset")).toBe(false);
+    expect(next.has("variant")).toBe(false);
+    expect(next.has("tower")).toBe(false);
+    expect(next.has("demo")).toBe(false);
+    expect(next.has("job")).toBe(false);
+    expect(next.has("ranch")).toBe(false);
   });
 });
 

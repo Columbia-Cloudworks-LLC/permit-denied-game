@@ -204,7 +204,8 @@ export const DEBUG_QUERY_KEYS = [
   "nhood",
 ] as const;
 
-const CARRIED_QUERY_KEYS = ["controls", "variant", ...DEBUG_QUERY_KEYS] as const;
+/** Session flags that survive a URL rewrite. Scenario keys (yard, testAsset, tower, demo, job, ranch, variant) stay off so setSession/setDistrict live-clears are not restored on reload. */
+const CARRIED_QUERY_KEYS = ["debug", "controls", "perf", "nhood"] as const;
 
 /** Keep debug/capture query flags when the session URL is rewritten. */
 export function carryDebugQuery(previous: URLSearchParams, next: URLSearchParams): void {

@@ -108,6 +108,7 @@ export class Game {
   private hud!: Hud;
   private hudRoot!: HTMLElement;
   private yardPanel?: YardPanel;
+  private yardPanelInit?: Promise<void>;
   private followRoadCamera = true;
   private followZoom = 1.15;
   private towerOverview = true;
@@ -943,27 +944,38 @@ export class Game {
 
   private async ensureYardPanel(): Promise<void> {
     if (this.yardPanel) return;
-    // Test-yard UI stays out of the ordinary player startup chunk.
-    const { attachYardPanel } = await import("./yardBindings");
-    this.yardPanel = attachYardPanel(this.hudRoot, {
-      town: () => this.town,
-      particles: this.particles,
-      dozer: () => this.dozer,
-      jump: (x, y) => {
-        this.yardFocus = undefined;
-        this.followRoadCamera = false;
-        this.dozer = createDozer(x, y, -Math.PI / 2);
-        this.renderer.showNhood = false;
-      },
-      frame: (bay) => { this.yardFocus = bay; this.followRoadCamera = false; this.renderer.showNhood = false; },
-      followVehicle: (bay) => { if (bay.vehicle) { this.town.roadCar = bay.vehicle; this.followRoadCamera = true; this.yardFocus = undefined; } },
-      testAsset: (assetId, variant) => this.loadTestMap({ kind: "asset", assetId, variant }),
-      releaseInput: () => this.releaseControls(),
-      preview: (bays, valid) => { this.renderer.yardPreview = bays; this.renderer.yardPreviewValid = valid; },
-      changed: () => this.renderer.invalidate(),
-    }, this.hud.binder);
-    this.hud.assetsHost.append(this.yardPanel.root);
-    this.yardPanel.root.open = true;
+    this.yardPanelInit ??= this.attachYardPanelOnce();
+    await this.yardPanelInit;
+  }
+
+  private async attachYardPanelOnce(): Promise<void> {
+    try {
+      // Test-yard UI stays out of the ordinary player startup chunk.
+      const { attachYardPanel } = await import("./yardBindings");
+      if (this.yardPanel) return;
+      this.yardPanel = attachYardPanel(this.hudRoot, {
+        town: () => this.town,
+        particles: this.particles,
+        dozer: () => this.dozer,
+        jump: (x, y) => {
+          this.yardFocus = undefined;
+          this.followRoadCamera = false;
+          this.dozer = createDozer(x, y, -Math.PI / 2);
+          this.renderer.showNhood = false;
+        },
+        frame: (bay) => { this.yardFocus = bay; this.followRoadCamera = false; this.renderer.showNhood = false; },
+        followVehicle: (bay) => { if (bay.vehicle) { this.town.roadCar = bay.vehicle; this.followRoadCamera = true; this.yardFocus = undefined; } },
+        testAsset: (assetId, variant) => this.loadTestMap({ kind: "asset", assetId, variant }),
+        releaseInput: () => this.releaseControls(),
+        preview: (bays, valid) => { this.renderer.yardPreview = bays; this.renderer.yardPreviewValid = valid; },
+        changed: () => this.renderer.invalidate(),
+      }, this.hud.binder);
+      this.hud.assetsHost.append(this.yardPanel.root);
+      this.yardPanel.root.open = true;
+    } catch (error) {
+      this.yardPanelInit = undefined;
+      throw error;
+    }
   }
 
   private attachDebugBridge(): void {
