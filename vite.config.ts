@@ -99,9 +99,10 @@ export default defineConfig({
       input: { game: 'index.html', catalog: 'catalog/index.html', designer: 'designer/index.html', privacy: 'privacy/index.html', terms: 'terms/index.html' },
       output: {
         manualChunks(id) {
-          if (id.includes("node_modules/pixi.js") || id.includes("node_modules/@pixi/")) return "pixi";
-          if (id.includes("node_modules/@vercel/analytics")) return "analytics";
-          if (id.includes("/src/world/data/")) return "buildings";
+          const normalized = id.replaceAll("\\", "/");
+          if (normalized.includes("node_modules/pixi.js") || normalized.includes("node_modules/@pixi/")) return "pixi";
+          if (normalized.includes("node_modules/@vercel/analytics")) return "analytics";
+          if (normalized.includes("/src/world/data/")) return "buildings";
         },
       },
     },

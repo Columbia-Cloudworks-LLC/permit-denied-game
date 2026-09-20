@@ -1,0 +1,13 @@
+# Keep working copies LF so Windows CI does not inflate JSON into the
+# production buildings chunk (CRLF added ~70 KiB and broke the 650 KiB budget).
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary
