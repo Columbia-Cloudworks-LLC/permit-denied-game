@@ -8,7 +8,7 @@ export async function readCaptures(root) {
   for (const e of await readdir(root, { withFileTypes: true })) {
     if (!e.isDirectory()) continue;
     try { shards.push({ folder: e.name, ...JSON.parse(await readFile(join(root, e.name, 'manifest.json'), 'utf8')) }); }
-    catch (error) { if (error.code !== 'ENOENT') throw error; }
+    catch (error) { if (/** @type {{ code?: string }} */ (error).code !== 'ENOENT') throw error; }
   }
   if (!shards.length) throw new Error('No capture shards');
   return shards;

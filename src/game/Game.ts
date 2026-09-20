@@ -1,14 +1,10 @@
-import { testVehicleImpact } from '../world/testYard';
 import { ensureTerms, privacyOpen, termsAccepted, setAnalyticsTestSession, RunAnalytics } from '../privacy/privacy';
 import { testMapSearch, type TestMapRequest } from '../world/testMapRequest';
 import { boxBounds, vehicleBoxes } from '../vehicle/world';
 import { upgradeModifiers } from './upgrades';
-import { applyFixtureDamage } from '../structure/interior';
 import { Resubmission } from './resubmission';
-import { bayBuildings, bayProps, bayVehicles, type YardBay } from '../world/yardCatalog';
-import { YardPanel } from '../render/yardPanel';
-import { applyCellDamage } from '../structure/building';
-import { destroyProp } from '../sim/assets';
+import { bayBuildings, type YardBay } from '../world/yardCatalog';
+import type { YardPanel } from '../render/yardPanel';
 import { defaultDebugView } from "../debug/view";
 import {
   createDebugBridge,
@@ -31,7 +27,7 @@ import { ParticlePool } from "../fx/particles";
 import { Hud } from "../render/hud";
 import { WorldRenderer } from "../render/WorldRenderer";
 import { lastDebrisStats, obstructionAt } from "../sim/debris";
-import { spawnFixtureFrags, stepWorld, type Upgrades } from "../sim/worldSim";
+import { stepWorld, type Upgrades } from "../sim/worldSim";
 import type { Bird, WorldEvent } from "../structure/types";
 import { createDozer, dozerSpeed, stepDozer } from "../vehicle/dozer";
 import { createRoadVehicle, replaceRoadVehicle } from "../vehicle/roadVehicle";
@@ -59,7 +55,7 @@ import {
   startCampaign,
   type CampaignRun,
 } from "./campaignRun";
-import { CAMPAIGN_LEVELS, isCampaignLevelId, type CampaignLevelId } from "./campaign";
+import { CAMPAIGN_LEVELS, type CampaignLevelId } from "./campaign";
 import { urbanDebugDump } from "../world/urbanGeography";
 import { ARCHETYPES } from "../world/archetypes";
 import {
@@ -79,7 +75,6 @@ import {
   playableDistrict,
   nextSeed,
   parseSessionFromSearch,
-  startsAtTitle,
   sessionFailsOn,
   sessionForcesUpgrade,
   type DistrictId,
@@ -88,6 +83,9 @@ import {
   type SessionKind,
   type SessionRules,
 } from "./session";
+import { bindHudSession } from "./hudBindings";
+import { startRuntimeTicker } from "./runtime";
+import { bootOpenedSession } from "./sessionBoot";
 
 export type GameMode = PlayMode;
 
@@ -107,6 +105,7 @@ export class Game {
   private readonly renderer = new WorldRenderer();
   private readonly perf = new PerfCollector();
   private hud!: Hud;
+  private hudRoot!: HTMLElement;
   private yardPanel?: YardPanel;
   private followRoadCamera = true;
   private followZoom = 1.15;
@@ -156,102 +155,10 @@ export class Game {
     this.app.canvas.tabIndex = 0;
     this.app.canvas.setAttribute('aria-label', 'Demolition site. W and S drive, A and D steer, Space powers the blade, Escape opens the menu.');
     this.app.stage.addChild(this.renderer.root, this.renderer.hudOverlay);
+    this.hudRoot = hudRoot;
     this.hud = new Hud(hudRoot);
-    this.hud.onMute = () => {
-      void this.audio.unlock();
-      this.audio.toggleMute();
-    };
-    this.hud.onClick = () => { void this.audio.unlock().then(() => this.audio.switchClick()); };
-    this.hud.onUnlockSound = () => this.audio.unlock();
-    this.hud.onResubmit = () => {
-      if (this.mode !== 'play' && this.mode !== 'pause') return null;
-      const fee = this.resubmission.charge(this.campaign?.spendable ?? this.cash);
-      if (fee !== null) {
-        if (this.campaign) spendCampaignCash(this.campaign, fee);
-        this.cash -= fee;
-        this.releaseControls();
-      }
-      return fee;
-    };
-    this.hud.onTitleSound = (kind, index) => {
-      if (kind === 'stamp') this.audio.permitStamp();
-      else this.audio.typewriterKey(index);
-    };
-    this.hud.onMenu = () => { this.releaseControls(); if (this.mode === 'play') this.mode = 'pause'; };
-    this.hud.onTitle = () => { this.releaseControls(); this.campaign = null; this.mode = 'title'; };
-    this.hud.onStart = (kind, district) => {
-      this.rules = gameSetupRules(kind, district, this.rules.seed);
-      this.campaign = kind === 'challenge' ? startCampaign(this.rules.seed) : null;
-      this.reset('same');
-      this.syncSessionUrl();
-    };
-    this.hud.onBeginLevel = () => {
-      if (this.campaign) this.campaign.briefing = false;
-      if (this.mode === 'briefing') this.mode = 'play';
-    };
-    this.hud.onNextLevel = () => {
-      if (!this.campaign || !this.campaign.complete) return;
-      this.campaign = advanceCampaignLevel(this.campaign, nextSeed(this.campaign.levelSeed));
-      this.rules.seed = this.campaign.levelSeed;
-      this.reset('same');
-    };
-    this.hud.onRetryLevel = () => {
-      if (!this.campaign) return;
-      this.campaign = retryCampaignLevel(this.campaign);
-      this.rules.seed = this.campaign.levelSeed;
-      this.reset('same');
-    };
-    this.hud.onNewCampaign = () => {
-      this.rules = gameSetupRules('challenge', this.rules.district, this.rules.seed);
-      this.campaign = startCampaign(this.rules.seed);
-      this.reset('same');
-      this.syncSessionUrl();
-    };
-    this.hud.onTestYard = () => this.loadTestMap({ kind: 'yard' });
-    this.hud.onResetTest = () => this.reset('same');
-    this.hud.onChoice = (id) => this.pickUpgrade(id);
-    this.hud.onResume = () => {
-      this.releaseControls();
-      if (this.mode === "pause") this.mode = "play";
-    };
-    this.hud.onRestart = () => {
-      if (this.campaign) {
-        this.campaign = retryCampaignLevel(this.campaign);
-        this.rules.seed = this.campaign.levelSeed;
-      }
-      this.reset("same");
-    };
-    this.hud.onNewSeed = () => this.reset("new");
-    this.hud.onSession = (kind) => this.setSession(kind);
-    this.hud.onDistrict = (id) => this.setDistrict(id);
-    this.hud.onJob = () => this.startJob();
-    this.hud.onDebugOpen = () => this.releaseControls();
-    this.hud.onDebugToggle = (key, value) => { this.renderer.debug[key] = value; this.syncDebug(); };
-    this.hud.onDebugFloor = floor => { this.renderer.debug.maxFloor = floor; this.syncDebug(); };
-    this.hud.onDebugReset = () => { Object.assign(this.renderer.debug, defaultDebugView()); this.syncDebug(); };
-    this.hud.onDebugStep = () => { if (this.renderer.debug.freeze && this.mode !== 'upgrade' && this.mode !== 'results') this.step(SIM_DT); };
-    this.yardPanel = new YardPanel(hudRoot, {
-      town: () => this.town, particles: this.particles, dozer: () => this.dozer,
-      jump: (x, y) => { this.yardFocus = undefined; this.followRoadCamera = false; this.dozer = createDozer(x, y, -Math.PI / 2); this.renderer.showNhood = false; },
-      frame: bay => { this.yardFocus = bay; this.followRoadCamera = false; this.renderer.showNhood = false; },
-      followVehicle: bay => { if(bay.vehicle){this.town.roadCar=bay.vehicle;this.followRoadCamera=true;this.yardFocus=undefined;} },
-      testAsset: (assetId, variant) => this.loadTestMap({ kind: 'asset', assetId, variant }),
-      releaseInput: () => this.releaseControls(),
-      preview: (bays, valid) => { this.renderer.yardPreview = bays; this.renderer.yardPreviewValid = valid; },
-      changed: () => this.renderer.invalidate(),
-      destroy: bay => {
-        for (const vehicle of bayVehicles(bay)) for (let i = 0; i < 5; i++) testVehicleImpact(vehicle, 'overhead', 20);
-        for (const prop of bayProps(bay)) if (!prop.broken) destroyProp(this.town, prop, this.particles, [], prop.x - 1, prop.y);
-        if (bay.building && bay.asset.fixture) {
-          for (const f of bay.building.fixtures) {
-            const hit = applyFixtureDamage(bay.building, f, 10000, 1, 0, this.particles, []);
-            spawnFixtureFrags(this.town, hit.frags);
-          }
-        } else for (const building of bayBuildings(bay)) for (const cell of building.cells) applyCellDamage(building, cell, 10000, 1, 0, this.particles, []);
-      },
-    }, this.hud.binder);
-    this.hud.assetsHost.append(this.yardPanel.root);
-    this.yardPanel.root.open = true;
+    this.bindHud();
+    if (this.rules.testMap) await this.ensureYardPanel();
     this.detachInput = this.input.attach();
     this.touch = new TouchControls(hudRoot, {
       change: state => this.input.setTouch(state),
@@ -264,19 +171,15 @@ export class Game {
     this.renderer.showNhood = new URLSearchParams(window.location.search).get("nhood") === "1";
     this.renderer.debug.perf = this.perf.enabled;
     this.syncDebug();
-    if (this.rules.kind === 'challenge' && !this.rules.job) this.campaign = startCampaign(this.rules.seed);
-    const levelParam = new URLSearchParams(window.location.search).get('level');
-    if (this.campaign && levelParam && isCampaignLevelId(levelParam)) {
-      this.campaign.levelIndex = CAMPAIGN_LEVELS.findIndex(level => level.id === levelParam);
-      this.campaign.briefing = false;
-    }
-    this.reset("same");
-    if (this.rules.testMap) this.hud.openDebug();
-    if (startsAtTitle(window.location.search)) this.mode = "title";
+    bootOpenedSession({
+      rules: this.rules,
+      applyCampaign: (run) => { this.campaign = run; },
+      applyMode: (mode) => { this.mode = mode; },
+      openDebug: () => this.hud.openDebug(),
+      reset: (kind) => this.reset(kind),
+    }, window.location.search);
     this.attachDebugBridge();
-    this.app.ticker.add((ticker) => {
-      this.frame(Math.min(0.05, ticker.deltaMS / 1000));
-    });
+    startRuntimeTicker(this.app, (dt) => this.frame(dt));
   }
 
   snapshot(): GameSnapshot {
@@ -949,6 +852,117 @@ export class Game {
     this.touch?.destroy();
     this.detachInput?.();
     this.app.destroy();
+  }
+
+  private bindHud(): void {
+    bindHudSession(this.hud, {
+      onMute: () => {
+        void this.audio.unlock();
+        this.audio.toggleMute();
+      },
+      onClick: () => { void this.audio.unlock().then(() => this.audio.switchClick()); },
+      onUnlockSound: () => this.audio.unlock(),
+      onResubmit: () => {
+        if (this.mode !== "play" && this.mode !== "pause") return null;
+        const fee = this.resubmission.charge(this.campaign?.spendable ?? this.cash);
+        if (fee !== null) {
+          if (this.campaign) spendCampaignCash(this.campaign, fee);
+          this.cash -= fee;
+          this.releaseControls();
+        }
+        return fee;
+      },
+      onTitleSound: (kind, index) => {
+        if (kind === "stamp") this.audio.permitStamp();
+        else this.audio.typewriterKey(index);
+      },
+      onMenu: () => { this.releaseControls(); if (this.mode === "play") this.mode = "pause"; },
+      onTitle: () => { this.releaseControls(); this.campaign = null; this.mode = "title"; },
+      onStart: (kind, district) => {
+        this.rules = gameSetupRules(kind, district, this.rules.seed);
+        this.campaign = kind === "challenge" ? startCampaign(this.rules.seed) : null;
+        this.reset("same");
+        this.syncSessionUrl();
+      },
+      onBeginLevel: () => {
+        if (this.campaign) this.campaign.briefing = false;
+        if (this.mode === "briefing") this.mode = "play";
+      },
+      onNextLevel: () => {
+        if (!this.campaign || !this.campaign.complete) return;
+        this.campaign = advanceCampaignLevel(this.campaign, nextSeed(this.campaign.levelSeed));
+        this.rules.seed = this.campaign.levelSeed;
+        this.reset("same");
+      },
+      onRetryLevel: () => {
+        if (!this.campaign) return;
+        this.campaign = retryCampaignLevel(this.campaign);
+        this.rules.seed = this.campaign.levelSeed;
+        this.reset("same");
+      },
+      onNewCampaign: () => {
+        this.rules = gameSetupRules("challenge", this.rules.district, this.rules.seed);
+        this.campaign = startCampaign(this.rules.seed);
+        this.reset("same");
+        this.syncSessionUrl();
+      },
+      onTestYard: () => { void this.openTestYard(); },
+      onResetTest: () => this.reset("same"),
+      onChoice: (id) => this.pickUpgrade(id),
+      onResume: () => {
+        this.releaseControls();
+        if (this.mode === "pause") this.mode = "play";
+      },
+      onRestart: () => {
+        if (this.campaign) {
+          this.campaign = retryCampaignLevel(this.campaign);
+          this.rules.seed = this.campaign.levelSeed;
+        }
+        this.reset("same");
+      },
+      onNewSeed: () => this.reset("new"),
+      onSession: (kind) => this.setSession(kind),
+      onDistrict: (id) => this.setDistrict(id),
+      onJob: () => this.startJob(),
+      onDebugOpen: () => {
+        this.releaseControls();
+        void this.ensureYardPanel();
+      },
+      onDebugToggle: (key, value) => { this.renderer.debug[key] = value; this.syncDebug(); },
+      onDebugFloor: (floor) => { this.renderer.debug.maxFloor = floor; this.syncDebug(); },
+      onDebugReset: () => { Object.assign(this.renderer.debug, defaultDebugView()); this.syncDebug(); },
+      onDebugStep: () => { if (this.renderer.debug.freeze && this.mode !== "upgrade" && this.mode !== "results") this.step(SIM_DT); },
+    });
+  }
+
+  private async openTestYard(): Promise<void> {
+    await this.ensureYardPanel();
+    this.loadTestMap({ kind: "yard" });
+  }
+
+  private async ensureYardPanel(): Promise<void> {
+    if (this.yardPanel) return;
+    // Test-yard UI stays out of the ordinary player startup chunk.
+    const { attachYardPanel } = await import("./yardBindings");
+    this.yardPanel = attachYardPanel(this.hudRoot, {
+      town: () => this.town,
+      particles: this.particles,
+      dozer: () => this.dozer,
+      jump: (x, y) => {
+        this.yardFocus = undefined;
+        this.followRoadCamera = false;
+        this.dozer = createDozer(x, y, -Math.PI / 2);
+        this.renderer.showNhood = false;
+      },
+      frame: (bay) => { this.yardFocus = bay; this.followRoadCamera = false; this.renderer.showNhood = false; },
+      followVehicle: (bay) => { if (bay.vehicle) { this.town.roadCar = bay.vehicle; this.followRoadCamera = true; this.yardFocus = undefined; } },
+      testAsset: (assetId, variant) => this.loadTestMap({ kind: "asset", assetId, variant }),
+      releaseInput: () => this.releaseControls(),
+      preview: (bays, valid) => { this.renderer.yardPreview = bays; this.renderer.yardPreviewValid = valid; },
+      changed: () => this.renderer.invalidate(),
+    }, this.hud.binder);
+    this.hud.assetsHost.append(this.yardPanel.root);
+    this.yardPanel.root.open = true;
   }
 
   private attachDebugBridge(): void {

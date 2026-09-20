@@ -27,23 +27,32 @@ if (command === 'plan') {
   const cache = args.includes('--cache') ? r2Store(config.privateBucket) : null;
   const shared = await sharedFingerprint();
   const plans = await withCapturePage(build, async (page, browser) => {
-    const catalog = await page.evaluate(() => window.__assetCapture.catalog);
+    const catalog = await page.evaluate(() => {
+      const capture = window.__assetCapture;
+      if (!capture) throw new Error('asset capture binder missing');
+      return capture.catalog;
+    });
     const runtime = { shared, browser: browser.version(), platform: process.platform, arch: process.arch, node: process.versions.node, exhaustive: false };
     const tasks = [];
     for (const asset of catalog) {
-      const inputs = await page.evaluate(id => window.__assetCapture.inputs(id), asset.id);
+      const inputs = await page.evaluate((id) => {
+        const capture = window.__assetCapture;
+        if (!capture) throw new Error('asset capture binder missing');
+        return capture.inputs(id);
+      }, asset.id);
       let duration = 0;
       for (let variant = 0; variant < asset.variants; variant++) {
         const key = fingerprint(runtime, inputs, variant);
         const record = cache && await cache.get(`captures/${key}.json`);
         const timing = !record && cache && await cache.get(`timings/${digest(Buffer.from(`${asset.id}/${variant}`))}.json`);
         let measured = 0;
-        try { measured = timing ? Number(JSON.parse(timing).durationMs) : 0; } catch {}
+        try { measured = timing ? Number(JSON.parse(timing.toString()).durationMs) : 0; } catch {}
         duration += record ? 5000 : (Number.isFinite(measured) && measured > 0 ? measured : Math.max(15000, (asset.floors + 1) * 15000));
       }
       tasks.push({ id: asset.id, duration });
     }
     // Four workers with bounded batches, rather than an asset-sized CI matrix.
+    /** @type {{ catalog: typeof catalog, batches: { catalog: typeof catalog, ids: string[], duration: number }[], duration: number }[]} */
     const workers = Array.from({ length: 4 }, () => ({ catalog, batches: [], duration: 0 }));
     for (const task of tasks.sort((a, b) => b.duration - a.duration)) {
       const worker = [...workers].sort((a, b) => a.duration - b.duration)[0];
@@ -92,7 +101,8 @@ if (command === 'plan') {
   if (info.commit !== commit || info.version !== version || info.legacy || !/^[a-f0-9]{40}$/.test(commit)) throw new Error('Catalog publication requires verified provenance from a real commit');
   const store = r2Store(config.publicBucket);
   let uploaded = 0, bytes = 0;
-  await pool((await publicationFiles(output, info.file)).filter(key => key.startsWith('objects/')), 4, async key => {
+  await pool((await publicationFiles(output, info.file)).filter((key) => key.startsWith('objects/')), 4, async (key) => {
+    if (!key) return;
     const data = await readFile(join(output, key));
     if (await uploadVerified(store, key, data, key.endsWith('.webp') ? 'image/webp' : 'application/json')) { uploaded++; bytes += data.length; }
   });

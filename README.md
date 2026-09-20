@@ -32,11 +32,15 @@ Time Challenge inspect links skip the title and open that campaign level. `G` to
 Ranch benchmark: `?sandbox=1&ranch=1` loads d10 seed `17634759` with the dozer on the ranch south lawn, facing the house. **R** rebuilds the same lot. Drive **W** into the south wall; **Space** for a powered blade. Chip the middle three south cells, then ease off and watch those roof bays sag, hinge, fall, and settle into pushable panels. Leave and drive back — the wreck and rubble stay. A long hold on **W** punches through the whole house.
 
 ```powershell
-npm test          # destruction harness
-npm run build     # typecheck + production bundle
-npm run test:pwa  # web app manifest, icons, and service worker
-npm run preview   # serve the production build
+npm test                 # fast unit tests
+npm run test:integration # district and campaign generation matrices
+npm run check            # TypeScript for src and operational scripts
+npm run build            # typecheck + production bundle + JS budget
+npm run test:pwa         # web app manifest, icons, and service worker
+npm run preview          # serve the production build
 ```
+
+`npm test` is the local presubmit. Linux CI also runs integration and soak; Windows CI keeps the required `windows` job as unit tests, script tests, build, and PWA. Benchmarks are `npm run test:bench` and are not a merge gate. See [docs/testing.md](docs/testing.md) and [docs/bundle-budget.md](docs/bundle-budget.md).
 
 Mobile UI verification: with the Vite dev server running and Playwright Chromium installed (`npx playwright install chromium`), run `npm run test:mobile`. Set `MOBILE_TEST_URL` if using another port. The check covers phone/tablet geometry, an installed-display landscape viewport, PWA manifest/icon discovery, multi-touch resets, menus, warnings and permit resubmission; screenshots go to the ignored `docs/visual-verification/mobile-ui/` directory. Service-worker registration is verified from the production bundle by `npm run test:pwa` after `npm run build`. Point `MOBILE_TEST_URL` at `npm run preview` to also fetch `/sw.js` from that mobile pass.
 

@@ -51,10 +51,11 @@ export function runGit(repoRoot, args, { timeoutMs = GIT_TIMEOUT_MS } = {}) {
     });
     const timer = setTimeout(() => {
       child.kill();
-      const error = new Error(`git ${args.join(' ')} timed out after ${timeoutMs}ms`);
-      error.timeout = true;
-      error.stdout = stdout;
-      error.stderr = stderr;
+      const error = Object.assign(new Error(`git ${args.join(' ')} timed out after ${timeoutMs}ms`), {
+        timeout: true,
+        stdout,
+        stderr,
+      });
       reject(error);
     }, timeoutMs);
     child.on('error', (error) => {

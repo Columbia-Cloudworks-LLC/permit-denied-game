@@ -45,14 +45,15 @@ export async function staticDeploymentFiles(directory) {
 
 export async function deploy() {
   const { VERCEL_TOKEN: token, VERCEL_ORG_ID: teamId, VERCEL_PROJECT_ID: projectId, DEPLOY_TARGET: target } = process.env;
-  if (!token || !teamId || !projectId || !['production', 'preview'].includes(target)) throw new Error('Missing or invalid deployment configuration');
+  if (!token || !teamId || !projectId || !target || !['production', 'preview'].includes(target)) throw new Error('Missing or invalid deployment configuration');
+  const team = teamId;
   const pointer = JSON.parse(await readFile('dist/catalog/release.json', 'utf8'));
   if (!/^https:\/\/assets\.permitdenied\.app\/releases\/[a-f0-9]{64}\.json$/.test(pointer.url) || !/^[a-f0-9]{40}$/.test(process.env.DEPLOY_SHA || '') || pointer.commit !== process.env.DEPLOY_SHA) {
     throw new Error('Deployment requires a verified R2 catalog release for this commit');
   }
   async function api(endpoint, body) {
     const url = new URL(`https://api.vercel.com${endpoint}`);
-    url.searchParams.set('teamId', teamId);
+    url.searchParams.set('teamId', team);
     const response = await fetch(url, {
       method: body ? 'POST' : 'GET', signal: AbortSignal.timeout(60000),
       headers: { Authorization: `Bearer ${token}`, ...(body ? { 'Content-Type': 'application/json' } : {}) },

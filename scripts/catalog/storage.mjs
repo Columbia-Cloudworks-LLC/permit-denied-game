@@ -11,12 +11,13 @@ export function r2Store(bucket) {
     async get(key) {
       try {
         const result = await client.send(new GetObjectCommand({ Bucket: bucket, Key: safeKey(key) }));
+        if (!result.Body) throw new Error('R2 get returned no body');
         return Buffer.from(await result.Body.transformToByteArray());
-      } catch (e) { if (e.$metadata?.httpStatusCode === 404) return null; throw e; }
+      } catch (e) { if (/** @type {{ $metadata?: { httpStatusCode?: number } }} */ (e).$metadata?.httpStatusCode === 404) return null; throw e; }
     },
     async head(key) {
       try { return await client.send(new HeadObjectCommand({ Bucket: bucket, Key: safeKey(key) })); }
-      catch (e) { if (e.$metadata?.httpStatusCode === 404) return null; throw e; }
+      catch (e) { if (/** @type {{ $metadata?: { httpStatusCode?: number } }} */ (e).$metadata?.httpStatusCode === 404) return null; throw e; }
     },
     async put(key, body, type = 'application/json') {
       await client.send(new PutObjectCommand({ Bucket: bucket, Key: safeKey(key), Body: body,

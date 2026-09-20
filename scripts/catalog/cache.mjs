@@ -8,7 +8,7 @@ export async function restoreCapture(store, key, output, expected) {
   if (!bytes) return null;
   let record;
   try {
-    record = JSON.parse(bytes);
+    record = JSON.parse(bytes.toString());
     if (record.fingerprint !== key || record.id !== expected.id || record.variant !== expected.variant ||
       record.folder !== expected.folder || !record.restorationVerified || !record.captures?.length) return null;
     const paths = new Set();

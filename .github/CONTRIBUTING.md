@@ -14,6 +14,13 @@ Copy to keep: `PERMIT DENIED`, `The County Said No.`, `BLADE UP` / `BLADE DOWN`,
 ## Checks
 
 ```powershell
-npm test
-npm run build
+npm run check          # TypeScript for src and operational scripts
+npm test               # fast deterministic unit tests (local budget: ~30s cases)
+npm run test:integration  # district/campaign generation matrices
+npm run test:soak      # long simulation (Linux CI)
+npm run test:bench     # performance measurements (not a merge gate)
+npm run build          # typecheck, production bundle, JS budget
 ```
+
+Linux CI runs unit, integration, soak, script tests, build, PWA, catalog, and privacy checks. Windows CI (`windows`, the required check) runs unit tests, script tests, build, and PWA so path/filesystem regressions still surface without duplicating multi-minute generation. Benchmarks stay on `npm run test:bench`. See [`docs/testing.md`](../docs/testing.md).
+

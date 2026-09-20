@@ -10,7 +10,7 @@ export async function reservePort(host = "127.0.0.1") {
   const server = createServer();
   await new Promise((resolve, reject) => {
     server.once("error", reject);
-    server.listen(0, host, resolve);
+    server.listen({ port: 0, host }, () => resolve(undefined));
   });
   const address = server.address();
   const port = typeof address === "object" && address ? address.port : 0;
@@ -73,7 +73,7 @@ async function closePreview(server) {
   const httpServer = server.httpServer;
   if (!httpServer) return;
   await new Promise((resolve, reject) => {
-    httpServer.close((error) => (error ? reject(error) : resolve()));
+    httpServer.close((error) => (error ? reject(error) : resolve(undefined)));
   });
 }
 

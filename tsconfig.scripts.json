@@ -1,0 +1,38 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2022", "DOM"],
+    "types": ["node"],
+    "allowJs": true,
+    "checkJs": true,
+    "strict": true,
+    // Operational .mjs files are untyped ESM. checkJs still enforces nullish
+    // access, unused locals, and module resolution. Do not add @ts-nocheck.
+    "noImplicitAny": false,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "maxNodeModuleJsDepth": 0,
+    "resolveJsonModule": true,
+    "isolatedModules": true
+  },
+  "include": [
+    "scripts/analyze-bundle.mjs",
+    "scripts/deploy-vercel.mjs",
+    "scripts/github-redirect.mjs",
+    "scripts/repo-preflight.mjs",
+    "scripts/catalog.mjs",
+    "scripts/catalog/**/*.mjs",
+    "scripts/configure-github-domain.mjs",
+    "scripts/facebook-metadata.mjs",
+    "scripts/cloudflare-provision.mjs",
+    "scripts/terms-version.mjs",
+    "scripts/capture/harness.mjs",
+    "scripts/verify-production.mjs",
+    "scripts/window.d.ts"
+  ]
+}

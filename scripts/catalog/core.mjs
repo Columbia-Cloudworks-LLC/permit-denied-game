@@ -5,7 +5,10 @@ import { dirname, join } from 'node:path';
 export const SCHEMA = 1;
 export const PAGE_SIZE = 24;
 export const IMAGE_SETTINGS = { format: 'webp', lossless: true, effort: 4, thumbnailWidth: 360 };
-export const digest = bytes => createHash('sha256').update(bytes).digest('hex');
+export function digest(bytes) {
+  const payload = /** @type {string | Uint8Array} */ (bytes);
+  return createHash('sha256').update(payload).digest('hex');
+}
 export const normalize = text => text.normalize('NFKD').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 export function canonical(value) {
   if (Array.isArray(value)) return value.map(canonical);
@@ -61,12 +64,15 @@ export async function publicationFiles(root, releaseFile) {
     else if (value && typeof value === 'object') Object.values(value).forEach(references);
   }
   while (pending.length) {
-    const key = pending.pop(); if (visited.has(key)) continue; visited.add(key);
+    const key = pending.pop();
+    if (!key || visited.has(key)) continue;
+    visited.add(key);
     if (!/^(objects|releases)\/[a-f0-9]{64}\.(json|webp)$/.test(key)) throw new Error('Invalid immutable file reference');
     const data = await readFile(join(root, key));
-    if (key.split('/').at(-1).split('.')[0] !== digest(data)) throw new Error(`Immutable file checksum mismatch: ${key}`);
+    const name = key.split('/').at(-1);
+    if (!name || name.split('.')[0] !== digest(data)) throw new Error(`Immutable file checksum mismatch: ${key}`);
     files.push(key);
-    if (key.endsWith('.json')) references(JSON.parse(data));
+    if (key.endsWith('.json')) references(JSON.parse(data.toString()));
   }
   return files;
 }
@@ -95,14 +101,16 @@ export async function buildTree(records, put) {
   let nodes = [];
   for (let i = 0; i < sorted.length; i += PAGE_SIZE) {
     const items = sorted.slice(i, i + PAGE_SIZE);
-    nodes.push({ min: items[0].key, max: items.at(-1).key, count: items.length, file: await put({ items }) });
+    const last = items.at(-1);
+    nodes.push({ min: items[0].key, max: last ? last.key : items[0].key, count: items.length, file: await put({ items }) });
   }
   if (!nodes.length) return { file: await put({ items: [] }), count: 0 };
   while (nodes.length > 1) {
     const next = [];
     for (let i = 0; i < nodes.length; i += PAGE_SIZE) {
       const children = nodes.slice(i, i + PAGE_SIZE);
-      next.push({ min: children[0].min, max: children.at(-1).max, count: children.reduce((n, c) => n + c.count, 0), file: await put({ children }) });
+      const last = children.at(-1);
+      next.push({ min: children[0].min, max: last ? last.max : children[0].min, count: children.reduce((n, c) => n + c.count, 0), file: await put({ children }) });
     }
     nodes = next;
   }
@@ -112,8 +120,9 @@ export async function buildTree(records, put) {
 export async function buildIndexes(cards, put) {
   const groups = new Map([['all', cards]]);
   for (const card of cards) {
-    if (!groups.has(card.category)) groups.set(card.category, []);
-    groups.get(card.category).push(card);
+    const group = groups.get(card.category) ?? [];
+    if (!groups.has(card.category)) groups.set(card.category, group);
+    group.push(card);
   }
   const indexes = {};
   for (const [category, items] of groups) {

@@ -3,6 +3,38 @@ import { defineConfig } from "vitest/config";
 import { facebookMetadata, facebookPageUrl } from "./scripts/facebook-metadata.mjs";
 import { version } from './package.json';
 
+/** Heavy generation matrices: Linux CI only. */
+export const INTEGRATION_TESTS = [
+  "src/world/district.test.ts",
+  "src/world/campaignLayout.test.ts",
+  "src/world/urbanGeography.test.ts",
+  "src/world/terrain.test.ts",
+  "src/world/terrainFeatures.test.ts",
+  "src/world/nhood.test.ts",
+  "src/world/dressing.test.ts",
+  "src/world/fields.test.ts",
+  "src/world/roads.test.ts",
+  "src/world/parcels.test.ts",
+  "src/world/buildingDefinitions.test.ts",
+  "src/world/migrationBaseline.test.ts",
+  "src/world/archetype.test.ts",
+  "src/world/campaignPlacement.test.ts",
+  "src/world/campaignComposition.test.ts",
+  "src/world/biomes.test.ts",
+  "src/world/contentScale.test.ts",
+  "src/render/WorldRenderer.test.ts",
+  "src/render/forestCanopy.test.ts",
+];
+
+const SOAK_TESTS = ["src/sim/soak.test.ts"];
+const BENCH_TESTS = ["src/sim/bench.test.ts", "src/render/denseCityBench.test.ts"];
+
+const testShared = {
+  environment: "node" as const,
+  pool: "forks" as const,
+  ...(process.env.CI ? { maxWorkers: 1 } : {}),
+};
+
 export default defineConfig({
   define: { "import.meta.env.VITE_FACEBOOK_PAGE_URL": JSON.stringify(facebookPageUrl(process.env.FACEBOOK_PAGE_URL, process.env.REQUIRE_FACEBOOK_APP_ID === "1")) },
   plugins: [{
@@ -60,24 +92,68 @@ export default defineConfig({
   },
   build: {
     target: "es2022",
-    rollupOptions: { input: { game: 'index.html', catalog: 'catalog/index.html', designer: 'designer/index.html', privacy: 'privacy/index.html', terms: 'terms/index.html' } },
-  },
-  test: {
-    environment: "node",
-    include: ["src/**/*.test.ts"],
-    testTimeout: 240_000,
-    hookTimeout: 240_000,
-    teardownTimeout: 240_000,
-    // Vitest 3.2 birpc ACKs time out at 60s. The accelerated 20-minute sandbox
-    // is CPU-bound; extra workers on GitHub-hosted runners starve it, and
-    // suite-level onTaskUpdate still exceeds 60s even when cases are sliced.
-    // Disable the worker RPC timeout and run a single worker in CI.
-    pool: "forks",
-    poolOptions: {
-      forks: {
-        execArgv: ["--import", new URL("./scripts/vitest-rpc-timeout.mjs", import.meta.url).href],
+    // Pixi (~579 kB) and authored building JSON (~624 kB) are the documented
+    // oversized-chunk exceptions; other application splits stay smaller.
+    chunkSizeWarningLimit: 650,
+    rollupOptions: {
+      input: { game: 'index.html', catalog: 'catalog/index.html', designer: 'designer/index.html', privacy: 'privacy/index.html', terms: 'terms/index.html' },
+      output: {
+        manualChunks(id) {
+          if (id.includes("node_modules/pixi.js") || id.includes("node_modules/@pixi/")) return "pixi";
+          if (id.includes("node_modules/@vercel/analytics")) return "analytics";
+          if (id.includes("/src/world/data/")) return "buildings";
+        },
       },
     },
-    ...(process.env.CI ? { maxWorkers: 1 } : {}),
+  },
+  test: {
+    ...testShared,
+    projects: [
+      {
+        extends: true,
+        test: {
+          ...testShared,
+          name: "unit",
+          include: ["src/**/*.test.ts"],
+          exclude: [...INTEGRATION_TESTS, ...SOAK_TESTS, ...BENCH_TESTS],
+          testTimeout: 30_000,
+          hookTimeout: 30_000,
+          teardownTimeout: 30_000,
+        },
+      },
+      {
+        extends: true,
+        test: {
+          ...testShared,
+          name: "integration",
+          include: INTEGRATION_TESTS,
+          testTimeout: 240_000,
+          hookTimeout: 240_000,
+          teardownTimeout: 240_000,
+        },
+      },
+      {
+        extends: true,
+        test: {
+          ...testShared,
+          name: "soak",
+          include: SOAK_TESTS,
+          testTimeout: 240_000,
+          hookTimeout: 240_000,
+          teardownTimeout: 240_000,
+        },
+      },
+      {
+        extends: true,
+        test: {
+          ...testShared,
+          name: "bench",
+          include: BENCH_TESTS,
+          testTimeout: 120_000,
+          hookTimeout: 120_000,
+          teardownTimeout: 120_000,
+        },
+      },
+    ],
   },
 });
