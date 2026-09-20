@@ -16,6 +16,6 @@ Windows keeps the required check name `windows`. It is a representative smoke: u
 
 Linux `build` runs unit + integration + soak, then packaging. Catalog capture remains Linux-only after that job. Benchmarks print timing lines and are excluded from ordinary correctness jobs; run `npm run test:bench` when investigating frame or debris cost.
 
-The previous Vitest worker-source rewrite (`scripts/vitest-rpc-timeout*.mjs`) is gone. Integration, soak, and bench run a single worker so birpc ACKs stay under 60s; soak also yields with `pumpVitestRpc()`.
+The previous Vitest worker-source rewrite (`scripts/vitest-rpc-timeout*.mjs`) is gone. Integration, soak, and bench run a single worker so birpc ACKs stay under 60s; soak and the long campaign-generation matrices also yield with `pumpVitestRpc()`.
 
 Expected local budgets: unit cases finish in seconds; integration can take a few minutes; soak is the long simulation; bench is measurement-only.

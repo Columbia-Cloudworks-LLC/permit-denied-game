@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { pumpVitestRpc } from '../sim/benchSupport';
 import { CAMPAIGN_LEVELS, campaignLevelById } from '../game/campaign';
 import { availableTownValue, landmarkShare } from '../game/campaignValue';
 import { landmarkDemolitionStatus } from '../game/campaignRun';
@@ -36,7 +37,7 @@ describe('campaign urban geography', () => {
     expect(ARCHETYPES.find(entry => entry.id === 'ranch')!.zones.residential).toBeGreaterThan(0);
   });
 
-  it('classifies City Borough and City Downtown lots by world-space band on eight seeds', () => {
+  it('classifies City Borough and City Downtown lots by world-space band on eight seeds', async () => {
     for (const id of ['city-borough', 'city-downtown'] as const) {
       const level = campaignLevelById(id);
       for (const seed of CITY_SEEDS) {
@@ -77,11 +78,12 @@ describe('campaign urban geography', () => {
         const dump = urbanDebugDump(level, seed, a.buildings, a.lots, a.urban!, ARCHETYPES);
         expect(dump.level).toBe(id);
         expect(dump.seed).toBe(seed);
+        await pumpVitestRpc();
       }
     }
   }, 240_000);
 
-  it('keeps earlier campaign levels on their geography without leaking rural stock into city cores', () => {
+  it('keeps earlier campaign levels on their geography without leaking rural stock into city cores', async () => {
     for (const seed of PLAY_SEEDS) {
       for (const level of CAMPAIGN_LEVELS) {
         const layout = generateCampaignLayout(level, seed);
@@ -103,11 +105,12 @@ describe('campaign urban geography', () => {
             }
           }
         }
+        await pumpVitestRpc();
       }
     }
   }, 180_000);
 
-  it('validates playability across the seven-level seed matrix', () => {
+  it('validates playability across the seven-level seed matrix', async () => {
     for (const level of CAMPAIGN_LEVELS) {
       for (const seed of PLAY_SEEDS) {
         const layout = generateCampaignLayout(level, seed);
@@ -124,6 +127,7 @@ describe('campaign urban geography', () => {
           const def = ARCHETYPES.find(entry => entry.id === building.archetypeId);
           expect(campaignEligible(def!.campaign, level.id, { landmark: !!building.campaignLandmark || !!def!.campaign?.landmarkOnly })).toBe(true);
         }
+        await pumpVitestRpc();
       }
     }
   }, 180_000);
