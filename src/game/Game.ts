@@ -10,6 +10,14 @@ import { YardPanel } from '../render/yardPanel';
 import { applyCellDamage } from '../structure/building';
 import { destroyProp } from '../sim/assets';
 import { defaultDebugView } from "../debug/view";
+import {
+  createDebugBridge,
+  exposeDebugBridge,
+  serializeTownFeature,
+  shouldInstallDebugBridge,
+  type DebugHost,
+  type GameSnapshot,
+} from "../debug/bridge";
 import { cameraFocus } from "./camera";
 import { TouchControls } from '../render/touchControls';
 import { DemolitionJob } from "./job";
@@ -265,26 +273,13 @@ export class Game {
     this.reset("same");
     if (this.rules.testMap) this.hud.openDebug();
     if (startsAtTitle(window.location.search)) this.mode = "title";
-    (window as unknown as { __pd: Game }).__pd = this;
+    this.attachDebugBridge();
     this.app.ticker.add((ticker) => {
       this.frame(Math.min(0.05, ticker.deltaMS / 1000));
     });
   }
 
-  snapshot(): {
-    cash: number;
-    timeLeft: number;
-    elapsed: number;
-    mode: GameMode;
-    session: SessionKind;
-    district: DistrictId;
-    seed: number;
-    dozer: { x: number; y: number; heading: number };
-    rubble: number;
-    marks: number;
-    roadCar: { x: number; y: number } | null;
-    buildings: { name: string; states: Record<string, number> }[];
-  } {
+  snapshot(): GameSnapshot {
     return {
       cash: this.cash,
       timeLeft: this.timeLeft,
@@ -954,6 +949,183 @@ export class Game {
     this.touch?.destroy();
     this.detachInput?.();
     this.app.destroy();
+  }
+
+  private attachDebugBridge(): void {
+    if (!shouldInstallDebugBridge(window.location.search, import.meta.env.DEV)) return;
+    exposeDebugBridge(createDebugBridge(this.debugHost()));
+  }
+
+  private debugHost(): DebugHost {
+    return {
+      ready: () => !!this.town,
+      snapshot: () => this.snapshot(),
+      inspect: () => this.inspectSnapshot(),
+      townSnapshot: () => this.townDebugSnapshot(),
+      dozerSnapshot: () => ({
+        x: this.dozer.x,
+        y: this.dozer.y,
+        heading: this.dozer.heading,
+        bladeDown: this.dozer.bladeDown,
+        vx: this.dozer.vx,
+        motionStartX: this.dozer.motionStartX,
+        motionStartY: this.dozer.motionStartY,
+      }),
+      cameraSnapshot: () => ({ x: this.renderer.camX, y: this.renderer.camY, zoom: this.renderer.zoom }),
+      yardInspect: () => this.yardInspectSnapshot(),
+      urbanSnapshot: () => this.urbanSnapshot(),
+      obstructionAt: (x, y, radius) => this.obstructionAt(x, y, radius),
+      lookAtWorld: (x, y, heading, zoom) => this.lookAtWorld(x, y, heading, zoom),
+      frameDozer: (zoom) => this.frameDozer(zoom),
+      lookAtTown: (mode) => this.lookAtTown(mode),
+      step: (dt) => this.step(dt),
+      reset: (kind) => this.reset(kind),
+      setDozerPose: (pose) => {
+        if (pose.x !== undefined) this.dozer.x = pose.x;
+        if (pose.y !== undefined) this.dozer.y = pose.y;
+        if (pose.heading !== undefined) this.dozer.heading = pose.heading;
+        if (pose.bladeDown !== undefined) this.dozer.bladeDown = pose.bladeDown;
+        if (pose.vx !== undefined) this.dozer.vx = pose.vx;
+        if (pose.motionStartX !== undefined) this.dozer.motionStartX = pose.motionStartX;
+        if (pose.motionStartY !== undefined) this.dozer.motionStartY = pose.motionStartY;
+      },
+      spawnRoadVehicle: () => this.spawnRoadVehicle(),
+      jumpCampaignLevel: (id) => this.jumpCampaignLevel(id),
+      analyticsStep: (seconds, mode, district) => this.analytics.step(seconds, mode, district),
+      finish: (death, won) => this.finish(death, won),
+      inputAxis: () => this.input.axis(),
+      runVehiclePerfHarness: () => this.runVehiclePerfHarness(),
+    };
+  }
+
+  private inspectSnapshot() {
+    const bay = this.town.yard?.bays[0];
+    return {
+      mode: this.mode,
+      seed: this.rules.seed,
+      request: this.rules.testMap,
+      upgrades: { ...this.upgrades },
+      binder: structuredClone(this.hud.binder),
+      debug: { ...this.renderer.debug },
+      dozer: { x: this.dozer.x, y: this.dozer.y },
+      spawn: { x: this.town.spawnX, y: this.town.spawnY },
+      elapsed: this.elapsed,
+      bays: this.town.yard?.bays.length ?? 0,
+      vehicles: this.town.vehicles.length,
+      following: !!this.town.roadCar && this.town.vehicles.includes(this.town.roadCar),
+      status: bay?.vehicle?.status,
+      damage: bay?.vehicle?.parts.reduce((sum, part) => sum + part.damage, 0) ?? 0,
+      rubble: this.town.rubble.length,
+      job: !!this.job,
+      yardIssues: this.town.yard?.issues.length ?? 0,
+    };
+  }
+
+  private townDebugSnapshot() {
+    return {
+      groundCondition: this.town.groundCondition,
+      biomeId: this.town.biome.id,
+      spawn: { x: this.town.spawnX, y: this.town.spawnY },
+      lots: this.town.lots.map((lot) => ({
+        id: lot.id,
+        identity: lot.identity,
+        x: lot.x,
+        y: lot.y,
+        w: lot.w,
+        d: lot.d,
+      })),
+      features: this.town.features.map(serializeTownFeature),
+      ground: this.town.ground.map((patch) => ({
+        cover: patch.cover,
+        x: patch.x,
+        y: patch.y,
+        w: patch.w,
+        d: patch.d,
+      })),
+      props: this.town.props.map((prop) => ({
+        assetId: prop.assetId,
+        x: prop.x,
+        y: prop.y,
+        w: prop.w,
+        d: prop.d,
+        broken: !!prop.broken,
+      })),
+      rubble: this.town.rubble.length,
+      yardIssues: this.town.yard?.issues.length ?? 0,
+      bays: this.town.yard?.bays.length ?? 0,
+      vehicles: this.town.vehicles.map((vehicle) => ({
+        autonomous: vehicle.autonomous,
+        status: vehicle.status,
+        damage: vehicle.parts.reduce((sum, part) => sum + part.damage, 0),
+      })),
+      following: !!this.town.roadCar && this.town.vehicles.includes(this.town.roadCar),
+    };
+  }
+
+  private yardInspectSnapshot() {
+    const bays = this.town.yard?.bays ?? [];
+    return {
+      followRoadCamera: this.followRoadCamera,
+      loads: this.town.yard?.loads?.length ?? 0,
+      autonomousCount: bays.filter((bay) => bay.vehicle?.autonomous).length,
+      vehicles: bays.flatMap((bay) => bay.vehicle ? [{
+        definitionId: bay.vehicle.definitionId,
+        autonomous: bay.vehicle.autonomous,
+        status: bay.vehicle.status,
+        damaged: bay.vehicle.parts.some((part) => part.damage > 0),
+      }] : []),
+    };
+  }
+
+  private async runVehiclePerfHarness() {
+    const { createVehicle, stepDetached } = await import("../vehicle/runtime");
+    const { VEHICLES } = await import("../vehicle/definitions");
+    const { stepVehicleWorld, vehicleStats } = await import("../vehicle/world");
+    const { testVehicleImpact, yardVehicleRoute } = await import("../world/testYard");
+    this.mode = "pause";
+    const town = this.town;
+    town.yard = undefined;
+    town.buildings = [];
+    town.props = [];
+    town.vehicles = [];
+    town.roadCar = null;
+    town.ground = [];
+    town.roads = [];
+    town.rubble = [];
+    town.maxX = 160;
+    town.maxY = 160;
+    town.siteRevision++;
+    for (let i = 0; i < 132; i++) {
+      const vehicle = createVehicle(VEHICLES[i % 12]!.id, 10 + (i % 12) * 10, 10 + Math.floor(i / 12) * 12);
+      if (i < 120) {
+        for (let n = 0; n < 5; n++) testVehicleImpact(vehicle, "overhead", 40);
+        stepDetached(vehicle, 0.02, { remaining: 0 }, () => 0);
+        vehicle.sleeping = true;
+      } else yardVehicleRoute(vehicle);
+      town.vehicles.push(vehicle);
+    }
+    const sim: number[] = [];
+    const render: number[] = [];
+    this.renderer.camX = 0;
+    this.renderer.camY = 400;
+    this.renderer.zoom = 0.4;
+    for (let i = 0; i < 180; i++) {
+      let start = performance.now();
+      stepVehicleWorld(town, this.dozer, this.particles, [], 1 / 60);
+      if (i > 30) sim.push(performance.now() - start);
+      start = performance.now();
+      this.renderer.draw(town, this.dozer, this.particles, [], 1 / 60);
+      this.app.render();
+      if (i > 30) render.push(performance.now() - start);
+    }
+    const p95 = (values: number[]) => values.slice().sort((a, b) => a - b)[Math.floor(values.length * 0.95)] ?? 0;
+    return {
+      vehicles: town.vehicles.length,
+      simP95Ms: p95(sim),
+      renderSubmitP95Ms: p95(render),
+      stats: { ...vehicleStats },
+      renderStats: { ...this.renderer.stats },
+    };
   }
 }
 
