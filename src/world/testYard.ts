@@ -10,13 +10,21 @@ import { emptyTerrain, RoadBuilder, linePoints, pt } from './roads';
 import { bayBuildings, bayProps, bayVehicles, discoverYardAssets, yardAssetIssue, yardGridSlots, instantiateBay, layoutYard, overlap, type YardAsset, type YardBay, type YardBox } from './yardCatalog';
 import type { Town } from './town';
 import type { TestMapRequest } from './testMapRequest';
+import { createBuildingFromArchetype } from '../structure/building';
+import { spawnAsset } from './catalog';
+import { SCALE_CONTRACT } from './scaleContract';
 
-export interface TestYard { request: TestMapRequest; assets: YardAsset[]; bays: YardBay[]; sequence: number; baselineEnd: number; issues: string[]; loads?: {vehicle:VehicleState;z:number;vz:number}[] }
+export interface TestYard { request: TestMapRequest; assets: YardAsset[]; bays: YardBay[]; sequence: number; baselineEnd: number; issues: string[]; loads?: {vehicle:VehicleState;z:number;vz:number}[]; scaleBay?: YardBox }
 export function populateTestYard(town: Town, request: TestMapRequest = { kind: 'yard' }): Town {
   if (request.kind === 'asset') return populateFocusedTest(town, request);
   const assets = discoverYardAssets(), bays = layoutYard(assets);
-  const maxX = Math.max(...bays.map(b => b.x + b.w)) + 12;
+  const catalogMaxX = Math.max(...bays.map(b => b.x + b.w)) + 12;
   const baselineEnd = Math.max(...bays.map(b => b.y + b.d)) + 10;
+  const scaleX = catalogMaxX;
+  const scaleY = 12;
+  const scaleW = 40;
+  const scaleD = 28;
+  const maxX = scaleX + scaleW;
   const maxY = baselineEnd + 280;
   town.vehicles = []; town.roadCar=null; town.buildings = []; town.props = []; town.lots = []; town.ground = [];
   town.minX = 0; town.minY = 0; town.maxX = maxX; town.maxY = maxY;
@@ -35,7 +43,30 @@ export function populateTestYard(town: Town, request: TestMapRequest = { kind: '
   }
   const roads = new RoadBuilder(), a = roads.node(2, 4), b = roads.node(maxX - 2, 4);
   roads.segment(a, b, linePoints(pt(a), pt(b)), { roadClass: 'rural', width: 3.2 });
+  const ruralA = roads.node(scaleX + 4, scaleY + 16);
+  const ruralB = roads.node(scaleX + 4 + SCALE_CONTRACT.lane.rural * 4, scaleY + 16);
+  roads.segment(ruralA, ruralB, linePoints(pt(ruralA), pt(ruralB)), { roadClass: 'rural' });
+  const resA = roads.node(scaleX + 4, scaleY + 20);
+  const resB = roads.node(scaleX + 4 + SCALE_CONTRACT.lane.residential * 4, scaleY + 20);
+  roads.segment(resA, resB, linePoints(pt(resA), pt(resB)), { roadClass: 'residential' });
+  const comA = roads.node(scaleX + 4, scaleY + 24);
+  const comB = roads.node(scaleX + 4 + SCALE_CONTRACT.lane.commercial * 4, scaleY + 24);
+  roads.segment(comA, comB, linePoints(pt(comA), pt(comB)), { roadClass: 'commercial' });
   town.network = roads.finish(); town.roads = [{ x: 2, y: 2.4, w: maxX - 4, d: 3.2 }];
+  const ranch = createBuildingFromArchetype('ranch', 'SCALE RANCH', scaleX + 2, scaleY);
+  town.buildings.push(ranch);
+  town.props.push(spawnAsset('car', scaleX + 2 + ranch.w * ranch.cellSize + 3.2, scaleY + 3.4, 0, 0));
+  town.ground.push({
+    x: scaleX,
+    y: scaleY,
+    w: scaleW,
+    d: scaleD,
+    heading: 0,
+    cover: 'lot',
+    seed: town.seed,
+    z: 0.005,
+  });
+  town.yard.scaleBay = { x: scaleX, y: scaleY, w: scaleW, d: scaleD };
   town.roadSpawnX = 5; town.roadSpawnY = 4; town.roadSpawnHeading = 0;
   town.spawnX = bays[0]!.x + bays[0]!.w / 2; town.spawnY = bays[0]!.y - 2; town.spawnHeading = Math.PI / 2;
   return town;

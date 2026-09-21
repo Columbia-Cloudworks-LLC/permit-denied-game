@@ -14,6 +14,6 @@ export const MENU_LABELS = {
   reloadBuildHelp: 'A newer county build is ready. Reload to apply it. The current run stays on this version until then.',
   debug: 'Debug', soundOn: 'Sound On', soundOff: 'Sound Off',
   brick: 'Brick Building Demolition', brickPreview: 'Brick Building Preview', yard: 'Open Test Yard',
-  blade: 'Blade', engine: 'Engine', push: 'Push',
+  blade: 'AR400 Edge', engine: 'Charge-Air Kit', push: 'Aux Ram',
 };
 export const BRICK_DESCRIPTION = 'Demolish 90% of the brick building and let it settle. Earn $1,200 and an upgrade. No time limit or breakdowns.';

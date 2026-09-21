@@ -3,6 +3,7 @@ import { CashCounter } from './cashCounter';
 import { EquipmentClock } from './equipmentClock';
 import { upgradePercent, type UpgradeModifiers } from '../game/upgrades';
 import { MENU_LABELS as L, MODE_LABELS, SITE_LABELS, BRICK_DESCRIPTION } from '../game/menuLabels';
+import { MENU_ICONS } from './menuIcons';
 import { COPY, CASH_TARGET, MATCH_SECONDS } from "../game/constants";
 import type { CampaignLevelId } from "../game/campaign";
 import { PermitLogo } from './permitLogo';
@@ -149,7 +150,7 @@ export class Hud {
       <div class="instrument-deck">
         ${gauge('heat', 'ENGINE HEAT')}
         ${gauge('track', 'TRACK STRESS')}
-        <div class="upgrade-bank" role="group" aria-label="Dozer Upgrades">${(['blade', 'engine', 'push'] as const).map(key => `<div class="upgrade-instrument"><span class="upgrade-label">${L[key]}</span><span class="upgrade-value" data-modifier="${key}Mul" data-description="${key === 'push' ? 'Push duration' : key === 'blade' ? 'Blade damage' : 'Engine performance'}" aria-label="${key === 'push' ? 'Push duration' : key === 'blade' ? 'Blade damage' : 'Engine performance'}: 1.00 times">1.00<span class="multiplier-symbol">×</span></span></div>`).join('')}</div>
+        <div class="upgrade-bank" role="group" aria-label="Dozer Upgrades">${(['blade', 'engine', 'push'] as const).map(key => `<div class="upgrade-instrument"><span class="upgrade-label">${MENU_ICONS[key]}${L[key]}</span><span class="upgrade-value" data-modifier="${key}Mul" data-description="${key === 'push' ? 'Push duration' : key === 'blade' ? 'Blade damage' : 'Engine performance'}" aria-label="${L[key]} ${key === 'push' ? 'push duration' : key === 'blade' ? 'blade damage' : 'engine performance'}: 1.00 times">1.00<span class="multiplier-symbol">×</span></span></div>`).join('')}</div>
         <div class="blade-module"><div class="blade" id="hud-blade"></div><p id="hud-advisory" role="status"></p></div>
       </div>
       <div class="overlay" id="hud-overlay" role="dialog" aria-modal="true" aria-labelledby="result-heading"><div class="panel" id="hud-panel" tabindex="-1"></div></div>
@@ -513,9 +514,9 @@ export class Hud {
         <h2 id="result-heading">${s.job ? "Demolition Complete" : "Upgrade"}</h2>
         <p>${s.job ? `+${s.job.payout}. Choose an upgrade.` : "Choose an upgrade."}</p>
         <div class="choices">
-          <button type="button" data-up="blade">1 · ${L.blade} ${upgradePercent('blade')}</button>
-          <button type="button" data-up="engine">2 · ${L.engine} ${upgradePercent('engine')}</button>
-          <button type="button" data-up="push">3 · ${L.push} ${upgradePercent('push')}</button>
+          <button type="button" data-up="blade" aria-label="1, ${L.blade}, blade damage ${upgradePercent('blade')}">${MENU_ICONS.blade}<span>1 · ${L.blade} ${upgradePercent('blade')}</span></button>
+          <button type="button" data-up="engine" aria-label="2, ${L.engine}, engine performance ${upgradePercent('engine')}">${MENU_ICONS.engine}<span>2 · ${L.engine} ${upgradePercent('engine')}</span></button>
+          <button type="button" data-up="push" aria-label="3, ${L.push}, push duration ${upgradePercent('push')}">${MENU_ICONS.push}<span>3 · ${L.push} ${upgradePercent('push')}</span></button>
         </div>`;
     } else if (s.overlay === "briefing" && s.campaign) {
       this.panel.innerHTML = `

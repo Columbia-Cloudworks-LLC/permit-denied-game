@@ -1154,21 +1154,38 @@ function drawParticle(g: Graphics, p: Particle): void {
   drawOrientedIsoBox(g, p.x, p.y, p.rot, len, wid, p.z, Math.max(0.04, p.size * 0.2), color, dark, color, 0.92 * fade);
 }
 
+function markColor(mark: GroundMark): number {
+  switch (mark.kind) {
+    case "scrape":
+      return 0x2a2418;
+    case "tire":
+      return 0x2c281c;
+    case "oil":
+      return 0x1a1814;
+    case "crack":
+      return PAL.crack;
+    case "dust":
+      return PAL.lotDark;
+    case "glass":
+      return 0x8aa4b0;
+    case "chip":
+    case "splinter":
+      return mark.material === "wood"
+        ? PAL.woodDark
+        : mark.material === "brick"
+          ? PAL.brickDark
+          : mark.material === "metal"
+            ? PAL.metalDark
+            : PAL.concreteDark;
+    default: {
+      const _never: never = mark.kind;
+      return _never;
+    }
+  }
+}
+
 function drawGroundMark(g: Graphics, mark: GroundMark): void {
-  const color =
-    mark.kind === "scrape"
-      ? 0x2a2418
-      : mark.kind === "dust"
-        ? PAL.lotDark
-        : mark.kind === "glass"
-          ? 0x8aa4b0
-          : mark.material === "wood"
-            ? PAL.woodDark
-            : mark.material === "brick"
-              ? PAL.brickDark
-              : mark.material === "metal"
-                ? PAL.metalDark
-                : PAL.concreteDark;
+  const color = markColor(mark);
   const fx = Math.cos(mark.heading);
   const fy = Math.sin(mark.heading);
   const hx = mark.w * 0.5;
@@ -1287,33 +1304,63 @@ function drawDebris(g: Graphics, r: Rubble): void {
   }
 
   if (r.shape === "panel") {
-    const fold = rng.range(-0.35, 0.35);
+    const fold = rng.range(-0.45, 0.45);
     const fx = Math.cos(r.heading);
     const fy = Math.sin(r.heading);
     const rx = -fy;
     const ry = fx;
-    drawOrientedIsoBox(g, r.x + rx * r.d * 0.18, r.y + ry * r.d * 0.18, r.heading + fold, r.w * 0.72, r.d * 0.7, z0, h, cols.top, cols.left, cols.right, 1);
-    drawOrientedIsoBox(g, r.x - rx * r.d * 0.16, r.y - ry * r.d * 0.16, r.heading - fold * 0.8, r.w * 0.55, r.d * 0.55, z0 + h * 0.2, h * 0.7, cols.top, cols.left, cols.right, 0.95);
+    drawOrientedIsoBox(g, r.x + rx * r.d * 0.18, r.y + ry * r.d * 0.18, r.heading + fold, r.w * 0.62, r.d * 0.58, z0, h, cols.top, cols.left, cols.right, 1);
+    drawOrientedIsoBox(g, r.x - rx * r.d * 0.16, r.y - ry * r.d * 0.16, r.heading - fold * 0.8, r.w * 0.48, r.d * 0.42, z0 + h * 0.2, h * 0.7, cols.top, cols.left, cols.right, 0.95);
+    drawOrientedIsoBox(
+      g,
+      r.x + fx * r.w * 0.22,
+      r.y + fy * r.w * 0.22,
+      r.heading + fold * 1.2,
+      r.w * 0.32,
+      r.d * 0.28,
+      z0 + h * 0.12,
+      h * 0.5,
+      cols.top,
+      cols.left,
+      cols.right,
+      0.92,
+    );
     return;
   }
 
-  drawOrientedIsoBox(g, r.x, r.y, r.heading, r.w, r.d, z0, h, cols.top, cols.left, cols.right, 1);
-  if (r.layer === "remnant" && rng.next() > 0.35) {
-    const ox = rng.range(-0.18, 0.18);
-    const oy = rng.range(-0.18, 0.18);
+  drawOrientedIsoBox(g, r.x, r.y, r.heading, r.w * rng.range(0.82, 1.05), r.d * rng.range(0.7, 1.02), z0, h, cols.top, cols.left, cols.right, 1);
+  if (r.layer === "remnant" && rng.next() > 0.28) {
+    const ox = rng.range(-0.22, 0.22);
+    const oy = rng.range(-0.22, 0.22);
     drawOrientedIsoBox(
       g,
       r.x + ox,
       r.y + oy,
-      r.heading + rng.range(-0.4, 0.4),
-      r.w * rng.range(0.4, 0.65),
-      r.d * rng.range(0.35, 0.6),
+      r.heading + rng.range(-0.55, 0.55),
+      r.w * rng.range(0.32, 0.62),
+      r.d * rng.range(0.28, 0.55),
       z0 + h * 0.25,
-      h * rng.range(0.35, 0.7),
+      h * rng.range(0.28, 0.7),
       cols.top,
       cols.left,
       cols.right,
       1,
+    );
+  }
+  if (rng.next() > 0.45) {
+    drawOrientedIsoBox(
+      g,
+      r.x + rng.range(-0.16, 0.16),
+      r.y + rng.range(-0.16, 0.16),
+      r.heading + rng.range(-0.8, 0.8),
+      r.w * rng.range(0.18, 0.4),
+      r.d * rng.range(0.12, 0.3),
+      z0 + h * 0.08,
+      h * 0.35,
+      cols.top,
+      cols.left,
+      cols.right,
+      0.9,
     );
   }
 }

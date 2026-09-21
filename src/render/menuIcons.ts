@@ -20,6 +20,18 @@ export const MENU_ICONS = {
     'about',
     '<circle cx="12" cy="12" r="9"/><path d="M9.7 9.5a2.4 2.4 0 1 1 3.5 2.1c-.8.5-1.3 1.1-1.3 2.1"/><circle cx="12" cy="17.1" r=".85" fill="currentColor" stroke="none"/>',
   ),
+  blade: icon(
+    'blade',
+    '<path d="M3.2 16.4 14.8 4.8l4.4 4.4L7.6 20.8H3.2z"/><path d="M13.2 6.4 17.6 10.8"/>',
+  ),
+  engine: icon(
+    'engine',
+    '<rect x="5.2" y="8.2" width="12.2" height="8.4" rx="1.4"/><path d="M9 8.2V5.6h6V8.2M17.4 11.2h2.4v4.2h-2.4M4.2 10.4H2.4v5.4H4.2"/>',
+  ),
+  push: icon(
+    'push',
+    '<rect x="4.2" y="9.4" width="11.6" height="5.4" rx="1"/><path d="M15.8 12.1h4M17.4 9.8l2.4 2.3-2.4 2.3"/>',
+  ),
 } as const;
 
 export function labeledMenuButton(iconHtml: string, label: string): string {

@@ -256,7 +256,7 @@ export interface CollapsedSite {
 export type DebrisLayer = "remnant" | "fragment";
 export type DebrisShape = "chunk" | "beam" | "panel";
 export type DebrisSkin = "default" | "roofing";
-export type GroundKind = "chip" | "splinter" | "dust" | "glass" | "scrape";
+export type GroundKind = "chip" | "splinter" | "dust" | "glass" | "scrape" | "oil" | "crack" | "tire";
 
 export interface Rubble {
   yardOwner?: string;

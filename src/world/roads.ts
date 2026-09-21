@@ -1,6 +1,7 @@
 import { aabbOverlap, clamp, len, lerp, wrapAngle } from "../game/math";
 import { SpatialHash } from "../sim/spatial";
 import type { JunctionType, RoadClass, RoadSurfaceKind } from "../structure/types";
+import { drivewayPavementColor } from "./drivewayStyle";
 
 export interface RoadPoint {
   x: number;
@@ -679,15 +680,50 @@ const PAVEMENT: Record<RoadClass, number> = {
 };
 
 const SHOULDER: Record<RoadClass, number> = {
-  rural: 0x6a6558,
-  residential: 0x6a6558,
-  commercial: 0x6a6558,
-  arterial: 0x5a5850,
-  highway: 0x5a5850,
-  service: 0x6a6558,
-  driveway: 0x6a5a40,
-  ramp: 0x6a6558,
+  rural: 0x4a463c,
+  residential: 0x8c8880,
+  commercial: 0x7a7872,
+  arterial: 0x5e5c58,
+  highway: 0x4a4846,
+  service: 0x5a564c,
+  driveway: 0x5a4e3c,
+  ramp: 0x5a5852,
 };
+
+const CURB: Record<RoadClass, number> = {
+  rural: 0x5a5448,
+  residential: 0x9a968e,
+  commercial: 0x8a8882,
+  arterial: 0x6a6864,
+  highway: 0x5c5a56,
+  service: 0x6a6458,
+  driveway: 0x6a5a40,
+  ramp: 0x6a6860,
+};
+
+function pavementColor(seg: RoadSegment): number {
+  if (seg.roadClass === "driveway") return drivewayPavementColor(seg.surface);
+  return PAVEMENT[seg.roadClass];
+}
+
+function usesCurb(roadClass: RoadClass): boolean {
+  switch (roadClass) {
+    case "residential":
+    case "commercial":
+    case "arterial":
+    case "highway":
+      return true;
+    case "rural":
+    case "service":
+    case "driveway":
+    case "ramp":
+      return false;
+    default: {
+      const _never: never = roadClass;
+      return _never;
+    }
+  }
+}
 
 /** World polygon for a mesh quad. `x`/`y` are centers, matching `drawOrientedGround`. */
 export function meshQuadPolygon(q: RoadMeshQuad): { x: number; y: number }[] {
@@ -1082,11 +1118,20 @@ export function buildRoadMesh(network: RoadNetwork): RoadMeshQuad[] {
             mesh,
             makeRibbon(o0.x, o0.y, o1.x, o1.y, seg.shoulder, z, SHOULDER[seg.roadClass], "shoulder", 0.04),
           );
+          if (usesCurb(seg.roadClass)) {
+            const c0 = offsetPoint(trimmed.ax, trimmed.ay, heading, side * (seg.width * 0.5 + 0.07));
+            const c1 = offsetPoint(trimmed.bx, trimmed.by, heading, side * (seg.width * 0.5 + 0.07));
+            emitRibbon(
+              mesh,
+              makeRibbon(c0.x, c0.y, c1.x, c1.y, 0.14, z + 0.005, CURB[seg.roadClass], "shoulder", 0.02),
+            );
+          }
         }
       }
       const paved = shortenEdge(a.x, a.y, b.x, b.y, cutA, cutB, seg.roadClass === "driveway" ? 0.05 : 0.1);
       if (paved) {
         const seam = seg.roadClass === "driveway" ? 0.04 : 0.06;
+        const nearHost = seg.roadClass === "driveway" && (i <= 0 || i >= last);
         emitRibbon(
           mesh,
           makeRibbon(
@@ -1094,9 +1139,9 @@ export function buildRoadMesh(network: RoadNetwork): RoadMeshQuad[] {
             paved.ay,
             paved.bx,
             paved.by,
-            seg.width,
+            nearHost ? seg.width * 1.08 : seg.width,
             z,
-            PAVEMENT[seg.roadClass],
+            pavementColor(seg),
             seg.layer > 0 ? "deck" : "pavement",
             seam,
           ),

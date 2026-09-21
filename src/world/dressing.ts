@@ -3,6 +3,7 @@ import { Rng } from "../game/rng";
 import type { CoverKind, GroundPatch, Lot, LotIdentity, Prop } from "../structure/types";
 import type { Building } from "../structure/types";
 import { getAsset, spawnAsset, type LotCompat } from "./catalog";
+import { drivewayStyle } from "./drivewayStyle";
 
 export interface DressSlot {
   assetId: string;
@@ -58,7 +59,7 @@ export const DRESS_TEMPLATES: readonly DressTemplate[] = [
     identities: ["farm"],
     zones: ["agricultural"],
     cover: "dirt",
-    maxAssets: 8,
+    maxAssets: 10,
     slots: [
       { assetId: "hay-bale-round", along: 0.72, across: 0.32, headingBias: 0.2, weight: 1 },
       { assetId: "hay-bale-square", along: 0.58, across: 0.34, headingBias: 0.1, weight: 0.85 },
@@ -68,6 +69,9 @@ export const DRESS_TEMPLATES: readonly DressTemplate[] = [
       { assetId: "grain-bin", along: 0.82, across: 0.02, headingBias: 0, weight: 0.3 },
       { assetId: "woodpile", along: 0.2, across: -0.32, headingBias: 0, weight: 0.5 },
       { assetId: "shrub", along: 0.12, across: 0.36, headingBias: 0, weight: 0.4 },
+      { assetId: "shed", along: 0.86, across: -0.26, headingBias: 0.1, weight: 0.42 },
+      { assetId: "propane-tank", along: 0.34, across: 0.36, headingBias: 0.2, weight: 0.32 },
+      { assetId: "fence", along: 0.5, across: 0.4, headingBias: 0, weight: 0.38 },
     ],
   },
   {
@@ -75,7 +79,7 @@ export const DRESS_TEMPLATES: readonly DressTemplate[] = [
     identities: ["service"],
     zones: ["commercial", "frontage"],
     cover: "concrete",
-    maxAssets: 6,
+    maxAssets: 9,
     slots: [
       { assetId: "fuel-pump", along: 0.18, across: 0.28, headingBias: 0, weight: 1 },
       { assetId: "fuel-pump", along: 0.18, across: -0.28, headingBias: 0, weight: 0.7 },
@@ -83,6 +87,9 @@ export const DRESS_TEMPLATES: readonly DressTemplate[] = [
       { assetId: "traffic-barrel", along: 0.14, across: 0.38, headingBias: 0, weight: 0.7 },
       { assetId: "propane-tank", along: 0.78, across: -0.3, headingBias: 0.2, weight: 0.35 },
       { assetId: "pallet-stack", along: 0.7, across: 0.3, headingBias: 0.1, weight: 0.4 },
+      { assetId: "dumpster", along: 0.82, across: 0.34, headingBias: 0.15, weight: 0.48 },
+      { assetId: "car", along: 0.48, across: 0.34, headingBias: 0.05, weight: 0.38 },
+      { assetId: "trash-can", along: 0.32, across: -0.38, headingBias: 0, weight: 0.4 },
     ],
   },
   {
@@ -90,7 +97,7 @@ export const DRESS_TEMPLATES: readonly DressTemplate[] = [
     identities: ["contractor"],
     zones: ["industrial", "yard"],
     cover: "gravel",
-    maxAssets: 7,
+    maxAssets: 11,
     slots: [
       { assetId: "pallet-stack", along: 0.22, across: 0.32, headingBias: 0.1, weight: 1 },
       { assetId: "crate-stack", along: 0.4, across: 0.3, headingBias: 0.15, weight: 0.8 },
@@ -98,6 +105,11 @@ export const DRESS_TEMPLATES: readonly DressTemplate[] = [
       { assetId: "hvac", along: 0.28, across: -0.34, headingBias: 0, weight: 0.5 },
       { assetId: "woodpile", along: 0.58, across: 0.32, headingBias: 0, weight: 0.45 },
       { assetId: "utility-cabinet", along: 0.12, across: -0.3, headingBias: 0, weight: 0.4 },
+      { assetId: "dumpster", along: 0.84, across: 0.3, headingBias: 0.1, weight: 0.62 },
+      { assetId: "car", along: 0.52, across: -0.32, headingBias: 0.2, weight: 0.42 },
+      { assetId: "barricade", along: 0.16, across: 0.38, headingBias: 0.1, weight: 0.5 },
+      { assetId: "fence", along: 0.68, across: 0.4, headingBias: 0, weight: 0.4 },
+      { assetId: "pallet-stack", along: 0.34, across: -0.3, headingBias: 0.2, weight: 0.45 },
     ],
   },
   {
@@ -105,13 +117,18 @@ export const DRESS_TEMPLATES: readonly DressTemplate[] = [
     identities: ["utility"],
     zones: ["industrial", "utility"],
     cover: "gravel",
-    maxAssets: 5,
+    maxAssets: 10,
     slots: [
       { assetId: "utility-cabinet", along: 0.22, across: 0.3, headingBias: 0, weight: 1 },
       { assetId: "transformer", along: 0.4, across: -0.28, headingBias: 0.1, weight: 0.85 },
       { assetId: "power-pole", along: 0.12, across: -0.36, headingBias: 0, weight: 0.6 },
       { assetId: "fire-hydrant", along: 0.1, across: 0.22, headingBias: 0, weight: 0.5 },
       { assetId: "hvac", along: 0.7, across: 0.28, headingBias: 0, weight: 0.4 },
+      { assetId: "dumpster", along: 0.82, across: -0.28, headingBias: 0.15, weight: 0.55 },
+      { assetId: "barricade", along: 0.18, across: 0.38, headingBias: 0, weight: 0.45 },
+      { assetId: "propane-tank", along: 0.58, across: 0.34, headingBias: 0.2, weight: 0.38 },
+      { assetId: "crate-stack", along: 0.48, across: -0.34, headingBias: 0.1, weight: 0.4 },
+      { assetId: "utility-cabinet", along: 0.74, across: -0.32, headingBias: 0, weight: 0.42 },
     ],
   },
   {
@@ -119,7 +136,7 @@ export const DRESS_TEMPLATES: readonly DressTemplate[] = [
     identities: ["shop"],
     zones: ["commercial", "frontage"],
     cover: "parking",
-    maxAssets: 6,
+    maxAssets: 10,
     slots: [
       { assetId: "vending", along: 0.22, across: -0.32, headingBias: 0, weight: 0.8 },
       { assetId: "fire-hydrant", along: 0.1, across: 0.28, headingBias: 0, weight: 0.7 },
@@ -127,6 +144,10 @@ export const DRESS_TEMPLATES: readonly DressTemplate[] = [
       { assetId: "stop-sign", along: 0.12, across: -0.2, headingBias: 0, weight: 0.45 },
       { assetId: "trash-can", along: 0.3, across: 0.32, headingBias: 0, weight: 0.55 },
       { assetId: "hvac", along: 0.78, across: -0.3, headingBias: 0, weight: 0.4 },
+      { assetId: "dumpster", along: 0.86, across: 0.28, headingBias: 0.1, weight: 0.58 },
+      { assetId: "car", along: 0.46, across: 0.34, headingBias: 0.05, weight: 0.44 },
+      { assetId: "barricade", along: 0.16, across: 0.38, headingBias: 0, weight: 0.32 },
+      { assetId: "crate-stack", along: 0.64, across: -0.32, headingBias: 0.15, weight: 0.36 },
     ],
   },
 ];
@@ -275,7 +296,8 @@ export function dressLot(
   if (building) building.lotId = lot.id;
   const props: Prop[] = [];
   const extras: { x: number; y: number; w: number; d: number }[] = [];
-  const driveW = 1.7;
+  const style = drivewayStyle(lot.identity);
+  const driveW = style.width * 0.85;
   const drive = drivewayPatch(lot);
 
   const slots = [...template.slots].filter((slot) => slotEligible(slot, eligible)).sort((a, b) => b.weight - a.weight);
@@ -316,7 +338,7 @@ export function dressLot(
       z: 0,
       poly: lot.boundary.length >= 3 ? lot.boundary.map((p) => ({ x: p.x, y: p.y })) : undefined,
     },
-    { ...drive, heading: lot.heading, cover: "driveway", seed: rng.int(1, 1_000_000), z: 0.01 },
+    { ...drive, heading: lot.heading, cover: style.cover, seed: rng.int(1, 1_000_000), z: 0.01 },
   ];
   if (template.cover === "grass" && rng.chance(0.7)) {
     const worn = lotLocalToWorld(lot, 0.35, 0);
@@ -362,6 +384,51 @@ export function dressLot(
         z: 0.012,
       });
     }
+    if (rng.chance(0.7)) {
+      const stain = lotLocalToWorld(lot, 0.3, rng.chance(0.5) ? 0.18 : -0.18);
+      if (coverAllowed(lot, stain.x, stain.y)) {
+        patches.push({
+          x: stain.x - 0.45,
+          y: stain.y - 0.35,
+          w: 0.95,
+          d: 0.7,
+          heading: lot.heading + rng.range(-0.2, 0.2),
+          cover: "tracks",
+          seed: rng.int(1, 1_000_000),
+          z: 0.014,
+        });
+      }
+    }
+  }
+  if (template.cover === "gravel" && rng.chance(0.75)) {
+    const worn = lotLocalToWorld(lot, 0.4, rng.chance(0.5) ? 0.16 : -0.16);
+    if (coverAllowed(lot, worn.x, worn.y)) {
+      patches.push({
+        x: worn.x - 0.8,
+        y: worn.y - 0.35,
+        w: 1.7,
+        d: 0.7,
+        heading: lot.heading,
+        cover: "dirt",
+        seed: rng.int(1, 1_000_000),
+        z: 0.013,
+      });
+    }
+  }
+  if (template.cover === "concrete" && rng.chance(0.6)) {
+    const crack = lotLocalToWorld(lot, 0.38, 0.08);
+    if (coverAllowed(lot, crack.x, crack.y)) {
+      patches.push({
+        x: crack.x - 0.9,
+        y: crack.y - 0.12,
+        w: 1.8,
+        d: 0.28,
+        heading: lot.heading + 0.15,
+        cover: "tracks",
+        seed: rng.int(1, 1_000_000),
+        z: 0.013,
+      });
+    }
   }
   return { props, patches };
 }
@@ -372,7 +439,8 @@ function coverAllowed(lot: Lot, x: number, y: number): boolean {
 }
 
 export function drivewayPatch(lot: Lot): { x: number; y: number; w: number; d: number } {
-  const width = 1.7;
+  const style = drivewayStyle(lot.identity);
+  const width = style.width * 0.82;
   const depth = 2.1;
   const size = lotAxisSizes(lot);
   const along = Math.min(0.28, 0.04 + depth * 0.5 / Math.max(0.8, size.along));

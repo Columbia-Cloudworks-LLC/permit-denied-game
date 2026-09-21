@@ -181,7 +181,30 @@ export function addDebrisBody(town: Town, init: Parameters<typeof makeRubble>[0]
   return r;
 }
 
-function addMark(
+function markSize(kind: GroundKind, rng: { range: (a: number, b: number) => number }): { w: number; d: number; alpha: number } {
+  switch (kind) {
+    case "scrape":
+      return { w: rng.range(0.28, 0.7), d: rng.range(0.05, 0.1), alpha: 0.35 };
+    case "tire":
+      return { w: rng.range(0.42, 0.85), d: rng.range(0.06, 0.12), alpha: 0.28 };
+    case "oil":
+      return { w: rng.range(0.22, 0.48), d: rng.range(0.16, 0.32), alpha: 0.32 };
+    case "crack":
+      return { w: rng.range(0.45, 0.95), d: rng.range(0.04, 0.08), alpha: 0.4 };
+    case "dust":
+      return { w: rng.range(0.12, 0.28), d: rng.range(0.08, 0.2), alpha: 0.22 };
+    case "chip":
+    case "splinter":
+    case "glass":
+      return { w: rng.range(0.08, 0.22), d: rng.range(0.06, 0.16), alpha: 0.7 };
+    default: {
+      const _never: never = kind;
+      return _never;
+    }
+  }
+}
+
+export function addSurfaceMark(
   town: Town,
   x: number,
   y: number,
@@ -194,20 +217,33 @@ function addMark(
     town.marks.splice(0, 24);
   }
   const rng = playRng;
+  const size = markSize(kind, rng);
   const mark: GroundMark = {
     x,
     y,
-    w: kind === "scrape" ? rng.range(0.28, 0.7) : rng.range(0.08, 0.22),
-    d: kind === "scrape" ? rng.range(0.05, 0.1) : rng.range(0.06, 0.16),
+    w: size.w,
+    d: size.d,
     heading,
     kind,
     material,
     seed: rng.int(1, 1_000_000),
-    alpha: kind === "dust" ? 0.22 : kind === "scrape" ? 0.35 : 0.7,
+    alpha: size.alpha,
   };
   mark.yardOwner = owner ?? town.debrisOwnerAt?.(x, y);
   town.marks.push(mark);
   town.visualRevision++;
+}
+
+function addMark(
+  town: Town,
+  x: number,
+  y: number,
+  kind: GroundKind,
+  material: Material,
+  heading = 0,
+  owner?: string,
+): void {
+  addSurfaceMark(town, x, y, kind, material, heading, owner);
 }
 
 export function spawnCollapseDebris(town: Town, spawn: CollapseSpawn, bodyLimit = Infinity): Rubble[] {
@@ -282,6 +318,7 @@ export function spawnCollapseDebris(town: Town, spawn: CollapseSpawn, bodyLimit 
         d: fd,
         material: spawn.material,
         layer: "fragment",
+        shape: spawn.material === "wood" || spawn.material === "metal" ? "beam" : "chunk",
         heading: ang + rng.range(-0.4, 0.4),
         elev: heap + rng.range(0.02, 0.16 + spawn.floor * 0.05),
         mass,
@@ -323,19 +360,25 @@ function roofRemnantPlan(
   const panelW = spawn.panelW ?? rng.range(0.7, 1.05);
   const panelD = spawn.panelD ?? rng.range(0.32, 0.5);
   if (spawn.preservePanelPose) return [
-    { w: panelW, d: panelD, thickness: .14, shape: "panel", massShare: .8, along: 0, skin: "roofing" },
-    { w: Math.min(panelW, 1.1), d: .09, thickness: .08, shape: "beam", massShare: .2, along: .12, skin: "default" },
+    { w: panelW, d: panelD, thickness: .14, shape: "panel", massShare: .52, along: 0, skin: "roofing" },
+    { w: Math.min(panelW, 1.1) * 0.72, d: .09, thickness: .08, shape: "beam", massShare: .18, along: .12, skin: "default" },
+    { w: panelW * rng.range(0.32, 0.55), d: panelD * rng.range(0.35, 0.62), thickness: .1, shape: "chunk", massShare: .16, along: -.1, skin: "default" },
+    { w: rng.range(0.38, 0.7), d: .07, thickness: .07, shape: "beam", massShare: .14, along: .22, skin: "default" },
   ];
   if (material === "wood") {
     return [
-      { w: panelW, d: panelD, thickness: 0.14, shape: "panel", massShare: 0.7, along: 0.28, skin: "roofing" },
-      { w: rng.range(0.7, 1.05), d: 0.1, thickness: 0.1, shape: "beam", massShare: 0.16, along: -0.12, skin: "default" },
+      { w: panelW * rng.range(0.55, 0.85), d: panelD * rng.range(0.45, 0.75), thickness: 0.14, shape: "panel", massShare: 0.38, along: 0.28, skin: "roofing" },
+      { w: rng.range(0.7, 1.05), d: 0.1, thickness: 0.1, shape: "beam", massShare: 0.22, along: -0.12, skin: "default" },
+      { w: rng.range(0.35, 0.62), d: rng.range(0.08, 0.14), thickness: 0.08, shape: "beam", massShare: 0.16, along: 0.08, skin: "default" },
+      { w: rng.range(0.28, 0.5), d: rng.range(0.22, 0.4), thickness: 0.09, shape: "chunk", massShare: 0.12, along: -0.2, skin: "default" },
     ];
   }
   if (material === "metal") {
     return [
-      { w: panelW, d: panelD * 0.85, thickness: 0.1, shape: "panel", massShare: 0.48, along: 0, skin: "default" },
-      { w: rng.range(0.7, 1.1), d: 0.09, thickness: 0.08, shape: "beam", massShare: 0.22, along: 0.12, skin: "default" },
+      { w: panelW * 0.72, d: panelD * 0.55, thickness: 0.1, shape: "panel", massShare: 0.32, along: 0, skin: "default" },
+      { w: rng.range(0.7, 1.1), d: 0.09, thickness: 0.08, shape: "beam", massShare: 0.24, along: 0.12, skin: "default" },
+      { w: rng.range(0.4, 0.7), d: rng.range(0.08, 0.16), thickness: 0.07, shape: "beam", massShare: 0.18, along: -0.16, skin: "default" },
+      { w: rng.range(0.22, 0.42), d: rng.range(0.18, 0.34), thickness: 0.08, shape: "chunk", massShare: 0.12, along: 0.2, skin: "default" },
     ];
   }
   return remnantPlan(material, rng).map((plan) => ({ ...plan, skin: "default" as const }));
@@ -348,26 +391,30 @@ function remnantPlan(
   switch (material) {
     case "wood":
       return [
-        { w: rng.range(0.7, 1.15), d: rng.range(0.1, 0.16), thickness: 0.12, shape: "beam", massShare: 0.42, along: 0.15, skin: "default" },
-        { w: rng.range(0.45, 0.8), d: rng.range(0.09, 0.14), thickness: 0.1, shape: "beam", massShare: 0.28, along: -0.1, skin: "default" },
-        ...(rng.chance(0.35)
-          ? [{ w: rng.range(0.5, 0.75), d: rng.range(0.32, 0.5), thickness: 0.08, shape: "panel" as const, massShare: 0.18, along: 0.05, skin: "default" as const }]
+        { w: rng.range(0.7, 1.15), d: rng.range(0.1, 0.16), thickness: 0.12, shape: "beam", massShare: 0.36, along: 0.15, skin: "default" },
+        { w: rng.range(0.45, 0.8), d: rng.range(0.09, 0.14), thickness: 0.1, shape: "beam", massShare: 0.24, along: -0.1, skin: "default" },
+        { w: rng.range(0.22, 0.4), d: rng.range(0.18, 0.32), thickness: 0.1, shape: "chunk", massShare: 0.14, along: 0.22, skin: "default" },
+        ...(rng.chance(0.4)
+          ? [{ w: rng.range(0.38, 0.62), d: rng.range(0.22, 0.4), thickness: 0.08, shape: "panel" as const, massShare: 0.14, along: 0.05, skin: "default" as const }]
           : []),
       ];
     case "brick":
       return [
-        { w: rng.range(0.38, 0.62), d: rng.range(0.28, 0.48), thickness: rng.range(0.22, 0.34), shape: "chunk", massShare: 0.48, along: 0.08, skin: "default" },
-        { w: rng.range(0.2, 0.3), d: rng.range(0.1, 0.14), thickness: 0.09, shape: "chunk", massShare: 0.14, along: 0.2, skin: "default" },
+        { w: rng.range(0.38, 0.62), d: rng.range(0.28, 0.48), thickness: rng.range(0.22, 0.34), shape: "chunk", massShare: 0.4, along: 0.08, skin: "default" },
+        { w: rng.range(0.18, 0.32), d: rng.range(0.1, 0.18), thickness: 0.09, shape: "chunk", massShare: 0.16, along: 0.2, skin: "default" },
+        { w: rng.range(0.22, 0.38), d: rng.range(0.08, 0.14), thickness: 0.08, shape: "beam", massShare: 0.12, along: -0.16, skin: "default" },
       ];
     case "concrete":
       return [
-        { w: rng.range(0.42, 0.72), d: rng.range(0.3, 0.52), thickness: rng.range(0.24, 0.42), shape: "chunk", massShare: 0.52, along: 0.1, skin: "default" },
-        { w: rng.range(0.28, 0.48), d: rng.range(0.2, 0.36), thickness: rng.range(0.16, 0.3), shape: "chunk", massShare: 0.26, along: -0.12, skin: "default" },
+        { w: rng.range(0.42, 0.72), d: rng.range(0.3, 0.52), thickness: rng.range(0.24, 0.42), shape: "chunk", massShare: 0.42, along: 0.1, skin: "default" },
+        { w: rng.range(0.22, 0.4), d: rng.range(0.16, 0.3), thickness: rng.range(0.14, 0.26), shape: "chunk", massShare: 0.22, along: -0.12, skin: "default" },
+        { w: rng.range(0.28, 0.5), d: rng.range(0.08, 0.14), thickness: 0.1, shape: "beam", massShare: 0.14, along: 0.18, skin: "default" },
       ];
     case "metal":
       return [
-        { w: rng.range(0.7, 1.2), d: rng.range(0.08, 0.14), thickness: 0.1, shape: "beam", massShare: 0.4, along: 0.12, skin: "default" },
-        { w: rng.range(0.4, 0.7), d: rng.range(0.22, 0.4), thickness: 0.07, shape: "panel", massShare: 0.28, along: -0.08, skin: "default" },
+        { w: rng.range(0.7, 1.2), d: rng.range(0.08, 0.14), thickness: 0.1, shape: "beam", massShare: 0.34, along: 0.12, skin: "default" },
+        { w: rng.range(0.32, 0.55), d: rng.range(0.16, 0.3), thickness: 0.07, shape: "panel", massShare: 0.2, along: -0.08, skin: "default" },
+        { w: rng.range(0.4, 0.7), d: rng.range(0.07, 0.12), thickness: 0.07, shape: "beam", massShare: 0.16, along: 0.2, skin: "default" },
       ];
     case "glass":
       return [];

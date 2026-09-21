@@ -11,22 +11,22 @@ const DIA_W = 22;
 const DIA_H = 11;
 
 const PAL = {
-  grass: 0x6a8a42,
-  grassDark: 0x4a6230,
+  grass: 0x5a7340,
+  grassDark: 0x3e522c,
   dirt: 0x8a6a40,
   gravel: 0x8a8478,
   water: 0x3a6a8a,
   waterDark: 0x1e3a50,
-  forestFloor: 0x2e4a28,
-  fieldMature: 0x3e6a28,
+  forestFloor: 0x283c24,
+  fieldMature: 0x365826,
   fieldTilled: 0x7a5430,
   fieldStubble: 0xb08a48,
-  planted: 0x4a6a32,
+  planted: 0x3e562c,
 };
 
 const SOLIDS = {
   grass: PAL.grass,
-  scrub: 0x5a6a38,
+  scrub: 0x4a5a30,
   dirt: PAL.dirt,
   prairie: 0x8a8a40,
   duff: 0x3a4224,

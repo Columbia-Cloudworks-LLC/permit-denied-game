@@ -297,7 +297,7 @@ function generateRuralLayoutInner(
   const occBoxes = buildings.flatMap(buildingOccupy);
   const props: Prop[] = [];
   const ground: GroundPatch[] = [];
-  const perLot = campaign?.generation.propsPerLot ?? (count >= 80 ? 6 : 7);
+  const perLot = campaign?.generation.propsPerLot ?? (count >= 80 ? 8 : 10);
   const eligible = campaign
     ? (assetId: string) => campaignEligible(getAsset(assetId).campaign, campaign.id)
     : undefined;

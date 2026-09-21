@@ -129,7 +129,7 @@ export function applyDozerImpulse(d: Dozer, nx: number, ny: number, depth: numbe
   d.vy -= vn * ny * (1 + bounce);
   d.vx *= 1 - DOZER.impactLoss * 0.15;
   d.vy *= 1 - DOZER.impactLoss * 0.15;
-  d.lastImpact = 0.08;
+  d.lastImpact = Math.max(d.lastImpact, Math.min(0.36, 0.07 + impact * 0.09));
   return impact;
 }
 
