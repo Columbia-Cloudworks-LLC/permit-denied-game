@@ -56,19 +56,23 @@ export function emitDozerCues(
   dt: number,
 ): void {
   const speed = dozerSpeed(dozer);
-  const cover = coverAtPoint(town, dozer.x, dozer.y);
-  const f = dozerForward(dozer);
   const load = dozer.pushT > 0 || dozer.bladeDown;
   const moving = speed > 0.55;
+  const impact = dozer.lastImpact > 0.12 && dozer.lastImpact + dt >= 0.2;
+  if (!moving && !impact) return;
 
-  if (moving && (dozer.heat > 0.22 || load)) {
+  const cover = coverAtPoint(town, dozer.x, dozer.y);
+  const f = dozerForward(dozer);
+  const odoTick = (scale: number) => ((dozer.odo * scale) | 0) !== (((dozer.odo - speed * dt) * scale) | 0);
+
+  if (moving && (dozer.heat > 0.22 || load) && odoTick(1.6)) {
     const stackX = dozer.x - f.x * 0.72;
     const stackY = dozer.y - f.y * 0.72;
     const n = dozer.heat > 0.7 ? 2 : 1;
     particles.spawn("dust", stackX, stackY, 1.15 + dozer.heat * 0.35, n, 0.18 + speed * 0.04, 0.55);
   }
 
-  if (moving && cover && SOFT.has(cover) && ((dozer.odo * 3) | 0) !== (((dozer.odo - speed * dt) * 3) | 0)) {
+  if (moving && cover && SOFT.has(cover) && odoTick(1.15)) {
     const rx = -f.y;
     const ry = f.x;
     for (const side of [-1, 1] as const) {
@@ -84,12 +88,12 @@ export function emitDozerCues(
     particles.spawn("dust", dozer.x, dozer.y, 0.12, load ? 3 : 1, 0.35 + speed * 0.08, 0.7);
   }
 
-  if (moving && cover && HARD.has(cover) && speed > 2.4 && ((dozer.odo * 2) | 0) !== (((dozer.odo - speed * dt) * 2) | 0)) {
+  if (moving && cover && HARD.has(cover) && speed > 2.4 && odoTick(0.85)) {
     addSurfaceMark(town, dozer.x, dozer.y, "scrape", "concrete", dozer.heading);
     if (dozer.bladeDown) particles.spawn("concrete", dozer.x + f.x * 0.9, dozer.y + f.y * 0.9, 0.18, 1, 0.4, 0.9);
   }
 
-  if (dozer.lastImpact > 0.12 && dozer.lastImpact + dt >= 0.2) {
+  if (impact) {
     const hardHit = !cover || HARD.has(cover);
     particles.burst(hardHit ? "concrete" : "dust", dozer.x + f.x * 0.8, dozer.y + f.y * 0.8, 0.22, 0.35 + dozer.lastImpact * 0.25);
     if (hardHit) {
