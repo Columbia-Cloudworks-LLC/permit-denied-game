@@ -5,6 +5,7 @@ import type { Building, GroundPatch, Lot, Prop } from '../structure/types';
 import { BUILDING_SITES, instantiateBuildingSite } from './buildingSites';
 import { getAsset } from './catalog';
 import { campaignEligible } from './campaignPlacement';
+import { identityFromBuilding } from './lotUse';
 import { attachDriveway, completeLot } from './parcels';
 import {
   derivedRoadBoxes,
@@ -243,7 +244,7 @@ function estateLotFor(building: Building, index: number): Lot {
     d: maxY - minY + setbacks.front + setbacks.rear,
     heading: Math.PI / 2,
     zone: building.archetypeId === 'governors-mansion' ? 'commercial' : building.kind === 'house' ? 'residential' : 'commercial',
-    identity: building.archetypeId === 'governors-mansion' ? 'shop' : 'service',
+    identity: identityFromBuilding(building),
     accessId: '',
     templateId: '',
     urbanBand: 'estate',

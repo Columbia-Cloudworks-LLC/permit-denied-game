@@ -26,6 +26,17 @@ const UTILITY_USES = new Set([
 const FARM_ID = /farm|barn|grain|greenhouse|orchard|dairy|poultry|stable|feed-store/;
 const FUEL_ID = /service-station|fuel/;
 const UTILITY_ID = /pump-house|water-tower|telephone-exchange/;
+const CIVIC_USES = new Set([
+  "landmark",
+  "governors-mansion",
+  "city-hall",
+  "township-hall",
+  "community-hall",
+  "clock-hall",
+  "permit-office",
+  "post-office",
+  "admin-wing",
+]);
 
 /**
  * Compatibility:
@@ -40,6 +51,10 @@ export function identityFromArchetype(archetype: Pick<Archetype, "id" | "kind" |
   if (uses.some((use) => FUEL_USES.has(use)) || FUEL_ID.test(archetype.id)) return "service";
   if (uses.some((use) => FARM_USES.has(use)) || FARM_ID.test(archetype.id)) return "farm";
   if (uses.some((use) => UTILITY_USES.has(use)) || UTILITY_ID.test(archetype.id)) return "utility";
+  if (
+    uses.some((use) => CIVIC_USES.has(use))
+    || archetype.traits?.style?.includes("civic")
+  ) return "shop";
   switch (archetype.kind) {
     case "industrial":
       return "contractor";
