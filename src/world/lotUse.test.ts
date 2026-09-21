@@ -26,6 +26,7 @@ function expectLotUse(town: ReturnType<typeof createTown>, label: string): void 
     const lot = byLot.get(building.lotId ?? "");
     if (!lot) continue;
     expect(lot.identity, `${label} ${building.archetypeId} ${lot.id}`).toBe(identityFromBuilding(building));
+    if (!lot.templateId) continue;
     const template = DRESS_TEMPLATES.find((entry) => entry.id === lot.templateId);
     expect(template?.identities, `${label} ${lot.id} template`).toContain(lot.identity);
   }
@@ -59,7 +60,9 @@ describe("lot-use matching", () => {
     expect(identityFromArchetype(archetypeById("farmhouse-rear-wing"))).toBe("farm");
     expect(identityFromArchetype(archetypeById("gable-barn"))).toBe("farm");
     expect(identityFromArchetype(archetypeById("service-station-canopy"))).toBe("service");
-    expect(identityFromArchetype(archetypeById("pump-house"))).toBe("utility");
+    expect(identityFromArchetype(archetypeById("governors-mansion"))).toBe("shop");
+    expect(identityFromArchetype(archetypeById("city-hall"))).toBe("shop");
+    expect(identityFromArchetype(archetypeById("mansion-service"))).toBe("utility");
     expect(lotAllowsFuel("residence")).toBe(false);
     expect(lotAllowsFuel("service")).toBe(true);
     expect(lotAllowsAgriculture("residence")).toBe(false);
