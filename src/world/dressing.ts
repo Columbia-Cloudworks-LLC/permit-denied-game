@@ -253,7 +253,10 @@ export function dressLot(
   budget: number,
   corridors: readonly { x: number; y: number }[][] = [],
 ): { props: Prop[]; patches: GroundPatch[] } {
-  const template = DRESS_TEMPLATES.find((t) => t.id === lot.templateId) ?? pickTemplate(lot.identity, rng);
+  const stored = DRESS_TEMPLATES.find((t) => t.id === lot.templateId);
+  const template = stored && stored.identities.includes(lot.identity)
+    ? stored
+    : pickTemplate(lot.identity, rng);
   lot.templateId = template.id;
   if (building) building.lotId = lot.id;
   const props: Prop[] = [];

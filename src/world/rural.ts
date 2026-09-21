@@ -22,6 +22,7 @@ import {
   type NhoodDebug,
   type NhoodReject,
 } from "./parcels";
+import { identityFromBuilding } from "./lotUse";
 import { campaignEligible, campaignWeight, pickWeighted } from "./campaignPlacement";
 import {
   evaluateCampaignComposition,
@@ -649,22 +650,6 @@ function zoneForIndex(i: number, count: number, segmentId: string, segs: readonl
   return i % 6 === 0 ? "commercial" : "residential";
 }
 
-function identityForIndex(
-  i: number,
-  count: number,
-  segmentId: string,
-  segs: readonly RoadSegment[],
-  rng: Rng,
-): Lot["identity"] {
-  const seg = segs.find((s) => s.id === segmentId);
-  const roadClass = seg?.roadClass ?? "residential";
-  if (roadClass === "service") return rng.chance(0.5) ? "utility" : "contractor";
-  if (i === 0 || (roadClass === "rural" && i % 11 === 0)) return "shop";
-  if (i % 9 === 3) return "service";
-  if (i % 5 === 2 || (roadClass === "rural" && i % 4 === 1)) return "farm";
-  if (i === count - 1) return "utility";
-  return "residence";
-}
 
 function pickSkeleton(
   grid: SurfaceGrid,
@@ -1000,7 +985,6 @@ function placeCampaignLot(
   surface: SurfaceGrid,
 ): boolean {
   lot.zone = zoneForIndex(kept.length, targetCount, lot.frontage.segmentId, b.segments);
-  lot.identity = identityForIndex(kept.length, targetCount, lot.frontage.segmentId, b.segments, rng);
   if (lot.boundary.length >= 3 && kept.some((k) => k.boundary.length >= 3 && convexOverlap(lot.boundary, k.boundary))) {
     rejected.push({ kind: "lot", reason: "overlap", points: lot.boundary });
     return false;
@@ -1055,6 +1039,8 @@ function placeCampaignLot(
     return false;
   }
   buildings.push(building);
+  lot.identity = identityFromBuilding(building);
+  lot.templateId = "";
   kept.push(lot);
   corridors.push(drive.corridor);
   used.set(building.archetypeId, (used.get(building.archetypeId) ?? 0) + 1);
@@ -1130,6 +1116,8 @@ function placeCampaignLandmark(
     building.campaignLandmark = true;
     building.name = campaign.landmark.label.toUpperCase();
     buildings.push(building);
+    lot.identity = identityFromBuilding(building);
+    lot.templateId = "";
     kept.push(lot);
     corridors.push(drive.corridor);
     used.set(building.archetypeId, 1);

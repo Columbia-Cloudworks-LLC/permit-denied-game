@@ -7,9 +7,49 @@ import { campaignEligible } from './campaignPlacement';
 import { campaignFamily, evaluateCampaignComposition } from './campaignComposition';
 import { generateCampaignLayout } from './campaignLayout';
 import { getAsset } from './catalog';
+import { DRESS_TEMPLATES } from './dressing';
 import { createTown } from './town';
 import { validateTown } from './districts';
 import { ARCHETYPES } from './archetypes';
+import { identityFromBuilding, lotAllowsAgriculture, lotAllowsFuel } from './lotUse';
+import type { FieldFeature } from './terrainFeatures';
+
+const AGRICULTURAL_PROPS = new Set([
+  'hay-bale-round',
+  'hay-bale-square',
+  'water-trough',
+  'farm-implement',
+  'tractor',
+  'grain-bin',
+]);
+
+function expectLotUseMatchesBuilding(town: ReturnType<typeof createTown>, label: string): void {
+  const byLot = new Map(town.lots.map((lot) => [lot.id, lot]));
+  for (const building of town.buildings) {
+    const lot = byLot.get(building.lotId ?? '');
+    if (!lot) continue;
+    expect(lot.identity, `${label} ${building.archetypeId} ${lot.id}`).toBe(identityFromBuilding(building));
+    const template = DRESS_TEMPLATES.find((entry) => entry.id === lot.templateId);
+    expect(template?.identities, `${label} ${lot.id} template`).toContain(lot.identity);
+  }
+  for (const prop of town.props) {
+    if (!prop.lotId) continue;
+    const lot = byLot.get(prop.lotId);
+    if (!lot) continue;
+    if (prop.assetId === 'fuel-pump') {
+      expect(lotAllowsFuel(lot.identity), `${label} fuel-pump on ${lot.id}`).toBe(true);
+    }
+    if (AGRICULTURAL_PROPS.has(prop.assetId)) {
+      expect(lotAllowsAgriculture(lot.identity), `${label} ${prop.assetId} on ${lot.id}`).toBe(true);
+    }
+  }
+  for (const feature of town.features) {
+    if (feature.kind !== 'field' || !feature.lotId) continue;
+    const field = feature as FieldFeature;
+    const lot = byLot.get(field.lotId ?? '');
+    expect(lotAllowsAgriculture(lot!.identity), `${label} field on ${lot?.id}`).toBe(true);
+  }
+}
 
 const SEEDS = [19, 0x51a11, 77, 1001];
 
@@ -29,6 +69,16 @@ describe('campaign generation', () => {
         expect(status.ready).toBe(false);
         expect(status.progress).toBe(0);
         const town = createTown({ district: 'd30', seed, campaign: level });
+        expectLotUseMatchesBuilding(town, `${level.id} seed ${seed}`);
+        if (level.id === 'city-downtown' && seed === 19) {
+          for (const id of ['apartment-tower', 'laundry-lofts'] as const) {
+            for (const building of town.buildings.filter((entry) => entry.archetypeId === id)) {
+              const lot = town.lots.find((entry) => entry.id === building.lotId);
+              expect(lotAllowsAgriculture(lot!.identity), `${id} ${lot?.id}`).toBe(false);
+              expect(town.features.some((feature) => feature.kind === 'field' && feature.lotId === lot!.id)).toBe(false);
+            }
+          }
+        }
         expect(validateTown(town).ok, `${level.id} seed ${seed} ${validateTown(town).issues.map(i => i.detail).join('; ')}`).toBe(true);
         expect(availableTownValue(town)).toBeGreaterThan(level.dollarTarget);
         expect(landmarkShare(town, level.landmark.structureIds)).toBeLessThan(level.dollarTarget);
@@ -51,6 +101,7 @@ describe('campaign generation', () => {
       for (const prop of town.props) {
         expect(campaignEligible(getAsset(prop.assetId).campaign, level.id), prop.assetId).toBe(true);
       }
+      expectLotUseMatchesBuilding(town, `${level.id} seed 19 eligible`);
       await pumpVitestRpc();
     }
   });
@@ -106,6 +157,7 @@ describe('campaign generation', () => {
         }));
         expect(families.size, `${id} seed ${seed} families`).toBeGreaterThanOrEqual(3);
         const town = createTown({ district: 'd30', seed, campaign: level });
+        expectLotUseMatchesBuilding(town, `${id} seed ${seed}`);
         expect(validateTown(town).ok, `${id} seed ${seed} ${validateTown(town).issues.map(issue => issue.detail).join('; ')}`).toBe(true);
         expect(availableTownValue(town)).toBeGreaterThan(level.dollarTarget);
         expect(landmarkShare(town, level.landmark.structureIds)).toBeLessThan(level.dollarTarget);
