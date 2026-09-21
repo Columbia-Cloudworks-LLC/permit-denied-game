@@ -153,7 +153,8 @@ describe("lot dressing", () => {
     const homes = town.lots.filter((lot) => lot.identity === "residence");
     expect(work.length).toBeGreaterThan(0);
     expect(homes.length).toBeGreaterThan(0);
-    const count = (lotId: string) => town.props.filter((p) => p.lotId === lotId).length;
+    const count = (lotId: string) =>
+      town.props.filter((p) => p.lotId === lotId).length + town.vehicles.filter((v) => v.lotId === lotId).length;
     const workAvg = work.reduce((n, lot) => n + count(lot.id), 0) / work.length;
     const homeAvg = homes.reduce((n, lot) => n + count(lot.id), 0) / homes.length;
     expect(workAvg).toBeGreaterThanOrEqual(homeAvg);
