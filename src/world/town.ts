@@ -18,6 +18,7 @@ import { generateDistrictLayout } from "./districts";
 import { buildingOccupy, dressLot, pickTemplate } from "./dressing";
 import { CLASSIC_PLACEMENTS } from "./families";
 import { completeLot, type NhoodDebug } from "./parcels";
+import { identityFromBuilding } from "./lotUse";
 import { linePoints, pt, RoadBuilder, emptyTerrain, type RoadNetwork, type TerrainField } from "./roads";
 import { defaultBiome, type BiomeProfile } from "./biomes";
 import { mapGroundCondition, type GroundCondition } from "./groundCondition";
@@ -195,7 +196,7 @@ function createClassicTown(seed: number, showcase = false): Town {
     const bd = building.d * building.cellSize;
     const padX = 3.4;
     const padY = 3.2;
-    const identity = building.kind === "shop" ? "shop" : building.kind === "industrial" ? "contractor" : "residence";
+    const identity = identityFromBuilding(building);
     const mx = building.x + bw * 0.5 - 19.75;
     const my = building.y + bd * 0.5 - 17.6;
     const heading = Math.abs(mx) > Math.abs(my) ? (mx > 0 ? 0 : Math.PI) : my > 0 ? Math.PI / 2 : -Math.PI / 2;

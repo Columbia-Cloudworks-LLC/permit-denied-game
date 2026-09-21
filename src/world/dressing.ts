@@ -1,4 +1,4 @@
-import { aabbOverlap } from "../game/math";
+import { aabbOverlap, pointInPoly } from "../game/math";
 import { Rng } from "../game/rng";
 import type { CoverKind, GroundPatch, Lot, LotIdentity, Prop } from "../structure/types";
 import type { Building } from "../structure/types";
@@ -131,13 +131,25 @@ export const DRESS_TEMPLATES: readonly DressTemplate[] = [
   },
 ];
 
+export type DressEligible = (assetId: string) => boolean;
+
 export function templatesFor(identity: LotIdentity): DressTemplate[] {
   return DRESS_TEMPLATES.filter((t) => t.identities.includes(identity));
 }
 
-export function pickTemplate(identity: LotIdentity, rng: Rng): DressTemplate {
-  const pool = templatesFor(identity);
-  return pool.length ? rng.pick(pool) : DRESS_TEMPLATES[0]!;
+function slotEligible(slot: DressSlot, eligible?: DressEligible): boolean {
+  return !eligible || eligible(slot.assetId);
+}
+
+function templateHasEligibleSlot(template: DressTemplate, eligible?: DressEligible): boolean {
+  return template.slots.some((slot) => slotEligible(slot, eligible));
+}
+
+export function pickTemplate(identity: LotIdentity, rng: Rng, eligible?: DressEligible): DressTemplate {
+  const matching = templatesFor(identity);
+  const pool = matching.filter((template) => templateHasEligibleSlot(template, eligible));
+  if (pool.length) return rng.pick(pool);
+  return matching[0] ?? DRESS_TEMPLATES[0]!;
 }
 
 export interface Occupancy {
@@ -252,8 +264,13 @@ export function dressLot(
   occ: Occupancy,
   budget: number,
   corridors: readonly { x: number; y: number }[][] = [],
+  eligible?: DressEligible,
 ): { props: Prop[]; patches: GroundPatch[] } {
-  const template = DRESS_TEMPLATES.find((t) => t.id === lot.templateId) ?? pickTemplate(lot.identity, rng);
+  const stored = DRESS_TEMPLATES.find((t) => t.id === lot.templateId);
+  const storedOk = !!stored
+    && stored.identities.includes(lot.identity)
+    && templateHasEligibleSlot(stored, eligible);
+  const template = storedOk ? stored : pickTemplate(lot.identity, rng, eligible);
   lot.templateId = template.id;
   if (building) building.lotId = lot.id;
   const props: Prop[] = [];
@@ -261,7 +278,7 @@ export function dressLot(
   const driveW = 1.7;
   const drive = drivewayPatch(lot);
 
-  const slots = [...template.slots].sort((a, b) => b.weight - a.weight);
+  const slots = [...template.slots].filter((slot) => slotEligible(slot, eligible)).sort((a, b) => b.weight - a.weight);
   const max = Math.min(template.maxAssets, budget);
   for (const slot of slots) {
     if (props.length >= max) break;
@@ -297,49 +314,61 @@ export function dressLot(
       cover: template.cover,
       seed: rng.int(1, 1_000_000),
       z: 0,
+      poly: lot.boundary.length >= 3 ? lot.boundary.map((p) => ({ x: p.x, y: p.y })) : undefined,
     },
     { ...drive, heading: lot.heading, cover: "driveway", seed: rng.int(1, 1_000_000), z: 0.01 },
   ];
   if (template.cover === "grass" && rng.chance(0.7)) {
     const worn = lotLocalToWorld(lot, 0.35, 0);
-    patches.push({
-      x: worn.x - 0.7,
-      y: worn.y - 0.25,
-      w: 1.6,
-      d: 0.55,
-      heading: lot.heading,
-      cover: "tracks",
-      seed: rng.int(1, 1_000_000),
-      z: 0.012,
-    });
+    if (coverAllowed(lot, worn.x, worn.y)) {
+      patches.push({
+        x: worn.x - 0.7,
+        y: worn.y - 0.25,
+        w: 1.6,
+        d: 0.55,
+        heading: lot.heading,
+        cover: "tracks",
+        seed: rng.int(1, 1_000_000),
+        z: 0.012,
+      });
+    }
   }
   if (template.cover === "grass" && rng.chance(0.45)) {
     const bed = lotLocalToWorld(lot, 0.55, 0.32);
-    patches.push({
-      x: bed.x - 0.45,
-      y: bed.y - 0.35,
-      w: 0.9,
-      d: 0.7,
-      heading: lot.heading,
-      cover: "planted",
-      seed: rng.int(1, 1_000_000),
-      z: 0.012,
-    });
+    if (coverAllowed(lot, bed.x, bed.y)) {
+      patches.push({
+        x: bed.x - 0.45,
+        y: bed.y - 0.35,
+        w: 0.9,
+        d: 0.7,
+        heading: lot.heading,
+        cover: "planted",
+        seed: rng.int(1, 1_000_000),
+        z: 0.012,
+      });
+    }
   }
   if (lot.identity === "shop" || lot.identity === "service") {
     const pad = lotLocalToWorld(lot, 0.22, 0);
-    patches.push({
-      x: pad.x - 1.2,
-      y: pad.y - 1.1,
-      w: 2.4,
-      d: 2.2,
-      heading: lot.heading,
-      cover: "parking",
-      seed: rng.int(1, 1_000_000),
-      z: 0.012,
-    });
+    if (coverAllowed(lot, pad.x, pad.y)) {
+      patches.push({
+        x: pad.x - 1.2,
+        y: pad.y - 1.1,
+        w: 2.4,
+        d: 2.2,
+        heading: lot.heading,
+        cover: "parking",
+        seed: rng.int(1, 1_000_000),
+        z: 0.012,
+      });
+    }
   }
   return { props, patches };
+}
+
+function coverAllowed(lot: Lot, x: number, y: number): boolean {
+  if (lot.boundary.length >= 3) return pointInPoly(x, y, lot.boundary);
+  return true;
 }
 
 export function drivewayPatch(lot: Lot): { x: number; y: number; w: number; d: number } {

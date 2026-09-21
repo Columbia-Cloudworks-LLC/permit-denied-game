@@ -16,7 +16,7 @@ import {
   type RoadSegment,
 } from "./roads";
 import type { SurfaceGrid } from "./terrain";
-import { roadCostAt, sampleSegmentCenterline } from "./terrain";
+import { lotEnvelopeRejected, roadCostAt, sampleSegmentCenterline } from "./terrain";
 
 export const PARCEL = {
   minFront: 8.4,
@@ -309,6 +309,7 @@ export function allocateFrontage(
   rng: Rng,
   existing: readonly Lot[] = [],
   roads?: readonly RoadSegment[],
+  grid?: SurfaceGrid,
 ): { lots: Lot[]; rejected: NhoodReject[] } {
   const lots: Lot[] = [...existing];
   const rejected: NhoodReject[] = [];
@@ -355,7 +356,7 @@ export function allocateFrontage(
           const t0 = cursor / path;
           const t1 = (cursor + front) / path;
           cursor += front + parcel.lotGap;
-          const made = tryParcel(seg, side, t0, t1, depth, lots, rng, rejected, checkRoads, lotClass?.id);
+          const made = tryParcel(seg, side, t0, t1, depth, lots, rng, rejected, checkRoads, lotClass?.id, grid, minDepth);
           if (made) lots.push(made);
         }
       }
@@ -377,10 +378,10 @@ export function allocateFrontage(
         const side: LotSide = slot % 2 === 0 ? side0 : side0 === 1 ? -1 : 1;
         slot++;
         cursor += front + parcel.lotGap;
-        const made = tryParcel(seg, side, t0, t1, depth, lots, rng, rejected, checkRoads, lotClass?.id);
+        const made = tryParcel(seg, side, t0, t1, depth, lots, rng, rejected, checkRoads, lotClass?.id, grid, minDepth);
         if (made) lots.push(made);
         const other: LotSide = side === 1 ? -1 : 1;
-        const twin = tryParcel(seg, other, t0, t1, depth * rng.range(0.92, 1.06), lots, rng, rejected, checkRoads, lotClass?.id);
+        const twin = tryParcel(seg, other, t0, t1, depth * rng.range(0.92, 1.06), lots, rng, rejected, checkRoads, lotClass?.id, grid, minDepth);
         if (twin) lots.push(twin);
       }
     }
@@ -410,49 +411,75 @@ function tryParcel(
   rejected: NhoodReject[],
   publicSegs: readonly RoadSegment[] = [seg],
   classId?: string,
+  grid?: SurfaceGrid,
+  minDepth = currentParcel().minDepth,
 ): Lot | null {
-  const geom = parcelFromFrontage(seg, side, t0, t1, depth);
-  if (geom.boundary.some((p) => Number.isNaN(p.x))) return null;
-  const box = aabbOfPoints(geom.boundary);
-  if (box.w < 4 || box.d < 4) return null;
-  if (parcelHitsRoad(geom.boundary, publicSegs, 0)) {
-    rejected.push({ kind: "lot", reason: "road-corridor", points: geom.boundary });
+  const firstGeom = parcelFromFrontage(seg, side, t0, t1, depth);
+  if (firstGeom.boundary.some((p) => Number.isNaN(p.x))) return null;
+  const firstBox = aabbOfPoints(firstGeom.boundary);
+  if (firstBox.w < 4 || firstBox.d < 4) return null;
+  if (parcelHitsRoad(firstGeom.boundary, publicSegs, 0)) {
+    rejected.push({ kind: "lot", reason: "road-corridor", points: firstGeom.boundary });
     return null;
   }
   for (const o of lots) {
-    if (convexOverlap(geom.boundary, o.boundary)) {
-      rejected.push({ kind: "lot", reason: "lot-overlap", points: geom.boundary });
+    if (convexOverlap(firstGeom.boundary, o.boundary)) {
+      rejected.push({ kind: "lot", reason: "lot-overlap", points: firstGeom.boundary });
       return null;
     }
   }
   const setbacks = defaultSetbacks(rng);
-  const buildable = buildableFromParcel(geom.boundary, geom.heading, setbacks);
-  if (buildable.w < 3.2 || buildable.d < 2.8) {
-    rejected.push({ kind: "lot", reason: "envelope", points: geom.boundary });
+  const firstBuildable = buildableFromParcel(firstGeom.boundary, firstGeom.heading, setbacks);
+  if (firstBuildable.w < 3.2 || firstBuildable.d < 2.8) {
+    rejected.push({ kind: "lot", reason: "envelope", points: firstGeom.boundary });
     return null;
   }
   const n = lots.length;
+  const zone = zoneForLot(n, 100, seg.roadClass);
+  const identity = identityFor(n, 100, seg.roadClass, rng);
   const frontage: LotFrontage = { segmentId: seg.id, side, t0, t1 };
   const mid = samplePolyline(seg.points, (t0 + t1) * 0.5);
-  const heading = geom.heading;
-  return completeLot({
-    id: `lot${n}`,
-    x: box.x,
-    y: box.y,
-    w: box.w,
-    d: box.d,
-    heading,
-    zone: zoneForLot(n, 100, seg.roadClass),
-    identity: identityFor(n, 100, seg.roadClass, rng),
-    accessId: "",
-    templateId: classId ?? "",
-    frontage,
-    boundary: geom.boundary,
-    buildable,
-    setbacks,
-    arrivalX: mid.x + Math.cos(heading) * 2.2,
-    arrivalY: mid.y + Math.sin(heading) * 2.2,
-  });
+
+  const makeLot = (geom: ReturnType<typeof parcelFromFrontage>, box: { x: number; y: number; w: number; d: number }, buildable: { x: number; y: number; w: number; d: number }): Lot => {
+    const heading = geom.heading;
+    return completeLot({
+      id: `lot${n}`,
+      x: box.x,
+      y: box.y,
+      w: box.w,
+      d: box.d,
+      heading,
+      zone,
+      identity,
+      accessId: "",
+      templateId: classId ?? "",
+      frontage,
+      boundary: geom.boundary,
+      buildable,
+      setbacks,
+      arrivalX: mid.x + Math.cos(heading) * 2.2,
+      arrivalY: mid.y + Math.sin(heading) * 2.2,
+    });
+  };
+
+  const firstLot = makeLot(firstGeom, firstBox, firstBuildable);
+  if (!grid || !lotEnvelopeRejected(grid, firstLot)) return firstLot;
+
+  const floor = Math.min(depth, minDepth);
+  for (let depthTry = depth - 1.15; depthTry >= floor - 1e-6; depthTry -= 1.15) {
+    const geom = parcelFromFrontage(seg, side, t0, t1, Math.max(floor, depthTry));
+    if (geom.boundary.some((p) => Number.isNaN(p.x))) break;
+    const box = aabbOfPoints(geom.boundary);
+    if (box.w < 4 || box.d < 4) break;
+    if (parcelHitsRoad(geom.boundary, publicSegs, 0)) break;
+    if (lots.some((o) => convexOverlap(geom.boundary, o.boundary))) break;
+    const buildable = buildableFromParcel(geom.boundary, geom.heading, setbacks);
+    if (buildable.w < 3.2 || buildable.d < 2.8) break;
+    const lot = makeLot(geom, box, buildable);
+    if (!lotEnvelopeRejected(grid, lot)) return lot;
+  }
+  rejected.push({ kind: "lot", reason: "terrain", points: firstGeom.boundary });
+  return null;
 }
 
 function boxHitsPublicRoad(
@@ -604,6 +631,7 @@ export function expandLotToFit(
   neededD: number,
   publicSegs: readonly RoadSegment[],
   others: readonly Lot[],
+  grid?: SurfaceGrid,
 ): string[] | null {
   const seg = publicSegs.find((s) => s.id === lot.frontage.segmentId);
   if (!seg) return null;
@@ -620,12 +648,13 @@ export function expandLotToFit(
   if (geom.boundary.some((p) => Number.isNaN(p.x)) || parcelHitsRoad(geom.boundary, publicSegs)) return null;
   const buildable = buildableFromParcel(geom.boundary, geom.heading, setbacks);
   if (buildable.w + 0.05 < neededW || buildable.d + 0.05 < neededD) return null;
+  const box = aabbOfPoints(geom.boundary);
+  if (grid && lotEnvelopeRejected(grid, { ...lot, x: box.x, y: box.y, w: box.w, d: box.d, buildable })) return null;
   const evicted: string[] = [];
   for (const other of others) {
     if (other.id === lot.id) continue;
     if (convexOverlap(geom.boundary, other.boundary)) evicted.push(other.id);
   }
-  const box = aabbOfPoints(geom.boundary);
   lot.frontage.t0 = t0;
   lot.frontage.t1 = t1;
   lot.boundary = geom.boundary;

@@ -9,7 +9,7 @@ import type { YardBay } from '../world/yardCatalog';
 import { defaultDebugView } from "../debug/view";
 import { drawDebugOverlay } from "./debugOverlay";
 import { Container, Graphics, Text } from "pixi.js";
-import { emptyGrassGrid, TERRAIN_GEN_VERSION } from "../world/terrain";
+import { emptyGrassGrid, groundPatchContains, TERRAIN_GEN_VERSION } from "../world/terrain";
 import { drawForestGarnish, planForestGarnish, type ForestGarnish } from "./forestCanopy";
 import { buildTerrainChunks, chunkCount, ensureTerrainAtlas, terrainAtlasRevision } from "./terrainTiles";
 import { DOZER, FLOOR_Z } from "../game/constants";
@@ -931,6 +931,7 @@ function drawCover(g: Graphics, patch: GroundPatch, condition: GroundCondition):
     const gx = patch.x + ((i * 17 + (patch.seed % 13)) % 97) * 0.12 * (patch.w / 8);
     const gy = patch.y + ((i * 29 + (patch.seed % 17)) % 89) * 0.1 * (patch.d / 8);
     if (gx > patch.x + patch.w || gy > patch.y + patch.d) continue;
+    if (!groundPatchContains(patch, gx + 0.16, gy + 0.13)) continue;
     drawGroundPoly(g, gx, gy, 0.32, 0.26, dark, 0.2, patch.z);
   }
 }

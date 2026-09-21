@@ -124,6 +124,9 @@ Yard props get campaign weights from the table in `src/world/catalog.ts` (`PROP_
 
 Optional `campaign.zones` further limits a prop or building to listed lot zones.
 
+Lot dressing identity is resolved from the placed building (`src/world/lotUse.ts`). Fuel pumps only appear on a service profile (service-station canopy). Crop fields only attach to an agricultural profile (barns, farmhouses, grain, livestock). Ordinary houses, apartments, shops, and civic buildings do not inherit a random farm or fuel yard from their street index.
+
+
 ### Checklist
 
 1. Discover the package in the Asset Test Yard and demolish it there first. See [construction authoring](construction-authoring.md) and [asset test yard](asset-test-yard.md).
