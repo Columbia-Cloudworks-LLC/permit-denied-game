@@ -270,23 +270,24 @@ export function generateSurfaceGrid(opts: GenerateSurfaceOpts): SurfaceGrid {
   return grid;
 }
 
-export function lotEnvelopeRejected(grid: SurfaceGrid, lot: { x: number; y: number; w: number; d: number; identity: LotIdentity }): boolean {
-  const env = "buildable" in lot && (lot as Lot).buildable
-    ? (lot as Lot).buildable
-    : { x: lot.x, y: lot.y, w: lot.w, d: lot.d };
-  let bad = 0;
+export function lotWaterShare(grid: SurfaceGrid, lot: { x: number; y: number; w: number; d: number; buildable?: Lot["buildable"] }): number {
+  const env = lot.buildable ?? { x: lot.x, y: lot.y, w: lot.w, d: lot.d };
+  let waterHits = 0;
   let total = 0;
   const x1 = env.x + env.w;
   const y1 = env.y + env.d;
   for (let y = env.y + 0.5; y < y1; y += 1) {
     for (let x = env.x + 0.5; x < x1; x += 1) {
       total++;
-      const surface = surfaceAt(grid, x, y);
-      if (surface === "water" || surface === "forest-core") bad++;
-      else if (surface === "field" && lot.identity !== "farm") bad++;
+      if (surfaceAt(grid, x, y) === "water") waterHits++;
     }
   }
-  return total > 0 && bad / total > 0.25;
+  return total > 0 ? waterHits / total : 0;
+}
+
+export function lotEnvelopeRejected(grid: SurfaceGrid, lot: { x: number; y: number; w: number; d: number; identity: LotIdentity; buildable?: Lot["buildable"] }): boolean {
+  void lot.identity;
+  return lotWaterShare(grid, lot) > 0.45;
 }
 
 export function meanRoadCost(grid: SurfaceGrid, points: readonly { x: number; y: number }[]): { mean: number; reject: number; samples: number } {
@@ -337,7 +338,7 @@ export function enforceOpenCorridors(
       const jitter = wooded ? (hash2(ix, iy, 0xf02e57) - 0.5) * 0.55 : 0;
       const clear = wooded ? Math.max(0.85, pad + jitter) : 0;
       let blocked = nearRoad(network, x, y, clear);
-      if (!blocked) {
+      if (!blocked && wooded) {
         for (const lot of lots) {
           if (inExpandedBox(x, y, lot.x, lot.y, lot.w, lot.d, clear)) {
             blocked = true;
@@ -346,10 +347,11 @@ export function enforceOpenCorridors(
         }
       }
       if (!blocked) {
+        const buildPad = wooded ? clear : 0.35;
         for (const b of buildings) {
           const bw = b.w * b.cellSize;
           const bd = b.d * b.cellSize;
-          if (inExpandedBox(x, y, b.x, b.y, bw, bd, clear)) {
+          if (inExpandedBox(x, y, b.x, b.y, bw, bd, buildPad)) {
             blocked = true;
             break;
           }

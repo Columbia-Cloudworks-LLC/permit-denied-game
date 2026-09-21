@@ -62,6 +62,7 @@ import {
   generateSurfaceGrid,
   meanRoadCost,
   sampleSegmentCenterline,
+  lotEnvelopeRejected,
   stampDeveloped,
   finalizeStampedSurface,
   traversalAt,
@@ -194,7 +195,7 @@ function generateRuralLayoutInner(
     campaign ? Math.ceil(count * 2.4) + 4 : Math.ceil(count * 1.7) + 6,
     clusterRng,
   );
-  const alloc = allocateFrontage(developed, b.nodes, campaign ? count * 4 : count * 3, new Rng(seed ^ 0x51a11), [], b.segments);
+  const alloc = allocateFrontage(developed, b.nodes, campaign ? count * 4 : count * 3, new Rng(seed ^ 0x51a11), [], b.segments, surface);
   const pool = campaign
     ? selectLotCluster(alloc.lots, Math.min(alloc.lots.length, count * 3), new Rng(seed ^ 0xc1a55))
     : selectLotCluster(alloc.lots, count * 2, new Rng(seed ^ 0xc1a55));
@@ -212,7 +213,7 @@ function generateRuralLayoutInner(
   const publicSegs = () => b.segments.filter((s) => s.roadClass !== "driveway" && s.roadClass !== "ramp");
   const pick = campaign ? campaignPicker(campaign, used) : undefined;
 
-  if (campaign) placeCampaignLandmark(campaign, pool, rng, buildings, kept, corridors, publicSegs, b, used);
+  if (campaign) placeCampaignLandmark(campaign, pool, rng, buildings, kept, corridors, publicSegs, b, used, surface);
 
   let ordinaryLots = pool.filter(lot => !kept.some(keptLot => keptLot.id === lot.id));
   let assignedId = new Map<string, string>();
@@ -233,14 +234,14 @@ function generateRuralLayoutInner(
     if (kept.length >= count) break;
     if (lot.openSpaceName) continue;
     if (kept.some(k => k.id === lot.id)) continue;
-    if (!placeCampaignLot(campaign, lot, rng, buildings, kept, corridors, publicSegs, b, used, pick, assignedId.get(lot.id), pool, rejected, count)) {
+    if (!placeCampaignLot(campaign, lot, rng, buildings, kept, corridors, publicSegs, b, used, pick, assignedId.get(lot.id), pool, rejected, count, surface)) {
       continue;
     }
   }
 
   if (kept.length < count) {
     const extraSegs = selectStreetCluster(b.segments, b.nodes, Math.ceil(count * 3.2), new Rng(seed ^ 0x222));
-    const extra = allocateFrontage(extraSegs, b.nodes, count * 3, new Rng(seed ^ 0x222), kept, b.segments);
+    const extra = allocateFrontage(extraSegs, b.nodes, count * 3, new Rng(seed ^ 0x222), kept, b.segments, surface);
     rejected.push(...extra.rejected);
     if (campaign && extra.lots.length) {
       const extraFresh = extra.lots.filter(lot => !kept.some(keptLot => keptLot.id === lot.id));
@@ -250,7 +251,7 @@ function generateRuralLayoutInner(
     for (const lot of extra.lots) {
       if (kept.length >= count) break;
       if (kept.some((k) => k.id === lot.id)) continue;
-      if (!placeCampaignLot(campaign, lot, rng, buildings, kept, corridors, publicSegs, b, used, pick, undefined, extra.lots, rejected, count)) {
+      if (!placeCampaignLot(campaign, lot, rng, buildings, kept, corridors, publicSegs, b, used, pick, undefined, extra.lots, rejected, count, surface)) {
         continue;
       }
     }
@@ -261,7 +262,7 @@ function generateRuralLayoutInner(
       if (kept.length >= count) break;
       if (lot.openSpaceName) continue;
       if (kept.some((k) => k.id === lot.id)) continue;
-      if (!placeCampaignLot(campaign, lot, rng, buildings, kept, corridors, publicSegs, b, used, pick, assignedId.get(lot.id), pool, rejected, count)) {
+      if (!placeCampaignLot(campaign, lot, rng, buildings, kept, corridors, publicSegs, b, used, pick, assignedId.get(lot.id), pool, rejected, count, surface)) {
         continue;
       }
     }
@@ -996,6 +997,7 @@ function placeCampaignLot(
   neighbors: Lot[],
   rejected: NhoodReject[],
   targetCount: number,
+  surface: SurfaceGrid,
 ): boolean {
   lot.zone = zoneForIndex(kept.length, targetCount, lot.frontage.segmentId, b.segments);
   lot.identity = identityForIndex(kept.length, targetCount, lot.frontage.segmentId, b.segments, rng);
@@ -1017,7 +1019,7 @@ function placeCampaignLot(
         d: lot.d,
         heading: lot.heading,
       };
-      const evicted = expandLotToFit(lot, size.w, size.d, publicSegs(), [...neighbors, ...kept]);
+      const evicted = expandLotToFit(lot, size.w, size.d, publicSegs(), [...neighbors, ...kept], surface);
       const hitsKept = !!evicted?.some(id => kept.some(entry => entry.id === id));
       if (!evicted || hitsKept) {
         lot.frontage = snapshot.frontage;
@@ -1041,6 +1043,10 @@ function placeCampaignLot(
   const building = placeBuildingInLot(lot, rng, buildings, publicSegs(), corridors, picker);
   if (!building) {
     rejected.push({ kind: "building", reason: assignedId ? `no-fit:${assignedId}` : "no-fit", points: lot.boundary });
+    return false;
+  }
+  if (lotEnvelopeRejected(surface, lot)) {
+    rejected.push({ kind: "lot", reason: "terrain", points: lot.boundary });
     return false;
   }
   const drive = attachDriveway(b, lot, building, [...kept, ...neighbors]);
@@ -1088,9 +1094,10 @@ function placeCampaignLandmark(
   buildings: Building[],
   kept: Lot[],
   corridors: { x: number; y: number }[][],
-  publicSegs: () => import("./roads").RoadSegment[],
+  publicSegs: () => RoadSegment[],
   b: RoadBuilder,
   used: Map<string, number>,
+  surface: SurfaceGrid,
 ): void {
   const landmark = archetypeById(campaign.landmark.buildingId);
   const size = archetypeFootprint(landmark);
@@ -1107,9 +1114,10 @@ function placeCampaignLandmark(
   for (const lot of ranked) {
     lot.zone = 'commercial';
     lot.identity = 'shop';
+    if (lotEnvelopeRejected(surface, lot)) continue;
     const needGrow = lot.buildable.w + 0.08 < size.w || lot.buildable.d + 0.08 < size.d;
     if (needGrow) {
-      const evicted = expandLotToFit(lot, size.w, size.d, publicSegs(), pool);
+      const evicted = expandLotToFit(lot, size.w, size.d, publicSegs(), pool, surface);
       if (!evicted) continue;
       for (let i = pool.length - 1; i >= 0; i--) {
         if (evicted.includes(pool[i]!.id)) pool.splice(i, 1);

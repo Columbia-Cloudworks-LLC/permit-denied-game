@@ -7,9 +7,12 @@ import {
   TERRAIN_GEN_VERSION,
   SURFACE_CHUNK,
   SURFACE_ID,
+  createSurfaceGrid,
   hashSurfaceBytes,
   isolatedBaseCellCount,
-  lotCostAt,
+    lotCostAt,
+    lotEnvelopeRejected,
+    lotWaterShare,
   naturalCellTotal,
   countNatural,
   roadCostAt,
@@ -189,5 +192,19 @@ describe("terrain surface grid", () => {
     const town = createTown({ district: "d30", seed: 19 });
     const chunks = Math.ceil(town.surface.cols / SURFACE_CHUNK) * Math.ceil(town.surface.rows / SURFACE_CHUNK);
     expect(chunks).toBeLessThanOrEqual(512);
+  });
+
+  it("rejects a buildable envelope that is mostly water", () => {
+    const grid = createSurfaceGrid(0, 0, 8, 8, "grass");
+    for (let iy = 0; iy < 8; iy++) {
+      for (let ix = 4; ix < 8; ix++) grid.surface[iy * grid.cols + ix] = SURFACE_ID.water;
+    }
+    expect(lotEnvelopeRejected(grid, { x: 0, y: 0, w: 3, d: 3, identity: "residence" })).toBe(false);
+    expect(lotEnvelopeRejected(grid, { x: 3, y: 0, w: 4, d: 3, identity: "residence" })).toBe(true);
+    expect(lotWaterShare(grid, { x: 3, y: 0, w: 4, d: 3 })).toBeGreaterThan(0.45);
+    for (let i = 0; i < grid.surface.length; i++) {
+      if (grid.surface[i] === SURFACE_ID.water) grid.surface[i] = SURFACE_ID["forest-core"];
+    }
+    expect(lotEnvelopeRejected(grid, { x: 3, y: 0, w: 4, d: 3, identity: "residence" })).toBe(false);
   });
 });
