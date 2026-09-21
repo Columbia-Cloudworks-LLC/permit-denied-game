@@ -1,4 +1,4 @@
-import { aabbOverlap } from "../game/math";
+import { aabbOverlap, pointInPoly } from "../game/math";
 import { Rng } from "../game/rng";
 import type { CoverKind, GroundPatch, Lot, LotIdentity, Prop } from "../structure/types";
 import type { Building } from "../structure/types";
@@ -297,49 +297,61 @@ export function dressLot(
       cover: template.cover,
       seed: rng.int(1, 1_000_000),
       z: 0,
+      poly: lot.boundary.length >= 3 ? lot.boundary.map((p) => ({ x: p.x, y: p.y })) : undefined,
     },
     { ...drive, heading: lot.heading, cover: "driveway", seed: rng.int(1, 1_000_000), z: 0.01 },
   ];
   if (template.cover === "grass" && rng.chance(0.7)) {
     const worn = lotLocalToWorld(lot, 0.35, 0);
-    patches.push({
-      x: worn.x - 0.7,
-      y: worn.y - 0.25,
-      w: 1.6,
-      d: 0.55,
-      heading: lot.heading,
-      cover: "tracks",
-      seed: rng.int(1, 1_000_000),
-      z: 0.012,
-    });
+    if (coverAllowed(lot, worn.x, worn.y)) {
+      patches.push({
+        x: worn.x - 0.7,
+        y: worn.y - 0.25,
+        w: 1.6,
+        d: 0.55,
+        heading: lot.heading,
+        cover: "tracks",
+        seed: rng.int(1, 1_000_000),
+        z: 0.012,
+      });
+    }
   }
   if (template.cover === "grass" && rng.chance(0.45)) {
     const bed = lotLocalToWorld(lot, 0.55, 0.32);
-    patches.push({
-      x: bed.x - 0.45,
-      y: bed.y - 0.35,
-      w: 0.9,
-      d: 0.7,
-      heading: lot.heading,
-      cover: "planted",
-      seed: rng.int(1, 1_000_000),
-      z: 0.012,
-    });
+    if (coverAllowed(lot, bed.x, bed.y)) {
+      patches.push({
+        x: bed.x - 0.45,
+        y: bed.y - 0.35,
+        w: 0.9,
+        d: 0.7,
+        heading: lot.heading,
+        cover: "planted",
+        seed: rng.int(1, 1_000_000),
+        z: 0.012,
+      });
+    }
   }
   if (lot.identity === "shop" || lot.identity === "service") {
     const pad = lotLocalToWorld(lot, 0.22, 0);
-    patches.push({
-      x: pad.x - 1.2,
-      y: pad.y - 1.1,
-      w: 2.4,
-      d: 2.2,
-      heading: lot.heading,
-      cover: "parking",
-      seed: rng.int(1, 1_000_000),
-      z: 0.012,
-    });
+    if (coverAllowed(lot, pad.x, pad.y)) {
+      patches.push({
+        x: pad.x - 1.2,
+        y: pad.y - 1.1,
+        w: 2.4,
+        d: 2.2,
+        heading: lot.heading,
+        cover: "parking",
+        seed: rng.int(1, 1_000_000),
+        z: 0.012,
+      });
+    }
   }
   return { props, patches };
+}
+
+function coverAllowed(lot: Lot, x: number, y: number): boolean {
+  if (lot.boundary.length >= 3) return pointInPoly(x, y, lot.boundary);
+  return true;
 }
 
 export function drivewayPatch(lot: Lot): { x: number; y: number; w: number; d: number } {

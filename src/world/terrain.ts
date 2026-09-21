@@ -1,4 +1,5 @@
 import type { GroundPatch, Lot, LotIdentity } from "../structure/types";
+import { pointInPoly } from "../game/math";
 import type { BiomeProfile } from "./biomes";
 import { pointOnRoad, polylineLength, samplePolyline, type RoadNetwork, type RoadSegment } from "./roads";
 
@@ -363,6 +364,16 @@ export function enforceOpenCorridors(
   paintWetEdge(grid);
 }
 
+export function lotFootprintContains(lot: Lot, x: number, y: number): boolean {
+  if (lot.boundary.length >= 3) return pointInPoly(x, y, lot.boundary);
+  return x >= lot.x && y >= lot.y && x <= lot.x + lot.w && y <= lot.y + lot.d;
+}
+
+export function groundPatchContains(patch: GroundPatch, x: number, y: number): boolean {
+  if (patch.poly && patch.poly.length >= 3) return pointInPoly(x, y, patch.poly);
+  return x >= patch.x && y >= patch.y && x <= patch.x + patch.w && y <= patch.y + patch.d;
+}
+
 export function stampDeveloped(
   grid: SurfaceGrid,
   network: RoadNetwork,
@@ -381,7 +392,7 @@ export function stampDeveloped(
       if (pointOnRoad(network, x, y)) stamp = true;
       else {
         for (const lot of lots) {
-          if (x >= lot.x && y >= lot.y && x <= lot.x + lot.w && y <= lot.y + lot.d) {
+          if (lotFootprintContains(lot, x, y)) {
             stamp = true;
             break;
           }
@@ -389,7 +400,7 @@ export function stampDeveloped(
       }
       if (!stamp) {
         for (const pad of developedPads) {
-          if (x >= pad.x && y >= pad.y && x <= pad.x + pad.w && y <= pad.y + pad.d) {
+          if (groundPatchContains(pad, x, y)) {
             stamp = true;
             break;
           }
