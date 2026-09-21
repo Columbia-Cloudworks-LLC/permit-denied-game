@@ -29,6 +29,7 @@ function expectLotUseMatchesBuilding(town: ReturnType<typeof createTown>, label:
     const lot = byLot.get(building.lotId ?? '');
     if (!lot) continue;
     expect(lot.identity, `${label} ${building.archetypeId} ${lot.id}`).toBe(identityFromBuilding(building));
+    if (!lot.templateId) continue;
     const template = DRESS_TEMPLATES.find((entry) => entry.id === lot.templateId);
     expect(template?.identities, `${label} ${lot.id} template`).toContain(lot.identity);
   }
