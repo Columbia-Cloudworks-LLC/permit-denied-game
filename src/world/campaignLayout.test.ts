@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { pumpVitestRpc } from '../sim/benchSupport';
 import { CAMPAIGN_LEVELS, campaignLevelById } from '../game/campaign';
 import { landmarkDemolitionStatus } from '../game/campaignRun';
 import { availableTownValue, landmarkShare } from '../game/campaignValue';
@@ -13,7 +14,7 @@ import { ARCHETYPES } from './archetypes';
 const SEEDS = [19, 0x51a11, 77, 1001];
 
 describe('campaign generation', () => {
-  it('builds a deterministic reachable landmark on every level and seed', () => {
+  it('builds a deterministic reachable landmark on every level and seed', async () => {
     for (const level of CAMPAIGN_LEVELS) {
       for (const seed of SEEDS) {
         const a = generateCampaignLayout(level, seed);
@@ -31,11 +32,12 @@ describe('campaign generation', () => {
         expect(validateTown(town).ok, `${level.id} seed ${seed} ${validateTown(town).issues.map(i => i.detail).join('; ')}`).toBe(true);
         expect(availableTownValue(town)).toBeGreaterThan(level.dollarTarget);
         expect(landmarkShare(town, level.landmark.structureIds)).toBeLessThan(level.dollarTarget);
+        await pumpVitestRpc();
       }
     }
   });
 
-  it('only places campaign-eligible buildings and props', () => {
+  it('only places campaign-eligible buildings and props', async () => {
     for (const level of CAMPAIGN_LEVELS) {
       const town = createTown({ district: 'd30', seed: 19, campaign: level });
       for (const building of town.buildings) {
@@ -49,16 +51,19 @@ describe('campaign generation', () => {
       for (const prop of town.props) {
         expect(campaignEligible(getAsset(prop.assetId).campaign, level.id), prop.assetId).toBe(true);
       }
+      await pumpVitestRpc();
     }
   });
 
-  it('increases density from County through City Downtown', () => {
-    const footprints = CAMPAIGN_LEVELS.slice(0, 6).map(level => {
+  it('increases density from County through City Downtown', async () => {
+    const footprints: { id: string; count: number; coverage: number; setback: number }[] = [];
+    for (const level of CAMPAIGN_LEVELS.slice(0, 6)) {
       const town = createTown({ district: 'd30', seed: 19, campaign: level });
       const area = Math.max(1, (town.maxX - town.minX) * (town.maxY - town.minY));
       const covered = town.buildings.reduce((sum, building) => sum + building.w * building.d * building.cellSize * building.cellSize, 0);
-      return { id: level.id, count: town.buildings.length, coverage: covered / area, setback: town.lots[0]?.setbacks.side ?? 0 };
-    });
+      footprints.push({ id: level.id, count: town.buildings.length, coverage: covered / area, setback: town.lots[0]?.setbacks.side ?? 0 });
+      await pumpVitestRpc();
+    }
     for (let i = 1; i < footprints.length; i++) {
       expect(footprints[i]!.count, `${footprints[i]!.id} count`).toBeGreaterThanOrEqual(footprints[i - 1]!.count);
     }
@@ -66,7 +71,7 @@ describe('campaign generation', () => {
     expect(footprints[0]!.setback).toBeGreaterThan(footprints[5]!.setback);
   });
 
-  it('places mid-rise Borough and skyscraper Downtown maps on eight seeds', () => {
+  it('places mid-rise Borough and skyscraper Downtown maps on eight seeds', async () => {
     const seeds = [19, 0x51a11, 77, 1001, 42, 2026, 7, 31415];
     for (const id of ['city-borough', 'city-downtown'] as const) {
       const level = campaignLevelById(id);
@@ -104,6 +109,7 @@ describe('campaign generation', () => {
         expect(validateTown(town).ok, `${id} seed ${seed} ${validateTown(town).issues.map(issue => issue.detail).join('; ')}`).toBe(true);
         expect(availableTownValue(town)).toBeGreaterThan(level.dollarTarget);
         expect(landmarkShare(town, level.landmark.structureIds)).toBeLessThan(level.dollarTarget);
+        await pumpVitestRpc();
       }
     }
   }, 180_000);

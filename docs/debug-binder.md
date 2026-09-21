@@ -18,6 +18,7 @@ Session retains normal game setup and the Brick Demolition Challenge. Ordinary g
 - `DebugBinderState` belongs to the HUD, independently of `Town`. The picker stores stable catalog IDs and instance keys and resolves replacement objects after a reset. It never retains discarded simulation objects.
 - `TestMapRequest` explicitly selects `{ kind: 'yard' }` or `{ kind: 'asset', assetId, variant }` in `SessionRules` and `TownOptions`. Test maps start from an empty town and use the production constructors. The legacy `TownOptions.yard` and tower fixtures remain available to regression tests.
 - The full yard uses `?yard=1`. Focused links use `?testAsset=vehicle%3Abus&variant=1`; both accept `seed`. Invalid IDs or variants produce an empty pad and an actionable catalog error.
+- Capture and verification scripts talk to `window.__pd` as a versioned debug bridge (`version: 1`), not the live `Game` instance. Ordinary production boots do not install it; local `npm run dev` and `?debug=1` / yard / test-map links do.
 - `ranch=1`, `demo=ranch`, `demo=rivertown`, `demo=steel-warehouse`, and `tower=1` open the corresponding generic building test. `job=brick` retains the objective-based challenge. In-app map changes update the link without reloading the UI.
 - Focused vehicles start parked, with a clear dozer approach and room for their complete attachment and route envelopes. The old road-car spawn hotkey is excluded from test maps; the vehicle controls own those experiments.
 

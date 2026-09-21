@@ -96,6 +96,22 @@ try {
   await page.getByRole('button',{name:'Brick Building Demolition',exact:true}).click();
   await page.locator('#mobile-job').waitFor({state:'visible'});
 
+  const desktop = await browser.newPage({viewport:{width:1440,height:900}});
+  desktop.on('pageerror',error=>errors.push(error.message));
+  await desktop.goto(`${base}/?sandbox=1`);
+  await desktop.locator('.top').waitFor({state:'visible'});
+  assert.equal(await desktop.locator('.mobile-hud').isVisible(),false);
+  await desktop.screenshot({path:`${output}/desktop.png`});
+  await desktop.close();
+
+  const sourceHud = await page.request.get(new URL('/src/render/hud.ts', base).href);
+  const sourceType = sourceHud.headers()['content-type'] || '';
+  const sourceBody = await sourceHud.text();
+  const hasViteHud = sourceHud.ok() && !sourceType.includes('html') && /export\s+(class|async function|function|const)\s+Hud/.test(sourceBody);
+  if (!hasViteHud) {
+    assert.deepEqual(errors,[]);
+    console.log('Production mobile startup, HUD, job, and desktop checks passed (Vite-source HUD fixture skipped).');
+  } else {
   // Isolated real HUD/controls with deterministic state for warnings and pointer ownership.
   await page.route('**/__mobile-fixture', route => route.fulfill({ contentType:'text/html', body:'<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><link rel="stylesheet" href="/src/style.css"><div id="game-root"><canvas></canvas></div><div id="hud-root"></div>' }));
   await page.goto(`${base}/__mobile-fixture`);
@@ -160,12 +176,7 @@ try {
     assert.equal(await page.locator('#hud-overlay').isVisible(),true);
     assert.equal(await page.locator('.touch-stick').isVisible(),false);
   }
-  const desktop = await browser.newPage({viewport:{width:1440,height:900}});
-  desktop.on('pageerror',error=>errors.push(error.message));
-  await desktop.goto(`${base}/?sandbox=1`);
-  await desktop.locator('.top').waitFor({state:'visible'});
-  assert.equal(await desktop.locator('.mobile-hud').isVisible(),false);
-  await desktop.screenshot({path:`${output}/desktop.png`});
   assert.deepEqual(errors,[]);
   console.log('Mobile layout, menu, permit, warnings, overlays and multi-touch checks passed.');
+  }
 } finally { await browser.close(); }

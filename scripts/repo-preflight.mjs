@@ -51,10 +51,11 @@ export function runGit(repoRoot, args, { timeoutMs = GIT_TIMEOUT_MS } = {}) {
     });
     const timer = setTimeout(() => {
       child.kill();
-      const error = new Error(`git ${args.join(' ')} timed out after ${timeoutMs}ms`);
-      error.timeout = true;
-      error.stdout = stdout;
-      error.stderr = stderr;
+      const error = Object.assign(new Error(`git ${args.join(' ')} timed out after ${timeoutMs}ms`), {
+        timeout: true,
+        stdout,
+        stderr,
+      });
       reject(error);
     }, timeoutMs);
     child.on('error', (error) => {
@@ -182,7 +183,7 @@ export function formatSessionContext(report, { mode = 'agent' } = {}) {
     `branch=${report.branch ?? 'DETACHED'} head=${shortSha(report.headSha)} origin/main=${shortSha(report.originMainSha)} state=${report.state} freshness=${report.freshness} fastForwarded=${report.fastForwarded} worktreePreventedUpdate=${report.worktreePreventedUpdate} ahead=${report.ahead} behind=${report.behind}.`,
     'Commands: `npm test` then `npm run build`. Local play: `npm run dev`. Checkout freshness: `npm run repo:preflight`.',
     'Release: protected main — `/release` only (bump 1.0.N, PR, CI, merge). Do not push to main.',
-    'Stay on the lot: no campaign/meta, no second map, no ECS, no React wrappers around the canvas.',
+    'Stay on the lot: seven-level Time Challenge campaign on this town; no second map, no between-run metagame, no ECS, no React wrappers around the canvas.',
     'Do not commit dist/, *.exe, or secrets. Preflight is not part of npm install or the production build.',
   ].join('\n\n');
   if (FORBIDDEN_STACK_HINTS.test(context)) {

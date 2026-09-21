@@ -50,6 +50,7 @@ import {
   coalesceStaticChunks,
   debugViewSignature,
 } from "./buildingLod";
+import type { RenderFrame } from "./renderFrame";
 
 interface CullBox {
   x: number;
@@ -187,6 +188,23 @@ export class WorldRenderer {
   }
 
   draw(town: Town, dozer: Dozer, particles: ParticlePool, birds: Bird[], dt = 1 / 60, showPlayer = true): void {
+    const frame = this.beginDraw(town, dozer, particles, birds, dt, showPlayer);
+    this.passYard(frame);
+    this.passTerrain(frame);
+    this.passGround(frame);
+    this.passSites(frame);
+    this.passMarks(frame);
+    this.passNhood(frame);
+    this.passBuildings(frame);
+    this.passProps(frame);
+    this.passGarnish(frame);
+    this.passDynamics(frame);
+    this.passEffects(frame);
+    this.submitDraw(frame);
+  }
+
+  /** Shared draw-frame state: camera caches, counters, and the current debug view. */
+  private beginDraw(town: Town, dozer: Dozer, particles: ParticlePool, birds: Bird[], dt: number, showPlayer: boolean): RenderFrame {
     const strikeAt = worldToScreen(dozer.x, dozer.y);
     this.bowlingStrikes.draw(dt, strikeAt.x, strikeAt.y, this.zoom);
     this.root.setChildIndex(this.bowlingStrikes.root, this.root.children.length - 1);
@@ -196,6 +214,22 @@ export class WorldRenderer {
     this.nhood.visible = this.showNhood;
     this.world.clear();
     this.groundOverlays.clear();
+    this.cmds.length = 0;
+    const surface = town.surface ?? emptyGrassGrid(town.minX, town.minY, town.maxX, town.maxY);
+    return {
+      town, dozer, particles, birds, dt, showPlayer, view,
+      total: 0, visible: 0, occluded: false, groundRebuilds: 0, surfaceGeometry: 0,
+      hideDressing: view.overview || this.zoom < 0.55,
+      viewSig: debugViewSignature(view),
+      condition: town.groundCondition,
+      surface,
+      terrainCounts: chunkCount(surface),
+    };
+  }
+
+  /** Yard bay labels and placement preview. */
+  private passYard(frame: RenderFrame): void {
+    const { town } = frame;
     const yardKey = town.yard ? `${town.seed}:${town.yard.bays.map(b => b.key).join(',')}` : '';
     if (yardKey !== this.yardLabelKey) {
       for (const label of this.yardLabels) label.destroy();
@@ -207,36 +241,35 @@ export class WorldRenderer {
       this.yardLabelKey = yardKey;
     }
     for (const b of this.yardPreview) drawOrientedGround(this.groundOverlays, b.x + b.w / 2, b.y + b.d / 2, 0, b.w, b.d, this.yardPreviewValid ? 0x55ff99 : 0xff5555, .3, .03);
+  }
 
-    this.cmds.length = 0;
-    let total = 0;
-    let visible = 0;
-    let occluded = false;
-
+  /** Terrain atlas chunks and forest garnish plan. */
+  private passTerrain(frame: RenderFrame): void {
+    const { town, view } = frame;
     void ensureTerrainAtlas();
-    const surface = town.surface ?? emptyGrassGrid(town.minX, town.minY, town.maxX, town.maxY);
-    const terrainCounts = chunkCount(surface);
-    const condition = town.groundCondition;
-    const tKey = `${view.terrain}:${TERRAIN_GEN_VERSION}:${surface.cols}x${surface.rows}:${surface.ox}:${surface.oy}:${surface.stampRevision}:${terrainAtlasRevision()}:${condition}`;
-    let groundRebuilds = 0;
+    const tKey = `${view.terrain}:${TERRAIN_GEN_VERSION}:${frame.surface.cols}x${frame.surface.rows}:${frame.surface.ox}:${frame.surface.oy}:${frame.surface.stampRevision}:${terrainAtlasRevision()}:${frame.condition}`;
     if (tKey !== this.terrainKey) {
       this.terrainLayer.visible = view.terrain;
-      if (view.terrain) buildTerrainChunks(this.terrainLayer, surface, undefined, condition);
+      if (view.terrain) buildTerrainChunks(this.terrainLayer, frame.surface, undefined, frame.condition);
       else this.terrainLayer.removeChildren();
       this.terrainKey = tKey;
-      groundRebuilds++;
+      frame.groundRebuilds++;
     }
     this.terrainLayer.visible = view.terrain;
-    const garnishKey = `${town.seed}:${town.biome.id}:${surface.ox}:${surface.oy}:${surface.cols}x${surface.rows}:${surface.stampRevision}`;
+    const garnishKey = `${town.seed}:${town.biome.id}:${frame.surface.ox}:${frame.surface.oy}:${frame.surface.cols}x${frame.surface.rows}:${frame.surface.stampRevision}`;
     if (garnishKey !== this.garnishKey) {
-      this.garnish = planForestGarnish(surface, town.biome, town.seed);
+      this.garnish = planForestGarnish(frame.surface, town.biome, town.seed);
       this.garnishKey = garnishKey;
     }
+  }
 
-    const gKey = `${view.terrain}:${view.roads}:${town.district}:${town.seed}:${town.lots.length}:${town.network.mesh.length}:${town.ground.length}:${town.features?.length ?? 0}:${town.featureRevision ?? 0}:${condition}`;
+  /** Lot covers, terrain features, and road mesh on the ground layer. */
+  private passGround(frame: RenderFrame): void {
+    const { town, view } = frame;
+    const gKey = `${view.terrain}:${view.roads}:${town.district}:${town.seed}:${town.lots.length}:${town.network.mesh.length}:${town.ground.length}:${town.features?.length ?? 0}:${town.featureRevision ?? 0}:${frame.condition}`;
     if (gKey !== this.groundKey) {
       this.ground.clear();
-      groundRebuilds++;
+      frame.groundRebuilds++;
       const covers = town.ground.length
         ? town.ground
         : town.lots.map((lot) => ({
@@ -250,9 +283,9 @@ export class WorldRenderer {
             z: 0,
           }));
       for (const patch of view.terrain ? covers.filter((p) => p.w !== 6.2 && p.z !== -0.02) : []) {
-        drawCover(this.ground, patch, condition);
+        drawCover(this.ground, patch, frame.condition);
       }
-      if (view.terrain) drawTerrainFeatures(this.ground, town.features ?? [], condition);
+      if (view.terrain) drawTerrainFeatures(this.ground, town.features ?? [], frame.condition);
       const mesh = town.network.mesh;
       if (view.roads && mesh.length) {
         // RoadMeshQuad x/y are world centers; drawOrientedGround uses the same convention.
@@ -276,34 +309,47 @@ export class WorldRenderer {
       }
       this.groundKey = gKey;
     }
+  }
 
+  /** Persistent collapsed-site footprints. */
+  private passSites(frame: RenderFrame): void {
+    const { town } = frame;
     const sKey = `${town.siteRevision}:${town.collapsedSites.length}`;
     if (sKey !== this.siteKey) {
       this.sites.clear();
       for (const site of town.collapsedSites) drawCollapsedSite(this.sites, site);
       this.siteKey = sKey;
     }
+  }
 
+  /** Ground marks and pile hints on the overlay layer. */
+  private passMarks(frame: RenderFrame): void {
+    const { town, view } = frame;
     const camCell = `${Math.round(this.camX / 28)}:${Math.round(this.camY / 28)}`;
     const oKey = `${view.effects}:${view.debris}:${town.visualRevision}:${town.pile.revision}:${camCell}`;
     if (oKey !== this.overlayKey) {
       this.overlay.clear();
       for (const mark of view.effects ? town.marks : []) {
-        total++;
+        frame.total++;
         if (!this.visibleBox(mark.x - mark.w, mark.y - mark.d, mark.w * 2, mark.d * 2, 0, 0.02)) continue;
-        visible++;
+        frame.visible++;
         drawGroundMark(this.overlay, mark);
       }
       if (view.debris) drawPileHints(this.overlay, town, (x, y, w, d) => this.visibleBox(x, y, w, d, 0, 3.5));
       this.overlayKey = oKey;
     }
+  }
 
+  /** Neighborhood band overlay. */
+  private passNhood(frame: RenderFrame): void {
+    const { town } = frame;
     if (this.showNhood) drawNhoodOverlay(this.nhoodGfx, this.nhood, town);
     else clearNhoodOverlay(this.nhoodGfx, this.nhood);
+  }
 
-    let surfaceGeometry = 0;
-    const viewSig = debugViewSignature(view);
-    const hideDressing = view.overview || this.zoom < 0.55;
+  /** Building shells, interiors, roofs, and static command cache. */
+  private passBuildings(frame: RenderFrame): void {
+    const { town, dozer, dt, view } = frame;
     for (const b of town.buildings) {
       if (b.retired) { releaseBuildingSurfaces(b); continue; }
       const commandStart = this.cmds.length;
@@ -312,20 +358,20 @@ export class WorldRenderer {
       const bd = b.d * b.cellSize;
       const z1 = b.floors * FLOOR_Z + (b.elevatedTank ? b.elevatedTank.definition.height + .5 : .8);
       const fall = 1.4;
-      total += b.cells.length;
+      frame.total += b.cells.length;
       if (!this.visibleBox(b.x - fall, b.y - fall, bw + fall * 2, bd + fall * 2, -0.4, z1)) continue;
-      if (buildingHidesDozer(dozer, b)) occluded = true;
+      if (buildingHidesDozer(dozer, b)) frame.occluded = true;
       if(b.elevatedTank) {
-        const commands=elevatedTankCommands(b,view);visible+=commands.length;this.cmds.push(...commands);continue;
+        const commands=elevatedTankCommands(b,view);frame.visible+=commands.length;this.cmds.push(...commands);continue;
       }
-      if(b.silos){const commands=siloCommands(b,view);visible+=commands.length;this.cmds.push(...commands);}
+      if(b.silos){const commands=siloCommands(b,view);frame.visible+=commands.length;this.cmds.push(...commands);}
       // The aggregate mound owns the finished visual; a ground slab must not paint over it.
       if (b.coreCollapse?.phase === 'settled') continue;
       if (b.coreCollapse?.phase === 'falling') {
         for (const rect of b.coreCollapse.floors) {
           const z = rect.floor * FLOOR_Z - b.coreCollapse.drop;
           if (z + FLOOR_Z <= 0) continue;
-          visible++;
+          frame.visible++;
           this.cmds.push({ depth: depthKey(b.x + (rect.x + rect.w / 2) * b.cellSize, b.y + (rect.y + rect.d / 2) * b.cellSize, Math.max(0, z)), key: `core:${b.id}:${rect.floor}:${rect.x}:${rect.y}`, version: b.visualRevision, run: g => drawCoreFloor(g, b, rect, Math.min(3.5, town.pile.sample(b.x + bw / 2, b.y + bd / 2).height)) });
         }
         continue;
@@ -337,7 +383,7 @@ export class WorldRenderer {
       const needsInterior = buildingNeedsInterior(b, view, lod);
       const needsDetails = buildingNeedsDetails(view, lod);
       const surfaces = getBuildingSurfaces(b);
-      surfaceGeometry += surfaces.geometryCount;
+      frame.surfaceGeometry += surfaces.geometryCount;
       if (this.jobTarget === b) {
         const inset = .3;
         for (const [x, y, w, d] of [[b.x - inset, b.y - inset, bw + inset * 2, .07],
@@ -348,17 +394,17 @@ export class WorldRenderer {
       }
       const hasSolid = b.cells.some((c) => c.state !== "gone" && c.state !== "falling");
       if (hasSolid && view.walls) {
-        visible++;
+        frame.visible++;
         // Ground layer only: a depth-sorted footprint shadow paints over far gable bays.
         drawBuildingFootprintShadow(this.groundOverlays, surfaces.footprint, 1);
       }
-      const visBefore = visible;
-      const cacheKey = live ? "" : `${b.visualRevision}:${viewSig}:${needsInterior ? 1 : 0}:${needsDetails ? 1 : 0}`;
+      const visBefore = frame.visible;
+      const cacheKey = live ? "" : `${b.visualRevision}:${frame.viewSig}:${needsInterior ? 1 : 0}:${needsDetails ? 1 : 0}`;
       if (cacheKey) {
         const hit = this.staticBuildingCmds.get(b);
         if (hit && hit.key === cacheKey) {
           const shown = this.takeStaticBuildingCmds(hit.cmds, !!b.openDecks);
-          visible = visBefore + shown.length;
+          frame.visible = visBefore + shown.length;
           this.cmds.push(...shown);
           continue;
         }
@@ -376,7 +422,7 @@ export class WorldRenderer {
         if (!live) return 1;
         const alpha = this.fades.sample(`${b.id}:${key}`, objectOcclusionFade(dozer, x, y, w, d, z, top), dt);
         fadeValues.push(Math.round(alpha * 1000));
-        if (alpha < .6 || pieceHidesDozer(dozer, x, y, w, d, z, top)) occluded = true;
+        if (alpha < .6 || pieceHidesDozer(dozer, x, y, w, d, z, top)) frame.occluded = true;
         return alpha;
       };
       for (const detail of needsDetails ? b.facadeDetails : []) {
@@ -393,7 +439,7 @@ export class WorldRenderer {
         if (live && !this.visibleBox(detailBox.x, detailBox.y, detailBox.w, detailBox.d, detailBox.z0, detailBox.z1)) continue;
         const command = facadeDetailCommand(b, detail, fadeBox(`detail:${detail.id}`,
           detailBox.x, detailBox.y, detailBox.w, detailBox.d, detailBox.z0, detailBox.z1));
-        if (command) { visible++; this.cmds.push({ ...command, cull: detailBox }); }
+        if (command) { frame.visible++; this.cmds.push({ ...command, cull: detailBox }); }
       }
       // Split long facades only when interior slabs can cover them in painter order.
       const walls = wallPaintSpans(b, needsInterior);
@@ -443,9 +489,9 @@ export class WorldRenderer {
             : 1;
           if (live) {
             fadeValues.push(Math.round(alpha * 1000));
-            if (alpha < .6 || pieceHidesDozer(dozer, runX, runY, runW, runD, wallZ, wallTop)) occluded = true;
+            if (alpha < .6 || pieceHidesDozer(dozer, runX, runY, runW, runD, wallZ, wallTop)) frame.occluded = true;
           }
-          visible++;
+          frame.visible++;
           this.cmds.push({
             key: `building:${b.id}:wall:${s.dir}:${s.floor}:${s.gx0}:${s.gy0}`,
             depth: run.span.depth,
@@ -457,14 +503,14 @@ export class WorldRenderer {
       if (needsInterior) {
         const interiors = interiorCmds(b, 1, { fadeBox, reveal: view.reveal || b.openDecks || b.construction.skin === 'glass' || !view.roofs || !view.walls || view.maxFloor < b.floors - 1, maxFloor: view.maxFloor })
           .filter(c => c.kind === "floor" ? view.floors : c.kind === "fixture" ? view.contents : view.walls);
-        visible += interiors.length;
+        frame.visible += interiors.length;
         this.cmds.push(...interiors);
       }
       for (const cell of b.cells) {
         if (!view.walls || cell.floor > view.maxFloor || cell.state !== "falling") continue;
         const cx = b.x + cell.gx * b.cellSize + cell.fallDx * cell.fallT * 0.85;
         const cy = b.y + cell.gy * b.cellSize + cell.fallDy * cell.fallT * 0.85;
-        visible++;
+        frame.visible++;
         this.cmds.push({
           depth: depthKey(
             b.x + (cell.gx + 0.5) * b.cellSize + cell.fallDx * cell.fallT,
@@ -479,7 +525,7 @@ export class WorldRenderer {
       }
       const liveRoofs = b.roofs.filter((roof) => roof.state !== "gone" && roof.floor <= view.maxFloor);
       if (view.roofs && liveRoofs.length) {
-        total += liveRoofs.length;
+        frame.total += liveRoofs.length;
         {
           for (const roof of liveRoofs) {
             const moved = roofVerts(roof);
@@ -488,7 +534,7 @@ export class WorldRenderer {
             const rz0 = Math.min(...zs), rz1 = Math.max(...zs) + .2;
             if (live && !this.visibleBox(rx, ry, rw, rd, rz0, rz1)) continue;
             const alpha = fadeBox(`roof:${roof.id}`, rx, ry, rw, rd, rz0, rz1);
-            visible++;
+            frame.visible++;
             this.cmds.push({
               key: `building:${b.id}:roof:${roof.id}`,
               depth: roofCommandDepth(b, roof, moved),
@@ -499,7 +545,7 @@ export class WorldRenderer {
           if (b.features.chimney && lod !== "overview") {
             const ch = chimneyWorld(b);
             if (ch) {
-              visible++;
+              frame.visible++;
               this.cmds.push({
                 depth: depthKey(ch.x, ch.y, ch.z + 0.4),
                 cull: { x: ch.x, y: ch.y, w: 0.32, d: 0.32, z0: ch.z, z1: ch.z + 0.85 },
@@ -516,8 +562,8 @@ export class WorldRenderer {
         if(decks.length) this.cmds.push({depth:Math.max(...decks.map(c=>c.depth)),run:g=>{for(const c of decks)c.run(g);}});
       }
       const version = live
-        ? [b.visualRevision, dozer.x.toFixed(2), dozer.y.toFixed(2), fadeValues.join(","), viewSig].join(":")
-        : [b.visualRevision, viewSig].join(":");
+        ? [b.visualRevision, dozer.x.toFixed(2), dozer.y.toFixed(2), fadeValues.join(","), frame.viewSig].join(":")
+        : [b.visualRevision, frame.viewSig].join(":");
       const chunk = live ? undefined : `b${b.id}`;
       for (let j = commandStart; j < this.cmds.length; j++) {
         const cmd = this.cmds[j]!;
@@ -531,15 +577,19 @@ export class WorldRenderer {
         const shown = this.takeStaticBuildingCmds(built, !!b.openDecks);
         this.cmds.length = commandStart;
         this.cmds.push(...shown);
-        visible = visBefore + shown.length;
+        frame.visible = visBefore + shown.length;
       }
     }
+  }
 
-    for (const p of view.props && !hideDressing ? town.props : []) {
+  /** Catalog props. */
+  private passProps(frame: RenderFrame): void {
+    const { town, view } = frame;
+    for (const p of view.props && !frame.hideDressing ? town.props : []) {
       if (p.broken) continue;
-      total++;
+      frame.total++;
       if (!this.visibleBox(p.x, p.y, p.w, p.d, p.elev, p.elev + 3.2)) continue;
-      visible++;
+      frame.visible++;
       this.cmds.push({
         key: 'prop:' + p.id,
         version: [p.x, p.y, p.w, p.d, p.elev, p.heading, p.hp, JSON.stringify(p.pose)].join(':'),
@@ -547,12 +597,16 @@ export class WorldRenderer {
         run: (g) => drawCatalogProp(g, p),
       });
     }
+  }
 
+  /** Forest canopy garnish. */
+  private passGarnish(frame: RenderFrame): void {
+    const { dozer, view } = frame;
     for (const tree of view.terrain ? this.garnish : []) {
-      if (hideDressing && tree.form !== "edge") continue;
-      total++;
+      if (frame.hideDressing && tree.form !== "edge") continue;
+      frame.total++;
       if (!this.visibleBox(tree.x - 1.1, tree.y - 1.1, 2.2, 2.2, 0, 3.6)) continue;
-      visible++;
+      frame.visible++;
       const treeTop = tree.form === "understory" ? 0.58 : 2.6;
       const alpha = objectOcclusionFade(dozer, tree.x - 0.75, tree.y - 0.75, 1.5, 1.5, 0, treeTop);
       this.cmds.push({
@@ -562,11 +616,15 @@ export class WorldRenderer {
         run: (g) => drawForestGarnish(g, tree, alpha),
       });
     }
+  }
 
+  /** Debris, yard loads, traffic, and the player dozer. */
+  private passDynamics(frame: RenderFrame): void {
+    const { town, dozer, showPlayer, view } = frame;
     for (const r of view.debris ? town.rubble : []) {
-      total++;
+      frame.total++;
       if (!this.visibleBox(r.x - r.w, r.y - r.d, r.w * 2, r.d * 2, r.elev, r.elev + r.thickness + 0.25)) continue;
-      visible++;
+      frame.visible++;
       this.cmds.push({
         key: 'debris:' + r.id,
         version: r.sleeping ? [r.x, r.y, r.elev, r.heading, r.w, r.d, r.damage].join(':') : undefined,
@@ -577,26 +635,30 @@ export class WorldRenderer {
 
     for(const load of town.yard?.loads??[]){const v=load.vehicle;this.cmds.push({depth:depthKey(v.x,v.y,load.z)+3000,run:g=>drawOrientedIsoBox(g,v.x,v.y,v.heading,3.5,2.2,load.z,.25,0x9da5a0,0x565d5a,0x7c8580)});}
     for(const v of view.vehicles ? town.vehicles : []) for(const group of vehicleRenderGroups(v)) {
-      total++;
+      frame.total++;
       if(!screenAabbVisible(group.bounds,this.viewW,this.viewH,this.camX,this.camY,this.zoom))continue;
-      visible++;
+      frame.visible++;
       this.cmds.push({key:'vehicle:'+v.id+':'+group.roots.join(','),version:[v.revision,v.x,v.y,v.heading,v.elev,v.pitch,v.roll,v.steer,v.debugParts].join(':'),depth:group.depth,run:g=>drawVehicleAssembly(g,v,group.roots)});
     }
 
     if (view.vehicles && showPlayer) {
-      total++;
-      visible++;
+      frame.total++;
+      frame.visible++;
       this.cmds.push({
         depth: depthKey(dozer.x, dozer.y, 0.4),
         run: (g) => drawDozer(g, dozer),
       });
     }
+  }
 
+  /** Particles and birds. */
+  private passEffects(frame: RenderFrame): void {
+    const { particles, birds, view } = frame;
     for (const p of view.effects ? particles.items : []) {
       if (!p.alive) continue;
-      total++;
+      frame.total++;
       if (!this.visibleBox(p.x - 0.3, p.y - 0.3, 0.6, 0.6, 0, p.z + 0.2)) continue;
-      visible++;
+      frame.visible++;
       this.cmds.push({
         depth: depthKey(p.x, p.y, p.z),
         run: (g) => drawParticle(g, p),
@@ -604,19 +666,23 @@ export class WorldRenderer {
     }
 
     for (const bird of view.effects ? birds : []) {
-      total++;
+      frame.total++;
       if (!this.visibleBox(bird.x - 0.4, bird.y - 0.4, 0.8, 0.8, bird.z, bird.z + 0.2)) continue;
-      visible++;
+      frame.visible++;
       this.cmds.push({
         depth: depthKey(bird.x, bird.y, bird.z),
         run: (g) => drawBird(g, bird),
       });
     }
+  }
 
+  /** Depth-sort, submit, occlusion chevron, debug overlay, and stats. */
+  private submitDraw(frame: RenderFrame): void {
+    const { town, dozer, view } = frame;
     this.cmds.sort((a, b) => a.depth - b.depth);
     const submitted = coalesceStaticChunks(this.cmds);
     this.drawing.draw(submitted);
-    const hidden = occluded && !view.overview;
+    const hidden = frame.occluded && !view.overview;
     this.dozerHidden = hidden;
     if (hidden) {
       const fx = Math.cos(dozer.heading), fy = Math.sin(dozer.heading);
@@ -635,15 +701,15 @@ export class WorldRenderer {
     this.drawLandmarkMarkers();
     this.fades.end();
     this.stats = {
-      total,
-      visible,
+      total: frame.total,
+      visible: frame.visible,
       commands: submitted.length,
-      surfaceGeometry,
+      surfaceGeometry: frame.surfaceGeometry,
       cached: this.drawing.size,
       rebuilt: this.drawing.rebuilt,
-      terrainChunks: terrainCounts.chunks,
-      terrainCells: terrainCounts.cells,
-      groundRebuilds,
+      terrainChunks: frame.terrainCounts.chunks,
+      terrainCells: frame.terrainCounts.cells,
+      groundRebuilds: frame.groundRebuilds,
     };
   }
 

@@ -72,6 +72,16 @@ test('uploads resume idempotently; corrupt metadata and failed verification cann
   assert.equal(store.puts(), 1);
   store.data.set('objects/test.webp', Buffer.from('bad'));
   assert.equal(await uploadVerified(store, 'objects/test.webp', bytes, 'image/webp'), true);
+  let heads = 0;
+  const delayed = {
+    head: async () => {
+      heads += 1;
+      if (heads < 3) return null;
+      return { ContentLength: bytes.length, Metadata: { sha256: digest(bytes) } };
+    },
+    put: async () => {},
+  };
+  assert.equal(await uploadVerified(delayed, 'objects/late.webp', bytes, 'image/webp'), true);
   await assert.rejects(uploadVerified({ head: async () => null, put: async () => {} }, 'objects/test.webp', bytes), /verification failed/);
 });
 

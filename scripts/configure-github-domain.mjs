@@ -9,9 +9,10 @@ export async function ensureGithubVanityDomain({
   request = fetch,
 } = {}) {
   if (!token || !teamId || !projectId) throw new Error('Missing or invalid deployment configuration');
+  const team = teamId;
   async function api(endpoint, method = 'GET', body) {
     const url = new URL(`https://api.vercel.com${endpoint}`);
-    url.searchParams.set('teamId', teamId);
+    url.searchParams.set('teamId', team);
     const response = await request(url, {
       method, signal: AbortSignal.timeout(60000),
       headers: { Authorization: `Bearer ${token}`, ...(body ? { 'Content-Type': 'application/json' } : {}) },

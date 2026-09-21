@@ -1,3 +1,4 @@
+import { TERMS_VERSION } from './terms-version.mjs';
 import sharp from 'sharp';
 import assert from 'node:assert/strict';
 import { readFile, mkdir, writeFile } from 'node:fs/promises';
@@ -54,8 +55,24 @@ async function context(options = {}) {
   return { ctx, events, scripts };
 }
 try {
+  {
+    const { ctx: prod } = await context();
+    const prodPage = await prod.newPage();
+    await prodPage.goto(origin);
+    await prodPage.getByRole('button', { name: 'Play', exact: true }).waitFor();
+    await prodPage.getByRole('button', { name: 'Play', exact: true }).click();
+    await prodPage.getByRole('button', { name: 'Start Game', exact: true }).click();
+    await prodPage.locator('#terms-agree').waitFor();
+    const exposed = await prodPage.evaluate(() => {
+      const pd = window.__pd;
+      if (!pd) return null;
+      return { version: pd.version ?? null, town: Object.prototype.hasOwnProperty.call(pd, 'town') };
+    });
+    assert.equal(exposed, null);
+    await prod.close();
+  }
   const { ctx, events, scripts } = await context();
-  const page = await ctx.newPage(); await page.goto(origin); await page.getByRole('button', { name: 'Play', exact: true }).waitFor();
+  const page = await ctx.newPage(); await page.goto(origin + '/?debug=1'); await page.getByRole('button', { name: 'Play', exact: true }).waitFor();
   assert.equal(scripts.length, 0);
   await page.getByRole('button', { name: 'Play', exact: true }).click();
   await page.getByRole('button', { name: 'Start Game', exact: true }).click();
@@ -71,8 +88,8 @@ try {
   assert.equal(await page.locator('#analytics-allow').isDisabled(), true);
   assert.equal(events.length, 0); assert.equal(scripts.length, 0);
   await page.locator('#analytics-decline').click();
-  await page.waitForFunction(() => window.__pd.snapshot().elapsed > 0);
-  await page.reload(); await page.waitForFunction(() => window.__pd);
+  await page.waitForFunction(() => window.__pd?.ready?.() === true && window.__pd.snapshot().elapsed > 0);
+  await page.reload(); await page.waitForFunction(() => window.__pd?.version === 1);
   assert.equal(await page.locator('.privacy-dialog').count(), 0);
   assert.equal(events.length, 0);
   // A second tab can enable consent, and withdrawal propagates back to the game.
@@ -81,7 +98,7 @@ try {
   await settings.locator('#analytics-adult').check(); await settings.locator('#analytics-allow').click();
   await settings.waitForTimeout(400); assert.ok(scripts.length > 0);
   await page.bringToFront();
-  await page.evaluate(() => { const game = window.__pd; for (let i = 0; i < 61; i++) game.analytics.step(1, 'sandbox', 'd10'); game.finish('', true); game.reset('same'); });
+  await page.evaluate(() => { const game = window.__pd; for (let i = 0; i < 61; i++) game.analyticsStep(1, 'sandbox', 'd10'); game.finish('', true); game.reset('same'); });
   await page.waitForTimeout(300);
   assert.ok(events.some(e => e.en === 'game_started'));
   assert.ok(events.some(e => e.en === 'game_engaged'));
@@ -97,7 +114,7 @@ try {
   await settings.bringToFront(); await settings.getByRole('button', { name: 'Privacy Settings', exact: true }).first().click();
   await settings.locator('#analytics-decline').click(); await page.waitForTimeout(200);
   const count = events.length;
-  await page.bringToFront(); await page.evaluate(() => { window.__pd.reset('same'); window.__pd.analytics.step(100, 'sandbox', 'd10'); });
+  await page.bringToFront(); await page.evaluate(() => { window.__pd.reset('same'); window.__pd.analyticsStep(100, 'sandbox', 'd10'); });
   await page.waitForTimeout(250); assert.equal(events.length, count);
   evidence.push('First-play acknowledgment, keyboard isolation, refusal persistence, adult-only consent, five events, query redaction, cross-tab withdrawal.');
   // Mobile geometry and disclosure pages are checked without loading the game.
@@ -115,14 +132,14 @@ try {
   }
   const { ctx: denied, scripts: deniedScripts } = await context();
   await denied.addInitScript(() => { Object.defineProperty(window, 'localStorage', { get() { throw new DOMException('Unavailable', 'SecurityError'); } }); });
-  const p = await denied.newPage(); await p.goto(origin + '/?mode=sandbox');
+  const p = await denied.newPage(); await p.goto(origin + '/?mode=sandbox&debug=1');
   await p.locator('#terms-agree').check(); await p.locator('#terms-continue').click(); await p.locator('#analytics-decline').click();
   await p.waitForFunction(() => window.__pd.snapshot().elapsed > 0); assert.equal(deniedScripts.length, 0);
   evidence.push('Mobile portrait/landscape disclosure and consent layout; Escape handling; gameplay with unavailable browser storage.');
   await denied.close();
   const { ctx: yard, scripts: yardScripts } = await context();
-  await yard.addInitScript(() => { try { localStorage.setItem('pd.terms', '2026-09-13'); localStorage.setItem('pd.analytics', 'adult-allowed'); } catch {} });
-  const yp = await yard.newPage(); await yp.goto(origin + '/?testAsset=vehicle:bus'); await yp.waitForFunction(() => window.__pd);
+  await yard.addInitScript(({ version }) => { try { localStorage.setItem('pd.terms', version); localStorage.setItem('pd.analytics', 'adult-allowed'); } catch {} }, { version: TERMS_VERSION });
+  const yp = await yard.newPage(); await yp.goto(origin + '/?testAsset=vehicle:bus'); await yp.waitForFunction(() => window.__pd?.version === 1);
   await yp.waitForTimeout(300); assert.equal(yardScripts.length, 0); await yard.close();
   evidence.push('Focused test map excluded even with a stored adult opt-in.');
   const { ctx: slow, events: slowEvents } = await context();

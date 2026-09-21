@@ -1,9 +1,7 @@
-import { chromium } from "playwright";
-import { preview } from "vite";
 import { mkdir, writeFile } from "node:fs/promises";
+import { gameUrl, waitForGame, withGameCapture } from "./capture/harness.mjs";
 
 const OUT = "/cursor/stores/bc-524f4be0-4e64-4fbf-b510-6f6f7ef1c582/media/terrain-features";
-const BASE = "http://127.0.0.1:4174";
 
 const shots = [
   {
@@ -46,25 +44,17 @@ const shots = [
   },
 ];
 
-const server = await preview({ preview: { host: "127.0.0.1", port: 4174, strictPort: true, open: false } });
-let browser;
-const log = [];
-try {
-  browser = await chromium.launch({ args: ["--use-angle=swiftshader", "--enable-unsafe-swiftshader"] });
-  const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 });
-  await page.addInitScript(() => {
-    localStorage.setItem("pd.terms", "2026-09-13");
-    localStorage.setItem("pd.analytics", "declined");
-  });
+await withGameCapture(async ({ openPage, origin }) => {
+  const page = await openPage({ query: shots[0].query });
+  const log = [];
   await mkdir(OUT, { recursive: true });
   for (const shot of shots) {
-    await page.goto(`${BASE}/?${shot.query}`, { waitUntil: "networkidle" });
-    await page.locator("#game-root canvas").waitFor();
-    await page.waitForFunction(() => window.__pd?.town?.features);
+    await page.goto(gameUrl(origin, shot.query), { waitUntil: "networkidle" });
+    await waitForGame(page);
     await page.waitForTimeout(250);
     await page.evaluate(async (kind) => {
       const game = window.__pd;
-      const town = game.town;
+      const town = game.townSnapshot();
       const forest = town.features.find((f) => f.kind === "forest");
       const water = town.features.find((f) => f.kind === "pond" || f.kind === "lake" || f.kind === "river");
       const fields = town.features.filter((f) => f.kind === "field");
@@ -99,13 +89,9 @@ try {
     if (shot.smash) {
       await page.evaluate(() => {
         const game = window.__pd;
-        const tree = game.town.props.find((p) => p.assetId === "oak" || p.assetId === "pine");
+        const tree = game.townSnapshot().props.find((p) => p.assetId === "oak" || p.assetId === "pine");
         if (!tree) return;
-        game.dozer.x = tree.x - 1.3;
-        game.dozer.y = tree.y + tree.d * 0.5;
-        game.dozer.heading = 0;
-        game.dozer.bladeDown = true;
-        game.dozer.vx = 6;
+        game.setDozerPose({ x: tree.x - 1.3, y: tree.y + tree.d * 0.5, heading: 0, bladeDown: true, vx: 6 });
         game.frameDozer(1.7);
       });
       await page.waitForTimeout(1800);
@@ -114,17 +100,19 @@ try {
     if (shot.flatten) {
       await page.evaluate(() => {
         const game = window.__pd;
-        const fields = game.town.features.filter((f) => f.kind === "field");
+        const fields = game.townSnapshot().features.filter((f) => f.kind === "field");
         const field =
           fields.find((f) => f.state === "mature") ??
           fields.find((f) => f.state === "short") ??
           fields[0];
         if (!field) return;
-        game.dozer.x = field.x + 1.1;
-        game.dozer.y = field.y + field.d * 0.5;
-        game.dozer.heading = field.heading;
-        game.dozer.bladeDown = true;
-        game.dozer.vx = 5;
+        game.setDozerPose({
+          x: field.x + 1.1,
+          y: field.y + field.d * 0.5,
+          heading: field.heading,
+          bladeDown: true,
+          vx: 5,
+        });
         game.frameDozer(1.55);
       });
       await page.waitForTimeout(1800);
@@ -133,22 +121,21 @@ try {
     if (shot.aim === "blocked") {
       await page.evaluate(() => {
         const game = window.__pd;
-        const forest = game.town.features.find((f) => f.kind === "forest");
-        const water = game.town.features.find((f) => f.kind === "pond" || f.kind === "lake");
+        const town = game.townSnapshot();
+        const forest = town.features.find((f) => f.kind === "forest");
+        const water = town.features.find((f) => f.kind === "pond" || f.kind === "lake");
         if (forest) {
-          game.dozer.x = forest.cx;
-          game.dozer.y = forest.cy;
-          game.dozer.motionStartX = forest.cx - forest.coreR - 1.4;
-          game.dozer.motionStartY = forest.cy;
-          game.dozer.vx = 6;
+          game.setDozerPose({
+            x: forest.cx,
+            y: forest.cy,
+            motionStartX: forest.cx - forest.coreR - 1.4,
+            motionStartY: forest.cy,
+            vx: 6,
+          });
         } else if (water) {
           const cx = water.poly.reduce((s, p) => s + p.x, 0) / water.poly.length;
           const cy = water.poly.reduce((s, p) => s + p.y, 0) / water.poly.length;
-          game.dozer.x = cx;
-          game.dozer.y = cy;
-          game.dozer.motionStartX = cx - 5;
-          game.dozer.motionStartY = cy;
-          game.dozer.vx = 6;
+          game.setDozerPose({ x: cx, y: cy, motionStartX: cx - 5, motionStartY: cy, vx: 6 });
         }
       });
       await page.waitForTimeout(500);
@@ -158,28 +145,21 @@ try {
     await page.screenshot({ path: dest, type: "png" });
     const info = await page.evaluate(() => {
       const game = window.__pd;
+      const town = game.townSnapshot();
       return {
-        biome: game.town.biome.id,
-        features: game.town.features.map((f) => {
-          if (f.kind === "field") return { kind: f.kind, x: f.x, y: f.y, w: f.w, d: f.d, crop: f.crop, state: f.state };
-          if (f.kind === "forest") return { kind: f.kind, cx: f.cx, cy: f.cy, coreR: f.coreR, canopyR: f.canopyR };
-          if (f.kind === "river") return { kind: f.kind, path: f.path, halfWidth: f.halfWidth };
-          return { kind: f.kind, poly: f.poly };
-        }),
-        trees: game.town.props
+        biome: town.biomeId,
+        features: town.features,
+        trees: town.props
           .filter((p) => p.assetId === "oak" || p.assetId === "pine" || p.assetId.endsWith("-sapling") || p.assetId.endsWith("-shrub"))
           .map((p) => ({ id: p.assetId, x: p.x, y: p.y })),
-        dozer: { x: game.dozer.x, y: game.dozer.y, bladeDown: game.dozer.bladeDown },
-        rubble: game.town.rubble.length,
-        cash: game.cash,
-        cam: { x: game.renderer.camX, y: game.renderer.camY, zoom: game.renderer.zoom },
+        dozer: game.dozerSnapshot(),
+        rubble: town.rubble,
+        cash: game.snapshot().cash,
+        cam: game.cameraSnapshot(),
       };
     });
     log.push({ file: dest, ...shot, ...info });
-    console.log("captured", dest, info.biome, info.features.join(","));
+    console.log("captured", dest, info.biome, info.features.map((f) => f.kind).join(","));
   }
   await writeFile(`${OUT}/capture-log.json`, JSON.stringify(log, null, 2));
-} finally {
-  await browser?.close();
-  await new Promise((resolve, reject) => server.httpServer.close((error) => (error ? reject(error) : resolve())));
-}
+});

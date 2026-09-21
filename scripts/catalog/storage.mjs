@@ -11,12 +11,13 @@ export function r2Store(bucket) {
     async get(key) {
       try {
         const result = await client.send(new GetObjectCommand({ Bucket: bucket, Key: safeKey(key) }));
+        if (!result.Body) throw new Error('R2 get returned no body');
         return Buffer.from(await result.Body.transformToByteArray());
-      } catch (e) { if (e.$metadata?.httpStatusCode === 404) return null; throw e; }
+      } catch (e) { if (/** @type {{ $metadata?: { httpStatusCode?: number } }} */ (e).$metadata?.httpStatusCode === 404) return null; throw e; }
     },
     async head(key) {
       try { return await client.send(new HeadObjectCommand({ Bucket: bucket, Key: safeKey(key) })); }
-      catch (e) { if (e.$metadata?.httpStatusCode === 404) return null; throw e; }
+      catch (e) { if (/** @type {{ $metadata?: { httpStatusCode?: number } }} */ (e).$metadata?.httpStatusCode === 404) return null; throw e; }
     },
     async put(key, body, type = 'application/json') {
       await client.send(new PutObjectCommand({ Bucket: bucket, Key: safeKey(key), Body: body,
@@ -27,11 +28,23 @@ export function r2Store(bucket) {
 
 export async function uploadVerified(store, key, bytes, type) {
   const sha = digest(bytes), prior = await store.head(key);
-  if (prior && prior.ContentLength === bytes.length && prior.Metadata?.sha256 === sha) return false;
+  if (matchesUpload(prior, bytes, sha)) return false;
   await store.put(key, bytes, type);
-  const check = await store.head(key);
-  if (!check || check.ContentLength !== bytes.length || check.Metadata?.sha256 !== sha) throw new Error(`Upload verification failed: ${key}`);
-  return true;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const check = await store.head(key);
+    if (matchesUpload(check, bytes, sha)) return true;
+    await new Promise((resolve) => setTimeout(resolve, 150 * (attempt + 1)));
+  }
+  throw new Error(`Upload verification failed: ${key}`);
+}
+
+/**
+ * @param {{ ContentLength?: number, Metadata?: { sha256?: string } } | null} object
+ * @param {Uint8Array} bytes
+ * @param {string} sha
+ */
+function matchesUpload(object, bytes, sha) {
+  return !!object && object.ContentLength === bytes.length && object.Metadata?.sha256 === sha;
 }
 
 export async function pool(items, concurrency, action) {

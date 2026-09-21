@@ -153,6 +153,8 @@ const GREEN = { t: 0x4a8844, l: 0x244a22, r: 0x3d6a32 };
 const RED = { t: 0xc44a40, l: 0x5c241f, r: 0xa03028 };
 const DARK = { t: 0x3a3a36, l: 0x1a1a18, r: 0x2a2a28 };
 const SIGN = { t: 0xe8d8a0, l: 0x8a7a30, r: 0xd4c56a };
+const CAM_HOUSING = { t: 0xf4f7fb, l: 0x5a6270, r: 0xc8d0d8 };
+const CAM_LENS = { t: 0xd2f4ff, l: 0x163a52, r: 0x4aa8d0 };
 const PUMP = { t: 0xb84840, l: 0x4a1818, r: 0x8a3030 };
 const BARREL = { t: 0xe07a2a, l: 0x6a3010, r: 0xce6a22 };
 const FOL = { t: 0x5a9a42, l: 0x244820, r: 0x3d6a32 };
@@ -253,8 +255,10 @@ export const ASSET_CATALOG: readonly AssetDef[] = [
     debris: debris(1, 1, 5, 0.45, 0.1, "chunk"),
     variants: 1,
     boxes: [
-      box(0, 0, 0, 0.2, 0.2, 2.05, MET.t, MET.l, MET.r),
-      box(0.12, 0.02, 1.9, 0.42, 0.22, 0.22, DARK.t, DARK.l, DARK.r),
+      box(0, 0, 0, 0.18, 0.18, 1.78, MET.t, MET.l, MET.r),
+      box(0.18, 0, 1.72, 0.28, 0.1, 0.1, MET.t, MET.l, MET.r),
+      box(0.42, 0, 1.64, 0.36, 0.24, 0.26, CAM_HOUSING.t, CAM_HOUSING.l, CAM_HOUSING.r),
+      box(0.62, 0, 1.70, 0.1, 0.16, 0.16, CAM_LENS.t, CAM_LENS.l, CAM_LENS.r),
     ],
     zones: ["roadside", "commercial"],
     roadsideOk: true,
