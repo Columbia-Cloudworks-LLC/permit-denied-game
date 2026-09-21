@@ -75,8 +75,8 @@ export const DEBRIS = {
 } as const;
 
 export const DRESSING = {
-  perLotMax: 8,
-  districtMax: { classic: 80, d10: 96, d30: 240, d100: 560 },
+  perLotMax: 12,
+  districtMax: { classic: 80, d10: 160, d30: 400, d100: 900 },
   roadsidePerSegment: 2,
 } as const;
 

@@ -21,31 +21,31 @@ export interface ForestGarnish {
 }
 
 const OAK_FOL = [
-  { t: 0x6aaa3a, l: 0x2e5a22, r: 0x4a7a28 },
-  { t: 0x5a9a32, l: 0x284c1c, r: 0x3e6e22 },
-  { t: 0x7ab44a, l: 0x366428, r: 0x588a34 },
+  { t: 0x54863a, l: 0x2a4c20, r: 0x3e6828 },
+  { t: 0x4a7a32, l: 0x24441c, r: 0x365e22 },
+  { t: 0x5e9244, l: 0x305624, r: 0x487630 },
 ] as const;
 const OAK_CROWN = [
-  { t: 0x7ab84a, l: 0x386828, r: 0x5a8a30 },
-  { t: 0x8ac85a, l: 0x407030, r: 0x649a3c },
-  { t: 0x6aaa40, l: 0x305820, r: 0x4e7c28 },
+  { t: 0x5e9042, l: 0x305824, r: 0x46742c },
+  { t: 0x6a9c4c, l: 0x386028, r: 0x528034 },
+  { t: 0x54863a, l: 0x2a4c1e, r: 0x426828 },
 ] as const;
 const OAK_TRUNK = { t: 0x9a6a38, l: 0x5a3818, r: 0x7a4e28 };
 const PINE_FOL = [
-  { t: 0x3f8c58, l: 0x1c4a30, r: 0x2d6a40 },
-  { t: 0x348050, l: 0x184028, r: 0x245c38 },
-  { t: 0x4a9a64, l: 0x225438, r: 0x38784c },
+  { t: 0x347850, l: 0x1a4230, r: 0x265c3c },
+  { t: 0x2c6c48, l: 0x163828, r: 0x205234 },
+  { t: 0x3e8660, l: 0x1e4a34, r: 0x2e6a46 },
 ] as const;
 const PINE_NEEDLE = [
-  { t: 0x52a468, l: 0x245838, r: 0x3a7a4c },
-  { t: 0x5cb074, l: 0x2a6440, r: 0x448858 },
-  { t: 0x46985c, l: 0x1e4c30, r: 0x326e44 },
+  { t: 0x428858, l: 0x204c34, r: 0x326a44 },
+  { t: 0x4a9462, l: 0x265838, r: 0x387850 },
+  { t: 0x3a7e52, l: 0x1a4430, r: 0x2a6240 },
 ] as const;
 const PINE_TRUNK = { t: 0x6a4a32, l: 0x3a2818, r: 0x523828 };
 const SHRUB_FOL = [
-  { t: 0x5a8a38, l: 0x2a4a1c, r: 0x3e6a28 },
-  { t: 0x4a7a40, l: 0x224828, r: 0x365c30 },
-  { t: 0x6a9444, l: 0x325420, r: 0x4c7630 },
+  { t: 0x4a7634, l: 0x26421c, r: 0x365c28 },
+  { t: 0x3e6a38, l: 0x1e4028, r: 0x2e5430 },
+  { t: 0x567c3c, l: 0x2c4c20, r: 0x406830 },
 ] as const;
 
 export function planForestGarnish(grid: SurfaceGrid, biome: BiomeProfile, seed: number): ForestGarnish[] {
@@ -73,7 +73,7 @@ export function planForestGarnish(grid: SurfaceGrid, biome: BiomeProfile, seed: 
       const salt = hashCell(picked.ix, picked.iy, seed);
       const rng = new Rng(salt);
       const species = speciesFor(biome, salt, picked.form);
-      const jitter = picked.form === "interior" ? 0.08 : 0.22;
+      const jitter = picked.form === "interior" ? 0.08 : picked.form === "edge" ? 0.32 : 0.24;
       out.push({
         x: grid.ox + (picked.ix + 0.5) * grid.cell + rng.range(-jitter, jitter),
         y: grid.oy + (picked.iy + 0.5) * grid.cell + rng.range(-jitter, jitter),
@@ -179,8 +179,10 @@ function pickChunkCells(
   edge.sort((a, b) => hashCell(a.ix, a.iy, seed) - hashCell(b.ix, b.iy, seed) || a.ix - b.ix || a.iy - b.iy);
   interior.sort((a, b) => hashCell(a.ix, a.iy, seed) - hashCell(b.ix, b.iy, seed) || a.ix - b.ix || a.iy - b.iy);
   const out: { ix: number; iy: number; form: ForestForm }[] = [];
+  const gapEdges = edge.length > 6;
   for (const cell of edge) {
     if (out.length >= FOREST_GARNISH_CHUNK_CAP) return out;
+    if (gapEdges && hashCell(cell.ix, cell.iy, seed) % 100 < 34) continue;
     out.push(cell);
   }
   for (const cell of interior) {
@@ -188,7 +190,7 @@ function pickChunkCells(
     out.push(cell);
   }
   const under: { ix: number; iy: number; form: ForestForm }[] = floor
-    .filter((cell) => hashCell(cell.ix, cell.iy, seed) % 100 < 42)
+    .filter((cell) => hashCell(cell.ix, cell.iy, seed) % 100 < 58)
     .map((cell) => ({ ...cell, form: "understory" as const }))
     .sort((a, b) => hashCell(a.ix, a.iy, seed) - hashCell(b.ix, b.iy, seed) || a.ix - b.ix || a.iy - b.iy);
   for (const cell of under) {
@@ -226,10 +228,10 @@ function speciesFor(biome: BiomeProfile, salt: number, form: ForestForm): Forest
 }
 
 function scaleFor(form: ForestForm, species: ForestSpecies, rng: Rng): number {
-  if (form === "interior") return rng.range(0.92, 1.18);
-  if (species.endsWith("shrub")) return rng.range(0.72, 1.05);
-  if (species.endsWith("sapling")) return rng.range(0.7, 0.95);
-  return rng.range(0.84, 1.16);
+  if (form === "interior") return rng.range(0.86, 1.22);
+  if (species.endsWith("shrub")) return rng.range(0.62, 1.08);
+  if (species.endsWith("sapling")) return rng.range(0.58, 0.98);
+  return rng.range(0.72, 1.22);
 }
 
 function hashCell(ix: number, iy: number, seed: number): number {

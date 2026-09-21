@@ -17,6 +17,7 @@ import {
 } from "./roads";
 import type { SurfaceGrid } from "./terrain";
 import { lotEnvelopeRejected, roadCostAt, sampleSegmentCenterline } from "./terrain";
+import { drivewayStyle } from "./drivewayStyle";
 
 export const PARCEL = {
   minFront: 8.4,
@@ -767,7 +768,8 @@ export function attachDriveway(
   const arrivalX = building.x + bw * 0.5 + towardStreetX * (Math.abs(towardStreetX) > 0.5 ? bw * 0.5 + 0.55 : 0.2);
   const arrivalY = building.y + bd * 0.5 + towardStreetY * (Math.abs(towardStreetY) > 0.5 ? bd * 0.5 + 0.55 : 0.2);
   const arrival = b.node(arrivalX, arrivalY, curb.elev, undefined, seg.layer);
-  const corridor = corridorPoly(join.x, join.y, arrival.x, arrival.y, currentParcel().driveWidth);
+  const style = drivewayStyle(lot.identity);
+  const corridor = corridorPoly(join.x, join.y, arrival.x, arrival.y, style.width);
   for (const o of others) {
     if (o.id === lot.id) continue;
     if (convexOverlap(corridor, o.boundary)) {
@@ -776,8 +778,9 @@ export function attachDriveway(
   }
   const drive = b.segment(join, arrival, linePoints(pt(join), pt(arrival), 1.2), {
     roadClass: "driveway",
-    width: currentParcel().driveWidth,
-    shoulder: 0.12,
+    width: style.width,
+    surface: style.surface,
+    shoulder: style.shoulder,
     layer: seg.layer,
   });
   const host = b.segments.find((s) => s.id === lot.frontage.segmentId) ?? live;

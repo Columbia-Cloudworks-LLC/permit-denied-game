@@ -146,4 +146,18 @@ describe("lot dressing", () => {
     expect(town.ground.some((g) => g.cover === "grass" || g.cover === "scrub")).toBe(true);
     expect(validateTown(town).ok).toBe(true);
   });
+
+  it("packs contractor and utility lots denser than residences", () => {
+    const town = createTown({ district: "d10", seed: 19 });
+    const work = town.lots.filter((lot) => lot.identity === "contractor" || lot.identity === "utility" || lot.identity === "shop");
+    const homes = town.lots.filter((lot) => lot.identity === "residence");
+    expect(work.length).toBeGreaterThan(0);
+    expect(homes.length).toBeGreaterThan(0);
+    const count = (lotId: string) =>
+      town.props.filter((p) => p.lotId === lotId).length + town.vehicles.filter((v) => v.lotId === lotId).length;
+    const workAvg = work.reduce((n, lot) => n + count(lot.id), 0) / work.length;
+    const homeAvg = homes.reduce((n, lot) => n + count(lot.id), 0) / homes.length;
+    expect(workAvg).toBeGreaterThanOrEqual(homeAvg);
+    expect(town.props.some((p) => p.assetId === "dumpster" || p.assetId === "car" || p.assetId === "barricade")).toBe(true);
+  });
 });

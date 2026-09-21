@@ -69,4 +69,12 @@ describe("forest canopy garnish", () => {
       }
     }
   });
+
+  it("leaves gaps in large forest edges instead of filling every core-edge cell", () => {
+    const grid = createSurfaceGrid(0, 0, SURFACE_CHUNK, SURFACE_CHUNK, "forest-core");
+    const trees = planForestGarnish(grid, BIOME_PROFILES["northern-conifer"], 3);
+    const edge = trees.filter((tree) => tree.form === "edge");
+    expect(edge.length).toBeGreaterThan(8);
+    expect(edge.length).toBeLessThan(SURFACE_CHUNK * 4);
+  });
 });

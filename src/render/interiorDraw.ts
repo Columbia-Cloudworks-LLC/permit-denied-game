@@ -15,7 +15,7 @@ import { depthKey, roofPainterDepth } from "../world/iso";
 import { maxTopFloorWallFaceDepth } from "./buildingSurfaces";
 import { drawFaceWindow, drawIsoBox, drawOrientedIsoBox, drawSlopedQuad, drawTopCap, shade } from "./drawIso";
 import { brokenEdgeColor, floorFinishColor, topFaceColor, wallFaceColor } from "./lighting";
-import { PAL } from "./palette";
+import { PAL, matColors } from "./palette";
 
 const WALL_THICK = 0.16;
 const FLOOR_H = 0.18;
@@ -63,15 +63,19 @@ function drawBrokenFloorEdge(
   if (floorOpen(b, gx, gy + 1, floor, hasFloor)) {
     drawFaceWindow(g, x, y + cs, x + cs, y + cs, z0, z1, 0, 1, 0, 1, edge, alpha);
     const j = jag(gx, gy, 1);
+    const joist = matColors(b.construction.floor);
+    drawIsoBox(g, x + 0.06, y + cs - 0.1 + j, cs * 0.88, 0.14, z0 - 0.05, FLOOR_H + 0.1, joist.top, joist.dark, edge, alpha);
     drawIsoBox(g, x + 0.06, y + cs - 0.07 + j, cs * 0.88, 0.1, z0, FLOOR_H + 0.04, edge, PAL.plankDark, edge, alpha);
   }
   if (floorOpen(b, gx + 1, gy, floor, hasFloor)) {
     drawFaceWindow(g, x + cs, y, x + cs, y + cs, z0, z1, 0, 1, 0, 1, shade(edge, 1.08), alpha);
     const j = jag(gx, gy, 2);
+    const joist = matColors(b.construction.floor);
+    drawIsoBox(g, x + cs - 0.1 + j, y + 0.06, 0.14, cs * 0.86, z0 - 0.05, FLOOR_H + 0.1, joist.top, joist.dark, edge, alpha);
     drawIsoBox(g, x + cs - 0.07 + j, y + 0.06, 0.1, cs * 0.86, z0, FLOOR_H + 0.04, edge, PAL.plankDark, edge, alpha);
   }
   if (floorOpen(b, gx - 1, gy, floor, hasFloor) || floorOpen(b, gx, gy - 1, floor, hasFloor)) {
-    drawIsoBox(g, x + 0.03, y + 0.03, 0.16, 0.16, z0, 0.03, PAL.plasterShadow, PAL.plasterShadow, PAL.plasterShadow, alpha * 0.4);
+    drawIsoBox(g, x + 0.03, y + 0.03, 0.18, 0.18, z0, 0.04, PAL.plasterShadow, PAL.plasterShadow, PAL.plasterShadow, alpha * 0.5);
   }
 }
 
@@ -90,6 +94,41 @@ function drawInteriorFloorSpan(
   const z0 = span.floor * FLOOR_Z;
   const top = floorFinishColor(span.finish);
   const edge = floorFinishColor(span.finish, true);
+  let breached = false;
+  for (let gy = span.gy0; gy <= span.gy1 && !breached; gy++) {
+    for (let gx = span.gx0; gx <= span.gx1; gx++) {
+      if (
+        floorOpen(b, gx + 1, gy, span.floor, hasFloor) ||
+        floorOpen(b, gx - 1, gy, span.floor, hasFloor) ||
+        floorOpen(b, gx, gy + 1, span.floor, hasFloor) ||
+        floorOpen(b, gx, gy - 1, span.floor, hasFloor)
+      ) {
+        breached = true;
+        break;
+      }
+    }
+  }
+  if (breached) {
+    const joist = matColors(b.construction.floor);
+    const n = Math.max(2, span.gx1 - span.gx0 + 1);
+    for (let i = 0; i < n; i++) {
+      const t = (i + 0.5) / n;
+      drawOrientedIsoBox(
+        g,
+        x + w * t,
+        y + d * 0.5,
+        0,
+        0.1,
+        d * 0.92,
+        z0,
+        FLOOR_H * 0.55,
+        joist.top,
+        joist.dark,
+        joist.side,
+        alpha * 0.85,
+      );
+    }
+  }
   drawTopCap(g, x, y, w + FLOOR_SEAM, d + FLOOR_SEAM, z0 + FLOOR_H, top, alpha);
   for (let gy = span.gy0; gy <= span.gy1; gy++) {
     for (let gx = span.gx0; gx <= span.gx1; gx++) {

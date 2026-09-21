@@ -8,6 +8,9 @@ describe('menu icons', () => {
     expect(MENU_ICONS.speaker).toContain('data-menu-icon="speaker"');
     expect(MENU_ICONS.speakerMuted).toContain('data-menu-icon="speaker-muted"');
     expect(MENU_ICONS.about).toContain('data-menu-icon="about"');
+    expect(MENU_ICONS.blade).toContain('data-menu-icon="blade"');
+    expect(MENU_ICONS.engine).toContain('data-menu-icon="engine"');
+    expect(MENU_ICONS.push).toContain('data-menu-icon="push"');
     for (const [name, markup] of Object.entries(MENU_ICONS)) {
       expect(markup, name).toContain('<svg');
       expect(markup, name).not.toMatch(/⏻|🎮|🔊|🔇|❓|❔/);

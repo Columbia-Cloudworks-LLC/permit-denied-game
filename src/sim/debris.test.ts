@@ -100,6 +100,23 @@ describe("debris spawn and mass", () => {
     expect(created.filter((r) => r.layer === "fragment").length).toBeLessThanOrEqual(2);
   });
 
+  it("mixes beams, chunks, and panels instead of repeating equal rectangles", () => {
+    const town = createTown();
+    const created = spawnCollapseDebris(town, {
+      x: 10,
+      y: 10,
+      dx: 1,
+      dy: 0,
+      material: "wood",
+      floor: 0,
+      cellSize: 1.15,
+      source: "wall",
+    });
+    const shapes = new Set(created.map((r) => r.shape));
+    expect(shapes.size).toBeGreaterThan(1);
+    expect(created.some((r) => r.shape === "beam")).toBe(true);
+  });
+
   it("keeps metal roof remnants on the metal finish instead of ranch shingles", () => {
     const town = createTown();
     const created = spawnCollapseDebris(town, {

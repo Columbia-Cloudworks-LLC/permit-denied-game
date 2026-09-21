@@ -35,6 +35,7 @@ import {
   cropFragmentColor,
   payFieldDamage,
 } from "../world/fields";
+import { emitDozerCues } from "./dozerCues";
 import { churnFieldAt, resolveTraversal, terrainTraversalAt } from "../world/terrainFeatures";
 
 
@@ -398,6 +399,7 @@ export function stepWorld(
       cash += flattenCrops(town, dozer, particles, events, dt);
     }
   }
+  emitDozerCues(town, dozer, particles, events, dt);
   particles.step(dt);
   depositSettledParticles(town, particles);
 

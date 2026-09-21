@@ -335,4 +335,21 @@ describe("road network", () => {
     const deck = network.nodes.filter((n) => n.id.startsWith("d"));
     expect(deck.every((n) => !groundIds.has(n.id) || n.id.startsWith("r"))).toBe(true);
   });
+
+  it("paints rural verges darker than residential curbs", () => {
+    const rural = new RoadBuilder();
+    const a = rural.node(0, 0);
+    const b = rural.node(12, 0);
+    rural.segment(a, b, linePoints(pt(a), pt(b)), { roadClass: "rural" });
+    const res = new RoadBuilder();
+    const c = res.node(0, 8);
+    const d = res.node(12, 8);
+    res.segment(c, d, linePoints(pt(c), pt(d)), { roadClass: "residential" });
+    const ruralShoulder = rural.finish().mesh.filter((q) => q.kind === "shoulder");
+    const resShoulder = res.finish().mesh.filter((q) => q.kind === "shoulder");
+    expect(ruralShoulder.length).toBeGreaterThan(0);
+    expect(resShoulder.length).toBeGreaterThan(ruralShoulder.length);
+    expect(new Set(ruralShoulder.map((q) => q.color)).size).toBeGreaterThanOrEqual(1);
+    expect([...new Set(ruralShoulder.map((q) => q.color))][0]).not.toBe([...new Set(resShoulder.map((q) => q.color))][0]);
+  });
 });
