@@ -131,13 +131,25 @@ export const DRESS_TEMPLATES: readonly DressTemplate[] = [
   },
 ];
 
+export type DressEligible = (assetId: string) => boolean;
+
 export function templatesFor(identity: LotIdentity): DressTemplate[] {
   return DRESS_TEMPLATES.filter((t) => t.identities.includes(identity));
 }
 
-export function pickTemplate(identity: LotIdentity, rng: Rng): DressTemplate {
-  const pool = templatesFor(identity);
-  return pool.length ? rng.pick(pool) : DRESS_TEMPLATES[0]!;
+function slotEligible(slot: DressSlot, eligible?: DressEligible): boolean {
+  return !eligible || eligible(slot.assetId);
+}
+
+function templateHasEligibleSlot(template: DressTemplate, eligible?: DressEligible): boolean {
+  return template.slots.some((slot) => slotEligible(slot, eligible));
+}
+
+export function pickTemplate(identity: LotIdentity, rng: Rng, eligible?: DressEligible): DressTemplate {
+  const matching = templatesFor(identity);
+  const pool = matching.filter((template) => templateHasEligibleSlot(template, eligible));
+  if (pool.length) return rng.pick(pool);
+  return matching[0] ?? DRESS_TEMPLATES[0]!;
 }
 
 export interface Occupancy {
@@ -252,11 +264,13 @@ export function dressLot(
   occ: Occupancy,
   budget: number,
   corridors: readonly { x: number; y: number }[][] = [],
+  eligible?: DressEligible,
 ): { props: Prop[]; patches: GroundPatch[] } {
   const stored = DRESS_TEMPLATES.find((t) => t.id === lot.templateId);
-  const template = stored && stored.identities.includes(lot.identity)
-    ? stored
-    : pickTemplate(lot.identity, rng);
+  const storedOk = !!stored
+    && stored.identities.includes(lot.identity)
+    && templateHasEligibleSlot(stored, eligible);
+  const template = storedOk ? stored : pickTemplate(lot.identity, rng, eligible);
   lot.templateId = template.id;
   if (building) building.lotId = lot.id;
   const props: Prop[] = [];
@@ -264,7 +278,7 @@ export function dressLot(
   const driveW = 1.7;
   const drive = drivewayPatch(lot);
 
-  const slots = [...template.slots].sort((a, b) => b.weight - a.weight);
+  const slots = [...template.slots].filter((slot) => slotEligible(slot, eligible)).sort((a, b) => b.weight - a.weight);
   const max = Math.min(template.maxAssets, budget);
   for (const slot of slots) {
     if (props.length >= max) break;

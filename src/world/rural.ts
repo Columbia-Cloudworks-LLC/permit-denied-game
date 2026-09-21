@@ -298,10 +298,13 @@ function generateRuralLayoutInner(
   const props: Prop[] = [];
   const ground: GroundPatch[] = [];
   const perLot = campaign?.generation.propsPerLot ?? (count >= 80 ? 6 : 7);
+  const eligible = campaign
+    ? (assetId: string) => campaignEligible(getAsset(assetId).campaign, campaign.id)
+    : undefined;
   for (let i = 0; i < kept.length; i++) {
     const lot = kept[i]!;
-    const dressed = dressLot(lot, buildings[i], rng, { boxes: occBoxes }, perLot, corridors);
-    props.push(...dressed.props.filter(prop => !campaign || campaignEligible(getAsset(prop.assetId).campaign, campaign.id)));
+    const dressed = dressLot(lot, buildings[i], rng, { boxes: occBoxes }, perLot, corridors, eligible);
+    props.push(...dressed.props);
     ground.push(...dressed.patches);
     for (const p of dressed.props) occBoxes.push({ x: p.x, y: p.y, w: p.w, d: p.d });
   }
