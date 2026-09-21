@@ -19,7 +19,7 @@ describe("dozer surface cues", () => {
     });
     const dozer = createDozer(8, 8, 0);
     dozer.vx = 4;
-    dozer.odo = 2.4;
+    dozer.odo = 0.88;
     dozer.heat = 0.4;
     const particles = new ParticlePool();
     const before = town.marks.length;

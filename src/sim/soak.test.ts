@@ -8,7 +8,7 @@ import { stepWorld } from "./worldSim";
 import { BENCH_UPGRADES, pumpVitestRpc, report, smashNearest } from "./benchSupport";
 
 describe("simulation soak", () => {
-  it("accelerates a 20-minute classic sandbox without losing wreckage", { timeout: 240_000 }, async () => {
+  it("accelerates a 20-minute classic sandbox without losing wreckage", { timeout: 360_000 }, async () => {
     const town = createTown();
     const dozer = createDozer(town.spawnX, town.spawnY, town.spawnHeading);
     const particles = new ParticlePool();

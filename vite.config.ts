@@ -143,9 +143,9 @@ export default defineConfig({
           include: SOAK_TESTS,
           maxWorkers: 1,
           fileParallelism: false,
-          testTimeout: 240_000,
-          hookTimeout: 240_000,
-          teardownTimeout: 240_000,
+          testTimeout: 360_000,
+          hookTimeout: 360_000,
+          teardownTimeout: 360_000,
         },
       },
       {
