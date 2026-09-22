@@ -12,6 +12,8 @@
 | `npm run check` | — | `tsc` for `src` and `checkJs` for operational scripts | Linux + Windows |
 | `npm run build` | — | Typecheck, production bundle, initial-JS budget | Linux + Windows |
 
+CI and the title-screenshot workflow run on every pull request, not only pull requests into `main`. A stack layer whose base is the previous feature branch still gets Linux and Windows checks and, for an internal PR, its own preview. Fork PRs are not deployed.
+
 Windows keeps the required check name `windows`. It is a representative smoke: unit tests, script tests, production build, PWA verification. That still catches numerical drift on the classic/d10 lots, path separators in Node scripts, and filesystem layout of `dist/`. It does not rerun d100 campaign matrices or the soak.
 
 Linux `build` runs unit + integration + soak, then packaging. Catalog capture remains Linux-only after that job. Benchmarks print timing lines and are excluded from ordinary correctness jobs; run `npm run test:bench` when investigating frame or debris cost.

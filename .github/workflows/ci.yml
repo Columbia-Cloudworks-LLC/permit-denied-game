@@ -4,8 +4,8 @@ on:
   workflow_dispatch:
   push:
     branches: [main, master]
+  # Every internal PR, including a stack layer whose base is the branch under it.
   pull_request:
-    branches: [main, master]
 
 env:
   FACEBOOK_PAGE_URL: ${{ vars.FACEBOOK_PAGE_URL }}
