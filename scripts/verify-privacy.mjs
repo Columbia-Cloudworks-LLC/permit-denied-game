@@ -25,6 +25,20 @@ const frame = { file: thumbnailKey, label: 'Intact', width: 360, height: 270, se
 const card = { id: 'vehicle:bus', name: 'Bus', category: 'vehicle', variants: 1, thumbnail: thumbnailKey, detail: await put({ id: 'vehicle:bus', name: 'Bus', variants: [{ variant: 0, series: [{ id: 'model', name: 'Model', frames: [frame] }] }] }) };
 const release = { schema: 1, version: 'test', commit: 'test', assetCount: 1, indexes: await buildIndexes([card], put), byId: await buildTree([{ key: card.id, card }], put) };
 files.set('release.json', Buffer.from(JSON.stringify(release)));
+async function shoot(page, path, options = {}) {
+  let last;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      await page.screenshot({ path, ...options });
+      return;
+    } catch (error) {
+      last = error;
+      await page.waitForTimeout(400);
+    }
+  }
+  throw last;
+}
+
 async function context(options = {}) {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 }, userAgent: 'Mozilla/5.0 Chrome/130.0.0.0 Safari/537.36', ...options });
   await ctx.addInitScript(() => Object.defineProperty(navigator, 'webdriver', { get: () => false }));
@@ -82,7 +96,7 @@ try {
   await page.keyboard.press('r'); await page.keyboard.press('w'); await page.waitForTimeout(100);
   const after = await page.evaluate(() => window.__pd.snapshot());
   assert.equal(before.elapsed, after.elapsed); assert.deepEqual(before.dozer, after.dozer);
-  await page.screenshot({ path: `${output}/desktop-terms.png` });
+  await shoot(page, `${output}/desktop-terms.png`);
   await page.locator('#terms-agree').check(); await page.locator('#terms-continue').click();
   await page.locator('#analytics-allow').waitFor();
   assert.equal(await page.locator('#analytics-allow').isDisabled(), true);
@@ -123,9 +137,9 @@ try {
     const p = await mobile.newPage(); await p.goto(origin + '/terms');
     assert.equal(await p.locator('canvas').count(), 0);
     assert.ok(!(await p.evaluate(() => document.documentElement.scrollWidth > innerWidth)));
-    await p.screenshot({ path: `${output}/terms-${width}x${height}.png`, fullPage: true });
+    await shoot(p, `${output}/terms-${width}x${height}.png`, { fullPage: true });
     await p.getByRole('button', { name: 'Privacy Settings', exact: true }).click();
-    await p.screenshot({ path: `${output}/consent-${width}x${height}.png` });
+    await shoot(p, `${output}/consent-${width}x${height}.png`);
     const box = await p.locator('.privacy-dialog').boundingBox(); assert.ok(box.x >= 0 && box.y >= 0 && box.x + box.width <= width && box.y + box.height <= height);
     await p.keyboard.press('Escape'); assert.equal(await p.locator('.privacy-dialog').count(), 0); assert.equal(mobileScripts.length, 0);
     await mobile.close();
