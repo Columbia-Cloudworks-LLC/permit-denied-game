@@ -32,6 +32,18 @@ export const BIOME_IDS: readonly BiomeId[] = [
 ];
 
 export const BIOME_SALT = 0xb10be;
+/** Campaign region roll. Separate from per-level layout and season streams. */
+export const CAMPAIGN_BIOME_SALT = 0xc0a91b;
+
+export function selectCampaignBiome(campaignSeed: number): BiomeProfile {
+  const rng = new Rng((campaignSeed ^ CAMPAIGN_BIOME_SALT) >>> 0);
+  return BIOME_PROFILES[BIOME_IDS[rng.int(0, BIOME_IDS.length - 1)]!]!;
+}
+
+export function biomeById(id: string | undefined | null): BiomeProfile | undefined {
+  if (!id || !(BIOME_IDS as readonly string[]).includes(id)) return undefined;
+  return BIOME_PROFILES[id as BiomeId];
+}
 
 export const BIOME_PROFILES: Record<BiomeId, BiomeProfile> = {
   "temperate-broadleaf": {

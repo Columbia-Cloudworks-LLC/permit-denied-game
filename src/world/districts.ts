@@ -4,9 +4,10 @@ import { aabbOverlap, pointInAabb } from "../game/math";
 import type { DistrictId } from "../game/session";
 import type { Building, Prop } from "../structure/types";
 import { speciesCompatible } from "./biomes";
-import { mapGroundCondition } from "./groundCondition";
+import { groundConditionForSeason, resolveWeather, type SeasonId, type WeatherDetail } from "./season";
+import type { LayoutEnvironment } from "./rural";
 import { getAsset, validateCatalog } from "./catalog";
-import { terrainTraversalAt, validateFeatureLayout } from "./terrainFeatures";
+import { movementBlocked, terrainTraversalAt, validateFeatureLayout } from "./terrainFeatures";
 import { aabbContainedInBox, aabbContainedInPoly, convexOverlap, parcelHitsRoad } from "./parcels";
 import type { CampaignLevelDef } from "../game/campaign";
 import { generateCampaignLayout } from "./campaignLayout";
@@ -40,8 +41,11 @@ export function generateDistrictLayout(
   seed: number,
   topology?: TopologyFamily,
   campaign?: CampaignLevelDef,
+  environment?: LayoutEnvironment,
+  weatherDetail: WeatherDetail = "on",
 ): Omit<Town, "vehicles" | "pile" | "rubble" | "marks" | "roadCar" | "visualRevision" | "collapsedSites" | "siteRevision"> {
-  const rural = campaign ? generateCampaignLayout(campaign, seed) : generateRuralLayout(id, seed, topology);
+  const season: SeasonId = environment?.season ?? "summer";
+  const rural = campaign ? generateCampaignLayout(campaign, seed, { ...environment, season }) : generateRuralLayout(id, seed, topology, undefined, { season });
   return {
     buildings: rural.buildings,
     props: rural.props,
@@ -67,7 +71,10 @@ export function generateDistrictLayout(
     nhood: rural.nhood,
     topology: rural.topology,
     biome: rural.biome,
-    groundCondition: mapGroundCondition(rural.biome),
+    groundCondition: groundConditionForSeason(season),
+    season,
+    weather: resolveWeather(season, seed),
+    weatherDetail,
     surface: rural.surface,
     features: rural.features,
     featureRevision: 0,
@@ -198,7 +205,7 @@ export function validateTown(town: Town): DistrictReport {
   if (!spawnClear(town.buildings, town.props, town.roadSpawnX, town.roadSpawnY)) {
     issues.push({ code: "road-spawn", detail: "test car spawn is blocked" });
   }
-  if (terrainTraversalAt(town.features, town.spawnX, town.spawnY, town.surface) !== "open") {
+  if (movementBlocked(terrainTraversalAt(town.features, town.spawnX, town.spawnY, town.surface), town.season)) {
     issues.push({ code: "spawn-terrain", detail: "dozer spawn is in water or forest core" });
   }
   if (terrainTraversalAt(town.features, town.roadSpawnX, town.roadSpawnY, town.surface) !== "open") {
@@ -214,6 +221,7 @@ export function validateTown(town: Town): DistrictReport {
     town.roadSpawnY,
     town.surface,
     town.lots,
+    town.season,
   )) {
     issues.push({ code: "terrain-feature", detail });
   }

@@ -1,5 +1,15 @@
 import type { CampaignLevelId } from './campaign';
 import type { TestMapRequest } from '../world/testMapRequest';
+import type { BiomeId } from '../world/biomes';
+import { biomeById } from '../world/biomes';
+import {
+  isSeasonId,
+  isWeatherDetail,
+  resolveSeason,
+  type SeasonId,
+  type SeasonSelection,
+  type WeatherDetail,
+} from '../world/season';
 export type SessionKind = "challenge" | "sandbox";
 
 /**
@@ -30,6 +40,9 @@ export function gameSetupRules(
     seed: nextSeed(currentSeed),
     ranchFocus: false,
     level: level ?? LEGACY_SANDBOX_LEVEL[district],
+    season: "summer",
+    seasonExplicit: false,
+    weatherDetail: "on",
   };
 }
 export type DemoAsset = "ranch" | "rivertown" | "steel-warehouse";
@@ -63,6 +76,14 @@ export interface SessionRules {
   topology?: SessionTopology;
   /** Campaign district used by both Sandbox and Time Challenge. Absent on diagnostic maps. */
   level?: CampaignLevelId;
+  /** Menu selection. Random rerolls on New Layout. Explicit values stay. */
+  seasonSelection?: SeasonSelection;
+  /** Resolved season for this run. Missing or invalid links are summer. */
+  season: SeasonId;
+  /** True when the link named a season, including an invalid value resolved to summer. */
+  seasonExplicit: boolean;
+  biomeId?: BiomeId;
+  weatherDetail: WeatherDetail;
 }
 
 function defaultSessionRules(): SessionRules {
@@ -71,6 +92,9 @@ function defaultSessionRules(): SessionRules {
     district: "d10",
     seed: DEFAULT_DISTRICT_SEEDS.d10,
     ranchFocus: false,
+    season: "summer",
+    seasonExplicit: false,
+    weatherDetail: "on",
   };
 }
 
@@ -128,6 +152,27 @@ export function parseSessionFromSearch(search: string): SessionRules {
   ) {
     rules.topology = topology;
   }
+  const seasonParam = params.get("season");
+  if (seasonParam == null || seasonParam === "") {
+    rules.season = "summer";
+    rules.seasonExplicit = false;
+  } else if (seasonParam === "random") {
+    rules.seasonSelection = "random";
+    rules.season = resolveSeason(rules.seed);
+    rules.seasonExplicit = true;
+  } else if (isSeasonId(seasonParam)) {
+    rules.seasonSelection = seasonParam;
+    rules.season = seasonParam;
+    rules.seasonExplicit = true;
+  } else {
+    rules.season = "summer";
+    rules.seasonSelection = "summer";
+    rules.seasonExplicit = true;
+  }
+  const biome = biomeById(params.get("biome"));
+  if (biome) rules.biomeId = biome.id;
+  const effects = params.get("effects");
+  if (effects && isWeatherDetail(effects)) rules.weatherDetail = effects;
   if (params.get("job") === "brick") {
     rules.testMap = undefined;
     rules.towerTest = false;
