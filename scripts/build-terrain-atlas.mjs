@@ -157,7 +157,6 @@ function drawSolid(color, variant) {
   for (let y = 0; y < TILE_H; y++) {
     for (let x = 0; x < TILE_W; x++) {
       const o = (y * TILE_W + x) * 4;
-      if (!inDiamond(x + 0.5, y + 0.5)) continue;
       const [r, g, b] = jitter(color, variant, x, y);
       buf[o] = r;
       buf[o + 1] = g;

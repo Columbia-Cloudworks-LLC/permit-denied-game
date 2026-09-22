@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { BIOME_PROFILES } from "../world/biomes";
 import { createSurfaceGrid, SURFACE_CHUNK, SURFACE_ID, surfaceAt } from "../world/terrain";
 import { createTown } from "../world/town";
-import { FOREST_GARNISH_CHUNK_CAP, planForestGarnish } from "./forestCanopy";
+import { FOREST_GARNISH_CHUNK_CAP, planForestGarnish, planForestMasses } from "./forestCanopy";
 
 describe("forest canopy garnish", () => {
   it("puts detailed trees on core edges and understory on the floor ring, not grass", () => {
@@ -68,6 +68,18 @@ describe("forest canopy garnish", () => {
         expect(tree.x < lot.x || tree.y < lot.y || tree.x > lot.x + lot.w || tree.y > lot.y + lot.d).toBe(true);
       }
     }
+  });
+
+  it("keeps a solid canopy mass where interior trees are culled at overview scale", () => {
+    const grid = createSurfaceGrid(0, 0, 8, 8, "grass");
+    for (let iy = 2; iy < 6; iy++) {
+      for (let ix = 2; ix < 6; ix++) grid.surface[ix + iy * 8] = SURFACE_ID["forest-core"];
+    }
+    const masses = planForestMasses(grid);
+    expect(masses.length).toBeGreaterThan(0);
+    const area = masses.reduce((n, mass) => n + mass.w * mass.d, 0);
+    expect(area).toBeGreaterThanOrEqual(12);
+    expect(masses.every((mass) => mass.w >= 2)).toBe(true);
   });
 
   it("leaves gaps in large forest edges instead of filling every core-edge cell", () => {

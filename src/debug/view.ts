@@ -15,7 +15,8 @@ export const DEBUG_GROUPS = [
     ["collision", "Active collision shapes", false], ["supports", "Structural supports", false],
   ] },
   { label: "Inspection", options: [
-    ["reveal", "Reveal intact interiors", false], ["overview", "District overview (G)", false],
+    ["reveal", "Reveal intact interiors", false], ["overview", "Frame whole town (G)", false],
+    ["graph", "Neighborhood graph", false],
     ["perf", "Performance stats (`)", false], ["freeze", "Freeze simulation", false],
   ] },
 ] as const;

@@ -1,6 +1,6 @@
 import type { TopologyFamily } from '../world/rural';
 
-/** Campaign level identity is distinct from Sandbox district sizes (d10 / d30 / d100). */
+/** Campaign levels are the playable districts for Sandbox and Time Challenge. */
 export const CAMPAIGN_LEVEL_IDS = [
   'county',
   'village',
@@ -269,3 +269,22 @@ export function campaignLevelAt(index: number): CampaignLevelDef {
 }
 
 export const CAMPAIGN_LEVEL_COUNT = CAMPAIGN_LEVELS.length;
+
+/** Open crop sheets belong on rural levels. Urban and estate districts keep lot yards instead. */
+export function campaignPaintsOpenFields(id: CampaignLevelId): boolean {
+  switch (id) {
+    case "county":
+    case "village":
+    case "township":
+      return true;
+    case "suburb":
+    case "city-borough":
+    case "city-downtown":
+    case "governors-mansion":
+      return false;
+    default: {
+      const _never: never = id;
+      return _never;
+    }
+  }
+}

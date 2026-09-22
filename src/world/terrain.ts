@@ -81,6 +81,8 @@ export interface GenerateSurfaceOpts {
   maxX: number;
   maxY: number;
   spawnBand?: { x: number; y: number; w: number; d: number };
+  /** Urban and estate levels skip biome-wide crop sheets. */
+  openFields?: boolean;
 }
 
 export function ruralGridDims(count: number): { ew: number; ns: number } {
@@ -257,7 +259,7 @@ export function generateSurfaceGrid(opts: GenerateSurfaceOpts): SurfaceGrid {
   classifyBases(grid, opts.biome, seed);
   reserveWater(grid, opts.biome, seed, opts.spawnBand);
   reserveForest(grid, opts.biome, seed);
-  reserveFields(grid, opts.biome, seed);
+  if (opts.openFields !== false) reserveFields(grid, opts.biome, seed);
   majorityFilter(grid, 2);
   dropSmallComponents(grid, 8);
   paintWetEdge(grid);

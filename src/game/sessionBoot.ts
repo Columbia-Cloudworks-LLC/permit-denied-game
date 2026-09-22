@@ -16,9 +16,10 @@ export function bootOpenedSession(host: SessionBootHost, search: string): void {
   let campaign: CampaignRun | null = null;
   if (host.rules.kind === "challenge" && !host.rules.job) campaign = startCampaign(host.rules.seed);
   const levelParam = new URLSearchParams(search).get("level");
-  if (campaign && levelParam && isCampaignLevelId(levelParam)) {
-    campaign.levelIndex = CAMPAIGN_LEVELS.findIndex((level) => level.id === levelParam);
-    campaign.briefing = false;
+  const requested = levelParam && isCampaignLevelId(levelParam) ? levelParam : host.rules.level;
+  if (campaign && requested) {
+    campaign.levelIndex = CAMPAIGN_LEVELS.findIndex((level) => level.id === requested);
+    if (levelParam && isCampaignLevelId(levelParam)) campaign.briefing = false;
   }
   host.applyCampaign(campaign);
   host.reset("same");

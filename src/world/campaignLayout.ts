@@ -73,6 +73,7 @@ function generateEstateLayout(level: CampaignLevelDef, seed: number): RuralLayou
     maxX: right + 8,
     maxY: bottom + 20,
     spawnBand: { x: (left + right) * 0.5 - 4, y: bottom + 8, w: 8, d: 10 },
+    openFields: false,
   });
 
   const buildings: Building[] = [];

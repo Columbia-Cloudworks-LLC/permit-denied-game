@@ -1,4 +1,4 @@
-import type { CampaignLevelDef } from "../game/campaign";
+import { campaignPaintsOpenFields, type CampaignLevelDef } from "../game/campaign";
 import { DRESSING } from "../game/constants";
 import { aabbOverlap, len } from "../game/math";
 import { Rng } from "../game/rng";
@@ -173,6 +173,7 @@ function generateRuralLayoutInner(
     maxX: bounds.maxX,
     maxY: bounds.maxY,
     spawnBand,
+    openFields: campaign ? campaignPaintsOpenFields(campaign.id) : true,
   });
 
   const { builder: b, originX: usedOx, originY: usedOy } = pickSkeleton(surface, topology, count, originX, originY, seed, campaign);
@@ -212,7 +213,7 @@ function generateRuralLayoutInner(
   const corridors: { x: number; y: number }[][] = [];
   const used = new Map<string, number>();
   const publicSegs = () => b.segments.filter((s) => s.roadClass !== "driveway" && s.roadClass !== "ramp");
-  const pick = campaign ? campaignPicker(campaign, used) : undefined;
+  const pick = campaign ? campaignPicker(campaign, used, buildings) : undefined;
 
   if (campaign) placeCampaignLandmark(campaign, pool, rng, buildings, kept, corridors, publicSegs, b, used, surface);
 
@@ -1036,21 +1037,33 @@ function placeCampaignLot(
     rejected.push({ kind: "lot", reason: "terrain", points: lot.boundary });
     return false;
   }
+  lot.identity = identityFromBuilding(building);
+  lot.templateId = "";
   const drive = attachDriveway(b, lot, building, [...kept, ...neighbors]);
   if (!drive || drive.reject) {
     rejected.push(drive?.reject ?? { kind: "driveway", reason: "failed", points: lot.boundary });
     return false;
   }
   buildings.push(building);
-  lot.identity = identityFromBuilding(building);
-  lot.templateId = "";
   kept.push(lot);
   corridors.push(drive.corridor);
   used.set(building.archetypeId, (used.get(building.archetypeId) ?? 0) + 1);
   return true;
 }
 
-function campaignPicker(campaign: CampaignLevelDef, used: Map<string, number>) {
+function neighborSharesArchetype(buildings: readonly Building[], lot: Lot, id: string): boolean {
+  const cx = lot.x + lot.w * 0.5;
+  const cy = lot.y + lot.d * 0.5;
+  for (const building of buildings) {
+    if (building.archetypeId !== id) continue;
+    const bx = building.x + building.w * building.cellSize * 0.5;
+    const by = building.y + building.d * building.cellSize * 0.5;
+    if (Math.hypot(bx - cx, by - cy) < 28) return true;
+  }
+  return false;
+}
+
+function campaignPicker(campaign: CampaignLevelDef, used: Map<string, number>, buildings: readonly Building[]) {
   return (lot: Lot, rng: Rng, tried: ReadonlySet<string>) => {
     const ordinaryTarget = campaign.generation.buildingCount - 1;
     const legal = campaign.composition
@@ -1072,7 +1085,10 @@ function campaignPicker(campaign: CampaignLevelDef, used: Map<string, number>) {
       (a.campaign?.zones ? a.campaign.zones.includes(lot.zone) : a.zones[lot.zone] > 0) || !a.campaign?.zones,
     );
     const pickFrom = zoned.length ? zoned : (fitting.length ? fitting : pool);
-    return pickWeighted(pickFrom, a => campaignWeight(a.campaign, campaign.id), (min, max) => rng.range(min, max));
+    return pickWeighted(pickFrom, (a) => {
+      const base = campaignWeight(a.campaign, campaign.id) || 1;
+      return neighborSharesArchetype(buildings, lot, a.id) ? base * 0.12 : base;
+    }, (min, max) => rng.range(min, max));
   };
 }
 
@@ -1114,13 +1130,13 @@ function placeCampaignLandmark(
     }
     const building = placeBuildingInLot(lot, rng, buildings, publicSegs(), corridors, pickLandmark);
     if (!building) continue;
+    lot.identity = identityFromBuilding(building);
+    lot.templateId = "";
     const drive = attachDriveway(b, lot, building, [...kept, ...pool]);
     if (!drive || drive.reject) continue;
     building.campaignLandmark = true;
     building.name = campaign.landmark.label.toUpperCase();
     buildings.push(building);
-    lot.identity = identityFromBuilding(building);
-    lot.templateId = "";
     kept.push(lot);
     corridors.push(drive.corridor);
     used.set(building.archetypeId, 1);

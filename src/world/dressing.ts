@@ -224,7 +224,7 @@ function placeSlot(
     const y = p.y - d * 0.5;
     if (!insideLotYard(lot, x, y, w, d)) continue;
     if (blocked(x, y, w, d, occ, extras)) continue;
-    if (corridors.some((poly) => yardPointInPoly(x + w * 0.5, y + d * 0.5, poly))) continue;
+    if (corridors.some((poly) => yardPointInPoly(x + w * 0.5, y + d * 0.5, narrowCorridor(poly, 0.28)))) continue;
     if (building && sealsAccess(lot, building, [...extras, { x, y, w, d }], driveW)) continue;
     return { x, y };
   }
@@ -446,6 +446,21 @@ export function drivewayPatch(lot: Lot): { x: number; y: number; w: number; d: n
   const along = Math.min(0.28, 0.04 + depth * 0.5 / Math.max(0.8, size.along));
   const center = lotLocalToWorld(lot, along, 0);
   return { x: center.x - width * 0.5, y: center.y - depth * 0.5, w: width, d: depth };
+}
+
+function narrowCorridor(
+  poly: readonly { x: number; y: number }[],
+  inset: number,
+): { x: number; y: number }[] {
+  if (poly.length !== 4) return [...poly];
+  const [a0, b0, b1, a1] = poly;
+  const pull = (p: { x: number; y: number }, q: { x: number; y: number }) => {
+    const dx = q.x - p.x;
+    const dy = q.y - p.y;
+    const len = Math.hypot(dx, dy) || 1;
+    return { x: p.x + (dx / len) * inset, y: p.y + (dy / len) * inset };
+  };
+  return [pull(a0!, a1!), pull(b0!, b1!), pull(b1!, b0!), pull(a1!, a0!)];
 }
 
 function sealsAccess(

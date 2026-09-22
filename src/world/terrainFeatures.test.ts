@@ -5,11 +5,12 @@ import { destroyProp } from "../sim/assets";
 import { stepWorld } from "../sim/worldSim";
 import { BIOME_PROFILES } from "./biomes";
 import { spawnAsset } from "./catalog";
-import { SURFACE_ID } from "./terrain";
+import { groundPatchContains, SURFACE_ID } from "./terrain";
 import { createTown } from "./town";
 import { validateTown } from "./districts";
 import {
   churnFieldAt,
+  featurePatches,
   terrainTraversalAt,
   type FieldFeature,
   type ForestFeature,
@@ -20,6 +21,29 @@ import type { TopologyFamily } from "./rural";
 const TOPOLOGIES: TopologyFamily[] = ["county", "crossroads", "tjunction", "curve-farm", "loop", "frontage"];
 
 describe("terrain features", () => {
+  it("paints field ground only on masked cells", () => {
+    const feature: FieldFeature = {
+      kind: "field",
+      id: "field-test",
+      x: 0,
+      y: 0,
+      w: 4,
+      d: 2,
+      heading: 0,
+      crop: "corn",
+      state: "mature",
+      seed: 1,
+      cell: 1,
+      cols: 4,
+      rows: 2,
+      churn: new Uint8Array(8),
+      mask: Uint8Array.from([1, 1, 0, 0, 1, 1, 0, 0]),
+    };
+    const patches = featurePatches(feature);
+    expect(patches.some((patch) => groundPatchContains(patch, 0.5, 0.5))).toBe(true);
+    expect(patches.some((patch) => groundPatchContains(patch, 3.5, 0.5))).toBe(false);
+  });
+
   it("keeps biome and features stable for a seed", () => {
     const a = createTown({ district: "d10", seed: 0x51a11, topology: "curve-farm" });
     const b = createTown({ district: "d10", seed: 0x51a11, topology: "curve-farm" });

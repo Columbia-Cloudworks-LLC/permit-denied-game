@@ -1,6 +1,7 @@
 import type { Hud } from "../render/hud";
 import type { PermitSound } from "../render/permitIntro";
 import type { DebugToggle } from "../debug/view";
+import type { CampaignLevelId } from "./campaign";
 import type { DistrictId, SessionKind } from "./session";
 
 /** HUD callbacks owned by session setup, not by the HUD template. */
@@ -12,7 +13,7 @@ export interface HudSessionBindings {
   onTitleSound: (kind: PermitSound, index: number) => void;
   onMenu: () => void;
   onTitle: () => void;
-  onStart: (kind: SessionKind, district: DistrictId) => void;
+  onStart: (kind: SessionKind, level: CampaignLevelId) => void;
   onBeginLevel: () => void;
   onNextLevel: () => void;
   onRetryLevel: () => void;
@@ -25,6 +26,7 @@ export interface HudSessionBindings {
   onNewSeed: () => void;
   onSession: (kind: SessionKind) => void;
   onDistrict: (id: DistrictId) => void;
+  onCampaignLevel: (id: CampaignLevelId) => void;
   onJob: () => void;
   onDebugOpen: () => void;
   onDebugToggle: (key: DebugToggle, value: boolean) => void;
@@ -54,6 +56,7 @@ export function bindHudSession(hud: Hud, bindings: HudSessionBindings): void {
   hud.onNewSeed = bindings.onNewSeed;
   hud.onSession = bindings.onSession;
   hud.onDistrict = bindings.onDistrict;
+  hud.onCampaignLevel = bindings.onCampaignLevel;
   hud.onJob = bindings.onJob;
   hud.onDebugOpen = bindings.onDebugOpen;
   hud.onDebugToggle = bindings.onDebugToggle;

@@ -2,10 +2,11 @@ import { clockValue } from './instrumentValues';
 import { CashCounter } from './cashCounter';
 import { EquipmentClock } from './equipmentClock';
 import { upgradePercent, type UpgradeModifiers } from '../game/upgrades';
-import { MENU_LABELS as L, MODE_LABELS, SITE_LABELS, BRICK_DESCRIPTION } from '../game/menuLabels';
+import { MENU_LABELS as L, MODE_LABELS, BRICK_DESCRIPTION } from '../game/menuLabels';
 import { MENU_ICONS } from './menuIcons';
 import { COPY, CASH_TARGET, MATCH_SECONDS } from "../game/constants";
-import type { CampaignLevelId } from "../game/campaign";
+import { type CampaignLevelId } from "../game/campaign";
+import { campaignLevelButtons, debugMapLabel, debugSessionFacts, debugSessionPanels } from "../game/debugSession";
 import { PermitLogo } from './permitLogo';
 import { OperatorMenu } from './operatorMenu';
 import type { PermitSound } from './permitIntro';
@@ -30,6 +31,8 @@ export interface CampaignHud {
   victory: boolean;
   complete: boolean;
   levelId?: CampaignLevelId;
+  buildingCount?: number;
+  timeLimit?: number;
 }
 
 export interface HudState {
@@ -46,6 +49,17 @@ export interface HudState {
   elapsed: number;
   session: SessionKind;
   district: DistrictId;
+  seed?: number;
+  levelId?: CampaignLevelId;
+  levelCard?: {
+    levelIndex: number;
+    levelName: string;
+    levelId: CampaignLevelId;
+    buildingCount: number;
+    landmarkName: string;
+    dollarTarget: number;
+    timeLimit: number;
+  };
   bladeDown: boolean;
   muted: boolean;
   heat: number;
@@ -82,7 +96,7 @@ export class Hud {
   onMute?: () => void;
   onMenu?: () => void;
   onTitle?: () => void;
-  onStart?: (kind: SessionKind, district: DistrictId) => void;
+  onStart?: (kind: SessionKind, level: CampaignLevelId) => void;
   onBeginLevel?: () => void;
   onNextLevel?: () => void;
   onRetryLevel?: () => void;
@@ -96,6 +110,7 @@ export class Hud {
   onNewSeed?: () => void;
   onSession?: (kind: SessionKind) => void;
   onDistrict?: (id: DistrictId) => void;
+  onCampaignLevel?: (id: CampaignLevelId) => void;
   onJob?: () => void;
   onDebugToggle?: (key: DebugToggle, value: boolean) => void;
   onDebugFloor?: (floor: number) => void;
@@ -378,17 +393,23 @@ export class Hud {
   }
 
   private bindSessionBar(): void {
+    const levels = campaignLevelButtons().map((level) =>
+      `<button type="button" data-level="${level.id}">${level.label}</button>`,
+    ).join("");
     const bar = this.root.querySelector("#hud-session")!;
     bar.innerHTML = `
       <h3>Mode</h3>
       <button type="button" data-session="sandbox">${MODE_LABELS.sandbox}</button>
       <button type="button" data-session="challenge">${MODE_LABELS.challenge}</button>
-      <h3>Demolition Objective</h3>
-      <button type="button" data-act="job">${L.brick}</button><p class="fine-print">${BRICK_DESCRIPTION}</p>
-      <h3>Site Size / Layout</h3>
-      <button type="button" data-district="d10">${SITE_LABELS.d10}</button>
-      <button type="button" data-district="d30">${SITE_LABELS.d30}</button>
-      <button type="button" data-district="d100">${SITE_LABELS.d100}</button>
+      <section data-panel="levels">
+        <h3>Campaign Level</h3>
+        ${levels}
+        <p id="debug-campaign-facts" class="fine-print"></p>
+      </section>
+      <section data-panel="job">
+        <h3>Demolition Objective</h3>
+        <button type="button" data-act="job">${L.brick}</button><p class="fine-print">${BRICK_DESCRIPTION}</p>
+      </section>
       <button type="button" data-act="restart">${L.restart}</button>
       <button type="button" data-act="newseed">${L.newLayout}</button>
       <h3 class="sandbox-upgrades">Sandbox Upgrades</h3>
@@ -399,11 +420,11 @@ export class Hud {
     bar.querySelectorAll("button").forEach((btn) => {
       btn.addEventListener("click", () => {
         const session = (btn as HTMLButtonElement).dataset.session as SessionKind | undefined;
-        const district = (btn as HTMLButtonElement).dataset.district as DistrictId | undefined;
+        const level = (btn as HTMLButtonElement).dataset.level as CampaignLevelId | undefined;
         const act = (btn as HTMLButtonElement).dataset.act;
         const up = (btn as HTMLButtonElement).dataset.up as "blade" | "engine" | "push" | undefined;
         if (session) this.onSession?.(session);
-        if (district) this.onDistrict?.(district);
+        if (level) this.onCampaignLevel?.(level);
         if (act === "newseed") this.onNewSeed?.();
         if (act === "restart") this.onRestart?.();
         if (act === "job") this.onJob?.();
@@ -453,7 +474,7 @@ export class Hud {
       this.cashTarget.textContent = `Target $${CASH_TARGET.toLocaleString('en-US')}`;
     }
     this.clock.update(elapsedClock ? s.elapsed : s.timeLeft, elapsedClock);
-    this.paintSessionBar(s.session, s.district);
+    this.paintSessionBar(s);
     this.bladeEl.textContent = s.bladeDown ? COPY.bladeDown : COPY.bladeUp;
     this.bladeEl.classList.toggle('engaged', s.bladeDown);
     for (const [id, value] of [['heat', s.heat], ['track', s.track]] as const) {
@@ -471,7 +492,16 @@ export class Hud {
     this.root.querySelector('#hud-clock-label')!.textContent = s.session === 'sandbox' || s.job ? 'Elapsed' : 'County Clock';
     const modal = s.overlay !== 'none';
     this.binderBlocked = modal; this.syncBinder();
-    const mapName = s.testMapName ?? (s.job ? L.brick : `${MODE_LABELS[s.session]} · ${s.district}`);
+    const card = s.levelCard;
+    const mapName = debugMapLabel({
+      testMapName: s.testMapName,
+      job: !!s.job,
+      session: s.session,
+      district: s.district,
+      levelId: s.campaign?.levelId ?? card?.levelId ?? s.levelId,
+      levelIndex: s.campaign?.levelIndex ?? card?.levelIndex,
+      levelName: s.campaign?.levelName ?? card?.levelName,
+    });
     const mapLabel = this.root.querySelector<HTMLElement>('#debug-map-name')!;
     if (mapLabel.textContent !== mapName) mapLabel.textContent = mapName;
     const resetTest = this.root.querySelector<HTMLButtonElement>('#debug-reset-test')!;
@@ -485,7 +515,7 @@ export class Hud {
       const el = this.root.querySelector<HTMLElement>(selector);
       if (el) el.inert = modal;
     }
-    this.menu.show(s.overlay === 'title' || s.overlay === 'pause' ? s.overlay : null, s.session, s.district, s.developmentScenario);
+    this.menu.show(s.overlay === 'title' || s.overlay === 'pause' ? s.overlay : null, s.session, s.district, s.developmentScenario, s.campaign?.levelId ?? s.levelId);
     this.menu.syncMuted(s.muted);
     this.renderMobile(s, elapsedClock, advisory);
 
@@ -562,13 +592,41 @@ export class Hud {
     });
   }
 
-  private paintSessionBar(session: SessionKind, district: DistrictId): void {
+  private paintSessionBar(s: HudState): void {
     const bar = this.root.querySelector("#hud-session");
     if (!bar) return;
+    const card = s.levelCard;
+    const levelId = s.campaign?.levelId ?? card?.levelId ?? s.levelId;
+    const panels = debugSessionPanels({
+      testMapName: s.testMapName,
+      job: !!s.job,
+      session: s.session,
+      district: s.district,
+      levelId,
+      levelName: s.campaign?.levelName ?? card?.levelName,
+    });
+    bar.querySelector<HTMLElement>('[data-panel="levels"]')!.hidden = !panels.levels;
+    bar.querySelector<HTMLElement>('[data-panel="job"]')!.hidden = !panels.job;
+    const facts = bar.querySelector<HTMLElement>("#debug-campaign-facts");
+    if (facts) {
+      facts.textContent = debugSessionFacts({
+        testMapName: s.testMapName,
+        session: s.session,
+        district: s.district,
+        levelName: s.campaign?.levelName ?? card?.levelName,
+        levelIndex: s.campaign?.levelIndex ?? card?.levelIndex,
+        seed: s.seed,
+        buildingCount: s.campaign?.buildingCount ?? card?.buildingCount,
+        landmarkName: s.campaign?.landmarkName ?? card?.landmarkName,
+        dollarTarget: s.campaign?.dollarTarget ?? card?.dollarTarget,
+        timeLimit: s.campaign?.timeLimit ?? card?.timeLimit,
+      });
+    }
     bar.querySelectorAll("button").forEach((btn) => {
       const el = btn as HTMLButtonElement;
-      el.classList.toggle("on", el.dataset.session === session || el.dataset.district === district);
-      if (el.dataset.session || el.dataset.district) el.setAttribute('aria-pressed', String(el.classList.contains('on')));
+      const pressed = el.dataset.session === s.session || (!!levelId && el.dataset.level === levelId);
+      el.classList.toggle("on", pressed);
+      if (el.dataset.session || el.dataset.level) el.setAttribute("aria-pressed", String(pressed));
     });
   }
 }

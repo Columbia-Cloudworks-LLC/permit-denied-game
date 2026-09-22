@@ -953,6 +953,13 @@ function junctionHalf(publics: readonly RoadSegment[]): number {
   return Math.max(...publics.map((s) => s.width * 0.5), 0.8);
 }
 
+function junctionDisc(x: number, y: number, r: number, sides = 8): { x: number; y: number }[] {
+  return Array.from({ length: sides }, (_, i) => {
+    const a = (i / sides) * Math.PI * 2 - Math.PI / sides;
+    return { x: x + Math.cos(a) * r, y: y + Math.sin(a) * r };
+  });
+}
+
 function sideOf(along: number, otherOut: number): 1 | -1 | 0 {
   const c = -Math.sin(along) * Math.cos(otherOut) + Math.cos(along) * Math.sin(otherOut);
   if (Math.abs(c) < 0.22) return 0;
@@ -1072,6 +1079,22 @@ export function buildRoadMesh(network: RoadNetwork): RoadMeshQuad[] {
       byLayer.set(s.layer, list);
     }
     for (const [, publics] of byLayer) {
+      if (publics.length === 1) {
+        const seg = publics[0]!;
+        const cap = seg.width * 0.55;
+        mesh.push({
+          x: node.x,
+          y: node.y,
+          w: cap * 2,
+          d: cap * 2,
+          z: node.elev,
+          heading: 0,
+          color: PAVEMENT[seg.roadClass],
+          kind: seg.layer > 0 ? "deck" : "pavement",
+          poly: junctionDisc(node.x, node.y, cap, 6),
+        });
+        continue;
+      }
       if (!isPublicJunction(publics, node)) continue;
       const r = junctionHalf(publics) + 0.05;
       mesh.push({
@@ -1083,6 +1106,7 @@ export function buildRoadMesh(network: RoadNetwork): RoadMeshQuad[] {
         heading: 0,
         color: PAVEMENT[publics[0]!.roadClass],
         kind: publics[0]!.layer > 0 ? "deck" : "pavement",
+        poly: junctionDisc(node.x, node.y, r, 8),
       });
     }
   }

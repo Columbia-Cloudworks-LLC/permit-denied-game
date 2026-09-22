@@ -10,7 +10,7 @@ import { defaultDebugView } from "../debug/view";
 import { drawDebugOverlay } from "./debugOverlay";
 import { Container, Graphics, Text } from "pixi.js";
 import { emptyGrassGrid, groundPatchContains, TERRAIN_GEN_VERSION } from "../world/terrain";
-import { drawForestGarnish, planForestGarnish, type ForestGarnish } from "./forestCanopy";
+import { drawForestGarnish, drawForestMass, planForestGarnish, planForestMasses, type ForestGarnish, type ForestMass } from "./forestCanopy";
 import { buildTerrainChunks, chunkCount, ensureTerrainAtlas, terrainAtlasRevision } from "./terrainTiles";
 import { DOZER, FLOOR_Z } from "../game/constants";
 import { Rng } from "../game/rng";
@@ -108,6 +108,7 @@ export class WorldRenderer {
   private terrainKey = "";
   private garnishKey = "";
   private garnish: ForestGarnish[] = [];
+  private forestMasses: ForestMass[] = [];
   private overlayKey = "";
   private siteKey = "";
   stats = {
@@ -137,6 +138,7 @@ export class WorldRenderer {
     this.terrainKey = "";
     this.garnishKey = "";
     this.garnish = [];
+    this.forestMasses = [];
     this.overlayKey = "";
     this.siteKey = "";
   }
@@ -211,7 +213,7 @@ export class WorldRenderer {
     this.fades.begin();
     const view = this.debug;
     this.sites.visible = view.sites;
-    this.nhood.visible = this.showNhood;
+    this.nhood.visible = view.graph;
     this.world.clear();
     this.groundOverlays.clear();
     this.cmds.length = 0;
@@ -259,6 +261,7 @@ export class WorldRenderer {
     const garnishKey = `${town.seed}:${town.biome.id}:${frame.surface.ox}:${frame.surface.oy}:${frame.surface.cols}x${frame.surface.rows}:${frame.surface.stampRevision}`;
     if (garnishKey !== this.garnishKey) {
       this.garnish = planForestGarnish(frame.surface, town.biome, town.seed);
+      this.forestMasses = planForestMasses(frame.surface);
       this.garnishKey = garnishKey;
     }
   }
@@ -343,7 +346,7 @@ export class WorldRenderer {
   /** Neighborhood band overlay. */
   private passNhood(frame: RenderFrame): void {
     const { town } = frame;
-    if (this.showNhood) drawNhoodOverlay(this.nhoodGfx, this.nhood, town);
+    if (frame.view.graph) drawNhoodOverlay(this.nhoodGfx, this.nhood, town);
     else clearNhoodOverlay(this.nhoodGfx, this.nhood);
   }
 
@@ -602,6 +605,18 @@ export class WorldRenderer {
   /** Forest canopy garnish. */
   private passGarnish(frame: RenderFrame): void {
     const { dozer, view } = frame;
+    if (view.terrain && frame.hideDressing) {
+      for (const mass of this.forestMasses) {
+        frame.total++;
+        if (!this.visibleBox(mass.x, mass.y, mass.w, mass.d, 0, 2.2)) continue;
+        frame.visible++;
+        this.cmds.push({
+          key: `canopy:${mass.x}:${mass.y}:${mass.w}:${mass.d}`,
+          depth: depthKey(mass.x + mass.w * 0.5, mass.y + mass.d * 0.5, 1.2),
+          run: (g) => drawForestMass(g, mass),
+        });
+      }
+    }
     for (const tree of view.terrain ? this.garnish : []) {
       if (frame.hideDressing && tree.form !== "edge") continue;
       frame.total++;
@@ -646,7 +661,7 @@ export class WorldRenderer {
       frame.visible++;
       this.cmds.push({
         depth: depthKey(dozer.x, dozer.y, 0.4),
-        run: (g) => drawDozer(g, dozer),
+        run: (g) => drawDozer(g, dozer, frame.hideDressing || this.zoom < 0.7),
       });
     }
   }
@@ -937,10 +952,11 @@ function drawCover(g: Graphics, patch: GroundPatch, condition: GroundCondition):
 }
 
 function drawFieldRows(g: Graphics, patch: GroundPatch, condition: GroundCondition): void {
-  const gap = patch.cover === "field-mature" ? 0.7 : 0.52;
-  const rows = Math.min(16, Math.max(5, Math.floor(patch.d / gap)));
+  if (patch.poly && patch.poly.length >= 3) return;
+  const gap = patch.cover === "field-mature" ? 1.35 : 1.05;
+  const rows = Math.min(7, Math.max(3, Math.floor(patch.d / gap)));
   const color = coverDark(patch.cover, condition);
-  const thick = patch.cover === "field-tilled" ? 0.22 : patch.cover === "field-stubble" ? 0.16 : patch.cover === "field-mature" ? 0.28 : 0.2;
+  const thick = patch.cover === "field-tilled" ? 0.1 : patch.cover === "field-stubble" ? 0.08 : patch.cover === "field-mature" ? 0.12 : 0.1;
   const z = patch.z + 0.006;
   for (let i = 0; i < rows; i++) {
     const t = (i + 0.5) / rows - 0.5;
@@ -948,7 +964,7 @@ function drawFieldRows(g: Graphics, patch: GroundPatch, condition: GroundConditi
     const fy = Math.sin(patch.heading);
     const cx = patch.x + patch.w * 0.5 - fy * t * patch.d;
     const cy = patch.y + patch.d * 0.5 + fx * t * patch.d;
-    drawOrientedGround(g, cx, cy, patch.heading, patch.w * 0.9, thick, color, patch.cover === "field-tilled" ? 0.7 : 0.95, z);
+    drawOrientedGround(g, cx, cy, patch.heading, patch.w * 0.9, thick, color, patch.cover === "field-tilled" ? 0.28 : 0.36, z);
   }
 }
 
@@ -989,27 +1005,27 @@ function cropRowStyle(feature: FieldFeature, condition: GroundCondition): { top:
   switch (feature.crop) {
     case "corn":
       return {
-        top: mature ? 0xd4c44a : short ? 0x6aaa38 : 0x8a6a38,
-        left: mature ? 0x6a7a22 : 0x3a4a1c,
-        right: mature ? 0x8a9a2c : 0x4a5a22,
-        h: mature ? 0.48 : short ? 0.18 : 0.05,
-        thick: mature ? 0.26 : 0.2,
+        top: mature ? 0x7a8a32 : short ? 0x5a8a34 : 0x6a5a30,
+        left: mature ? 0x4a5a1c : 0x2e3c16,
+        right: mature ? 0x627428 : 0x3e4c1c,
+        h: mature ? 0.28 : short ? 0.12 : 0.04,
+        thick: mature ? 0.18 : 0.14,
       };
     case "wheat":
       return {
-        top: mature ? 0xe2c456 : short ? 0x8aaa40 : 0x9a7a40,
-        left: mature ? 0x8a6a22 : 0x4a4a1c,
-        right: mature ? 0xb08a30 : 0x5a5a22,
-        h: mature ? 0.32 : short ? 0.14 : 0.05,
-        thick: mature ? 0.24 : 0.18,
+        top: mature ? 0xa89448 : short ? 0x6e8a38 : 0x7a6840,
+        left: mature ? 0x6a5420 : 0x3a3a18,
+        right: mature ? 0x8a7030 : 0x4a4a1e,
+        h: mature ? 0.2 : short ? 0.1 : 0.04,
+        thick: mature ? 0.16 : 0.14,
       };
     case "soy":
       return {
-        top: mature ? 0x4a8a38 : short ? 0x5a9a42 : 0x7a5a30,
-        left: mature ? 0x245022 : 0x3a3818,
-        right: mature ? 0x366a2c : 0x4a4820,
-        h: mature ? 0.28 : short ? 0.12 : 0.05,
-        thick: mature ? 0.28 : 0.2,
+        top: mature ? 0x3e7432 : short ? 0x4a8240 : 0x6a5030,
+        left: mature ? 0x1e401c : 0x303016,
+        right: mature ? 0x2e5a28 : 0x3e3c1c,
+        h: mature ? 0.18 : short ? 0.1 : 0.04,
+        thick: mature ? 0.18 : 0.14,
       };
     default: {
       const _never: never = feature.crop;
@@ -1021,12 +1037,13 @@ function cropRowStyle(feature: FieldFeature, condition: GroundCondition): { top:
 function drawFieldCrops(g: Graphics, feature: FieldFeature, condition: GroundCondition): void {
   if (feature.state === "tilled") return;
   const style = cropRowStyle(feature, condition);
-  const gap = Math.max(0.55, Math.min(0.8, feature.cell));
+  const gap = Math.max(0.9, Math.min(1.2, feature.cell * 1.4));
+  const stride = feature.rows > 7 ? 2 : 1;
   const fx = Math.cos(feature.heading);
   const fy = Math.sin(feature.heading);
   const ox = feature.x + feature.w * 0.5;
   const oy = feature.y + feature.d * 0.5;
-  for (let row = 0; row < feature.rows; row++) {
+  for (let row = 0; row < feature.rows; row += stride) {
     let run = -1;
     for (let col = 0; col <= feature.cols; col++) {
       const live = col < feature.cols
