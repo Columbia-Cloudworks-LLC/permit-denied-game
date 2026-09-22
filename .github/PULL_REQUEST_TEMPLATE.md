@@ -2,6 +2,13 @@
 
 <!-- Why this change exists. Link the issue if there is one. -->
 
+<!-- Stacked PRs only (delete this block when the PR stands alone).
+Stack: N of M
+Depends on: #NNN
+Next: #NNN
+A stack is several branches and several PRs. Several commits on this branch are not a stack.
+-->
+
 Fixes #
 
 ## Scope

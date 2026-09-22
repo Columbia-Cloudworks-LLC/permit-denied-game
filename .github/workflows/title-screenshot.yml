@@ -1,8 +1,8 @@
 name: Title Screenshot
 
 on:
+  # Every internal PR, including a stack layer whose base is not main.
   pull_request:
-    branches: [main]
     types: [opened, synchronize, reopened, ready_for_review]
 
 env:
