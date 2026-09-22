@@ -9,6 +9,8 @@ import {
   type TerrainSurface,
 } from "../world/terrain";
 import type { GroundCondition } from "../world/groundCondition";
+import type { SeasonId } from "../world/season";
+import { ICE_COLOR, ICE_CRACK } from "../world/season";
 
 function validBlobMask(mask: number): boolean {
   const n = (mask & 1) !== 0;
@@ -195,6 +197,7 @@ export function buildTerrainChunks(
   grid: SurfaceGrid,
   atlas?: TerrainAtlas | null,
   condition: GroundCondition = "clear",
+  season: SeasonId = "summer",
 ): number {
   parent.removeChildren().forEach((child) => {
     child.destroy({ children: true });
@@ -205,10 +208,11 @@ export function buildTerrainChunks(
   const chunksY = Math.ceil(grid.rows / SURFACE_CHUNK);
   for (let cy = 0; cy < chunksY; cy++) {
     for (let cx = 0; cx < chunksX; cx++) {
-      const mesh = buildChunkMesh(grid, cx, cy, sheet, condition);
+      const mesh = buildChunkMesh(grid, cx, cy, sheet, condition, season);
       if (mesh) parent.addChild(mesh);
     }
   }
+  if (condition === "snow" || season === "winter") paintFrozenWater(parent, grid);
   return chunksX * chunksY;
 }
 
@@ -234,12 +238,41 @@ function paintTerrainSkirt(parent: Container, grid: SurfaceGrid): void {
   parent.addChild(g);
 }
 
+function paintFrozenWater(parent: Container, grid: SurfaceGrid): void {
+  const g = new Graphics();
+  let painted = 0;
+  for (let iy = 0; iy < grid.rows; iy++) {
+    for (let ix = 0; ix < grid.cols; ix++) {
+      if (grid.surface[iy * grid.cols + ix] !== SURFACE_ID.water) continue;
+      const wx = grid.ox + ix;
+      const wy = grid.oy + iy;
+      drawWorldPoly(g, [
+        { x: wx, y: wy, z: 0.02 },
+        { x: wx + 1, y: wy, z: 0.02 },
+        { x: wx + 1, y: wy + 1, z: 0.02 },
+        { x: wx, y: wy + 1, z: 0.02 },
+      ], ICE_COLOR, 0.88);
+      if ((ix + iy) % 5 === 0) {
+        drawWorldPoly(g, [
+          { x: wx + 0.15, y: wy + 0.45, z: 0.03 },
+          { x: wx + 0.85, y: wy + 0.5, z: 0.03 },
+          { x: wx + 0.82, y: wy + 0.58, z: 0.03 },
+          { x: wx + 0.12, y: wy + 0.53, z: 0.03 },
+        ], ICE_CRACK, 0.55);
+      }
+      painted++;
+    }
+  }
+  if (painted) parent.addChild(g);
+}
+
 function buildChunkMesh(
   grid: SurfaceGrid,
   cx: number,
   cy: number,
   atlas: TerrainAtlas,
   condition: GroundCondition,
+  season: SeasonId,
 ): Mesh | null {
   const x0 = cx * SURFACE_CHUNK;
   const y0 = cy * SURFACE_CHUNK;
@@ -248,7 +281,7 @@ function buildChunkMesh(
   const quads: { x: number; y: number; frame: AtlasFrame }[] = [];
   for (let iy = y0; iy < y1; iy++) {
     for (let ix = x0; ix < x1; ix++) {
-      const cell = describeCell(grid, ix, iy, condition);
+      const cell = describeCell(grid, ix, iy, condition, season);
       if (!cell) continue;
       const wx = grid.ox + ix;
       const wy = grid.oy + iy;
@@ -306,6 +339,7 @@ export function describeCell(
   ix: number,
   iy: number,
   condition: GroundCondition = "clear",
+  season: SeasonId = "summer",
 ): { base: string; overlay?: string } | null {
   const i = iy * grid.cols + ix;
   const id = grid.surface[i]!;
@@ -318,7 +352,8 @@ export function describeCell(
     return { base: terrainSolidFrame("duff", variant, condition) };
   }
   const baseKind = baseSurface(surface);
-  const base = terrainSolidFrame(baseKind, variant, condition);
+  const framed = season === "autumn" && (baseKind === "grass" || baseKind === "prairie") ? "leaf-litter" : baseKind;
+  const base = terrainSolidFrame(framed, variant, condition);
   if (condition === "snow" && surface !== "water") {
     return { base };
   }

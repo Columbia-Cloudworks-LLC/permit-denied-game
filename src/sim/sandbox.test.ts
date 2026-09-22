@@ -61,10 +61,10 @@ describe("sandbox session rules", () => {
   });
 
   it("does not force clock, heat, or track failure in sandbox", () => {
-    const sandbox = sessionFailsOn({ kind: "sandbox", district: "classic", seed: 1, ranchFocus: false });
+    const sandbox = sessionFailsOn({ kind: "sandbox", district: "classic", seed: 1, ranchFocus: false, season: "summer", seasonExplicit: false, weatherDetail: "on" });
     expect(sandbox).toEqual({ heat: false, track: false, clock: false });
-    expect(sessionForcesUpgrade({ kind: "sandbox", district: "classic", seed: 1, ranchFocus: false })).toBe(false);
-    const challenge = sessionFailsOn({ kind: "challenge", district: "classic", seed: 1, ranchFocus: false });
+    expect(sessionForcesUpgrade({ kind: "sandbox", district: "classic", seed: 1, ranchFocus: false, season: "summer", seasonExplicit: false, weatherDetail: "on" })).toBe(false);
+    const challenge = sessionFailsOn({ kind: "challenge", district: "classic", seed: 1, ranchFocus: false, season: "summer", seasonExplicit: false, weatherDetail: "on" });
     expect(challenge).toEqual({ heat: true, track: true, clock: true });
   });
 

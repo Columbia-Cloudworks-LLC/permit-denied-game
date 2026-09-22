@@ -1,4 +1,7 @@
 import type { Building } from '../structure/types';
+import type { BiomeId } from '../world/biomes';
+import { selectCampaignBiome } from '../world/biomes';
+import { resolveSeason, seasonLabel, type SeasonId } from '../world/season';
 import type { Upgrades } from './upgrades';
 import { COPY } from './constants';
 import {
@@ -31,6 +34,8 @@ export interface CampaignRun {
   complete: boolean;
   victory: boolean;
   entry: CampaignSnapshot;
+  season: SeasonId;
+  biomeId: BiomeId;
 }
 
 export function emptyUpgrades(): Upgrades {
@@ -60,6 +65,8 @@ export function startCampaign(seed: number): CampaignRun {
     complete: false,
     victory: false,
     entry: { upgrades: emptyUpgrades(), nextUpgrade: 0, campaignEarned: 0 },
+    season: resolveSeason(seed),
+    biomeId: selectCampaignBiome(seed).id,
   };
   run.entry = snapshot(run);
   return run;
@@ -174,16 +181,19 @@ export function advanceCampaignLevel(run: CampaignRun, nextSeed: number): Campai
   return next;
 }
 
-export function campaignBriefingText(level: CampaignLevelDef): string {
+export function campaignBriefingText(level: CampaignLevelDef, season: SeasonId = 'summer'): string {
   const minutes = Math.floor(level.timeLimit / 60);
   const seconds = level.timeLimit % 60;
   const clock = seconds ? `${minutes}:${String(seconds).padStart(2, '0')}` : `${minutes}:00`;
-  return [
+  const lines = [
     `Level ${level.index} · ${level.name}`,
+    `Season: ${seasonLabel(season)}. Chosen once for this campaign.`,
     `Landmark: ${level.landmark.label}`,
     `Earn $${level.dollarTarget.toLocaleString('en-US')} and demolish the landmark.`,
     `County clock: ${clock}.`,
-  ].join('\n');
+  ];
+  if (season === 'winter') lines.push('Winter ice is frozen solid. The dozer can cross it.');
+  return lines.join('\n');
 }
 
 export function campaignLevelId(run: CampaignRun): CampaignLevelId {

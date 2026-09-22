@@ -37,7 +37,8 @@ describe("cover palettes", () => {
     expect(coverColor("lot", "clear")).toBe(PAL.lot);
     expect(coverColor("driveway", "clear")).toBe(0x5a5248);
     expect(coverColor("water", "clear")).toBe(PAL.water);
-    expect(coverColor("water", "snow")).toBe(PAL.water);
+    expect(coverColor("water", "snow")).not.toBe(PAL.water);
+    expect(coverColor("water", "snow")).toBe(0x6e8ea4);
   });
 
   it("snows soft lot covers without summer-green or warm-earth rectangles", () => {

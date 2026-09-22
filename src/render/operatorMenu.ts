@@ -2,6 +2,7 @@ import { TITLE } from '../game/constants';
 import { PermitIntro, permitDocument, type PermitSound } from './permitIntro';
 import { CAMPAIGN_LEVELS, type CampaignLevelId } from '../game/campaign';
 import { type DistrictId, type SessionKind } from '../game/session';
+import { seasonLabel, SEASONS, WEATHER_DETAILS, type SeasonId, type SeasonSelection, type WeatherDetail } from '../world/season';
 import { MENU_LABELS as L, MODE_LABELS, MODE_DESCRIPTIONS } from '../game/menuLabels';
 import { labeledMenuButton, MENU_ICONS, soundButtonContent } from './menuIcons';
 import { version } from '../../package.json';
@@ -11,7 +12,7 @@ type Page = 'home' | 'dispatch' | 'controls' | 'about' | 'equipment';
 export interface MenuActions {
   page?(page: Page | null, host?: HTMLElement): void;
   resume(): void;
-  start(kind: SessionKind, level: CampaignLevelId): void;
+  start(kind: SessionKind, level: CampaignLevelId, season: SeasonSelection, effects: WeatherDetail): void;
   restart(): void;
   debug?(): void;
   title(): void;
@@ -36,6 +37,8 @@ export class OperatorMenu {
   private page: Page = 'home';
   private session: SessionKind = 'sandbox';
   private level: CampaignLevelId = 'county';
+  private seasonSelection: SeasonSelection = 'random';
+  private effects: WeatherDetail = 'on';
   private muted = false;
   private updateAvailable = false;
   private readonly intro = new PermitIntro();
@@ -80,7 +83,7 @@ export class OperatorMenu {
       if (action === 'mute') this.actions.mute();
       if (action === 'pwa-update') this.actions.pwaUpdate?.();
       if (action === 'start') {
-        this.actions.start(this.session, this.level);
+        this.actions.start(this.session, this.level, this.seasonSelection, this.effects);
       }
     });
     this.body.addEventListener('change', e => {
@@ -90,6 +93,8 @@ export class OperatorMenu {
         this.syncSetup();
       }
       if (input.id === 'dispatch-lot') this.level = input.value as CampaignLevelId;
+      if (input.id === 'dispatch-season') this.seasonSelection = input.value as SeasonSelection;
+      if (input.id === 'dispatch-effects') this.effects = input.value as WeatherDetail;
     });
     // Handle menu navigation before focused controls consume the key.
     this.root.addEventListener('keydown', e => {
@@ -110,15 +115,17 @@ export class OperatorMenu {
     }, true);
   }
 
-  show(mode: 'title' | 'pause' | null, session: SessionKind, district: DistrictId, developmentScenario = false, level?: CampaignLevelId): void {
+  show(mode: 'title' | 'pause' | null, session: SessionKind, district: DistrictId, developmentScenario = false, level?: CampaignLevelId, season?: SeasonId, effects?: WeatherDetail): void {
     if (this.mode === mode) return;
     if (mode === 'pause') {
       this.session = session;
       this.level = level ?? 'county';
+      if (season) this.seasonSelection = season;
+      if (effects) this.effects = effects;
       void district;
       void developmentScenario;
     }
-    if (mode === 'title') { this.session = 'sandbox'; this.level = 'county'; }
+    if (mode === 'title') { this.session = 'sandbox'; this.level = 'county'; this.seasonSelection = 'random'; this.effects = 'on'; }
     this.mode = mode;
     this.root.hidden = !mode;
     if (mode) {
@@ -157,6 +164,15 @@ export class OperatorMenu {
     const sizes = this.body.querySelector<HTMLSelectElement>('#dispatch-lot')!;
     sizes.innerHTML = CAMPAIGN_LEVELS.map((level) => `<option value="${level.id}">${level.index}/7 ${level.name}</option>`).join('');
     sizes.value = this.level;
+    const seasonField = this.body.querySelector<HTMLElement>('#dispatch-season-field')!;
+    const seasonSelect = this.body.querySelector<HTMLSelectElement>('#dispatch-season')!;
+    seasonField.hidden = this.session === 'challenge';
+    seasonSelect.value = this.session === 'challenge' ? 'random' : this.seasonSelection;
+    this.body.querySelector<HTMLSelectElement>('#dispatch-effects')!.value = this.effects;
+    const note = this.body.querySelector('#season-note')!;
+    note.textContent = this.session === 'challenge'
+      ? 'The season is chosen once for the campaign and kept through all seven levels, including the estate. Winter ice can be crossed.'
+      : 'Random resolves when the run starts and is shown on the level line. Restart keeps it. New Layout rerolls Random and keeps Spring, Summer, Autumn, or Winter.';
     this.body.querySelector('#mode-description')!.textContent = MODE_DESCRIPTIONS[this.session];
   }
 
@@ -176,7 +192,9 @@ export class OperatorMenu {
       <nav class="menu-grid" aria-label="Game menu"><button data-nav="controls">${labeledMenuButton(MENU_ICONS.gamepad, L.controls)}</button><button data-menu-action="mute">${soundButtonContent(false)}</button><button data-nav="about">${labeledMenuButton(MENU_ICONS.about, L.about)}</button>${facebookLink}${this.mode === 'pause' ? `<button data-menu-action="title" aria-describedby="main-menu-help">${L.mainMenu}</button>` : ''}</nav>${this.mode === 'pause' ? '<p class="fine-print" id="main-menu-help">Returning to the main menu ends this game. You cannot resume it.</p>' : ''}${this.updatePromptHtml()}`;
     if (page === 'equipment') this.body.innerHTML = '<div class="equipment-details"></div><h2>Permit Application</h2><p class="fine-print">Resubmitting spends cash on a county processing fee.</p><div class="menu-permit-host"></div>';
     if (page === 'dispatch') {
-      this.body.innerHTML = `<div class="dispatch-fields"><label>Mode<select id="dispatch-mode">${Object.entries(MODE_LABELS).map(([id, label]) => `<option value="${id}">${label}</option>`).join('')}</select></label><label id="dispatch-lot-field">Level<select id="dispatch-lot"></select></label></div><p class="fine-print" id="mode-description"></p>${this.mode === 'pause' ? '<p class="caution">Starting a new game replaces your current progress and upgrades.</p>' : ''}<button class="primary" data-menu-action="start">${L.start}</button><button data-nav="back">Back</button>`;
+      const seasonOptions = [`<option value="random">Random</option>`, ...SEASONS.map((id) => `<option value="${id}">${seasonLabel(id)}</option>`)].join('');
+      const effectOptions = WEATHER_DETAILS.map((id) => `<option value="${id}">${id === 'on' ? 'On' : id === 'reduced' ? 'Reduced' : 'Off'}</option>`).join('');
+      this.body.innerHTML = `<div class="dispatch-fields"><label>Mode<select id="dispatch-mode">${Object.entries(MODE_LABELS).map(([id, label]) => `<option value="${id}">${label}</option>`).join('')}</select></label><label id="dispatch-lot-field">Level<select id="dispatch-lot"></select></label><label id="dispatch-season-field">Season<select id="dispatch-season">${seasonOptions}</select></label><label id="dispatch-effects-field">Weather<select id="dispatch-effects">${effectOptions}</select></label></div><p class="fine-print" id="season-note"></p><p class="fine-print" id="mode-description"></p>${this.mode === 'pause' ? '<p class="caution">Starting a new game replaces your current progress and upgrades.</p>' : ''}<button class="primary" data-menu-action="start">${L.start}</button><button data-nav="back">Back</button>`;
       this.syncSetup();
     }
     if (page === 'controls') this.body.innerHTML = `<dl class="control-list"><div><dt>W / S or ↑ / ↓</dt><dd>Drive forward / reverse</dd></div><div><dt>A / D or ← / →</dt><dd>Steer left / right</dd></div><div><dt>Hold SPACE</dt><dd>Power the blade</dd></div><div><dt>Esc / Pause</dt><dd>Pause / Resume</dd></div><div><dt>R</dt><dd>${L.restart}</dd></div><div><dt>N</dt><dd>${L.newLayout}</dd></div><div><dt>1 / 2 / 3</dt><dd>${L.blade} / ${L.engine} / ${L.push} upgrade</dd></div><div><dt>M</dt><dd>Toggle sound</dd></div></dl><div class="instruction-card"><strong>Touch Controls</strong><p>Drag the left stick to drive and steer. Hold the right POWER BLADE button while driving. Release the stick to coast. Release the blade to finish the current push.</p></div><p class="fine-print">Watch ENGINE HEAT and TRACK STRESS. Above 65%, release the blade or back off rubble. In sandbox these gauges remain advisory.</p>`;

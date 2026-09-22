@@ -15,14 +15,19 @@ describe("map ground condition", () => {
     }
   });
 
-  it("stores the biome-derived condition on generated towns", () => {
+  it("keeps conifer maps clear unless the season is winter", () => {
     const classic = createTown();
     expect(classic.groundCondition).toBe("clear");
-    expect(classic.biome.id).not.toBe("northern-conifer");
+    expect(classic.season).toBe("summer");
 
-    const snow = createTown({ district: "d10", seed: 1, topology: "tjunction" });
+    const conifer = createTown({ district: "d10", seed: 1, topology: "tjunction" });
+    expect(conifer.biome.id).toBe("northern-conifer");
+    expect(conifer.groundCondition).toBe("clear");
+
+    const snow = createTown({ district: "d10", seed: 1, topology: "tjunction", season: "winter" });
     expect(snow.biome.id).toBe("northern-conifer");
     expect(snow.groundCondition).toBe("snow");
+    expect(snow.season).toBe("winter");
 
     const clear = createTown({ district: "d10", seed: 19, topology: "curve-farm" });
     expect(clear.biome.id).not.toBe("northern-conifer");

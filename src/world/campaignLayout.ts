@@ -16,19 +16,22 @@ import {
   RoadBuilder,
   samplePolyline,
 } from './roads';
-import { defaultBiome } from './biomes';
+import { selectCampaignBiome } from './biomes';
 import { DRESSING } from '../game/constants';
 import { enforceOpenCorridors, finalizeStampedSurface, generateSurfaceGrid, stampDeveloped } from './terrain';
 import { deriveTerrainFeatures } from './terrainFeatures';
-import type { RuralLayout } from './rural';
-import { generateRuralLayout } from './rural';
+import { generateRuralLayout, type LayoutEnvironment, type RuralLayout } from './rural';
 
-export function generateCampaignLayout(level: CampaignLevelDef, seed: number): RuralLayout {
-  if (level.generation.topology === 'estate') return generateEstateLayout(level, seed);
-  return generateRuralLayout('d30', seed, level.generation.topology, level);
+export function generateCampaignLayout(level: CampaignLevelDef, seed: number, environment?: LayoutEnvironment): RuralLayout {
+  const resolved: LayoutEnvironment = {
+    season: environment?.season ?? "summer",
+    biome: environment?.biome ?? selectCampaignBiome(seed),
+  };
+  if (level.generation.topology === 'estate') return generateEstateLayout(level, seed, resolved);
+  return generateRuralLayout('d30', seed, level.generation.topology, level, resolved);
 }
 
-function generateEstateLayout(level: CampaignLevelDef, seed: number): RuralLayout {
+function generateEstateLayout(level: CampaignLevelDef, seed: number, environment: LayoutEnvironment): RuralLayout {
   const site = BUILDING_SITES.find(entry => entry.id === 'governors-estate');
   if (!site) throw new Error('Missing governors-estate site package');
   const originX = 8;
@@ -64,7 +67,8 @@ function generateEstateLayout(level: CampaignLevelDef, seed: number): RuralLayou
   const approach = b.node((left + right) * 0.5, bottom + 16, 0);
   b.segment(midS, approach, linePoints(pt(midS), pt(approach)), { roadClass: 'rural' });
   b.normalizeJunctions();
-  const biome = defaultBiome();
+  const biome = environment.biome ?? selectCampaignBiome(seed);
+  const season = environment.season ?? "summer";
   const surface = generateSurfaceGrid({
     seed,
     biome,
@@ -159,6 +163,7 @@ function generateEstateLayout(level: CampaignLevelDef, seed: number): RuralLayou
     roadSpawnY: spawn.y,
     propBudget: level.generation.dressingBudget ?? DRESSING.districtMax.d30,
     surface,
+    season,
   });
 
   return {

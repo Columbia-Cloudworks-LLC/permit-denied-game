@@ -197,6 +197,8 @@ function markSize(kind: GroundKind, rng: { range: (a: number, b: number) => numb
     case "splinter":
     case "glass":
       return { w: rng.range(0.08, 0.22), d: rng.range(0.06, 0.16), alpha: 0.7 };
+    case "season-track":
+      return { w: rng.range(0.42, 0.7), d: rng.range(0.12, 0.2), alpha: 0.5 };
     default: {
       const _never: never = kind;
       return _never;

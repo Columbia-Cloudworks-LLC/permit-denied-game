@@ -36,7 +36,9 @@ import {
   payFieldDamage,
 } from "../world/fields";
 import { emitDozerCues } from "./dozerCues";
-import { churnFieldAt, resolveTraversal, terrainTraversalAt } from "../world/terrainFeatures";
+import { churnFieldAt, movementBlocked, resolveTraversal, terrainTraversalAt } from "../world/terrainFeatures";
+import { standingCrop } from "../world/season";
+import { leaveSeasonalTrack } from "../world/seasonTracks";
 
 
 
@@ -384,10 +386,10 @@ export function stepWorld(
       { x: dozer.x + Math.cos(dozer.heading) * DOZER.radius, y: dozer.y + Math.sin(dozer.heading) * DOZER.radius },
       { x: dozer.x - Math.cos(dozer.heading) * DOZER.radius * 0.6, y: dozer.y - Math.sin(dozer.heading) * DOZER.radius * 0.6 },
     ];
-    if (pins.some((pin) => terrainTraversalAt(town.features, pin.x, pin.y, town.surface) !== "open")) {
+    if (pins.some((pin) => movementBlocked(terrainTraversalAt(town.features, pin.x, pin.y, town.surface), town.season))) {
       const startX = dozer.motionStartX ?? dozer.x;
       const startY = dozer.motionStartY ?? dozer.y;
-      const resolved = resolveTraversal(dozer.x, dozer.y, startX, startY, town.features, town.surface);
+      const resolved = resolveTraversal(dozer.x, dozer.y, startX, startY, town.features, town.surface, town.season);
       dozer.x = resolved.x;
       dozer.y = resolved.y;
       if (resolved.blocked) {
@@ -395,6 +397,7 @@ export function stepWorld(
         dozer.vy *= 0.28;
       }
     }
+    if (dozerSpeed(dozer) > 1.15) leaveSeasonalTrack(town, dozer.x, dozer.y, dozer.heading);
     if (town.features.some((feature) => feature.kind === "field")) {
       cash += flattenCrops(town, dozer, particles, events, dt);
     }
@@ -452,7 +455,7 @@ function flattenCrops(
     const wasCleared = !!feature.cleared;
     cash += payFieldDamage(feature, newly);
     const take = Math.min(FIELD_CROP_FRAGS_PER_TICK - frags, Math.min(4, 1 + Math.floor(newly / 6)));
-    if (take > 0 && feature.state !== "tilled") {
+    if (take > 0 && standingCrop(feature.state)) {
       particles.cropFrags(dozer.x, dozer.y, 0.32, take, cropFragmentColor(feature.crop));
       frags += take;
     }
@@ -460,7 +463,7 @@ function flattenCrops(
       cropSoundCredit -= 1;
       events.push({ kind: "crush", x: dozer.x, y: dozer.y, z: 0.2, mag: bladeDown ? 0.38 : 0.22 });
     }
-    if (!wasCleared && feature.cleared) {
+    if (!wasCleared && feature.cleared && standingCrop(feature.state)) {
       events.push({ kind: "cash", x: dozer.x, y: dozer.y, z: 0.4, mag: 1.2, cash: Math.max(1, Math.floor((feature.value ?? 0) * 0.2)) });
     }
   }

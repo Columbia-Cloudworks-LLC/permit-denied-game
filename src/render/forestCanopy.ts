@@ -1,5 +1,6 @@
 import type { Graphics } from "pixi.js";
 import type { BiomeProfile } from "../world/biomes";
+import type { SeasonId } from "../world/season";
 import { Rng } from "../game/rng";
 import { SURFACE_CHUNK, SURFACE_ID, type SurfaceGrid } from "../world/terrain";
 import { drawOrientedIsoBox, headingOffset, shade } from "./drawIso";
@@ -18,6 +19,7 @@ export interface ForestGarnish {
   scale: number;
   tint: number;
   seed: number;
+  phenology: SeasonId;
 }
 
 const OAK_FOL = [
@@ -47,8 +49,24 @@ const SHRUB_FOL = [
   { t: 0x3e6a38, l: 0x1e4028, r: 0x2e5430 },
   { t: 0x567c3c, l: 0x2c4c20, r: 0x406830 },
 ] as const;
+const SPRING_FOL = [
+  { t: 0x8cbc62, l: 0x4e7434, r: 0x6a9448 },
+  { t: 0x98c86e, l: 0x567c3c, r: 0x74a050 },
+  { t: 0x7eb056, l: 0x466830, r: 0x5e8c40 },
+] as const;
+const AUTUMN_FOL = [
+  { t: 0xc45a28, l: 0x7a3018, r: 0xa04420 },
+  { t: 0xd4a024, l: 0x8a6414, r: 0xb4841c },
+  { t: 0x8a3c22, l: 0x4a2014, r: 0x6a3020 },
+] as const;
+const AUTUMN_CROWN = [
+  { t: 0xe0b040, l: 0x8a6418, r: 0xc48c28 },
+  { t: 0xc46830, l: 0x7a3818, r: 0xa45024 },
+  { t: 0xa84828, l: 0x642818, r: 0x883820 },
+] as const;
+const BLOSSOM = { t: 0xf2d0dc, l: 0xc890a4, r: 0xe0b0c0 };
 
-export function planForestGarnish(grid: SurfaceGrid, biome: BiomeProfile, seed: number): ForestGarnish[] {
+export function planForestGarnish(grid: SurfaceGrid, biome: BiomeProfile, seed: number, season: SeasonId = "summer"): ForestGarnish[] {
   const buckets = new Map<number, { core: { ix: number; iy: number }[]; floor: { ix: number; iy: number }[] }>();
   for (let iy = 0; iy < grid.rows; iy++) {
     for (let ix = 0; ix < grid.cols; ix++) {
@@ -83,6 +101,7 @@ export function planForestGarnish(grid: SurfaceGrid, biome: BiomeProfile, seed: 
         scale: scaleFor(picked.form, species, rng),
         tint: salt % 3,
         seed: salt,
+        phenology: season,
       });
     }
   }
@@ -117,14 +136,19 @@ export function drawForestGarnish(g: Graphics, tree: ForestGarnish, alpha = 1): 
 }
 
 function drawOak(g: Graphics, tree: ForestGarnish, mul: number, alpha: number): void {
-  const s = tree.scale * mul;
-  const fol = OAK_FOL[tree.tint]!;
-  const crown = OAK_CROWN[tree.tint]!;
+  if (tree.phenology === "winter") {
+    drawBareOak(g, tree, mul, alpha);
+    return;
+  }
+  const s = tree.scale * mul * (tree.phenology === "spring" ? 0.72 : 1);
+  const fol = tree.phenology === "autumn" ? AUTUMN_FOL[tree.tint]! : tree.phenology === "spring" ? SPRING_FOL[tree.tint]! : OAK_FOL[tree.tint]!;
+  const crown = tree.phenology === "autumn" ? AUTUMN_CROWN[tree.tint]! : tree.phenology === "spring" ? SPRING_FOL[tree.tint]! : OAK_CROWN[tree.tint]!;
   const trunk = tone(OAK_TRUNK, tree.tint);
   if (tree.form === "interior") {
     drawOrientedIsoBox(g, tree.x, tree.y, tree.heading, 1.72 * s, 1.55 * s, 0.85 * s, 1.15 * s, fol.t, fol.l, fol.r, alpha);
     const top = headingOffset(tree.x, tree.y, tree.heading, 0.12 * s, 0.08 * s);
     drawOrientedIsoBox(g, top.x, top.y, tree.heading + 0.2, 1.05 * s, 0.92 * s, 1.55 * s, 0.72 * s, crown.t, crown.l, crown.r, alpha);
+    drawBlossom(g, tree, s, alpha);
     return;
   }
   drawOrientedIsoBox(g, tree.x, tree.y, tree.heading, 0.4 * s, 0.4 * s, 0, 1.45 * s, trunk.t, trunk.l, trunk.r, alpha);
@@ -132,6 +156,24 @@ function drawOak(g: Graphics, tree: ForestGarnish, mul: number, alpha: number): 
   const side = headingOffset(tree.x, tree.y, tree.heading, 0.28 * s, 0.18 * s);
   drawOrientedIsoBox(g, side.x, side.y, tree.heading - 0.35, 0.95 * s, 0.88 * s, 1.35 * s, 0.82 * s, shade(fol.t, 0.92), fol.l, fol.r, alpha);
   drawOrientedIsoBox(g, tree.x, tree.y, tree.heading + 0.15, 0.88 * s, 0.78 * s, 1.95 * s, 0.7 * s, crown.t, crown.l, crown.r, alpha);
+  drawBlossom(g, tree, s, alpha);
+}
+
+function drawBareOak(g: Graphics, tree: ForestGarnish, mul: number, alpha: number): void {
+  const s = tree.scale * mul;
+  const trunk = tone(OAK_TRUNK, tree.tint);
+  drawOrientedIsoBox(g, tree.x, tree.y, tree.heading, 0.28 * s, 0.28 * s, 0, 1.7 * s, trunk.t, trunk.l, trunk.r, alpha);
+  const arm = headingOffset(tree.x, tree.y, tree.heading, 0.22 * s, 0.05 * s);
+  drawOrientedIsoBox(g, arm.x, arm.y, tree.heading + 0.7, 0.72 * s, 0.12 * s, 1.15 * s, 0.12 * s, trunk.t, trunk.l, trunk.r, alpha);
+  const other = headingOffset(tree.x, tree.y, tree.heading, -0.16 * s, 0.1 * s);
+  drawOrientedIsoBox(g, other.x, other.y, tree.heading - 0.55, 0.58 * s, 0.1 * s, 1.35 * s, 0.1 * s, trunk.r, trunk.l, trunk.t, alpha);
+  drawOrientedIsoBox(g, tree.x, tree.y, tree.heading, 0.16 * s, 0.16 * s, 1.55 * s, 0.55 * s, trunk.t, trunk.l, trunk.r, alpha);
+}
+
+function drawBlossom(g: Graphics, tree: ForestGarnish, s: number, alpha: number): void {
+  if (tree.phenology !== "spring" || tree.seed % 5 !== 0) return;
+  const spot = headingOffset(tree.x, tree.y, tree.heading, 0.2 * s, -0.08 * s);
+  drawOrientedIsoBox(g, spot.x, spot.y, tree.heading, 0.28 * s, 0.22 * s, 1.7 * s, 0.18 * s, BLOSSOM.t, BLOSSOM.l, BLOSSOM.r, alpha);
 }
 
 function drawPine(g: Graphics, tree: ForestGarnish, mul: number, alpha: number): void {
@@ -149,11 +191,25 @@ function drawPine(g: Graphics, tree: ForestGarnish, mul: number, alpha: number):
   drawOrientedIsoBox(g, tree.x, tree.y, tree.heading, 1.02 * s, 1.02 * s, 1.42 * s, 0.82 * s, needle.t, needle.l, needle.r, alpha);
   drawOrientedIsoBox(g, tree.x, tree.y, tree.heading, 0.68 * s, 0.68 * s, 2.05 * s, 0.78 * s, fol.t, fol.l, fol.r, alpha);
   drawOrientedIsoBox(g, tree.x, tree.y, tree.heading, 0.4 * s, 0.4 * s, 2.55 * s, 0.55 * s, needle.t, needle.l, needle.r, alpha);
+  if (tree.phenology === "winter") {
+    drawOrientedIsoBox(g, tree.x, tree.y, tree.heading, 0.28 * s, 0.28 * s, 2.95 * s, 0.16 * s, 0xe4eef4, 0xb7c6d0, 0xd0dce6, alpha);
+  }
 }
 
 function drawShrub(g: Graphics, tree: ForestGarnish, pine: boolean, alpha: number): void {
   const s = tree.scale;
-  const fol = pine ? PINE_FOL[tree.tint]! : SHRUB_FOL[tree.tint]!;
+  if (!pine && tree.phenology === "winter") {
+    const trunk = tone(OAK_TRUNK, tree.tint);
+    drawOrientedIsoBox(g, tree.x, tree.y, tree.heading, 0.16 * s, 0.16 * s, 0, 0.42 * s, trunk.t, trunk.l, trunk.r, alpha);
+    return;
+  }
+  const fol = pine
+    ? PINE_FOL[tree.tint]!
+    : tree.phenology === "autumn"
+      ? AUTUMN_FOL[tree.tint]!
+      : tree.phenology === "spring"
+        ? SPRING_FOL[tree.tint]!
+        : SHRUB_FOL[tree.tint]!;
   drawOrientedIsoBox(g, tree.x, tree.y, tree.heading, 0.95 * s, 0.82 * s, 0, 0.55 * s, fol.t, fol.l, fol.r, alpha);
   const bump = headingOffset(tree.x, tree.y, tree.heading, 0.16 * s, -0.12 * s);
   drawOrientedIsoBox(g, bump.x, bump.y, tree.heading + 0.4, 0.62 * s, 0.55 * s, 0.28 * s, 0.42 * s, shade(fol.t, 1.08), fol.l, fol.r, alpha);
@@ -275,6 +331,24 @@ export function planForestMasses(grid: SurfaceGrid): ForestMass[] {
   return runs;
 }
 
-export function drawForestMass(g: Graphics, mass: ForestMass): void {
-  drawOrientedIsoBox(g, mass.x + mass.w * 0.5, mass.y + mass.d * 0.5, 0, mass.w, mass.d, 0.35, 1.15, 0x3e6828, 0x24441c, 0x2a4c20, 0.92);
+export function drawForestMass(g: Graphics, mass: ForestMass, season: SeasonId = "summer"): void {
+  const color = forestMassColor(season);
+  drawOrientedIsoBox(g, mass.x + mass.w * 0.5, mass.y + mass.d * 0.5, 0, mass.w, mass.d, 0.35, 1.15, color.t, color.l, color.r, 0.92);
+}
+
+function forestMassColor(season: SeasonId): { t: number; l: number; r: number } {
+  switch (season) {
+    case "spring":
+      return { t: 0x6a9a44, l: 0x3a5c28, r: 0x4e7a34 };
+    case "summer":
+      return { t: 0x3e6828, l: 0x24441c, r: 0x2a4c20 };
+    case "autumn":
+      return { t: 0xa85a28, l: 0x6a3418, r: 0x8a4420 };
+    case "winter":
+      return { t: 0x8a94a0, l: 0x5a646c, r: 0x6e7880 };
+    default: {
+      const _never: never = season;
+      return _never;
+    }
+  }
 }

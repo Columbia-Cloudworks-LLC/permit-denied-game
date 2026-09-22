@@ -21,6 +21,12 @@ export function bootOpenedSession(host: SessionBootHost, search: string): void {
     campaign.levelIndex = CAMPAIGN_LEVELS.findIndex((level) => level.id === requested);
     if (levelParam && isCampaignLevelId(levelParam)) campaign.briefing = false;
   }
+  if (campaign) {
+    if (host.rules.seasonExplicit) campaign.season = host.rules.season;
+    if (host.rules.biomeId) campaign.biomeId = host.rules.biomeId;
+    host.rules.season = campaign.season;
+    host.rules.biomeId = campaign.biomeId;
+  }
   host.applyCampaign(campaign);
   host.reset("same");
   if (host.rules.testMap) host.openDebug();

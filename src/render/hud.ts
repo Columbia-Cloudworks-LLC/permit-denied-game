@@ -12,6 +12,7 @@ import { OperatorMenu } from './operatorMenu';
 import type { PermitSound } from './permitIntro';
 import { DEBUG_GROUPS, type DebugView, type DebugToggle } from "../debug/view";
 import { type DistrictId, type SessionKind } from "../game/session";
+import type { SeasonId, SeasonSelection, WeatherDetail } from "../world/season";
 import { createDebugBinderState, type BinderTab } from '../debug/binderState';
 import { applyPwaUpdate, onPwaUpdate } from '../pwa/update';
 
@@ -69,6 +70,8 @@ export interface HudState {
   won: boolean;
   campaign?: CampaignHud;
   fieldNotice?: string;
+  season?: SeasonId;
+  weatherDetail?: WeatherDetail;
 }
 
 export class Hud {
@@ -96,7 +99,7 @@ export class Hud {
   onMute?: () => void;
   onMenu?: () => void;
   onTitle?: () => void;
-  onStart?: (kind: SessionKind, level: CampaignLevelId) => void;
+  onStart?: (kind: SessionKind, level: CampaignLevelId, season: SeasonSelection, effects: WeatherDetail) => void;
   onBeginLevel?: () => void;
   onNextLevel?: () => void;
   onRetryLevel?: () => void;
@@ -196,7 +199,7 @@ export class Hud {
         root.querySelector('#hud-permit')!.append(this.permitLogo.root);
         if (page === 'equipment') host!.querySelector('.menu-permit-host')!.append(this.permitLogo.root);
       },
-      resume: () => this.onResume?.(), start: (kind, district) => this.onStart?.(kind, district),
+      resume: () => this.onResume?.(), start: (kind, level, season, effects) => this.onStart?.(kind, level, season, effects),
       restart: () => this.onRestart?.(),
       debug: () => { this.onResume?.(); this.openDebug(); },
       title: () => this.onTitle?.(), mute: () => this.onMute?.(), click: () => this.onClick?.(),
@@ -466,7 +469,8 @@ export class Hud {
     campaignEl.hidden = !s.campaign;
     if (s.campaign) {
       this.cashTarget.textContent = `of $${s.campaign.dollarTarget.toLocaleString('en-US')} ${s.campaign.dollarsReady ? 'DONE' : ''}`;
-      this.root.querySelector('#hud-level-name')!.textContent = `${s.campaign.levelIndex}/7 ${s.campaign.levelName}`;
+      const season = s.season ? ` · ${s.season[0]!.toUpperCase()}${s.season.slice(1)}` : '';
+      this.root.querySelector('#hud-level-name')!.textContent = `${s.campaign.levelIndex}/7 ${s.campaign.levelName}${season}`;
       this.root.querySelector('#hud-campaign-dollars')!.textContent = `$${Math.floor(s.campaign.levelEarned).toLocaleString('en-US')}`;
       this.root.querySelector('#hud-landmark')!.textContent =
         `${s.campaign.landmarkName} ${Math.floor(s.campaign.landmarkProgress * 100)}%${s.campaign.landmarkReady ? ' DOWN' : ''}`;
@@ -515,7 +519,7 @@ export class Hud {
       const el = this.root.querySelector<HTMLElement>(selector);
       if (el) el.inert = modal;
     }
-    this.menu.show(s.overlay === 'title' || s.overlay === 'pause' ? s.overlay : null, s.session, s.district, s.developmentScenario, s.campaign?.levelId ?? s.levelId);
+    this.menu.show(s.overlay === 'title' || s.overlay === 'pause' ? s.overlay : null, s.session, s.district, s.developmentScenario, s.campaign?.levelId ?? s.levelId, s.season, s.weatherDetail);
     this.menu.syncMuted(s.muted);
     this.renderMobile(s, elapsedClock, advisory);
 

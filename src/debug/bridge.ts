@@ -85,6 +85,8 @@ export interface TownFeatureSnapshot {
 export interface TownDebugSnapshot {
   groundCondition: string;
   biomeId: string;
+  season?: string;
+  weather?: string;
   spawn: { x: number; y: number };
   lots: TownLotSnapshot[];
   ground: TownGroundSnapshot[];
