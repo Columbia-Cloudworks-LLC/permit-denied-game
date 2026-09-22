@@ -2,7 +2,7 @@
 
 The County Said No.
 
-A browser demolition arcade: you drive a bulldozer through a compact isometric town, grind buildings apart, and cash out before the county clock hits zero. Sandbox mode keeps the same lot open with larger optional districts.
+A browser demolition arcade: you drive a bulldozer through a compact isometric town, grind buildings apart, and cash out before the county clock hits zero. Sandbox mode plays the same seven campaign levels without the county clock.
 
 ## Run
 
@@ -16,18 +16,20 @@ Open the URL Vite prints (http://localhost:5173). Separate Vite entries, not imp
 - `/catalog/` — published still gallery (R2). Permit chrome, search, cards, dialog.
 - `/designer/` — building JSON preview only. File tabs, isolate-lot Pixi view, export/copy. Drafts are never added to the town.
 
-Sandbox and district presets can be opened directly:
+Sandbox and campaign levels can be opened directly:
 
 ```
-http://localhost:5173/?sandbox=1&district=d100
+http://localhost:5173/?sandbox=1&level=city-downtown
 http://localhost:5173/?sandbox=1&ranch=1
 http://localhost:5173/?perf=1
-http://localhost:5173/?sandbox=1&district=d30&nhood=1
+http://localhost:5173/?sandbox=1&level=suburb&nhood=1
 http://localhost:5173/?mode=challenge&seed=19&level=city-downtown&nhood=1
 http://localhost:5173/?mode=challenge&seed=19&level=city-borough&nhood=1
 ```
 
-Time Challenge inspect links skip the title and open that campaign level. `G` toggles the neighborhood overlay (lots colored by urban band). In the local `npm run dev` console, `window.__pd.urbanSnapshot()` dumps band/role per lot; `window.__pd.lookAtTown('overview')` frames the town. Production sessions expose that typed debug bridge only with `?debug=1` (or yard/test-map links), not the live `Game` instance.
+Older size links still open a level: `district=d10` or `classic` is County, `d30` is Suburb, and `d100` is City Downtown. The address bar is rewritten to `level=`.
+
+Time Challenge inspect links skip the title and open that campaign level. `G` frames the whole town and switches on the distant view. It does not draw road paths or parcel envelopes. The neighborhood graph is its own switch in the Debug panel. `?nhood=1` frames the town and turns that graph on. In the local `npm run dev` console, `window.__pd.urbanSnapshot()` dumps band/role per lot; `window.__pd.lookAtTown('overview')` frames the town. Production sessions expose that typed debug bridge only with `?debug=1` (or yard/test-map links), not the live `Game` instance.
 
 Ranch benchmark: `?sandbox=1&ranch=1` loads d10 seed `17634759` with the dozer on the ranch south lawn, facing the house. **R** rebuilds the same lot. Drive **W** into the south wall; **Space** for a powered blade. Chip the middle three south cells, then ease off and watch those roof bays sag, hinge, fall, and settle into pushable panels. Leave and drive back — the wreck and rubble stay. A long hold on **W** punches through the whole house.
 
@@ -84,12 +86,12 @@ The operator console includes engine-heat and track-stress gauges, installed Bla
 | D / → | Steer right |
 | Space | Powered blade (short cooldown) |
 | R | Restart the same layout and seed |
-| N | New seed (new lot, same district size) |
+| N | New seed (same level) |
 | 1 / 2 / 3 | Optional blade / engine / push upgrade (no pause in sandbox) |
 | Esc | Pause |
 | M | Mute |
 | V | Spawn a lighter test road vehicle on a generated route |
-| G | Toggle neighborhood graph overlay (also `?nhood=1`) |
+| G | Frame the whole town. Neighborhood graph is a Debug switch (`?nhood=1` frames and draws it) |
 | ` | Toggle technical timing overlay |
 
 HUD shows **BLADE UP** / **BLADE DOWN**. Deaths: **ENGINE COOKED** (heat from grinding), **TRACK THROWN** (high-speed pole/impact stress), **COUNTY CLOCK** (time).
@@ -98,7 +100,7 @@ HUD shows **BLADE UP** / **BLADE DOWN**. Deaths: **ENGINE COOKED** (heat from gr
 
 Time Challenge is seven timed levels on the same town. Each level shows its cash target and landmark on the top bar. Chip walls, breach rooms, collapse floors. The ranch house is the demolition benchmark — open `?sandbox=1&ranch=1` and see **Run** above. Full building bonuses pay more. Cash milestones pause the clock run for one upgrade: stronger blade, more engine, or a faster powered push. Clear a level to carry upgrades forward; retry restores the upgrades you had when you entered that level.
 
-Sandbox mode has no county clock and does not end from heat or thrown tracks. Restart (R) rebuilds the same layout and seed. New Lot / N rolls a new seed. Play / Change Site selects Time Challenge or Sandbox. Time Challenge is a seven-level campaign (County through Governor's Mansion): demolish the marked landmark and earn that level's dollar target before the county clock expires. It does not pick a site size. Sandbox still chooses district size (10, 30, or 100 buildings). Optional BLADE+ / ENGINE+ / PUSH+ never force a pause in sandbox. See [docs/campaign.md](docs/campaign.md) and [docs/city-map-fabric.md](docs/city-map-fabric.md) for level settings, urban bands, landmarks, and how to add an asset to selected levels. Technical timings stay off the normal HUD; add `?perf=1` or press ` to inspect frame, sim, and debris budgets.
+Sandbox mode has no county clock and does not end from heat or thrown tracks. Restart (R) rebuilds the same layout and seed. New Lot / N rolls a new seed. Play / Change Site selects Time Challenge or Sandbox and one of the seven campaign levels. The same level and seed build the same town in both modes. Time Challenge asks you to demolish the marked landmark and earn that level's dollar target before the county clock expires. Optional BLADE+ / ENGINE+ / PUSH+ never force a pause in sandbox. See [docs/campaign.md](docs/campaign.md) and [docs/city-map-fabric.md](docs/city-map-fabric.md) for level settings, urban bands, landmarks, and how to add an asset to selected levels. Technical timings stay off the normal HUD; add `?perf=1` or press ` to inspect frame, sim, and debris budgets.
 
 Same seed plus the same inputs reproduce a run within ordinary floating-point drift (tests allow about 5–8% mass tolerance through crush/aggregation).
 

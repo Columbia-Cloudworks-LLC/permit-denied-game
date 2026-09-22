@@ -60,7 +60,7 @@ Ordinary = building count minus the landmark. Evaluated in `evaluateUrbanFabric`
 | Building / lot coverage | ≥18% | ≥20% |
 | Unclassified vacant blocks | 0 | 0 |
 
-Inspect a live map with `?mode=challenge&seed=19&level=city-downtown&nhood=1`. `window.__pd.urbanSnapshot()` prints band and role per lot (local dev, or production with `?debug=1`). `G` toggles the overlay; lots are colored by band.
+Inspect a live map with `?mode=challenge&seed=19&level=city-downtown&nhood=1`. `window.__pd.urbanSnapshot()` prints band and role per lot (local dev, or production with `?debug=1`). `G` frames the whole town and does not draw the diagnostic graph. `?nhood=1` frames the town and turns the neighborhood graph on; lots are colored by band. The graph is also a Debug panel switch.
 
 ## Adding a building to a band
 
