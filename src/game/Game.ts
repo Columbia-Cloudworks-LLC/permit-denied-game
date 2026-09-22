@@ -57,6 +57,8 @@ import {
   type CampaignRun,
 } from "./campaignRun";
 import { CAMPAIGN_LEVELS, type CampaignLevelId } from "./campaign";
+import { frameTownOverview } from "./overviewFrame";
+import { generationLevel, rulesForTestMap, showCampaignHud } from "./sessionTransition";
 import { urbanDebugDump } from "../world/urbanGeography";
 import { ARCHETYPES } from "../world/archetypes";
 import {
@@ -146,7 +148,7 @@ export class Game {
     this.app = new Application();
     await this.app.init({
       resizeTo: root,
-      background: 0x3a4a24,
+      background: 0x3e522c,
       antialias: false,
       roundPixels: true,
       autoDensity: true,
@@ -170,7 +172,10 @@ export class Game {
     });
     this.perf.enabled = new URLSearchParams(window.location.search).get("perf") === "1";
     if (this.perf.enabled) this.ensurePerfOverlay();
-    this.renderer.showNhood = new URLSearchParams(window.location.search).get("nhood") === "1";
+    const params = new URLSearchParams(window.location.search);
+    const graph = params.get("nhood") === "1";
+    this.renderer.showNhood = graph;
+    this.renderer.debug.graph = graph;
     this.renderer.debug.perf = this.perf.enabled;
     this.syncDebug();
     bootOpenedSession({
@@ -214,8 +219,12 @@ export class Game {
     this.rules.demo = undefined;
     this.rules.kind = kind;
     this.rules.district = playableDistrict(kind, this.rules.district);
+    this.rules.level ??= "county";
     this.rules.ranchFocus = false;
     this.campaign = kind === 'challenge' ? startCampaign(this.rules.seed) : null;
+    if (this.campaign && this.rules.level) {
+      this.campaign.levelIndex = CAMPAIGN_LEVELS.findIndex((level) => level.id === this.rules.level);
+    }
     this.reset("same");
     this.syncSessionUrl();
   }
@@ -242,9 +251,11 @@ export class Game {
     this.releaseControls();
     this.followRoadCamera = true;
     this.followZoom = 1.15;
+    if (!showCampaignHud(this.rules, this.campaign)) this.campaign = null;
     if (kind === "new" && !keepSetup && !this.campaign) this.rules.seed = nextSeed(this.rules.seed);
     if (this.campaign && kind === "new") this.campaign = retryCampaignLevel(this.campaign);
     if (this.campaign) this.rules.seed = this.campaign.levelSeed;
+    const level = generationLevel(this.rules, this.campaign);
     this.town = createTown({
       towerTest: this.rules.towerTest,
       district: this.rules.district,
@@ -252,7 +263,7 @@ export class Game {
       showcase: !!this.rules.demo,
       testMap: this.rules.testMap,
       topology: this.rules.topology,
-      campaign: this.campaign ? currentLevel(this.campaign) : undefined,
+      campaign: level,
     });
     const ranch = this.rules.demo || this.rules.ranchFocus
       ? this.town.buildings.find((b) => b.archetypeId === (this.rules.demo ?? "ranch"))
@@ -313,7 +324,8 @@ export class Game {
   }
 
   loadTestMap(testMap: TestMapRequest): void {
-    this.rules = { kind: 'sandbox', district: 'classic', seed: this.rules.seed, ranchFocus: false, testMap };
+    this.campaign = null;
+    this.rules = rulesForTestMap(this.rules.seed, testMap);
     this.reset('same');
     if (testMap.kind === 'asset' && !this.yardFocus && !this.town.roadCar) this.yardFocus = this.town.yard?.bays[0];
     this.syncSessionUrl();
@@ -323,7 +335,9 @@ export class Game {
     // Replace the map link without a reload; reload reconstructs this map with fresh UI defaults.
     const params = this.rules.testMap ? new URLSearchParams(testMapSearch(this.rules.testMap, this.rules.seed))
       : new URLSearchParams(this.rules.job ? { job: 'brick', seed: String(this.rules.seed) }
-        : { mode: this.rules.kind, district: this.rules.district, seed: String(this.rules.seed) });
+        : this.rules.level
+          ? { mode: this.rules.kind, level: this.rules.level, seed: String(this.rules.seed) }
+          : { mode: this.rules.kind, district: this.rules.district, seed: String(this.rules.seed) });
     if (this.rules.topology) params.set('topology', this.rules.topology);
     const previous = new URLSearchParams(location.search);
     carryDebugQuery(previous, params);
@@ -331,6 +345,7 @@ export class Game {
   }
 
   startJob(): void {
+    this.campaign = null;
     this.rules = { kind: "challenge", district: "classic", seed: DEFAULT_DISTRICT_SEEDS.classic,
       ranchFocus: false, demo: "rivertown", job: true };
     this.reset("same");
@@ -631,12 +646,23 @@ export class Game {
   }
 
   jumpCampaignLevel(id: CampaignLevelId): void {
+    this.rules.testMap = undefined;
+    this.rules.job = false;
+    this.rules.level = id;
+    if (this.rules.kind === "sandbox") {
+      this.campaign = null;
+      this.reset("same");
+      this.syncSessionUrl();
+      return;
+    }
+    this.rules.kind = "challenge";
     if (!this.campaign) this.campaign = startCampaign(this.rules.seed);
     const index = CAMPAIGN_LEVELS.findIndex(level => level.id === id);
     if (index < 0) return;
     this.campaign.levelIndex = index;
     this.campaign.briefing = false;
     this.reset('same');
+    this.syncSessionUrl();
   }
 
   urbanSnapshot(): Record<string, unknown> | undefined {
@@ -704,34 +730,10 @@ export class Game {
 
   private frameNhood(dt: number): void {
     void dt;
-    const pad = 8;
-    const buildings = this.town.buildings;
-    const minX = buildings.length ? Math.min(...buildings.map(building => building.x)) - pad : this.town.minX - pad;
-    const minY = buildings.length ? Math.min(...buildings.map(building => building.y)) - pad : this.town.minY - pad;
-    const maxX = buildings.length
-      ? Math.max(...buildings.map(building => building.x + building.w * building.cellSize)) + pad
-      : this.town.maxX + pad;
-    const maxY = buildings.length
-      ? Math.max(...buildings.map(building => building.y + building.d * building.cellSize)) + pad
-      : this.town.maxY + pad;
-    const tallest = Math.max(2, ...buildings.map(building => building.floors * 0.45 + 1.5));
-    const box = worldBoundsToScreen(
-      minX,
-      minY,
-      Math.max(8, maxX - minX),
-      Math.max(8, maxY - minY),
-      0,
-      tallest,
-    );
-    const spanX = Math.max(1, box.maxX - box.minX);
-    const spanY = Math.max(1, box.maxY - box.minY);
-    const viewW = this.app.renderer.width - this.hud.debugDockWidth;
-    const viewH = this.app.renderer.height;
-    const zoom = Math.min(0.95, Math.max(0.1, 0.86 * Math.min(viewW / spanX, viewH / spanY)));
-    this.renderer.zoom = zoom;
-    // layout() scales around the world origin, so the camera offset must include zoom.
-    this.renderer.camX = ((box.minX + box.maxX) / 2) * zoom;
-    this.renderer.camY = ((box.minY + box.maxY) / 2) * zoom;
+    const framed = frameTownOverview(this.town, this.app.renderer.width - this.hud.debugDockWidth, this.app.renderer.height);
+    this.renderer.zoom = framed.zoom;
+    this.renderer.camX = framed.camX;
+    this.renderer.camY = framed.camY;
   }
 
   private draw(dt: number): void {
@@ -803,12 +805,27 @@ export class Game {
       death: this.death,
       won: this.mode === "results" && (this.campaign ? this.campaign.complete : this.cash >= CASH_TARGET && !this.death),
       fieldNotice: this.fieldNotice,
-      campaign: this.campaign ? (() => {
+      seed: this.rules.seed,
+      levelId: this.rules.level,
+      levelCard: (() => {
+        const level = generationLevel(this.rules, this.campaign);
+        return level ? {
+          levelIndex: level.index,
+          levelName: level.name,
+          levelId: level.id,
+          buildingCount: level.generation.buildingCount,
+          landmarkName: level.landmark.label,
+          dollarTarget: level.dollarTarget,
+          timeLimit: level.timeLimit,
+        } : undefined;
+      })(),
+      campaign: showCampaignHud(this.rules, this.campaign) && this.campaign ? (() => {
         const level = currentLevel(this.campaign);
         const landmark = landmarkDemolitionStatus(this.town.buildings, level);
         return {
           levelIndex: level.index,
           levelName: level.name,
+          levelId: level.id,
           landmarkName: level.landmark.label,
           dollarTarget: level.dollarTarget,
           levelEarned: this.campaign.levelEarned,
@@ -819,6 +836,8 @@ export class Game {
           briefing: campaignBriefingText(level),
           victory: this.campaign.victory,
           complete: this.campaign.complete,
+          buildingCount: level.generation.buildingCount,
+          timeLimit: level.timeLimit,
         };
       })() : undefined,
     });
@@ -880,9 +899,10 @@ export class Game {
       },
       onMenu: () => { this.releaseControls(); if (this.mode === "play") this.mode = "pause"; },
       onTitle: () => { this.releaseControls(); this.campaign = null; this.mode = "title"; },
-      onStart: (kind, district) => {
-        this.rules = gameSetupRules(kind, district, this.rules.seed);
+      onStart: (kind, level) => {
+        this.rules = gameSetupRules(kind, "d10", this.rules.seed, level);
         this.campaign = kind === "challenge" ? startCampaign(this.rules.seed) : null;
+        if (this.campaign) this.campaign.levelIndex = CAMPAIGN_LEVELS.findIndex((entry) => entry.id === level);
         this.reset("same");
         this.syncSessionUrl();
       },
@@ -925,6 +945,7 @@ export class Game {
       onNewSeed: () => this.reset("new"),
       onSession: (kind) => this.setSession(kind),
       onDistrict: (id) => this.setDistrict(id),
+      onCampaignLevel: (id) => this.jumpCampaignLevel(id),
       onJob: () => this.startJob(),
       onDebugOpen: () => {
         this.releaseControls();

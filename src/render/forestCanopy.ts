@@ -73,7 +73,7 @@ export function planForestGarnish(grid: SurfaceGrid, biome: BiomeProfile, seed: 
       const salt = hashCell(picked.ix, picked.iy, seed);
       const rng = new Rng(salt);
       const species = speciesFor(biome, salt, picked.form);
-      const jitter = picked.form === "interior" ? 0.08 : picked.form === "edge" ? 0.32 : 0.24;
+      const jitter = picked.form === "interior" ? 0.22 : picked.form === "edge" ? 0.38 : 0.3;
       out.push({
         x: grid.ox + (picked.ix + 0.5) * grid.cell + rng.range(-jitter, jitter),
         y: grid.oy + (picked.iy + 0.5) * grid.cell + rng.range(-jitter, jitter),
@@ -228,7 +228,7 @@ function speciesFor(biome: BiomeProfile, salt: number, form: ForestForm): Forest
 }
 
 function scaleFor(form: ForestForm, species: ForestSpecies, rng: Rng): number {
-  if (form === "interior") return rng.range(0.86, 1.22);
+  if (form === "interior") return rng.range(0.72, 1.38);
   if (species.endsWith("shrub")) return rng.range(0.62, 1.08);
   if (species.endsWith("sapling")) return rng.range(0.58, 0.98);
   return rng.range(0.72, 1.22);
@@ -236,4 +236,45 @@ function scaleFor(form: ForestForm, species: ForestSpecies, rng: Rng): number {
 
 function hashCell(ix: number, iy: number, seed: number): number {
   return (Math.imul(ix, 73856093) ^ Math.imul(iy, 19349663) ^ seed) >>> 0;
+}
+
+export interface ForestMass {
+  x: number;
+  y: number;
+  w: number;
+  d: number;
+}
+
+/** Cheap canopy slabs for overview and low zoom. Merged runs keep interior mass without a tree per cell. */
+export function planForestMasses(grid: SurfaceGrid): ForestMass[] {
+  const runs: ForestMass[] = [];
+  const cell = grid.cell;
+  for (let iy = 0; iy < grid.rows; iy++) {
+    let run = -1;
+    for (let ix = 0; ix <= grid.cols; ix++) {
+      const id = ix < grid.cols ? grid.surface[iy * grid.cols + ix] : -1;
+      const wood = id === SURFACE_ID["forest-core"] || id === SURFACE_ID["forest-floor"];
+      if (wood && run < 0) run = ix;
+      if (wood && ix < grid.cols) continue;
+      if (run < 0) continue;
+      const span = ix - run;
+      if (span >= 2) {
+        const mass = {
+          x: grid.ox + run * cell,
+          y: grid.oy + iy * cell,
+          w: span * cell,
+          d: cell,
+        };
+        const prev = runs[runs.length - 1];
+        if (prev && prev.x === mass.x && prev.w === mass.w && Math.abs(prev.y + prev.d - mass.y) < 0.01) prev.d += cell;
+        else runs.push(mass);
+      }
+      run = -1;
+    }
+  }
+  return runs;
+}
+
+export function drawForestMass(g: Graphics, mass: ForestMass): void {
+  drawOrientedIsoBox(g, mass.x + mass.w * 0.5, mass.y + mass.d * 0.5, 0, mass.w, mass.d, 0.35, 1.15, 0x3e6828, 0x24441c, 0x2a4c20, 0.92);
 }

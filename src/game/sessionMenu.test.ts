@@ -7,7 +7,7 @@ describe('operator menu entry', () => {
     expect(parseSessionFromSearch('')).toMatchObject({kind:'sandbox',district:'d10',seed:DEFAULT_DISTRICT_SEEDS.d10});
     for (const kind of ['sandbox','challenge'] as const) {
       expect(playableDistrict(kind,'classic')).toBe('d10');
-      expect(gameSetupRules(kind,'classic',19)).toEqual({kind,district:'d10',seed:nextSeed(19),ranchFocus:false});
+      expect(gameSetupRules(kind,'classic',19)).toEqual({kind,district:'d10',seed:nextSeed(19),ranchFocus:false,level:'county'});
       expect(parseSessionFromSearch('?mode='+kind+'&district=classic')).toMatchObject({kind,district:'d10',seed:DEFAULT_DISTRICT_SEEDS.d10});
     }
   });
@@ -33,7 +33,7 @@ describe('operator menu entry', () => {
     for (const query of ['?sandbox=1&district=d100', '?sandbox=1&ranch=1', '?perf=1', '?tower=1', '?job=brick', '?demo=steel-warehouse', '?seed=19', '?nhood=1']) {
       expect(startsAtTitle(query)).toBe(false);
     }
-    expect(parseSessionFromSearch('?sandbox=1&district=d100')).toMatchObject({kind: 'sandbox', district: 'd100'});
+    expect(parseSessionFromSearch('?sandbox=1&district=d100')).toMatchObject({kind: 'sandbox', district: 'd100', level: 'city-downtown'});
     expect(parseSessionFromSearch('?job=brick')).toMatchObject({job: true, demo: 'rivertown'});
   });
 });

@@ -51,7 +51,7 @@ Density rises from County through City Downtown by tightening lots and setbacks,
 | 6 | City Downtown | City Hall | $9,500 | 4:00 | 36 | Crossroads |
 | 7 | Governor's Mansion | Governor's Mansion | $5,600 | 4:00 | 14 | Estate loop |
 
-Settings live in `src/game/campaign.ts`. Level identity is not a Sandbox district size (`d10` / `d30` / `d100`).
+Settings live in `src/game/campaign.ts`. Sandbox and Time Challenge both play these seven levels through the same generator. A shared level and seed produce the same town. Sandbox leaves the clock, heat, and track failures off. Older `district=d10` / `d30` / `d100` links open County, Suburb, and City Downtown.
 
 ### Landmark roster
 
@@ -71,7 +71,7 @@ Landmark demolition uses the same 90% settled rule as the brick job. Visual debr
 
 ## Adding a building, site, or prop to selected levels
 
-Campaign placement is **opt-in**. Missing `campaign` metadata means the asset never appears in Time Challenge. Sandbox still uses `zones` weights. Landmarks keep all zoning weights at zero so they stay out of Sandbox districts.
+Campaign placement is **opt-in**. Missing `campaign` metadata means the asset never appears on a campaign level, including Sandbox on that level. Landmarks keep all zoning weights at zero so they stay the marked objective.
 
 ### Buildings
 
@@ -90,7 +90,7 @@ Add a `campaign` object on the `*.building.json`:
 
 Weights are relative odds among eligible buildings on that level. Use only these level IDs: `county`, `village`, `township`, `suburb`, `city-borough`, `city-downtown`, `governors-mansion`. Invalid IDs or negative weights fail discovery.
 
-Optional `family` groups visually related variants for diversity caps. Optional `exception` marks a deliberate low-rise that may appear in a city pool without counting as the default fabric (Borough/Downtown: `parking-garage` only). Optional `urbanBands` lists the map roles the building may occupy (`rural`, `village-main-street`, `suburban`, `borough-mixed`, `downtown-core`, `downtown-transition`, `service-industrial`, `estate`). Optional `streetRole` is `corner`, `run`, or `standard`. Missing `campaign` is still opt-out. Sandbox still uses `zones` only.
+Optional `family` groups visually related variants for diversity caps. Optional `exception` marks a deliberate low-rise that may appear in a city pool without counting as the default fabric (Borough/Downtown: `parking-garage` only). Optional `urbanBands` lists the map roles the building may occupy (`rural`, `village-main-street`, `suburban`, `borough-mixed`, `downtown-core`, `downtown-transition`, `service-industrial`, `estate`). Optional `streetRole` is `corner`, `run`, or `standard`. Missing `campaign` is still opt-out. Sandbox on a campaign level uses the same placement rules as Time Challenge.
 
 City composition is configured on the level in `src/game/campaign.ts`, not hoped-for from weights:
 

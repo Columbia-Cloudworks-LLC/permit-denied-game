@@ -934,21 +934,88 @@ export function featurePatches(feature: TerrainFeature): GroundPatch[] {
       }];
     }
     case "field":
-      return [{
-        x: feature.x,
-        y: feature.y,
-        w: feature.w,
-        d: feature.d,
-        heading: feature.heading,
-        cover: fieldCover(feature.state),
-        seed: feature.seed,
-        z: 0.014,
-      }];
+      return feature.mask ? fieldMaskPatches(feature) : [fieldRectPatch(feature)];
     default: {
       const _never: never = feature;
       return _never;
     }
   }
+}
+
+function fieldRectPatch(feature: FieldFeature): GroundPatch {
+  return {
+    x: feature.x,
+    y: feature.y,
+    w: feature.w,
+    d: feature.d,
+    heading: feature.heading,
+    cover: fieldCover(feature.state),
+    seed: feature.seed,
+    z: 0.014,
+  };
+}
+
+function fieldMaskPatches(feature: FieldFeature): GroundPatch[] {
+  const mask = feature.mask;
+  if (!mask) return [fieldRectPatch(feature)];
+  const patches: GroundPatch[] = [];
+  const fx = Math.cos(feature.heading);
+  const fy = Math.sin(feature.heading);
+  const ox = feature.x + feature.w * 0.5;
+  const oy = feature.y + feature.d * 0.5;
+  for (let row = 0; row < feature.rows; row++) {
+    let run = -1;
+    for (let col = 0; col <= feature.cols; col++) {
+      const live = col < feature.cols && mask[row * feature.cols + col] === 1;
+      if (live && run < 0) run = col;
+      if (live && col < feature.cols) continue;
+      if (run < 0) continue;
+      const end = col - 1;
+      const span = (end - run + 1) * feature.cell;
+      const mid = (run + end + 1) * 0.5;
+      const along = mid * feature.cell - feature.w * 0.5;
+      const across = (row + 0.5) * feature.cell - feature.d * 0.5;
+      const cx = ox + fx * along - fy * across;
+      const cy = oy + fy * along + fx * across;
+      const poly = orientedRect(cx, cy, feature.heading, span, feature.cell);
+      const xs = poly.map((p) => p.x);
+      const ys = poly.map((p) => p.y);
+      const minX = Math.min(...xs);
+      const minY = Math.min(...ys);
+      patches.push({
+        x: minX,
+        y: minY,
+        w: Math.max(...xs) - minX,
+        d: Math.max(...ys) - minY,
+        heading: feature.heading,
+        cover: fieldCover(feature.state),
+        seed: feature.seed + row * 17 + run,
+        z: 0.014,
+        poly,
+      });
+      run = -1;
+    }
+  }
+  return patches.length ? patches : [fieldRectPatch(feature)];
+}
+
+function orientedRect(
+  cx: number,
+  cy: number,
+  heading: number,
+  length: number,
+  width: number,
+): { x: number; y: number }[] {
+  const fx = Math.cos(heading);
+  const fy = Math.sin(heading);
+  const hl = length * 0.5;
+  const hw = width * 0.5;
+  return [
+    { x: cx + fx * hl - fy * hw, y: cy + fy * hl + fx * hw },
+    { x: cx + fx * hl + fy * hw, y: cy + fy * hl - fx * hw },
+    { x: cx - fx * hl + fy * hw, y: cy - fy * hl - fx * hw },
+    { x: cx - fx * hl - fy * hw, y: cy - fy * hl + fx * hw },
+  ];
 }
 
 function fieldCover(state: FieldState): GroundPatch["cover"] {

@@ -1,4 +1,5 @@
-import { Assets, Container, Mesh, MeshGeometry, Texture } from "pixi.js";
+import { Assets, Container, Graphics, Mesh, MeshGeometry, Texture } from "pixi.js";
+import { drawWorldPoly } from "./drawIso";
 import { worldToScreen } from "../world/iso";
 import {
   SURFACE_CHUNK,
@@ -198,6 +199,7 @@ export function buildTerrainChunks(
   parent.removeChildren().forEach((child) => {
     child.destroy({ children: true });
   });
+  paintTerrainSkirt(parent, grid);
   const sheet = atlas ?? loadedAtlas ?? fallbackAtlas();
   const chunksX = Math.ceil(grid.cols / SURFACE_CHUNK);
   const chunksY = Math.ceil(grid.rows / SURFACE_CHUNK);
@@ -208,6 +210,28 @@ export function buildTerrainChunks(
     }
   }
   return chunksX * chunksY;
+}
+
+function paintTerrainSkirt(parent: Container, grid: SurfaceGrid): void {
+  const g = new Graphics();
+  const pad = 8;
+  const x0 = grid.ox - pad;
+  const y0 = grid.oy - pad;
+  const x1 = grid.ox + grid.cols + pad;
+  const y1 = grid.oy + grid.rows + pad;
+  drawWorldPoly(g, [
+    { x: x0, y: y0, z: -0.04 },
+    { x: x1, y: y0, z: -0.04 },
+    { x: x1, y: y1, z: -0.04 },
+    { x: x0, y: y1, z: -0.04 },
+  ], 0x243218, 1);
+  drawWorldPoly(g, [
+    { x: grid.ox, y: grid.oy, z: -0.02 },
+    { x: grid.ox + grid.cols, y: grid.oy, z: -0.02 },
+    { x: grid.ox + grid.cols, y: grid.oy + grid.rows, z: -0.02 },
+    { x: grid.ox, y: grid.oy + grid.rows, z: -0.02 },
+  ], 0x5a7340, 1);
+  parent.addChild(g);
 }
 
 function buildChunkMesh(

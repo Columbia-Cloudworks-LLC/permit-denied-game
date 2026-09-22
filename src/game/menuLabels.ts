@@ -3,7 +3,7 @@ import { DISTRICT_COUNTS, type DistrictId, type SessionKind } from './session';
 export const MODE_LABELS: Record<SessionKind, string> = { sandbox: 'Sandbox', challenge: 'Time Challenge' };
 export const MODE_DESCRIPTIONS: Record<SessionKind, string> = {
   challenge: 'Seven-level campaign. Destroy the landmark and earn the level dollar target before the county clock expires. Overheating or excessive track stress ends the level.',
-  sandbox: 'Demolish freely with no time limit or breakdowns.',
+  sandbox: 'Demolish any campaign level freely. No county clock and no breakdowns. The layout matches Time Challenge for the same level and seed.',
 };
 export const SITE_LABELS = Object.fromEntries(Object.entries(DISTRICT_COUNTS).filter(([id]) => id !== 'classic').map(([id, count]) => [id, `${count} buildings`])) as Record<Exclude<DistrictId, "classic">, string>;
 export const MENU_LABELS = {

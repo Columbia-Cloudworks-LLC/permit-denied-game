@@ -1,7 +1,8 @@
 import { TITLE } from '../game/constants';
 import { PermitIntro, permitDocument, type PermitSound } from './permitIntro';
-import { playableDistrict, type DistrictId, type SessionKind } from '../game/session';
-import { MENU_LABELS as L, MODE_LABELS, MODE_DESCRIPTIONS, SITE_LABELS } from '../game/menuLabels';
+import { CAMPAIGN_LEVELS, type CampaignLevelId } from '../game/campaign';
+import { type DistrictId, type SessionKind } from '../game/session';
+import { MENU_LABELS as L, MODE_LABELS, MODE_DESCRIPTIONS } from '../game/menuLabels';
 import { labeledMenuButton, MENU_ICONS, soundButtonContent } from './menuIcons';
 import { version } from '../../package.json';
 import notices from './thirdPartyNotices.txt?raw';
@@ -10,7 +11,7 @@ type Page = 'home' | 'dispatch' | 'controls' | 'about' | 'equipment';
 export interface MenuActions {
   page?(page: Page | null, host?: HTMLElement): void;
   resume(): void;
-  start(kind: SessionKind, district: DistrictId): void;
+  start(kind: SessionKind, level: CampaignLevelId): void;
   restart(): void;
   debug?(): void;
   title(): void;
@@ -34,7 +35,7 @@ export class OperatorMenu {
   private mode: 'title' | 'pause' | null = null;
   private page: Page = 'home';
   private session: SessionKind = 'sandbox';
-  private district: DistrictId = 'd10';
+  private level: CampaignLevelId = 'county';
   private muted = false;
   private updateAvailable = false;
   private readonly intro = new PermitIntro();
@@ -79,17 +80,16 @@ export class OperatorMenu {
       if (action === 'mute') this.actions.mute();
       if (action === 'pwa-update') this.actions.pwaUpdate?.();
       if (action === 'start') {
-        this.actions.start(this.session, this.district);
+        this.actions.start(this.session, this.level);
       }
     });
     this.body.addEventListener('change', e => {
       const input = e.target as HTMLSelectElement;
       if (input.id === 'dispatch-mode') {
         this.session = input.value as SessionKind;
-        this.district = playableDistrict(this.session, this.district);
         this.syncSetup();
       }
-      if (input.id === 'dispatch-lot') this.district = input.value as DistrictId;
+      if (input.id === 'dispatch-lot') this.level = input.value as CampaignLevelId;
     });
     // Handle menu navigation before focused controls consume the key.
     this.root.addEventListener('keydown', e => {
@@ -110,13 +110,15 @@ export class OperatorMenu {
     }, true);
   }
 
-  show(mode: 'title' | 'pause' | null, session: SessionKind, district: DistrictId, developmentScenario = false): void {
+  show(mode: 'title' | 'pause' | null, session: SessionKind, district: DistrictId, developmentScenario = false, level?: CampaignLevelId): void {
     if (this.mode === mode) return;
     if (mode === 'pause') {
       this.session = session;
-      this.district = developmentScenario ? 'd10' : playableDistrict(session, district);
+      this.level = level ?? 'county';
+      void district;
+      void developmentScenario;
     }
-    if (mode === 'title') { this.session = 'sandbox'; this.district = 'd10'; }
+    if (mode === 'title') { this.session = 'sandbox'; this.level = 'county'; }
     this.mode = mode;
     this.root.hidden = !mode;
     if (mode) {
@@ -153,12 +155,9 @@ export class OperatorMenu {
   private syncSetup(): void {
     this.body.querySelector<HTMLSelectElement>('#dispatch-mode')!.value = this.session;
     const sizes = this.body.querySelector<HTMLSelectElement>('#dispatch-lot')!;
-    sizes.innerHTML = Object.entries(SITE_LABELS)
-      .map(([id, label]) => `<option value="${id}">${label}</option>`).join('');
-    sizes.value = this.district;
+    sizes.innerHTML = CAMPAIGN_LEVELS.map((level) => `<option value="${level.id}">${level.index}/7 ${level.name}</option>`).join('');
+    sizes.value = this.level;
     this.body.querySelector('#mode-description')!.textContent = MODE_DESCRIPTIONS[this.session];
-    const lotField = this.body.querySelector<HTMLElement>('#dispatch-lot-field');
-    if (lotField) lotField.hidden = this.session === 'challenge';
   }
 
   private navigate(page: Page): void {
@@ -177,7 +176,7 @@ export class OperatorMenu {
       <nav class="menu-grid" aria-label="Game menu"><button data-nav="controls">${labeledMenuButton(MENU_ICONS.gamepad, L.controls)}</button><button data-menu-action="mute">${soundButtonContent(false)}</button><button data-nav="about">${labeledMenuButton(MENU_ICONS.about, L.about)}</button>${facebookLink}${this.mode === 'pause' ? `<button data-menu-action="title" aria-describedby="main-menu-help">${L.mainMenu}</button>` : ''}</nav>${this.mode === 'pause' ? '<p class="fine-print" id="main-menu-help">Returning to the main menu ends this game. You cannot resume it.</p>' : ''}${this.updatePromptHtml()}`;
     if (page === 'equipment') this.body.innerHTML = '<div class="equipment-details"></div><h2>Permit Application</h2><p class="fine-print">Resubmitting spends cash on a county processing fee.</p><div class="menu-permit-host"></div>';
     if (page === 'dispatch') {
-      this.body.innerHTML = `<div class="dispatch-fields"><label>Mode<select id="dispatch-mode">${Object.entries(MODE_LABELS).map(([id, label]) => `<option value="${id}">${label}</option>`).join('')}</select></label><label id="dispatch-lot-field">Site Size<select id="dispatch-lot"></select></label></div><p class="fine-print" id="mode-description"></p>${this.mode === 'pause' ? '<p class="caution">Starting a new game replaces your current progress and upgrades.</p>' : ''}<button class="primary" data-menu-action="start">${L.start}</button><button data-nav="back">Back</button>`;
+      this.body.innerHTML = `<div class="dispatch-fields"><label>Mode<select id="dispatch-mode">${Object.entries(MODE_LABELS).map(([id, label]) => `<option value="${id}">${label}</option>`).join('')}</select></label><label id="dispatch-lot-field">Level<select id="dispatch-lot"></select></label></div><p class="fine-print" id="mode-description"></p>${this.mode === 'pause' ? '<p class="caution">Starting a new game replaces your current progress and upgrades.</p>' : ''}<button class="primary" data-menu-action="start">${L.start}</button><button data-nav="back">Back</button>`;
       this.syncSetup();
     }
     if (page === 'controls') this.body.innerHTML = `<dl class="control-list"><div><dt>W / S or ↑ / ↓</dt><dd>Drive forward / reverse</dd></div><div><dt>A / D or ← / →</dt><dd>Steer left / right</dd></div><div><dt>Hold SPACE</dt><dd>Power the blade</dd></div><div><dt>Esc / Pause</dt><dd>Pause / Resume</dd></div><div><dt>R</dt><dd>${L.restart}</dd></div><div><dt>N</dt><dd>${L.newLayout}</dd></div><div><dt>1 / 2 / 3</dt><dd>${L.blade} / ${L.engine} / ${L.push} upgrade</dd></div><div><dt>M</dt><dd>Toggle sound</dd></div></dl><div class="instruction-card"><strong>Touch Controls</strong><p>Drag the left stick to drive and steer. Hold the right POWER BLADE button while driving. Release the stick to coast. Release the blade to finish the current push.</p></div><p class="fine-print">Watch ENGINE HEAT and TRACK STRESS. Above 65%, release the blade or back off rubble. In sandbox these gauges remain advisory.</p>`;

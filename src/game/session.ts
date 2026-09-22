@@ -1,13 +1,36 @@
+import type { CampaignLevelId } from './campaign';
 import type { TestMapRequest } from '../world/testMapRequest';
 export type SessionKind = "challenge" | "sandbox";
+
+/**
+ * Old size links open a named campaign level instead of a parallel map catalog.
+ * d10 and classic → County, d30 → Suburb, d100 → City Downtown.
+ */
+export const LEGACY_SANDBOX_LEVEL: Record<DistrictId, CampaignLevelId> = {
+  classic: "county",
+  d10: "county",
+  d30: "suburb",
+  d100: "city-downtown",
+};
 
 export function playableDistrict(_kind: SessionKind, district: DistrictId): DistrictId {
   return district === 'classic' ? 'd10' : district;
 }
 
-export function gameSetupRules(kind: SessionKind, district: DistrictId, currentSeed: number): SessionRules {
+export function gameSetupRules(
+  kind: SessionKind,
+  district: DistrictId,
+  currentSeed: number,
+  level?: CampaignLevelId,
+): SessionRules {
   district = playableDistrict(kind, district);
-  return { kind, district, seed: nextSeed(currentSeed), ranchFocus: false };
+  return {
+    kind,
+    district,
+    seed: nextSeed(currentSeed),
+    ranchFocus: false,
+    level: level ?? LEGACY_SANDBOX_LEVEL[district],
+  };
 }
 export type DemoAsset = "ranch" | "rivertown" | "steel-warehouse";
 export type DistrictId = "classic" | "d10" | "d30" | "d100";
@@ -38,6 +61,8 @@ export interface SessionRules {
   seed: number;
   ranchFocus: boolean;
   topology?: SessionTopology;
+  /** Campaign district used by both Sandbox and Time Challenge. Absent on diagnostic maps. */
+  level?: CampaignLevelId;
 }
 
 function defaultSessionRules(): SessionRules {
@@ -58,6 +83,21 @@ export function parseSessionFromSearch(search: string): SessionRules {
   if (district === "classic" || district === "d10" || district === "d30" || district === "d100") {
     rules.district = playableDistrict(rules.kind, district);
     rules.seed = DEFAULT_DISTRICT_SEEDS[rules.district];
+    rules.level = LEGACY_SANDBOX_LEVEL[rules.district];
+  }
+  const level = params.get("level");
+  if (
+    level === "county" ||
+    level === "village" ||
+    level === "township" ||
+    level === "suburb" ||
+    level === "city-borough" ||
+    level === "city-downtown" ||
+    level === "governors-mansion"
+  ) {
+    rules.level = level;
+  } else if ((params.get("mode") === "sandbox" || params.get("sandbox") === "1") && !rules.level && !params.get("yard") && !params.get("job")) {
+    rules.level = "county";
   }
   // Asset diagnostics are explicit and are not offered as a playable map size.
   const rawSeed = params.get("seed");
@@ -67,7 +107,12 @@ export function parseSessionFromSearch(search: string): SessionRules {
   if (demo === 'ranch' || demo === 'rivertown' || demo === 'steel-warehouse') rules.testMap = { kind: 'asset', assetId: 'building:' + demo, variant: 0 };
   if (params.get('tower') === '1') rules.testMap = { kind: 'asset', assetId: 'building:union-tower', variant: 0 };
   if (params.has('testAsset')) rules.testMap = { kind: 'asset', assetId: params.get('testAsset')!, variant: Number(params.get('variant') ?? 0) };
-  if (rules.testMap) { rules.kind = 'sandbox'; rules.district = 'classic'; rules.seed = DEFAULT_DISTRICT_SEEDS.classic; }
+  if (rules.testMap) {
+    rules.kind = 'sandbox';
+    rules.district = 'classic';
+    rules.seed = DEFAULT_DISTRICT_SEEDS.classic;
+    rules.level = undefined;
+  }
   if (rawSeed !== null && rawSeed !== "") {
     const seed = Number(rawSeed);
     if (Number.isFinite(seed) && seed >= 0) rules.seed = seed >>> 0;
@@ -90,6 +135,7 @@ export function parseSessionFromSearch(search: string): SessionRules {
     rules.demo = "rivertown";
     rules.kind = "challenge";
     rules.district = "classic";
+    rules.level = undefined;
   }
   return rules;
 }
@@ -115,5 +161,5 @@ export function canPickUpgrade(rules: SessionRules, mode: PlayMode, earned: bool
 /** Explicit scenario links retain their immediate-play behavior. */
 export function startsAtTitle(search: string): boolean {
   const params = new URLSearchParams(search);
-  return !['testAsset', 'yard', 'sandbox', 'mode', 'district', 'seed', 'ranch', 'demo', 'tower', 'job', 'perf', 'nhood'].some(key => params.has(key));
+  return !['testAsset', 'yard', 'sandbox', 'mode', 'district', 'level', 'seed', 'ranch', 'demo', 'tower', 'job', 'perf', 'nhood'].some(key => params.has(key));
 }

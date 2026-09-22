@@ -9,10 +9,15 @@ const CAR_BODY = [0x3d5c8a, 0x7a3a32, 0xc4bba4, 0x3a5a38] as const;
 const CAR_DARK = [0x243850, 0x4a221c, 0x8a8270, 0x243824] as const;
 const CAR_TOP = [0x4a74a4, 0x9a4a42, 0xd8d0b8, 0x4a7848] as const;
 
-export function drawDozer(g: Graphics, d: Dozer): void {
+export function drawDozer(g: Graphics, d: Dozer, emphasis = false): void {
   const h = d.heading;
   const bladeZ = d.bladeDown ? 0.04 : 0.32;
   const reach = DOZER.bladeReach - 0.08 + (d.bladeDown ? 0.04 : 0);
+
+  if (emphasis) {
+    drawOrientedIsoBox(g, d.x, d.y, h, 3.6, 2.7, 0, 0.06, 0x1a140c, 0x1a140c, 0x1a140c, 0.85);
+    drawOrientedIsoBox(g, d.x, d.y, h, 0.42, 0.42, 2.55, 1.05, 0xfff1b0, 0xc48a20, 0xffe08a, 1);
+  }
 
   const shadow = headingOffset(d.x, d.y, h, 0.15, 0);
   drawOrientedIsoBox(g, shadow.x, shadow.y, h, 2.55, 1.72, 0, 0.02, PAL.shadow, PAL.shadow, PAL.shadow, 0.32);

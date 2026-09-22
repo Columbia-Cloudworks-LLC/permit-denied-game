@@ -134,7 +134,7 @@ it('draws the neighborhood overlay without parenting labels onto Graphics', () =
   const renderer = new WorldRenderer();
   const dozer = createDozer(town.spawnX, town.spawnY, town.spawnHeading);
   const particles = new ParticlePool();
-  renderer.showNhood = true;
+  renderer.debug.graph = true;
   renderer.layout(1280, 720, 0, 0);
   renderer.draw(town, dozer, particles, []);
   expect(warnings.messages()).toEqual([]);
