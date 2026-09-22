@@ -7,7 +7,7 @@ describe('operator menu entry', () => {
     expect(parseSessionFromSearch('')).toMatchObject({kind:'sandbox',district:'d10',seed:DEFAULT_DISTRICT_SEEDS.d10});
     for (const kind of ['sandbox','challenge'] as const) {
       expect(playableDistrict(kind,'classic')).toBe('d10');
-      expect(gameSetupRules(kind,'classic',19)).toEqual({kind,district:'d10',seed:nextSeed(19),ranchFocus:false,level:'county'});
+      expect(gameSetupRules(kind,'classic',19)).toEqual({kind,district:'d10',seed:nextSeed(19),ranchFocus:false,level:'county',season:'summer',seasonExplicit:false,weatherDetail:'on'});
       expect(parseSessionFromSearch('?mode='+kind+'&district=classic')).toMatchObject({kind,district:'d10',seed:DEFAULT_DISTRICT_SEEDS.d10});
     }
   });

@@ -2,6 +2,7 @@ import { aabbOverlap, distToSegment, len, pointInAabb, pointInPoly } from "../ga
 import { Rng } from "../game/rng";
 import type { Building, GroundPatch, Lot, Prop } from "../structure/types";
 import type { FieldCropId, FieldState, BiomeProfile } from "./biomes";
+import { permittedFieldStates, standingCrop, type SeasonId } from "./season";
 import { getAsset, spawnAsset } from "./catalog";
 import { drivewayPatch, lotAxisSizes, lotLocalToWorld } from "./dressing";
 import {
@@ -93,6 +94,7 @@ export interface FeatureContext {
   roadSpawnY: number;
   propBudget: number;
   surface?: SurfaceGrid;
+  season?: SeasonId;
 }
 
 const ROAD_MARGIN = 4.2;
@@ -238,6 +240,13 @@ export function churnFieldAt(feature: FieldFeature, x: number, y: number, radius
   return marked;
 }
 
+/** Winter ice is open for the dozer. Forest cores and warm-season water stay blocked. */
+export function movementBlocked(kind: TraversalKind, season: SeasonId = "summer"): boolean {
+  if (kind === "open") return false;
+  if (kind === "water") return season !== "winter";
+  return true;
+}
+
 export function resolveTraversal(
   x: number,
   y: number,
@@ -245,11 +254,13 @@ export function resolveTraversal(
   startY: number,
   features: readonly TerrainFeature[] | undefined,
   grid?: SurfaceGrid | null,
+  season: SeasonId = "summer",
 ): { x: number; y: number; blocked: boolean } {
-  if (terrainTraversalAt(features, x, y, grid) === "open") return { x, y, blocked: false };
-  if (terrainTraversalAt(features, x, startY, grid) === "open") return { x, y: startY, blocked: true };
-  if (terrainTraversalAt(features, startX, y, grid) === "open") return { x: startX, y, blocked: true };
-  if (terrainTraversalAt(features, startX, startY, grid) === "open") return { x: startX, y: startY, blocked: true };
+  const open = (px: number, py: number) => !movementBlocked(terrainTraversalAt(features, px, py, grid), season);
+  if (open(x, y)) return { x, y, blocked: false };
+  if (open(x, startY)) return { x, y: startY, blocked: true };
+  if (open(startX, y)) return { x: startX, y, blocked: true };
+  if (open(startX, startY)) return { x: startX, y: startY, blocked: true };
   const escaped = pushOutOfTerrain(features, startX, startY, grid) ?? pushOutOfTerrain(features, x, y, grid);
   if (escaped) return { ...escaped, blocked: true };
   return { x: startX, y: startY, blocked: true };
@@ -508,7 +519,7 @@ function fieldFromBlob(grid: SurfaceGrid, cells: number[], ctx: FeatureContext, 
   const x = cx - w * 0.5;
   const y = cy - d * 0.5;
   const rng = new Rng(ctx.seed ^ FIELD_SALT ^ (n * 13));
-  const feature = makeField(x, y, w, d, heading, rng, ctx.biome, `field-${n}`);
+  const feature = makeField(x, y, w, d, heading, rng, ctx.biome, seasonOf(ctx), `field-${n}`);
   const occupied = new Set(open.map((p) => `${Math.floor(p.x)}:${Math.floor(p.y)}`));
   const mask = new Uint8Array(feature.cols * feature.rows);
   for (let row = 0; row < feature.rows; row++) {
@@ -538,8 +549,13 @@ function fieldFromBlob(grid: SurfaceGrid, cells: number[], ctx: FeatureContext, 
   if (farms.length && !bestLot) return undefined;
   if (bestLot) feature.lotId = bestLot.id;
   if (ctx.biome.id === "agricultural-plain" && feature.primary) {
-    feature.state = rng.chance(0.35) ? "short" : "mature";
+    const grow = rng.chance(0.35);
+    const allowed = permittedFieldStates(seasonOf(ctx));
+    if (allowed.includes("short") && allowed.includes("mature") && !allowed.includes("stubble")) {
+      feature.state = grow ? "short" : "mature";
+    }
   }
+  syncFieldPay(feature);
   return feature;
 }
 
@@ -566,7 +582,16 @@ function promotePrimaryField(features: TerrainFeature[], ctx: FeatureContext): v
     }
   }
   best.primary = isPrimaryField(best) || best.primary;
-  if (best.state === "tilled" || best.state === "stubble") best.state = "mature";
+  const allowed = permittedFieldStates(seasonOf(ctx));
+  if (
+    (best.state === "tilled" || best.state === "stubble") &&
+    allowed.includes("mature") &&
+    !allowed.includes("stubble") &&
+    !allowed.includes("tilled")
+  ) {
+    best.state = "mature";
+    syncFieldPay(best);
+  }
 }
 
 function outlineAround(pts: { x: number; y: number }[], cx: number, cy: number): { x: number; y: number }[] {
@@ -743,7 +768,7 @@ function placeFields(ctx: FeatureContext, features: TerrainFeature[]): void {
       const x = rng.range(ctx.minX + 1, ctx.maxX - w - 1);
       const y = rng.range(ctx.minY + 1, ctx.maxY - d - 1);
       if (blocked(ctx, features, x, y, w, d, ROAD_MARGIN, false, true)) continue;
-      features.push(makeField(x, y, w, d, rng.pick([0, Math.PI / 2]), rng, ctx.biome, `field-open-${features.length}`));
+      features.push(makeField(x, y, w, d, rng.pick([0, Math.PI / 2]), rng, ctx.biome, seasonOf(ctx), `field-open-${features.length}`));
       break;
     }
   }
@@ -773,7 +798,7 @@ function fieldOnLot(ctx: FeatureContext, lot: Lot, rng: Rng): FieldFeature | und
     if (aabbOverlap(x, y, along, across, drive.x, drive.y, drive.w, drive.d)) continue;
     if (pointOnRoad(ctx.network, center.x, center.y)) continue;
     if (boxNearRoad(ctx.network, x, y, along, across, 0.15)) continue;
-    return makeField(x, y, along, across, lot.heading, rng, ctx.biome, `field-${lot.id}`, lot.id);
+    return makeField(x, y, along, across, lot.heading, rng, ctx.biome, seasonOf(ctx), `field-${lot.id}`, lot.id);
   }
   const x = lot.x + lot.w * 0.1;
   const y = lot.y + lot.d * 0.52;
@@ -786,7 +811,7 @@ function fieldOnLot(ctx: FeatureContext, lot: Lot, rng: Rng): FieldFeature | und
   }
   if (aabbOverlap(x, y, w, d, drive.x, drive.y, drive.w, drive.d)) return undefined;
   if (pointOnRoad(ctx.network, x + w * 0.5, y + d * 0.5)) return undefined;
-  return makeField(x, y, w, d, lot.heading, rng, ctx.biome, `field-${lot.id}`, lot.id);
+  return makeField(x, y, w, d, lot.heading, rng, ctx.biome, seasonOf(ctx), `field-${lot.id}`, lot.id);
 }
 
 function fieldBesideLot(
@@ -802,7 +827,16 @@ function fieldBesideLot(
   const x = rear.x - w * 0.5;
   const y = rear.y - d * 0.5;
   if (blocked(ctx, features, x, y, w, d, 0.6, false, true)) return undefined;
-  return makeField(x, y, w, d, lot.heading, rng, ctx.biome, `field-rear-${lot.id}`, lot.id);
+  return makeField(x, y, w, d, lot.heading, rng, ctx.biome, seasonOf(ctx), `field-rear-${lot.id}`, lot.id);
+}
+
+function seasonOf(ctx: FeatureContext): SeasonId {
+  return ctx.season ?? "summer";
+}
+
+function syncFieldPay(feature: FieldFeature): void {
+  const area = (feature.valid ?? fieldValidCount(feature)) * feature.cell * feature.cell;
+  feature.value = standingCrop(feature.state) ? fieldValue(area) : 0;
 }
 
 function makeField(
@@ -813,6 +847,7 @@ function makeField(
   heading: number,
   rng: Rng,
   biome: BiomeProfile,
+  season: SeasonId,
   id: string,
   lotId?: string,
 ): FieldFeature {
@@ -828,10 +863,7 @@ function makeField(
     d,
     heading,
     crop: rng.pick(biome.crops),
-    state:
-      biome.id === "agricultural-plain"
-        ? rng.pick(["mature", "mature", "short"])
-        : rng.pick(["mature", "short", "tilled", "stubble"]),
+    state: rng.pick(permittedFieldStates(season)),
     seed: rng.int(1, 1_000_000),
     lotId,
     cell,
@@ -842,8 +874,8 @@ function makeField(
     cleared: false,
   };
   feature.valid = fieldValidCount(feature);
-  feature.value = fieldValue(feature.valid * cell * cell);
   feature.primary = isPrimaryField(feature);
+  syncFieldPay(feature);
   return feature;
 }
 
@@ -1153,9 +1185,10 @@ export function validateFeatureLayout(
   roadSpawnY: number,
   grid?: SurfaceGrid | null,
   lots: readonly Lot[] = [],
+  season: SeasonId = "summer",
 ): string[] {
   const issues: string[] = [];
-  if (terrainTraversalAt(features, spawnX, spawnY, grid) !== "open") issues.push("spawn blocked by terrain");
+  if (movementBlocked(terrainTraversalAt(features, spawnX, spawnY, grid), season)) issues.push("spawn blocked by terrain");
   if (terrainTraversalAt(features, roadSpawnX, roadSpawnY, grid) !== "open") issues.push("road spawn blocked by terrain");
   if (grid) {
     const seen = new Set<string>();

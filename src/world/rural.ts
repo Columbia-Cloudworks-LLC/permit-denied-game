@@ -5,6 +5,7 @@ import { Rng } from "../game/rng";
 import { DISTRICT_COUNTS, type DistrictId } from "../game/session";
 import type { Building, GroundPatch, Lot, Prop } from "../structure/types";
 import { selectBiome, type BiomeProfile } from "./biomes";
+import type { SeasonId } from "./season";
 import { getAsset, spawnAsset } from "./catalog";
 import { buildingOccupy, dressLot } from "./dressing";
 import { deriveTerrainFeatures, type TerrainFeature } from "./terrainFeatures";
@@ -113,13 +114,19 @@ export function pickTopology(rng: Rng, count: number): TopologyFamily {
   return rng.pick(families);
 }
 
+export interface LayoutEnvironment {
+  season?: SeasonId;
+  biome?: BiomeProfile;
+}
+
 export function generateRuralLayout(
   id: Exclude<DistrictId, "classic">,
   seed: number,
   topologyOverride?: TopologyFamily,
   campaign?: CampaignLevelDef,
+  environment?: LayoutEnvironment,
 ): RuralLayout {
-  const generate = (attemptSeed: number): RuralLayout => generateRuralLayoutInner(id, attemptSeed, topologyOverride, campaign);
+  const generate = (attemptSeed: number): RuralLayout => generateRuralLayoutInner(id, attemptSeed, topologyOverride, campaign, environment);
   if (!campaign) return generate(seed);
   return runWithParcelProfile(campaign.generation.parcel, campaign.generation.parcel, () => {
     if (!campaign.composition) return withCampaignSeed(generate(seed), seed);
@@ -150,13 +157,15 @@ function generateRuralLayoutInner(
   seed: number,
   topologyOverride: TopologyFamily | undefined,
   campaign: CampaignLevelDef | undefined,
+  environment: LayoutEnvironment | undefined,
 ): RuralLayout {
   const count = campaign?.generation.buildingCount ?? DISTRICT_COUNTS[id];
   const rng = new Rng(seed);
   const topology = (campaign && campaign.generation.topology !== 'estate'
     ? campaign.generation.topology
     : topologyOverride) ?? pickTopology(rng, count);
-  const biome = selectBiome(id, seed, topology);
+  const biome = environment?.biome ?? selectBiome(id, seed, topology);
+  const season = environment?.season ?? "summer";
   const originX = 4;
   const originY = 4;
   const issues: LayoutIssue[] = [];
@@ -420,6 +429,7 @@ function generateRuralLayoutInner(
     roadSpawnY: roadSpawn.y,
     propBudget,
     surface,
+    season,
   });
 
   return {

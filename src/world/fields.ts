@@ -128,7 +128,7 @@ export function fieldWorldBox(feature: FieldFeature): { x: number; y: number; w:
 }
 
 export function payFieldDamage(feature: FieldFeature, newly: number): number {
-  if (newly <= 0) return 0;
+  if (newly <= 0 || feature.state === "tilled" || feature.state === "stubble") return 0;
   const valid = Math.max(1, feature.valid ?? fieldValidCount(feature));
   const value = feature.value ?? fieldValue(valid * feature.cell * feature.cell);
   feature.value = value;

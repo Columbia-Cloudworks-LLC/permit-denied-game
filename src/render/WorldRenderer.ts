@@ -29,6 +29,8 @@ import { drawRoofFrame, interiorCmds, roofCommandDepth, roofShowsFrame } from ".
 import { coverColor, coverDark } from "./coverPalette";
 import { cellColors, drawGroundPoly, drawIsoBox, drawOrientedGround, drawOrientedIsoBox, drawShadow, drawSlopedQuad, drawWorldPoly, PAL, shade } from "./drawIso";
 import type { GroundCondition } from "../world/groundCondition";
+import { seasonTrackColor, type SeasonId } from "../world/season";
+import { presentationTint, SeasonWeather, type WeatherFlake } from "../fx/seasonWeather";
 import {
   drawBuildingFootprintShadow,
   drawFallingCell,
@@ -104,6 +106,7 @@ export class WorldRenderer {
   zoom = 1.15;
   private viewW = 1;
   private viewH = 1;
+  private readonly weather = new SeasonWeather();
   private groundKey = "";
   private terrainKey = "";
   private garnishKey = "";
@@ -210,6 +213,7 @@ export class WorldRenderer {
     const strikeAt = worldToScreen(dozer.x, dozer.y);
     this.bowlingStrikes.draw(dt, strikeAt.x, strikeAt.y, this.zoom);
     this.root.setChildIndex(this.bowlingStrikes.root, this.root.children.length - 1);
+    this.root.tint = presentationTint(town.weather.light, town.weatherDetail);
     this.fades.begin();
     const view = this.debug;
     this.sites.visible = view.sites;
@@ -249,18 +253,18 @@ export class WorldRenderer {
   private passTerrain(frame: RenderFrame): void {
     const { town, view } = frame;
     void ensureTerrainAtlas();
-    const tKey = `${view.terrain}:${TERRAIN_GEN_VERSION}:${frame.surface.cols}x${frame.surface.rows}:${frame.surface.ox}:${frame.surface.oy}:${frame.surface.stampRevision}:${terrainAtlasRevision()}:${frame.condition}`;
+    const tKey = `${view.terrain}:${TERRAIN_GEN_VERSION}:${frame.surface.cols}x${frame.surface.rows}:${frame.surface.ox}:${frame.surface.oy}:${frame.surface.stampRevision}:${terrainAtlasRevision()}:${frame.condition}:${town.season}`;
     if (tKey !== this.terrainKey) {
       this.terrainLayer.visible = view.terrain;
-      if (view.terrain) buildTerrainChunks(this.terrainLayer, frame.surface, undefined, frame.condition);
+      if (view.terrain) buildTerrainChunks(this.terrainLayer, frame.surface, undefined, frame.condition, town.season);
       else this.terrainLayer.removeChildren();
       this.terrainKey = tKey;
       frame.groundRebuilds++;
     }
     this.terrainLayer.visible = view.terrain;
-    const garnishKey = `${town.seed}:${town.biome.id}:${frame.surface.ox}:${frame.surface.oy}:${frame.surface.cols}x${frame.surface.rows}:${frame.surface.stampRevision}`;
+    const garnishKey = `${town.season}:${town.seed}:${town.biome.id}:${frame.surface.ox}:${frame.surface.oy}:${frame.surface.cols}x${frame.surface.rows}:${frame.surface.stampRevision}`;
     if (garnishKey !== this.garnishKey) {
-      this.garnish = planForestGarnish(frame.surface, town.biome, town.seed);
+      this.garnish = planForestGarnish(frame.surface, town.biome, town.seed, town.season);
       this.forestMasses = planForestMasses(frame.surface);
       this.garnishKey = garnishKey;
     }
@@ -269,7 +273,7 @@ export class WorldRenderer {
   /** Lot covers, terrain features, and road mesh on the ground layer. */
   private passGround(frame: RenderFrame): void {
     const { town, view } = frame;
-    const gKey = `${view.terrain}:${view.roads}:${town.district}:${town.seed}:${town.lots.length}:${town.network.mesh.length}:${town.ground.length}:${town.features?.length ?? 0}:${town.featureRevision ?? 0}:${frame.condition}`;
+    const gKey = `${view.terrain}:${view.roads}:${town.district}:${town.seed}:${town.lots.length}:${town.network.mesh.length}:${town.ground.length}:${town.features?.length ?? 0}:${town.featureRevision ?? 0}:${frame.condition}:${town.season}`;
     if (gKey !== this.groundKey) {
       this.ground.clear();
       frame.groundRebuilds++;
@@ -286,9 +290,9 @@ export class WorldRenderer {
             z: 0,
           }));
       for (const patch of view.terrain ? covers.filter((p) => p.w !== 6.2 && p.z !== -0.02) : []) {
-        drawCover(this.ground, patch, frame.condition);
+        drawCover(this.ground, patch, frame.condition, town.season);
       }
-      if (view.terrain) drawTerrainFeatures(this.ground, town.features ?? [], frame.condition);
+      if (view.terrain) drawTerrainFeatures(this.ground, town.features ?? [], frame.condition, town.season);
       const mesh = town.network.mesh;
       if (view.roads && mesh.length) {
         // RoadMeshQuad x/y are world centers; drawOrientedGround uses the same convention.
@@ -329,14 +333,14 @@ export class WorldRenderer {
   private passMarks(frame: RenderFrame): void {
     const { town, view } = frame;
     const camCell = `${Math.round(this.camX / 28)}:${Math.round(this.camY / 28)}`;
-    const oKey = `${view.effects}:${view.debris}:${town.visualRevision}:${town.pile.revision}:${camCell}`;
+    const oKey = `${view.effects}:${view.debris}:${town.visualRevision}:${town.pile.revision}:${camCell}:${town.marks.length}:${town.season}`;
     if (oKey !== this.overlayKey) {
       this.overlay.clear();
       for (const mark of view.effects ? town.marks : []) {
         frame.total++;
         if (!this.visibleBox(mark.x - mark.w, mark.y - mark.d, mark.w * 2, mark.d * 2, 0, 0.02)) continue;
         frame.visible++;
-        drawGroundMark(this.overlay, mark);
+        drawGroundMark(this.overlay, mark, town.season);
       }
       if (view.debris) drawPileHints(this.overlay, town, (x, y, w, d) => this.visibleBox(x, y, w, d, 0, 3.5));
       this.overlayKey = oKey;
@@ -402,7 +406,7 @@ export class WorldRenderer {
         drawBuildingFootprintShadow(this.groundOverlays, surfaces.footprint, 1);
       }
       const visBefore = frame.visible;
-      const cacheKey = live ? "" : `${b.visualRevision}:${frame.viewSig}:${needsInterior ? 1 : 0}:${needsDetails ? 1 : 0}`;
+      const cacheKey = live ? "" : `${b.visualRevision}:${frame.viewSig}:${needsInterior ? 1 : 0}:${needsDetails ? 1 : 0}:${town.season}`;
       if (cacheKey) {
         const hit = this.staticBuildingCmds.get(b);
         if (hit && hit.key === cacheKey) {
@@ -542,7 +546,7 @@ export class WorldRenderer {
               key: `building:${b.id}:roof:${roof.id}`,
               depth: roofCommandDepth(b, roof, moved),
               cull: { x: rx, y: ry, w: rw, d: rd, z0: rz0, z1: rz1 },
-              run: (g) => drawRoofBay(g, b, roof, alpha),
+              run: (g) => drawRoofBay(g, b, roof, alpha, town.season),
             });
           }
           if (b.features.chimney && lod !== "overview") {
@@ -597,7 +601,7 @@ export class WorldRenderer {
         key: 'prop:' + p.id,
         version: [p.x, p.y, p.w, p.d, p.elev, p.heading, p.hp, JSON.stringify(p.pose)].join(':'),
         depth: depthKey(p.x + p.w / 2, p.y + p.d / 2, p.elev + 0.4),
-        run: (g) => drawCatalogProp(g, p),
+        run: (g) => drawCatalogProp(g, p, town.season),
       });
     }
   }
@@ -613,7 +617,7 @@ export class WorldRenderer {
         this.cmds.push({
           key: `canopy:${mass.x}:${mass.y}:${mass.w}:${mass.d}`,
           depth: depthKey(mass.x + mass.w * 0.5, mass.y + mass.d * 0.5, 1.2),
-          run: (g) => drawForestMass(g, mass),
+          run: (g) => drawForestMass(g, mass, frame.town.season),
         });
       }
     }
@@ -626,7 +630,7 @@ export class WorldRenderer {
       const alpha = objectOcclusionFade(dozer, tree.x - 0.75, tree.y - 0.75, 1.5, 1.5, 0, treeTop);
       this.cmds.push({
         key: `garnish:${tree.seed}`,
-        version: `${tree.x}:${tree.y}:${tree.heading}:${tree.species}:${tree.form}:${tree.scale}:${tree.tint}:${alpha.toFixed(2)}`,
+        version: `${tree.x}:${tree.y}:${tree.heading}:${tree.species}:${tree.form}:${tree.scale}:${tree.tint}:${tree.phenology}:${alpha.toFixed(2)}`,
         depth: depthKey(tree.x, tree.y, tree.form === "understory" ? 0.5 : 1.35),
         run: (g) => drawForestGarnish(g, tree, alpha),
       });
@@ -668,7 +672,24 @@ export class WorldRenderer {
 
   /** Particles and birds. */
   private passEffects(frame: RenderFrame): void {
-    const { particles, birds, view } = frame;
+    const { particles, birds, view, dozer, town } = frame;
+    this.weather.step({
+      dt: frame.dt,
+      kind: town.weather.kind,
+      detail: view.effects ? town.weatherDetail : "off",
+      camX: dozer.x,
+      camY: dozer.y,
+      seed: town.seed,
+    });
+    for (const flake of this.weather.flakes) {
+      frame.total++;
+      if (!this.visibleBox(flake.x - 0.2, flake.y - 0.2, 0.4, 0.4, 0, flake.z + 0.2)) continue;
+      frame.visible++;
+      this.cmds.push({
+        depth: depthKey(flake.x, flake.y, flake.z),
+        run: (g) => drawWeatherFlake(g, flake),
+      });
+    }
     for (const p of view.effects ? particles.items : []) {
       if (!p.alive) continue;
       frame.total++;
@@ -780,8 +801,13 @@ function drawChimney(g: Graphics, ch: { x: number; y: number; z: number }, alpha
   drawIsoBox(g, ch.x, ch.y, 0.32, 0.32, ch.z, 0.85, PAL.brick, PAL.brickDark, PAL.brick, alpha);
 }
 
-function roofColors(b: Building, roof: RoofSection, verts: { x: number; y: number; z: number }[]): { top: number; edge: number } {
+function roofColors(b: Building, roof: RoofSection, verts: { x: number; y: number; z: number }[], season: SeasonId = "summer"): { top: number; edge: number } {
   if (roof.material === 'glass') return { top: PAL.glassLit, edge: PAL.glass };
+  if (season === "winter" && roof.material !== "metal" && b.roof !== "shed") {
+    return b.roof === "flat"
+      ? { top: 0xc5ced6, edge: 0x8e989e }
+      : { top: 0xd5e0e8, edge: 0x9aa6b0 };
+  }
   if (roof.material === "metal" || b.roof === "shed") return { top: PAL.roofMetal, edge: PAL.metalDark };
   if (b.roof === "flat") return { top: PAL.roofFelt, edge: PAL.metalDark };
   const lit = roofSlopeLight(verts);
@@ -793,9 +819,9 @@ function ridgeKey(ridge: NonNullable<RoofSection["ridge"]>): string {
   return `${ridge.ax}:${ridge.ay}:${ridge.az}:${ridge.bx}:${ridge.by}:${ridge.bz}`;
 }
 
-function drawRoofBay(g: Graphics, b: Building, roof: RoofSection, alpha: number): void {
+function drawRoofBay(g: Graphics, b: Building, roof: RoofSection, alpha: number, season: SeasonId = "summer"): void {
   const drawn = new Set<string>();
-  drawRoofSection(g, b, roof, alpha, drawn, () => {
+  drawRoofSection(g, b, roof, alpha, drawn, season, () => {
     if (roof.material === 'glass' || roofShowsFrame(b, roof)) {
       drawRoofFrame(g, b, roof, alpha * 0.92);
     }
@@ -808,11 +834,12 @@ function drawRoofSection(
   roof: RoofSection,
   alpha: number,
   drawnRidges: Set<string>,
+  season: SeasonId = "summer",
   beforeCover?: () => void,
 ): void {
   const raw = roofVerts(roof);
   const verts = applyBrokenRoofEdge(b, roof, raw);
-  const cols = roofColors(b, roof, verts);
+  const cols = roofColors(b, roof, verts, season);
   const faded = (roof.state === "falling" ? alpha * 0.9 : alpha) * (roof.material === 'glass' ? .28 : 1);
   const thick = 0.14;
   for (const closure of sawtoothClosures(roof)) {
@@ -927,8 +954,8 @@ function drawCollapsedSite(g: Graphics, site: CollapsedSite): void {
   void rng;
 }
 
-function drawCover(g: Graphics, patch: GroundPatch, condition: GroundCondition): void {
-  const color = coverColor(patch.cover, condition);
+function drawCover(g: Graphics, patch: GroundPatch, condition: GroundCondition, season: SeasonId = "summer"): void {
+  const color = coverColor(patch.cover, condition, season);
   if (patch.poly && patch.poly.length >= 3) {
     drawWorldPoly(g, patch.poly.map((p) => ({ x: p.x, y: p.y, z: patch.z })), color, 1);
   } else if (Math.abs(patch.heading) > 0.05) {
@@ -937,11 +964,12 @@ function drawCover(g: Graphics, patch: GroundPatch, condition: GroundCondition):
     drawGroundPoly(g, patch.x, patch.y, patch.w, patch.d, color, 1, patch.z);
   }
   if (patch.cover === "water" || patch.cover === "forest-floor" || patch.cover.startsWith("field-")) {
-    if (patch.cover.startsWith("field-")) drawFieldRows(g, patch, condition);
+    if (patch.cover.startsWith("field-")) drawFieldRows(g, patch, condition, season);
+    if (patch.cover === "water" && (condition === "snow" || season === "winter")) drawIceCracks(g, patch);
     return;
   }
   const speckle = patch.z < 0 ? 1 : Math.min(40, Math.max(4, Math.floor((patch.w * patch.d) / 18)));
-  const dark = coverDark(patch.cover, condition);
+  const dark = coverDark(patch.cover, condition, season);
   for (let i = 0; i < speckle; i++) {
     const gx = patch.x + ((i * 17 + (patch.seed % 13)) % 97) * 0.12 * (patch.w / 8);
     const gy = patch.y + ((i * 29 + (patch.seed % 17)) % 89) * 0.1 * (patch.d / 8);
@@ -951,11 +979,20 @@ function drawCover(g: Graphics, patch: GroundPatch, condition: GroundCondition):
   }
 }
 
-function drawFieldRows(g: Graphics, patch: GroundPatch, condition: GroundCondition): void {
+function drawIceCracks(g: Graphics, patch: GroundPatch): void {
+  const cracks = 3 + (patch.seed % 3);
+  for (let i = 0; i < cracks; i++) {
+    const ox = ((patch.seed * (i + 3)) % 97) / 97;
+    const oy = ((patch.seed * (i + 5)) % 89) / 89;
+    drawGroundPoly(g, patch.x + ox * patch.w * 0.7, patch.y + oy * patch.d * 0.7, patch.w * 0.28, 0.06, 0x4a6274, 0.45, patch.z + 0.01);
+  }
+}
+
+function drawFieldRows(g: Graphics, patch: GroundPatch, condition: GroundCondition, season: SeasonId): void {
   if (patch.poly && patch.poly.length >= 3) return;
   const gap = patch.cover === "field-mature" ? 1.35 : 1.05;
   const rows = Math.min(7, Math.max(3, Math.floor(patch.d / gap)));
-  const color = coverDark(patch.cover, condition);
+  const color = coverDark(patch.cover, condition, season);
   const thick = patch.cover === "field-tilled" ? 0.1 : patch.cover === "field-stubble" ? 0.08 : patch.cover === "field-mature" ? 0.12 : 0.1;
   const z = patch.z + 0.006;
   for (let i = 0; i < rows; i++) {
@@ -968,13 +1005,13 @@ function drawFieldRows(g: Graphics, patch: GroundPatch, condition: GroundConditi
   }
 }
 
-function drawTerrainFeatures(g: Graphics, features: readonly TerrainFeature[], condition: GroundCondition): void {
+function drawTerrainFeatures(g: Graphics, features: readonly TerrainFeature[], condition: GroundCondition, season: SeasonId): void {
   for (const feature of features) {
     switch (feature.kind) {
       case "forest":
         break;
       case "field":
-        drawFieldCrops(g, feature, condition);
+        drawFieldCrops(g, feature, condition, season);
         drawFieldChurn(g, feature);
         break;
       case "pond":
@@ -989,8 +1026,8 @@ function drawTerrainFeatures(g: Graphics, features: readonly TerrainFeature[], c
   }
 }
 
-function cropRowStyle(feature: FieldFeature, condition: GroundCondition): { top: number; left: number; right: number; h: number; thick: number } {
-  if (condition === "snow") {
+function cropRowStyle(feature: FieldFeature, condition: GroundCondition, season: SeasonId): { top: number; left: number; right: number; h: number; thick: number } {
+  if (condition === "snow" || season === "winter") {
     const dormant = feature.state === "mature" || feature.state === "stubble";
     return {
       top: 0xd0d8de,
@@ -1002,29 +1039,30 @@ function cropRowStyle(feature: FieldFeature, condition: GroundCondition): { top:
   }
   const mature = feature.state === "mature";
   const short = feature.state === "short";
+  const harvest = season === "autumn" && mature;
   switch (feature.crop) {
     case "corn":
       return {
-        top: mature ? 0x7a8a32 : short ? 0x5a8a34 : 0x6a5a30,
+        top: harvest ? 0xc4a024 : mature ? 0x6f9a38 : short ? 0x5a8a34 : 0x6a5a30,
         left: mature ? 0x4a5a1c : 0x2e3c16,
         right: mature ? 0x627428 : 0x3e4c1c,
-        h: mature ? 0.28 : short ? 0.12 : 0.04,
+        h: harvest ? 0.36 : mature ? 0.28 : short ? 0.12 : 0.04,
         thick: mature ? 0.18 : 0.14,
       };
     case "wheat":
       return {
-        top: mature ? 0xa89448 : short ? 0x6e8a38 : 0x7a6840,
+        top: harvest ? 0xe2c56a : mature ? 0xa89448 : short ? 0x6e8a38 : 0x7a6840,
         left: mature ? 0x6a5420 : 0x3a3a18,
         right: mature ? 0x8a7030 : 0x4a4a1e,
-        h: mature ? 0.2 : short ? 0.1 : 0.04,
+        h: harvest ? 0.26 : mature ? 0.2 : short ? 0.1 : 0.04,
         thick: mature ? 0.16 : 0.14,
       };
     case "soy":
       return {
-        top: mature ? 0x3e7432 : short ? 0x4a8240 : 0x6a5030,
+        top: harvest ? 0xc6a04a : mature ? 0x3e7432 : short ? 0x4a8240 : 0x6a5030,
         left: mature ? 0x1e401c : 0x303016,
         right: mature ? 0x2e5a28 : 0x3e3c1c,
-        h: mature ? 0.18 : short ? 0.1 : 0.04,
+        h: harvest ? 0.24 : mature ? 0.18 : short ? 0.1 : 0.04,
         thick: mature ? 0.18 : 0.14,
       };
     default: {
@@ -1034,9 +1072,9 @@ function cropRowStyle(feature: FieldFeature, condition: GroundCondition): { top:
   }
 }
 
-function drawFieldCrops(g: Graphics, feature: FieldFeature, condition: GroundCondition): void {
+function drawFieldCrops(g: Graphics, feature: FieldFeature, condition: GroundCondition, season: SeasonId): void {
   if (feature.state === "tilled") return;
-  const style = cropRowStyle(feature, condition);
+  const style = cropRowStyle(feature, condition, season);
   const gap = Math.max(0.9, Math.min(1.2, feature.cell * 1.4));
   const stride = feature.rows > 7 ? 2 : 1;
   const fx = Math.cos(feature.heading);
@@ -1118,6 +1156,13 @@ function drawFieldChurn(g: Graphics, feature: FieldFeature): void {
   }
 }
 
+function drawWeatherFlake(g: Graphics, flake: WeatherFlake): void {
+  const color = flake.kind === "rain" ? 0x9eb4c4 : flake.kind === "leaves" ? 0xc47a32 : 0xf4f7fb;
+  const w = flake.kind === "rain" ? 0.05 : 0.12;
+  const d = flake.kind === "rain" ? 0.16 : 0.08;
+  drawOrientedIsoBox(g, flake.x, flake.y, 0.4, w, d, flake.z, 0.04, color, color, color, 0.7);
+}
+
 function drawParticle(g: Graphics, p: Particle): void {
   const fade = Math.min(1, p.life / p.maxLife);
   const s = worldToScreen(p.x, p.y, 0);
@@ -1171,12 +1216,14 @@ function drawParticle(g: Graphics, p: Particle): void {
   drawOrientedIsoBox(g, p.x, p.y, p.rot, len, wid, p.z, Math.max(0.04, p.size * 0.2), color, dark, color, 0.92 * fade);
 }
 
-function markColor(mark: GroundMark): number {
+function markColor(mark: GroundMark, season: SeasonId = "summer"): number {
   switch (mark.kind) {
     case "scrape":
       return 0x2a2418;
     case "tire":
       return 0x2c281c;
+    case "season-track":
+      return seasonTrackColor(season);
     case "oil":
       return 0x1a1814;
     case "crack":
@@ -1201,8 +1248,8 @@ function markColor(mark: GroundMark): number {
   }
 }
 
-function drawGroundMark(g: Graphics, mark: GroundMark): void {
-  const color = markColor(mark);
+function drawGroundMark(g: Graphics, mark: GroundMark, season: SeasonId = "summer"): void {
+  const color = markColor(mark, season);
   const fx = Math.cos(mark.heading);
   const fy = Math.sin(mark.heading);
   const hx = mark.w * 0.5;

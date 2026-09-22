@@ -87,7 +87,7 @@ describe("lot dressing", () => {
   });
 
   it("keeps lot cover identities on snow maps", () => {
-    const town = createTown({ district: "d10", seed: 1, topology: "tjunction" });
+    const town = createTown({ district: "d10", seed: 1, topology: "tjunction", season: "winter" });
     expect(town.groundCondition).toBe("snow");
     expect(town.ground.some((g) => g.cover === "grass" || g.cover === "dirt" || g.cover === "gravel")).toBe(true);
     expect(town.ground.some((g) => g.cover === "driveway")).toBe(true);

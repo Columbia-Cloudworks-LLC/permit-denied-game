@@ -1,3 +1,5 @@
+import type { WeatherDetail, WeatherKind } from "../world/season";
+
 export class AudioBus {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
@@ -8,6 +10,10 @@ export class AudioBus {
   private noiseBuf: AudioBuffer | null = null;
   muted = false;
   private started = false;
+  private ambient: AudioBufferSourceNode | null = null;
+  private ambientGain: GainNode | null = null;
+  private ambientFilter: BiquadFilterNode | null = null;
+  private ambientKind: WeatherKind | "off" = "off";
 
   get ready(): boolean {
     return this.started;
@@ -46,6 +52,18 @@ export class AudioBus {
     gFilter.connect(this.grindGain);
     this.grindGain.connect(this.master);
     this.grind.start();
+    this.ambientGain = this.ctx.createGain();
+    this.ambientGain.gain.value = 0;
+    this.ambientFilter = this.ctx.createBiquadFilter();
+    this.ambientFilter.type = "lowpass";
+    this.ambientFilter.frequency.value = 500;
+    this.ambient = this.ctx.createBufferSource();
+    this.ambient.buffer = this.noiseBuf;
+    this.ambient.loop = true;
+    this.ambient.connect(this.ambientFilter);
+    this.ambientFilter.connect(this.ambientGain);
+    this.ambientGain.connect(this.master);
+    this.ambient.start();
     this.started = true;
     if (this.ctx.state === "suspended") await this.ctx.resume();
   }
@@ -77,6 +95,25 @@ export class AudioBus {
     const now = this.ctx.currentTime;
     this.engineGain?.gain.setTargetAtTime(0, now, 0.04);
     this.grindGain?.gain.setTargetAtTime(0, now, 0.04);
+    this.ambientGain?.gain.setTargetAtTime(0, now, 0.08);
+    this.ambientKind = "off";
+  }
+
+  /** Season bed. Mute, Off, and Reduced stay quieter. It does not change the simulation. */
+  syncAmbient(kind: WeatherKind, detail: WeatherDetail): void {
+    if (!this.ctx || !this.ambientGain || !this.ambientFilter || this.muted) return;
+    const active = detail === "off" || kind === "clear" ? "off" : kind;
+    if (active === this.ambientKind) return;
+    this.ambientKind = active;
+    const now = this.ctx.currentTime;
+    if (active === "off") {
+      this.ambientGain.gain.setTargetAtTime(0, now, 0.2);
+      return;
+    }
+    const freq = active === "rain" ? 900 : active === "flurries" ? 1400 : active === "leaves" ? 600 : 500;
+    const gain = detail === "reduced" ? 0.012 : 0.028;
+    this.ambientFilter.frequency.setTargetAtTime(freq, now, 0.2);
+    this.ambientGain.gain.setTargetAtTime(gain, now, 0.3);
   }
 
   impact(mag: number): void {

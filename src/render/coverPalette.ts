@@ -1,5 +1,6 @@
 import type { CoverKind } from "../structure/types";
 import type { GroundCondition } from "../world/groundCondition";
+import { ICE_COLOR, type SeasonId } from "../world/season";
 import { PAL } from "./palette";
 
 export const SOFT_LOT_COVERS: readonly CoverKind[] = ["grass", "scrub", "dirt", "planted", "lot"];
@@ -26,12 +27,65 @@ const COVER_PRESENT: Record<CoverKind, true> = {
 
 export const COVER_KINDS: readonly CoverKind[] = Object.keys(COVER_PRESENT) as CoverKind[];
 
-export function coverColor(cover: CoverKind, condition: GroundCondition = "clear"): number {
-  return condition === "snow" ? winterCoverColor(cover) : clearCoverColor(cover);
+export function coverColor(cover: CoverKind, condition: GroundCondition = "clear", season: SeasonId = "summer"): number {
+  if (cover === "water" && (condition === "snow" || season === "winter")) return ICE_COLOR;
+  if (condition === "snow" || season === "winter") return winterCoverColor(cover);
+  if (season === "spring") return springCoverColor(cover);
+  if (season === "autumn") return autumnCoverColor(cover);
+  return clearCoverColor(cover);
 }
 
-export function coverDark(cover: CoverKind, condition: GroundCondition = "clear"): number {
-  return condition === "snow" ? winterCoverDark(cover) : clearCoverDark(cover);
+export function coverDark(cover: CoverKind, condition: GroundCondition = "clear", season: SeasonId = "summer"): number {
+  if (cover === "water" && (condition === "snow" || season === "winter")) return 0x4a6274;
+  if (condition === "snow" || season === "winter") return winterCoverDark(cover);
+  if (season === "autumn") return autumnCoverDark(cover);
+  return clearCoverDark(cover);
+}
+
+function springCoverColor(cover: CoverKind): number {
+  switch (cover) {
+    case "grass":
+    case "scrub":
+      return 0x7aaa4c;
+    case "dirt":
+      return 0x5c4636;
+    case "planted":
+      return 0x6e9a46;
+    case "lot":
+      return 0x6f8f52;
+    default:
+      return clearCoverColor(cover);
+  }
+}
+
+function autumnCoverColor(cover: CoverKind): number {
+  switch (cover) {
+    case "grass":
+    case "scrub":
+      return 0x7a7044;
+    case "dirt":
+      return 0x8a6840;
+    case "planted":
+      return 0x8a6230;
+    case "lot":
+      return 0x746848;
+    case "forest-floor":
+      return 0x6a4c30;
+    default:
+      return clearCoverColor(cover);
+  }
+}
+
+function autumnCoverDark(cover: CoverKind): number {
+  switch (cover) {
+    case "grass":
+    case "scrub":
+    case "planted":
+    case "lot":
+      return 0x4e4428;
+    default:
+      return clearCoverDark(cover);
+  }
 }
 
 function clearCoverColor(cover: CoverKind): number {

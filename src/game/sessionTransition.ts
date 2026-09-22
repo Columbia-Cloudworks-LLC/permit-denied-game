@@ -5,7 +5,7 @@ import type { TestMapRequest } from "../world/testMapRequest";
 
 /** Yard and asset links are sandbox inspections. They do not keep a campaign run. */
 export function rulesForTestMap(seed: number, testMap: TestMapRequest): SessionRules {
-  return { kind: "sandbox", district: "classic", seed, ranchFocus: false, testMap };
+  return { kind: "sandbox", district: "classic", seed, ranchFocus: false, testMap, season: "summer", seasonExplicit: false, weatherDetail: "on" };
 }
 
 /**

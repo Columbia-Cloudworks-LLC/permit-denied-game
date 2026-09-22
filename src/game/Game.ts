@@ -35,6 +35,8 @@ import { createRoadVehicle, replaceRoadVehicle } from "../vehicle/roadVehicle";
 import { pickVerificationRoute } from "../world/routing";
 import { worldBoundsToScreen, worldToScreen } from "../world/iso";
 import { createTown } from "../world/town";
+import { biomeById } from "../world/biomes";
+import { resolveSeason } from "../world/season";
 import {
   FIELD_CLEARED_SECONDS,
   FIELD_NOTICE_SECONDS,
@@ -120,7 +122,7 @@ export class Game {
   private rules: SessionRules = parseSessionFromSearch(
     typeof window === "undefined" ? "" : window.location.search,
   );
-  private town = createTown({ towerTest: this.rules.towerTest, district: this.rules.district, seed: this.rules.seed, showcase: !!this.rules.demo, testMap: this.rules.testMap, topology: this.rules.topology });
+  private town = createTown({ towerTest: this.rules.towerTest, district: this.rules.district, seed: this.rules.seed, showcase: !!this.rules.demo, testMap: this.rules.testMap, topology: this.rules.topology, season: this.rules.season, biome: biomeById(this.rules.biomeId), weatherDetail: this.rules.weatherDetail });
   private dozer = createDozer(this.town.spawnX, this.town.spawnY, this.town.spawnHeading);
   private birds: Bird[] = [];
   private cash = 0;
@@ -225,6 +227,12 @@ export class Game {
     if (this.campaign && this.rules.level) {
       this.campaign.levelIndex = CAMPAIGN_LEVELS.findIndex((level) => level.id === this.rules.level);
     }
+    if (this.campaign) {
+      if (this.rules.seasonExplicit) this.campaign.season = this.rules.season;
+      if (this.rules.biomeId) this.campaign.biomeId = this.rules.biomeId;
+      this.rules.season = this.campaign.season;
+      this.rules.biomeId = this.campaign.biomeId;
+    }
     this.reset("same");
     this.syncSessionUrl();
   }
@@ -252,9 +260,16 @@ export class Game {
     this.followRoadCamera = true;
     this.followZoom = 1.15;
     if (!showCampaignHud(this.rules, this.campaign)) this.campaign = null;
-    if (kind === "new" && !keepSetup && !this.campaign) this.rules.seed = nextSeed(this.rules.seed);
+    if (kind === "new" && !keepSetup && !this.campaign) {
+      this.rules.seed = nextSeed(this.rules.seed);
+      if (this.rules.seasonSelection === "random") this.rules.season = resolveSeason(this.rules.seed);
+    }
     if (this.campaign && kind === "new") this.campaign = retryCampaignLevel(this.campaign);
-    if (this.campaign) this.rules.seed = this.campaign.levelSeed;
+    if (this.campaign) {
+      this.rules.seed = this.campaign.levelSeed;
+      this.rules.season = this.campaign.season;
+      this.rules.biomeId = this.campaign.biomeId;
+    }
     const level = generationLevel(this.rules, this.campaign);
     this.town = createTown({
       towerTest: this.rules.towerTest,
@@ -264,6 +279,9 @@ export class Game {
       testMap: this.rules.testMap,
       topology: this.rules.topology,
       campaign: level,
+      season: this.rules.season,
+      biome: biomeById(this.rules.biomeId),
+      weatherDetail: this.rules.weatherDetail,
     });
     const ranch = this.rules.demo || this.rules.ranchFocus
       ? this.town.buildings.find((b) => b.archetypeId === (this.rules.demo ?? "ranch"))
@@ -339,6 +357,11 @@ export class Game {
           ? { mode: this.rules.kind, level: this.rules.level, seed: String(this.rules.seed) }
           : { mode: this.rules.kind, district: this.rules.district, seed: String(this.rules.seed) });
     if (this.rules.topology) params.set('topology', this.rules.topology);
+    if (!this.rules.testMap && !this.rules.job) {
+      params.set('season', this.rules.season);
+      if (this.rules.biomeId) params.set('biome', this.rules.biomeId);
+      if (this.rules.weatherDetail !== 'on') params.set('effects', this.rules.weatherDetail);
+    }
     const previous = new URLSearchParams(location.search);
     carryDebugQuery(previous, params);
     history.replaceState(null, '', '?' + params);
@@ -347,7 +370,7 @@ export class Game {
   startJob(): void {
     this.campaign = null;
     this.rules = { kind: "challenge", district: "classic", seed: DEFAULT_DISTRICT_SEEDS.classic,
-      ranchFocus: false, demo: "rivertown", job: true };
+      ranchFocus: false, demo: "rivertown", job: true, season: "summer", seasonExplicit: false, weatherDetail: "on" };
     this.reset("same");
     this.syncSessionUrl();
   }
@@ -518,6 +541,7 @@ export class Game {
     );
     this.audio.engineLevel(dozerSpeed(this.dozer), this.dozer.heat);
     this.audio.grindLevel(this.dozer.bladeDown ? 0.08 + this.grindAud : 0);
+    this.audio.syncAmbient(this.town.weather.kind, this.town.weatherDetail);
 
     const payout = this.job?.settle() ?? 0;
     if (payout) {
@@ -805,6 +829,8 @@ export class Game {
       death: this.death,
       won: this.mode === "results" && (this.campaign ? this.campaign.complete : this.cash >= CASH_TARGET && !this.death),
       fieldNotice: this.fieldNotice,
+      season: this.town.season,
+      weatherDetail: this.town.weatherDetail,
       seed: this.rules.seed,
       levelId: this.rules.level,
       levelCard: (() => {
@@ -833,7 +859,7 @@ export class Game {
           landmarkProgress: landmark.progress,
           landmarkReady: landmark.ready,
           dollarsReady: dollarsReady(this.campaign, level),
-          briefing: campaignBriefingText(level),
+          briefing: campaignBriefingText(level, this.campaign.season),
           victory: this.campaign.victory,
           complete: this.campaign.complete,
           buildingCount: level.generation.buildingCount,
@@ -899,10 +925,20 @@ export class Game {
       },
       onMenu: () => { this.releaseControls(); if (this.mode === "play") this.mode = "pause"; },
       onTitle: () => { this.releaseControls(); this.campaign = null; this.mode = "title"; },
-      onStart: (kind, level) => {
+      onStart: (kind, level, season, effects) => {
         this.rules = gameSetupRules(kind, "d10", this.rules.seed, level);
-        this.campaign = kind === "challenge" ? startCampaign(this.rules.seed) : null;
-        if (this.campaign) this.campaign.levelIndex = CAMPAIGN_LEVELS.findIndex((entry) => entry.id === level);
+        this.rules.weatherDetail = effects;
+        this.rules.seasonSelection = kind === "sandbox" ? season : undefined;
+        this.rules.seasonExplicit = true;
+        if (kind === "sandbox") {
+          this.rules.season = season === "random" ? resolveSeason(this.rules.seed) : season;
+          this.campaign = null;
+        } else {
+          this.campaign = startCampaign(this.rules.seed);
+          this.campaign.levelIndex = CAMPAIGN_LEVELS.findIndex((entry) => entry.id === level);
+          this.rules.season = this.campaign.season;
+          this.rules.biomeId = this.campaign.biomeId;
+        }
         this.reset("same");
         this.syncSessionUrl();
       },
@@ -925,6 +961,9 @@ export class Game {
       onNewCampaign: () => {
         this.rules = gameSetupRules("challenge", this.rules.district, this.rules.seed);
         this.campaign = startCampaign(this.rules.seed);
+        this.rules.season = this.campaign.season;
+        this.rules.biomeId = this.campaign.biomeId;
+        this.rules.seasonExplicit = true;
         this.reset("same");
         this.syncSessionUrl();
       },
@@ -1073,6 +1112,8 @@ export class Game {
     return {
       groundCondition: this.town.groundCondition,
       biomeId: this.town.biome.id,
+      season: this.town.season,
+      weather: this.town.weather.kind,
       spawn: { x: this.town.spawnX, y: this.town.spawnY },
       lots: this.town.lots.map((lot) => ({
         id: lot.id,

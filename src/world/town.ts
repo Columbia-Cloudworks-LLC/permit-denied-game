@@ -21,7 +21,15 @@ import { completeLot, type NhoodDebug } from "./parcels";
 import { identityFromBuilding } from "./lotUse";
 import { linePoints, pt, RoadBuilder, emptyTerrain, type RoadNetwork, type TerrainField } from "./roads";
 import { defaultBiome, type BiomeProfile } from "./biomes";
-import { mapGroundCondition, type GroundCondition } from "./groundCondition";
+import { type GroundCondition } from "./groundCondition";
+import {
+  groundConditionForSeason,
+  resolveWeather,
+  type SeasonId,
+  type WeatherDetail,
+  type WeatherPreset,
+} from "./season";
+import type { LayoutEnvironment } from "./rural";
 import type { TopologyFamily } from "./rural";
 import { deriveTerrainFeatures, type TerrainFeature } from "./terrainFeatures";
 import {
@@ -70,6 +78,9 @@ export interface Town {
   topology?: TopologyFamily;
   biome: BiomeProfile;
   groundCondition: GroundCondition;
+  season: SeasonId;
+  weather: WeatherPreset;
+  weatherDetail: WeatherDetail;
   surface: SurfaceGrid;
   features: TerrainFeature[];
   featureRevision: number;
@@ -84,6 +95,9 @@ export interface TownOptions {
   seed?: number;
   topology?: TopologyFamily;
   campaign?: CampaignLevelDef;
+  season?: SeasonId;
+  biome?: BiomeProfile;
+  weatherDetail?: WeatherDetail;
 }
 
 export function createTown(options: TownOptions = {}): Town {
@@ -99,12 +113,13 @@ function createTownLayout(options: TownOptions = {}): Town {
   if (options.testMap || (options.yard && district === 'classic')) return populateTestYard(emptyTestTown(seed), options.testMap);
 
   if (district === "classic") {
-    const town = createClassicTown(seed, options.showcase);
+    const town = createClassicTown(seed, options.showcase, options.season ?? "summer", options.weatherDetail ?? "on");
     if (options.towerTest) return populateTowerTest(town);
     return town;
   }
 
-  const layout = generateDistrictLayout(district, seed, options.topology, options.campaign);
+  const environment: LayoutEnvironment = { season: options.season ?? "summer", biome: options.biome };
+  const layout = generateDistrictLayout(district, seed, options.topology, options.campaign, environment, options.weatherDetail ?? "on");
   const pileW = layout.maxX - layout.minX + 4;
   const pileD = layout.maxY - layout.minY + 4;
   return {
@@ -129,11 +144,11 @@ function emptyTestTown(seed: number): Town {
     minX: 0, minY: 0, maxX: 32, maxY: 32, district: 'classic', seed,
     roadSpawnX: 4, roadSpawnY: 4, roadSpawnHeading: 0, visualRevision: 1, siteRevision: 1,
     collapsedSites: [], diagnostic: { ok: true, issues: [] }, nhood: { rejected: [] },
-    biome: defaultBiome(), groundCondition: mapGroundCondition(defaultBiome()), features: [], featureRevision: 0, surface: emptyGrassGrid(0, 0, 32, 32),
+    biome: defaultBiome(), groundCondition: "clear", season: "summer", weather: resolveWeather("summer", seed), weatherDetail: "on", features: [], featureRevision: 0, surface: emptyGrassGrid(0, 0, 32, 32),
   };
 }
 
-function createClassicTown(seed: number, showcase = false): Town {
+function createClassicTown(seed: number, showcase = false, season: SeasonId = "summer", weatherDetail: WeatherDetail = "on"): Town {
   const placements: typeof CLASSIC_PLACEMENTS = showcase ? [
     { archetypeId: "ranch", name: "TIMBER RANCH", x: 5, y: 8 },
     { archetypeId: "rivertown", name: "RIVER MERCANTILE", x: 16, y: 8 },
@@ -223,9 +238,10 @@ function createClassicTown(seed: number, showcase = false): Town {
     for (const p of dressed.props) occBoxes.push({ x: p.x, y: p.y, w: p.w, d: p.d });
   }
 
+  const biome = defaultBiome();
   const surface = generateSurfaceGrid({
     seed,
-    biome: defaultBiome(),
+    biome,
     minX: 1,
     minY: 1,
     maxX: 38,
@@ -234,7 +250,6 @@ function createClassicTown(seed: number, showcase = false): Town {
   });
   enforceOpenCorridors(surface, network, lots, buildings);
   stampDeveloped(surface, network, lots, ground);
-  const biome = defaultBiome();
   finalizeStampedSurface(surface, biome, seed, { network, lots, buildings });
   const features = showcase
     ? []
@@ -256,6 +271,7 @@ function createClassicTown(seed: number, showcase = false): Town {
       roadSpawnY: 17.6,
       propBudget: DRESSING.districtMax.classic,
       surface,
+      season,
     });
 
   return {
@@ -292,7 +308,10 @@ function createClassicTown(seed: number, showcase = false): Town {
     diagnostic: { ok: true, issues: [] },
     nhood: { rejected: [] },
     biome,
-    groundCondition: mapGroundCondition(biome),
+    groundCondition: groundConditionForSeason(season),
+    season,
+    weather: resolveWeather(season, seed),
+    weatherDetail,
     surface,
     features,
     featureRevision: 0,
