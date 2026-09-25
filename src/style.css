@@ -586,7 +586,7 @@ dt { color: #d9b96f; font: bold 11px/1.5 var(--mono); } dd { margin: 0; color: #
 #hud-root[data-hud-mode=text] > .top { display:none; }
 #hud-root[data-hud-mode=text] .mobile-hud { top:max(6px, env(safe-area-inset-top)); }
 #hud-root[data-hud-mode=text] .mobile-readouts { display:grid; }
-#hud-root[data-hud-mode] .modal-open .mobile-hud { visibility:hidden; }
+#hud-root[data-hud-mode].modal-open .mobile-hud { visibility:hidden; }
 
 /* PD-01 field manual: cover, punched paper, and projecting divider leaves. */
 #hud-root #debug-panel { --binder-line:#b8ad91; top:max(10px,env(safe-area-inset-top)); right:max(16px,env(safe-area-inset-right)); width:min(650px,calc(100% - 32px)); height:min(820px,calc(100dvh - 28px - env(safe-area-inset-bottom))); max-height:none; padding:14px 94px 12px 44px; border:8px solid #695139; border-left:16px solid #493b2c; overflow:visible; clip-path:none; background:linear-gradient(90deg,#d2c8ac,#f2ebd6 26px); box-shadow:3px 3px #ddd4ba,6px 6px #ab9c7d,10px 10px #3b3125,0 15px 35px #0008; }

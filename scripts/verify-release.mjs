@@ -12,5 +12,8 @@ try{
  }
  await run('scripts/verify-open-issues.mjs',{ISSUES_TEST_URL:origin});
  await run('scripts/verify-debug-binder.mjs',{DEBUG_TEST_URL:origin});
+ await run('scripts/verify-binder-coverage.mjs',{DEBUG_TEST_URL:origin});
  await run('scripts/verify-seasons.mjs',{SEASONS_TEST_URL:origin});
+ await run('scripts/verify-ice.mjs',{SEASONS_TEST_URL:origin});
+ await run('scripts/verify-season-performance.mjs',{SEASONS_TEST_URL:origin});
 }finally{server?.kill();}

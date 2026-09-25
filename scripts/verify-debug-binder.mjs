@@ -111,6 +111,11 @@ try {
   assert.equal((await snapshot()).request, undefined);
   assert.deepEqual((await snapshot()).upgrades, { blade: 0, engine: 0, push: 0 });
   assert.equal((await snapshot()).binder.tab, 'session');
+  await button('Begin Level').click(); await settle();
+  if (!await page.locator('#debug-panel').isVisible()) await button('Debug').click();
+  await tab('Session').click();
+  assert.equal(await page.locator('[data-panel=job]').getAttribute('hidden'), '');
+  await page.locator('[data-session=sandbox]').click(); await settle();
   await page.locator('[data-act=job]').click(); await settle();
   assert.equal(await page.evaluate(() => window.__pd.inspect().job), true);
   results.push('Full sandbox entry and reset, normal restart semantics, and Brick challenge retained.');
