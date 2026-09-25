@@ -11,6 +11,9 @@ try{
   const expected=await p.locator('#debug-assets').evaluate(panel=>[...panel.querySelectorAll('button,input,select,summary')].filter(e=>!e.closest('[hidden]')&&!e.matches('.yard-panel>summary')).map((el,i)=>{el.dataset.coverageId=String(i);return i;}));
   const seen=[];
   for(let sheet=1;sheet<=total;sheet++){
+   const intercepted=await p.locator('#debug-assets input, #debug-assets select').evaluateAll(es=>es.filter(e=>e.getBoundingClientRect().height>0).flatMap(e=>['PageUp','PageDown'].filter(key=>!e.dispatchEvent(new KeyboardEvent('keydown',{key,bubbles:true,cancelable:true})))));
+   assert.deepEqual(intercepted,[],'Page keys retain native behavior inside form controls');
+   assert.equal(Number(await p.locator('#debug-panel').getAttribute('data-sheet')),sheet);
    const visible=await p.locator('[data-coverage-id]').evaluateAll(es=>es.filter(e=>e.getBoundingClientRect().height>0).map(e=>({id:Number(e.dataset.coverageId),rect:e.getBoundingClientRect().toJSON(),bottom:document.querySelector('.debug-pages').getBoundingClientRect().bottom})));
    for(const e of visible){assert.ok(e.rect.bottom<=e.bottom+2,JSON.stringify({viewport,sheet,e}));seen.push(e.id);}
    await p.screenshot({path:`${out}/expanded-${viewport.width}-${sheet}.png`});

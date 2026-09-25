@@ -8,6 +8,7 @@ export class BinderSheets {
     panel.querySelector('#binder-previous')!.addEventListener('click', () => this.turn(-1));
     panel.querySelector('#binder-next')!.addEventListener('click', () => this.turn(1));
     panel.addEventListener('keydown', e => {
+      if (e.target instanceof Element && e.target.closest('input, select, textarea, [contenteditable=true]')) return;
       if (e.key === 'PageDown' || e.key === 'PageUp') {
         e.preventDefault(); this.turn(e.key === 'PageDown' ? 1 : -1);
       }
