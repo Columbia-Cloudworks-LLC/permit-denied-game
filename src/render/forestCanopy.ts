@@ -295,6 +295,7 @@ function hashCell(ix: number, iy: number, seed: number): number {
 }
 
 export interface ForestMass {
+  species?: "oak" | "pine";
   x: number;
   y: number;
   w: number;
@@ -302,7 +303,7 @@ export interface ForestMass {
 }
 
 /** Cheap canopy slabs for overview and low zoom. Merged runs keep interior mass without a tree per cell. */
-export function planForestMasses(grid: SurfaceGrid): ForestMass[] {
+export function planForestMasses(grid: SurfaceGrid, biome?: BiomeProfile, seed = 0): ForestMass[] {
   const runs: ForestMass[] = [];
   const cell = grid.cell;
   for (let iy = 0; iy < grid.rows; iy++) {
@@ -315,14 +316,16 @@ export function planForestMasses(grid: SurfaceGrid): ForestMass[] {
       if (run < 0) continue;
       const span = ix - run;
       if (span >= 2) {
+        const species = biome && speciesFor(biome, hashCell(Math.floor(run / SURFACE_CHUNK), Math.floor(iy / SURFACE_CHUNK), seed), "interior").startsWith("pine") ? "pine" as const : "oak" as const;
         const mass = {
+          species,
           x: grid.ox + run * cell,
           y: grid.oy + iy * cell,
           w: span * cell,
           d: cell,
         };
         const prev = runs[runs.length - 1];
-        if (prev && prev.x === mass.x && prev.w === mass.w && Math.abs(prev.y + prev.d - mass.y) < 0.01) prev.d += cell;
+        if (prev && prev.species === species && prev.x === mass.x && prev.w === mass.w && Math.abs(prev.y + prev.d - mass.y) < 0.01) prev.d += cell;
         else runs.push(mass);
       }
       run = -1;
@@ -332,8 +335,22 @@ export function planForestMasses(grid: SurfaceGrid): ForestMass[] {
 }
 
 export function drawForestMass(g: Graphics, mass: ForestMass, season: SeasonId = "summer"): void {
-  const color = forestMassColor(season);
-  drawOrientedIsoBox(g, mass.x + mass.w * 0.5, mass.y + mass.d * 0.5, 0, mass.w, mass.d, 0.35, 1.15, color.t, color.l, color.r, 0.92);
+  const pine = mass.species === "pine";
+  if (season === "winter" && !pine) {
+    // A dense low thicket preserves the blocked forest footprint; upright forks
+    // identify bare broadleaf woods without a recolored summer canopy.
+    drawOrientedIsoBox(g, mass.x + mass.w / 2, mass.y + mass.d / 2, 0, mass.w, mass.d, 0.04, 0.18, 0x736757, 0x554b40, 0x65594a, .85);
+    const count = Math.min(6, Math.max(2, Math.ceil(mass.w / 2)));
+    for (let i = 0; i < count; i++) {
+      const x = mass.x + (i + .5) * mass.w / count, y = mass.y + mass.d * .5;
+      drawOrientedIsoBox(g, x, y, 0, .12, .12, .1, 1.25, 0x806c52, 0x4c4033, 0x62523f, 1);
+      drawOrientedIsoBox(g, x, y, .55, .9, .1, .85, .96, 0x806c52, 0x4c4033, 0x62523f, 1);
+      drawOrientedIsoBox(g, x, y, -.55, .65, .1, 1.08, 1.18, 0x806c52, 0x4c4033, 0x62523f, 1);
+    }
+    return;
+  }
+  const color = pine ? { t: season === "winter" ? 0xb9c8c7 : 0x347850, l: 0x1a4230, r: 0x265c3c } : forestMassColor(season);
+  drawOrientedIsoBox(g, mass.x + mass.w * 0.5, mass.y + mass.d * 0.5, 0, mass.w, mass.d, 0.35, season === "spring" && !pine ? .72 : 1.15, color.t, color.l, color.r, 0.92);
 }
 
 function forestMassColor(season: SeasonId): { t: number; l: number; r: number } {

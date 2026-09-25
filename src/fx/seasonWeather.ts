@@ -1,3 +1,5 @@
+import { Rng } from '../game/rng';
+import { WEATHER_SALT } from '../world/season';
 import type { WeatherDetail, WeatherKind } from "../world/season";
 
 export interface WeatherFlake {
@@ -17,11 +19,15 @@ const CAP = 36;
 export class SeasonWeather {
   flakes: WeatherFlake[] = [];
   private key = "";
+  private rng = new Rng(WEATHER_SALT);
 
   reset(key: string): void {
     if (key === this.key) return;
     this.flakes = [];
     this.key = key;
+    let seed = WEATHER_SALT;
+    for (const char of key) seed = Math.imul(seed ^ char.charCodeAt(0), 16777619);
+    this.rng.reset(seed);
   }
 
   step(input: {
@@ -38,12 +44,12 @@ export class SeasonWeather {
       this.flakes = [];
       return;
     }
-    if (this.flakes.length < CAP && Math.random() < input.dt * 18) {
+    if (this.flakes.length < CAP && this.rng.next() < input.dt * 18) {
       const spread = 10;
       this.flakes.push({
-        x: input.camX + (Math.random() - 0.5) * spread,
-        y: input.camY + (Math.random() - 0.5) * spread,
-        z: 2 + Math.random() * 3,
+        x: input.camX + (this.rng.next() - 0.5) * spread,
+        y: input.camY + (this.rng.next() - 0.5) * spread,
+        z: 2 + this.rng.next() * 3,
         vx: input.kind === "leaves" ? 0.8 : input.kind === "rain" ? 0.2 : 0.35,
         vy: input.kind === "rain" ? 2.4 : 0.6,
         vz: input.kind === "rain" ? -3.2 : -0.8,

@@ -1032,6 +1032,7 @@ export class Game {
       }, this.hud.binder);
       this.hud.assetsHost.append(this.yardPanel.root);
       this.yardPanel.root.open = true;
+      this.yardPanel.reset();
     } catch (error) {
       this.yardPanelInit = undefined;
       throw error;

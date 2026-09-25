@@ -59,14 +59,14 @@ try {
     await page.waitForTimeout(200);
     const geometry = await page.evaluate(() => {
       const rect = selector => { const r = document.querySelector(selector).getBoundingClientRect(); return { x:r.x,y:r.y,w:r.width,h:r.height,right:r.right,bottom:r.bottom }; };
-      return { game:rect('#game-root'), hud:rect('.mobile-hud'), stick:rect('.touch-stick'), blade:rect('.touch-blade'), pause:rect('#mobile-pause'), overflow:document.documentElement.scrollWidth > innerWidth, center:document.elementFromPoint(innerWidth/2,innerHeight/2)?.tagName };
+      return { game:rect('#game-root'), hud:rect('.mobile-hud'), stick:rect('.touch-stick'), blade:rect('.touch-blade'), pause:rect(document.querySelector('#hud-root').dataset.hudMode === 'text' ? '#mobile-pause' : '#hud-menu'), overflow:document.documentElement.scrollWidth > innerWidth, center:document.elementFromPoint(innerWidth/2,innerHeight/2)?.tagName };
     });
     assert.equal(geometry.game.h, height);
     assert.equal(geometry.game.w, width);
     assert.ok(geometry.hud.h <= (height > width ? 80 : 64));
     assert.equal(geometry.stick.w, height > width ? 112 : 96);
     assert.equal(geometry.blade.w,80);
-    assert.equal(geometry.pause.h,48);
+    assert.ok(geometry.pause.h>=44);
     assert.equal(geometry.overflow,false);
     assert.equal(geometry.center,'CANVAS');
     for (const box of [geometry.hud,geometry.stick,geometry.blade]) assert.ok(box.x >= 0 && box.right <= width && box.y >= 0 && box.bottom <= height);
@@ -75,7 +75,7 @@ try {
     console.log(`${width}x${height}: canvas ${geometry.game.h}px, HUD ${geometry.hud.h}px`);
   }
   await page.setViewportSize({ width:390,height:844 });
-  await page.locator('#mobile-pause').click();
+  await page.getByRole('button',{name:'Pause',exact:true}).filter({visible:true}).click();
   await page.getByRole('button',{name:'Equipment & Objective',exact:true}).click();
   await page.locator('.equipment-details').waitFor();
   assert.match(await page.locator('.equipment-details').innerText(),/Blade 1.00/);
@@ -90,9 +90,10 @@ try {
   await page.getByRole('button',{name:'Close Debug',exact:true}).click();
   await page.locator('.mobile-hud').waitFor({state:'visible'});
 
-  await page.locator('#mobile-pause').click();
+  await page.getByRole('button',{name:'Pause',exact:true}).filter({visible:true}).click();
   await page.locator('.operator-menu').getByRole('button',{name:'Debug',exact:true}).click();
   await page.getByRole('tab',{name:'Session',exact:true}).click();
+  while(!await page.getByRole('button',{name:'Brick Building Demolition',exact:true}).isVisible()) await page.getByRole('button',{name:'Next sheet',exact:true}).click();
   await page.getByRole('button',{name:'Brick Building Demolition',exact:true}).click();
   await page.locator('#mobile-job').waitFor({state:'visible'});
 
@@ -100,7 +101,8 @@ try {
   desktop.on('pageerror',error=>errors.push(error.message));
   await desktop.goto(`${base}/?sandbox=1`);
   await desktop.locator('.top').waitFor({state:'visible'});
-  assert.equal(await desktop.locator('.mobile-hud').isVisible(),false);
+  assert.equal(await desktop.locator('#hud-cash').isVisible(),true);
+  assert.equal(await desktop.locator('#hud-time').isVisible(),true);
   await desktop.screenshot({path:`${output}/desktop.png`});
   await desktop.close();
 

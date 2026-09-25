@@ -32,7 +32,7 @@ export class YardPanel {
       <p data-coverage></p>
       <input data-search aria-label="Search assets" placeholder="Search name or stable ID">
       <div class="yard-filters"><select data-category aria-label="Category"></select><select data-material aria-label="Material"></select><select data-profile aria-label="Destruction profile"></select></div>
-      <select data-assets size="5" aria-label="Asset picker"></select>
+      <select data-assets aria-label="Asset picker"></select>
       <div class="yard-row"><label>Variant <input data-variant type="number" value="0" min="0" aria-label="Variant"></label><button class="binder-primary" data-test>Test This Asset</button></div>
       <p data-status role="status"></p>
       <section data-loaded><h3>Loaded example</h3>
@@ -144,7 +144,7 @@ export class YardPanel {
     }
     const list = this.el<HTMLSelectElement>('[data-assets]');
     this.options(list, this.filtered.map(a => [a.id, `${a.name} · ${a.id}`])); list.value = this.state.assetId;
-    list.size = Math.max(2, Math.min(5, this.filtered.length));
+    list.size = 1;
     this.el('[data-coverage]').textContent = `${this.filtered.length} of ${this.assets.length} assets · buildings, vehicles, props, sites & fixtures`;
     this.el<HTMLButtonElement>('[data-test]').disabled = !this.assets.some(a => a.id === this.state.assetId);
     this.syncVariant(); this.cancel(); this.refreshInstances();

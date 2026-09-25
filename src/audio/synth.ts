@@ -14,6 +14,7 @@ export class AudioBus {
   private ambientGain: GainNode | null = null;
   private ambientFilter: BiquadFilterNode | null = null;
   private ambientKind: WeatherKind | "off" = "off";
+  private ambientDetail: WeatherDetail = "off";
 
   get ready(): boolean {
     return this.started;
@@ -103,7 +104,8 @@ export class AudioBus {
   syncAmbient(kind: WeatherKind, detail: WeatherDetail): void {
     if (!this.ctx || !this.ambientGain || !this.ambientFilter || this.muted) return;
     const active = detail === "off" || kind === "clear" ? "off" : kind;
-    if (active === this.ambientKind) return;
+    if (active === this.ambientKind && detail === this.ambientDetail) return;
+    this.ambientDetail = detail;
     this.ambientKind = active;
     const now = this.ctx.currentTime;
     if (active === "off") {
