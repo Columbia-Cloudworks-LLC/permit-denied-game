@@ -20,7 +20,11 @@ try{
    if(sheet<total)await p.getByRole('button',{name:'Next sheet',exact:true}).click();
   }
   assert.deepEqual([...seen].sort((a,b)=>a-b),expected);
-  await p.getByRole('tab',{name:'Inspector',exact:true}).focus();await p.keyboard.press('Enter');await p.keyboard.press('PageDown');await p.waitForTimeout(50);assert.equal(await p.locator('#debug-panel').getAttribute('data-sheet'),'2');await p.keyboard.press('PageUp');assert.equal(await p.locator('#debug-panel').getAttribute('data-sheet'),'1');
+  await p.getByRole('tab',{name:'Inspector',exact:true}).click();await p.waitForTimeout(100);
+  const floorKeys=await p.locator('#debug-inspector select').evaluate(el=>['PageUp','PageDown'].map(key=>el.dispatchEvent(new KeyboardEvent('keydown',{key,bubbles:true,cancelable:true}))));
+  assert.deepEqual(floorKeys,[true,true],'Inspector dropdown retains native Page keys');
+  assert.equal(await p.locator('#debug-panel').getAttribute('data-sheet'),'1');
+  await p.getByRole('tab',{name:'Inspector',exact:true}).focus();await p.keyboard.press('PageDown');await p.waitForTimeout(50);assert.equal(await p.locator('#debug-panel').getAttribute('data-sheet'),'2');await p.keyboard.press('PageUp');assert.equal(await p.locator('#debug-panel').getAttribute('data-sheet'),'1');
  }
  await writeFile(out+'/result.json',JSON.stringify({base,passed:true}));console.log('Expanded asset controls occur exactly once; keyboard page boundaries passed.');
 }finally{await browser.close();}
