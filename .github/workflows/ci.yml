@@ -65,7 +65,24 @@ jobs:
   interface:
     needs: build
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix:
+        include:
+          - { suite: layout, width: 1536 }
+          - { suite: layout, width: 1024 }
+          - { suite: layout, width: 768 }
+          - { suite: layout, width: 844 }
+          - { suite: layout, width: 390 }
+          - { suite: layout, width: 320 }
+          - { suite: layout, width: 1920 }
+          - { suite: binder }
+          - { suite: coverage }
+          - { suite: seasons }
+          - { suite: ice }
+          - { suite: performance }
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -81,10 +98,13 @@ jobs:
           path: dist
       - run: npx playwright install --with-deps chromium
       - run: node scripts/verify-release.mjs
+        env:
+          RELEASE_TEST_SUITE: ${{ matrix.suite }}
+          ISSUES_WIDTH: ${{ matrix.width }}
       - uses: actions/upload-artifact@v7.0.1
         if: always()
         with:
-          name: interface-and-season-evidence
+          name: interface-and-season-evidence-${{ matrix.suite }}-${{ matrix.width || 'all' }}
           path: artifacts
           retention-days: 14
 
