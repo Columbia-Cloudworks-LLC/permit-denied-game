@@ -1,3 +1,5 @@
+import { BinderSheets } from './binderSheets';
+import { version as buildVersion } from '../../package.json';
 import { clockValue } from './instrumentValues';
 import { CashCounter } from './cashCounter';
 import { EquipmentClock } from './equipmentClock';
@@ -80,6 +82,7 @@ export class Hud {
   readonly permitLogo: PermitLogo;
   onResubmit?: () => number | null;
   readonly binder = createDebugBinderState();
+  private sheets: BinderSheets;
   private binderBlocked = false;
   private binderWidth = 0;
   private binderVisible = false;
@@ -142,12 +145,13 @@ export class Hud {
       <div id="hud-job" class="job" hidden></div>
       <div class="debug-menu">
         <section id="debug-panel" aria-label="${L.debug}" tabindex="-1" hidden>
-          <div class="debug-heading"><div><small>COUNTY FIELD OPERATIONS</small><strong>Test binder</strong></div><button type="button" id="debug-collapse" aria-label="Collapse binder" aria-expanded="true">−</button><button type="button" id="debug-close" aria-label="Close Debug">×</button></div>
-          <div class="debug-map"><span id="debug-map-name"></span><button type="button" id="debug-open-yard">All Assets Sandbox</button><button type="button" id="debug-reset-test" hidden>Reset Test</button></div>
+          <div class="binder-hardware" aria-hidden="true"><i></i><i></i><i></i></div><div class="debug-heading"><div><small>COUNTY FIELD OPERATIONS · DIAGNOSTICS</small><h2>Equipment field manual</h2><small>PD–01 · Revision ${buildVersion}</small></div><button type="button" id="debug-collapse" aria-label="Collapse binder" aria-expanded="true">Fold</button><button type="button" id="debug-close" aria-label="Close Debug">Close binder</button></div>
+          <div class="debug-map"><span id="debug-map-name"></span><button type="button" id="debug-open-yard" aria-label="Open complete asset yard">Scope: complete yard</button><button type="button" id="debug-reset-test" hidden>Reset Test</button></div>
           <div class="debug-toolbar"><label><input type="checkbox" data-debug="freeze"> Freeze Simulation</label><button type="button" id="debug-step" disabled>Step One Frame</button></div>
           <div class="debug-tabs" role="tablist" aria-label="Debug tools">
             ${(['assets', 'inspector', 'session'] as const).map(tab => `<button type="button" role="tab" id="debug-tab-${tab}" aria-controls="debug-${tab}" aria-selected="${tab === 'assets'}" tabindex="${tab === 'assets' ? 0 : -1}" data-debug-tab="${tab}">${tab[0].toUpperCase() + tab.slice(1)}</button>`).join('')}
           </div>
+          <h3 id="binder-subsection">Asset catalog</h3>
           <div class="debug-pages">
           <section id="debug-inspector" role="tabpanel" aria-labelledby="debug-tab-inspector" hidden>
           <p>Hidden objects still collide and simulate.</p>
@@ -163,6 +167,7 @@ export class Hud {
           <section id="debug-session" role="tabpanel" aria-labelledby="debug-tab-session" hidden></section>
           <section id="debug-assets" role="tabpanel" aria-labelledby="debug-tab-assets"><div id="debug-asset-host"></div></section>
           </div>
+          <nav class="binder-pagination" aria-label="Manual sheets"><button type="button" id="binder-previous" aria-label="Previous sheet">← Back</button><output id="binder-sheet-number" aria-live="polite"></output><button type="button" id="binder-next" aria-label="Next sheet">Next →</button></nav>
         </section>
       </div>
       <div class="instrument-deck">
@@ -223,10 +228,27 @@ export class Hud {
     });
     this.bindSessionBar();
     this.bindDebugMenu();
+    this.sheets = new BinderSheets(root.querySelector<HTMLElement>("#debug-panel")!);
     const top = root.querySelector<HTMLElement>('.top')!;
     new ResizeObserver(() => {
       root.style.setProperty('--top-panel-height', top.offsetHeight + 'px');
+      this.layoutInstruments();
     }).observe(top);
+    new ResizeObserver(() => this.layoutInstruments()).observe(root);
+    for (const id of ["#hud-cash", "#hud-time"]) new ResizeObserver(() => this.layoutInstruments()).observe(root.querySelector(id)!);
+  }
+
+  private layoutInstruments(): void {
+    const top = this.root.querySelector<HTMLElement>('.top')!;
+    this.root.dataset.hudMode = 'full';
+    const visible = ([...top.children] as HTMLElement[]).filter(el => !el.hidden && getComputedStyle(el).display !== 'none');
+    const width = visible.reduce((sum, el) => sum + el.getBoundingClientRect().width, 0);
+    if (width + Math.max(0, visible.length - 1) * 12 + 24 > top.clientWidth) {
+      this.root.dataset.hudMode = 'compact';
+      const cash = this.root.querySelector<HTMLElement>('#hud-cash')!;
+      const time = this.root.querySelector<HTMLElement>('#hud-time')!;
+      if (cash.offsetWidth + time.offsetWidth + 36 > top.clientWidth) this.root.dataset.hudMode = 'text';
+    }
   }
 
   private renderMobile(s: HudState, elapsedClock: boolean, advisory: string): void {
@@ -329,7 +351,8 @@ export class Hud {
       button.tabIndex = selected ? 0 : -1;
       this.root.querySelector<HTMLElement>('#debug-' + button.dataset.debugTab)!.hidden = !selected;
     });
-    pages.scrollTop = this.binder.scroll[tab];
+    pages.scrollTop = 0;
+    this.sheets?.reset();
     this.onDebugOpen?.();
   }
 
@@ -347,7 +370,7 @@ export class Hud {
     const panel = this.root.querySelector<HTMLElement>('#debug-panel')!;
     if (panel.hidden) return false;
     this.binder.open = false; this.syncBinder();
-    const toggle = this.root.querySelector<HTMLButtonElement>(document.documentElement.classList.contains('touch-ui') ? '#mobile-debug' : '#debug-toggle')!;
+    const toggle = this.root.querySelector<HTMLButtonElement>(this.root.dataset.hudMode === 'text' ? '#mobile-debug' : '#debug-toggle')!;
     if (restoreFocus) toggle.focus();
     return true;
   }
@@ -358,11 +381,11 @@ export class Hud {
     panel.classList.toggle('binder-collapsed', this.binder.collapsed);
     for (const id of ['#debug-toggle', '#mobile-debug']) this.root.querySelector(id)!.setAttribute('aria-expanded', String(!panel.hidden));
     const collapse = this.root.querySelector<HTMLButtonElement>('#debug-collapse')!;
-    collapse.textContent = this.binder.collapsed ? '+' : '−';
+    collapse.textContent = this.binder.collapsed ? 'Unfold' : 'Fold';
     collapse.setAttribute('aria-label', this.binder.collapsed ? 'Expand binder' : 'Collapse binder');
     collapse.setAttribute('aria-expanded', String(!this.binder.collapsed));
     if (!panel.hidden && !this.binder.collapsed && (!this.binderVisible || this.binderWasCollapsed)) {
-      this.binderScroller.scrollTop = this.binder.scroll[this.binder.tab];
+      this.sheets?.refresh();
     }
     this.binderVisible = !panel.hidden;
     this.binderWasCollapsed = this.binder.collapsed;
@@ -613,7 +636,7 @@ export class Hud {
     bar.querySelector<HTMLElement>('[data-panel="job"]')!.hidden = !panels.job;
     const facts = bar.querySelector<HTMLElement>("#debug-campaign-facts");
     if (facts) {
-      facts.textContent = debugSessionFacts({
+      const text = debugSessionFacts({
         testMapName: s.testMapName,
         session: s.session,
         district: s.district,
@@ -625,6 +648,7 @@ export class Hud {
         dollarTarget: s.campaign?.dollarTarget ?? card?.dollarTarget,
         timeLimit: s.campaign?.timeLimit ?? card?.timeLimit,
       });
+      if (facts.textContent !== text) facts.textContent = text;
     }
     bar.querySelectorAll("button").forEach((btn) => {
       const el = btn as HTMLButtonElement;

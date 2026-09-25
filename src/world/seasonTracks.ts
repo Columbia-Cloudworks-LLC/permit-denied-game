@@ -17,6 +17,7 @@ export function leaveSeasonalTrack(town: Town, x: number, y: number, heading: nu
     const index = town.marks.findIndex((mark) => mark.kind === "season-track");
     if (index >= 0) town.marks.splice(index, 1);
   }
+  town.visualRevision++;
   town.marks.push({
     x,
     y,

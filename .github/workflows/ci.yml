@@ -62,6 +62,53 @@ jobs:
       - run: npm run build
       - run: node scripts/verify-pwa.mjs
 
+  interface:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix:
+        include:
+          - { suite: layout, width: 1536 }
+          - { suite: layout, width: 1024 }
+          - { suite: layout, width: 768 }
+          - { suite: layout, width: 844 }
+          - { suite: layout, width: 390 }
+          - { suite: layout, width: 320 }
+          - { suite: layout, width: 1920 }
+          - { suite: binder }
+          - { suite: coverage }
+          - { suite: seasons }
+          - { suite: ice }
+          - { suite: performance }
+          - { suite: hud }
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - uses: actions/download-artifact@v8.0.1
+        with:
+          name: game-build
+          path: dist
+      - run: npx playwright install --with-deps chromium
+      - run: node scripts/verify-release.mjs
+        env:
+          RELEASE_TEST_SUITE: ${{ matrix.suite }}
+          ISSUES_WIDTH: ${{ matrix.width }}
+      - uses: actions/upload-artifact@v7.0.1
+        if: always()
+        with:
+          name: interface-and-season-evidence-${{ matrix.suite }}-${{ matrix.width || 'all' }}
+          path: artifacts
+          retention-days: 14
+
   catalog:
     needs: build
     uses: ./.github/workflows/asset-captures.yml
@@ -73,7 +120,7 @@ jobs:
       R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
 
   deploy:
-    needs: [build, windows, catalog]
+    needs: [build, windows, catalog, interface]
     # Fork PRs get tests, never deployment credentials. Dispatch also handles the
     # final screenshot-bot commit, whose push does not start ordinary CI.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository

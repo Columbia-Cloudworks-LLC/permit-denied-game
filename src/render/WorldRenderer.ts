@@ -209,7 +209,10 @@ export class WorldRenderer {
   }
 
   /** Shared draw-frame state: camera caches, counters, and the current debug view. */
+  private weatherTown?: Town;
+
   private beginDraw(town: Town, dozer: Dozer, particles: ParticlePool, birds: Bird[], dt: number, showPlayer: boolean): RenderFrame {
+    if (this.weatherTown !== town) { this.weather.reset(""); this.weatherTown = town; }
     const strikeAt = worldToScreen(dozer.x, dozer.y);
     this.bowlingStrikes.draw(dt, strikeAt.x, strikeAt.y, this.zoom);
     this.root.setChildIndex(this.bowlingStrikes.root, this.root.children.length - 1);
@@ -265,7 +268,7 @@ export class WorldRenderer {
     const garnishKey = `${town.season}:${town.seed}:${town.biome.id}:${frame.surface.ox}:${frame.surface.oy}:${frame.surface.cols}x${frame.surface.rows}:${frame.surface.stampRevision}`;
     if (garnishKey !== this.garnishKey) {
       this.garnish = planForestGarnish(frame.surface, town.biome, town.seed, town.season);
-      this.forestMasses = planForestMasses(frame.surface);
+      this.forestMasses = planForestMasses(frame.surface, town.biome, town.seed);
       this.garnishKey = garnishKey;
     }
   }
@@ -599,7 +602,7 @@ export class WorldRenderer {
       frame.visible++;
       this.cmds.push({
         key: 'prop:' + p.id,
-        version: [p.x, p.y, p.w, p.d, p.elev, p.heading, p.hp, JSON.stringify(p.pose)].join(':'),
+        version: [town.season, p.x, p.y, p.w, p.d, p.elev, p.heading, p.hp, JSON.stringify(p.pose)].join(':'),
         depth: depthKey(p.x + p.w / 2, p.y + p.d / 2, p.elev + 0.4),
         run: (g) => drawCatalogProp(g, p, town.season),
       });
@@ -616,6 +619,7 @@ export class WorldRenderer {
         frame.visible++;
         this.cmds.push({
           key: `canopy:${mass.x}:${mass.y}:${mass.w}:${mass.d}`,
+          version: `${frame.town.season}:${mass.species}`,
           depth: depthKey(mass.x + mass.w * 0.5, mass.y + mass.d * 0.5, 1.2),
           run: (g) => drawForestMass(g, mass, frame.town.season),
         });

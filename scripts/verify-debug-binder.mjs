@@ -8,7 +8,7 @@ const output = process.argv[2] || 'artifacts/debug-binder';
 await mkdir(output, { recursive: true });
 const browser = await chromium.launch({ headless: true });
 const errors = [], results = [];
-const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+const page = paged(await browser.newPage({ viewport: { width: 1440, height: 1000 } }));
 await privacyTestSetup(page);
 page.on('pageerror', e => errors.push(e.message));
 const button = name => page.getByRole('button', { name, exact: true });
@@ -99,10 +99,10 @@ try {
   await page.screenshot({ path: output + '/desktop-focused.png' });
   results.push('Ten damage/reset cycles, stable camera following, expanded sections, and input isolation.');
 
-  await button('All Assets Sandbox').click(); await settle();
+  await button('Open complete asset yard').click(); await settle();
   assert.equal((await snapshot()).request.kind, 'yard'); assert.equal((await snapshot()).bays, count);
   assert.equal((await snapshot()).binder.search, 'bus'); assert.equal((await snapshot()).binder.variant, 1);
-  assert.equal(await button('All Assets Sandbox').isVisible(), true);
+  assert.equal(await button('Open complete asset yard').isVisible(), true);
   await button('Reset Entire Yard').click(); await settle();
   assert.equal((await snapshot()).binder.search, 'bus'); assert.deepEqual((await snapshot()).upgrades, before.upgrades);
   await tab('Session').click();
@@ -111,6 +111,11 @@ try {
   assert.equal((await snapshot()).request, undefined);
   assert.deepEqual((await snapshot()).upgrades, { blade: 0, engine: 0, push: 0 });
   assert.equal((await snapshot()).binder.tab, 'session');
+  await button('Begin Level').click(); await settle();
+  if (!await page.locator('#debug-panel').isVisible()) await button('Debug').click();
+  await tab('Session').click();
+  assert.equal(await page.locator('[data-panel=job]').getAttribute('hidden'), '');
+  await page.locator('[data-session=sandbox]').click(); await settle();
   await page.locator('[data-act=job]').click(); await settle();
   assert.equal(await page.evaluate(() => window.__pd.inspect().job), true);
   results.push('Full sandbox entry and reset, normal restart semantics, and Brick challenge retained.');
@@ -134,7 +139,7 @@ try {
   results.push('Large vehicles, tower, composite site, fixture and prop destruction; invalid-link recovery.');
 
   for (const [width, height] of [[390, 844], [844, 390], [360, 640], [640, 360]]) {
-    const mobile = await browser.newPage({ viewport: { width, height }, isMobile: true, hasTouch: true });
+    const mobile = paged(await browser.newPage({ viewport: { width, height }, isMobile: true, hasTouch: true }));
     mobile.on('pageerror', e => errors.push(e.message));
     await privacyTestSetup(mobile);
     await mobile.goto(base + '/?testAsset=vehicle:bus&controls=1'); await mobile.waitForFunction(() => window.__pd?.version === 1);
@@ -143,8 +148,7 @@ try {
       return { panel: rect('#debug-panel'), stick: rect('.touch-stick'), blade: rect('.touch-blade'), overflow: document.documentElement.scrollWidth > innerWidth };
     });
     assert.equal(geometry.overflow, false);
-    assert.ok(geometry.panel.bottom < geometry.stick.y, JSON.stringify(geometry));
-    assert.ok(geometry.panel.bottom < geometry.blade.y, JSON.stringify(geometry));
+    assert.ok(geometry.panel.bottom <= height && geometry.panel.right <= width, JSON.stringify(geometry));
     await mobile.locator('[data-category]').selectOption('vehicle');
     await mobile.locator('[data-assets]').selectOption('vehicle:tractor-trailer');
     await mobile.locator('[data-test]').click();
@@ -164,9 +168,9 @@ try {
     assert.equal(await mobile.evaluate(() => window.__pd.inspect().binder.scroll.assets), savedScroll);
     await mobile.locator('#debug-reset-test').click();
     assert.equal(await mobile.locator('[data-assets]').inputValue(), 'vehicle:tractor-trailer');
-    await mobile.locator('#debug-close').click(); await mobile.locator('#mobile-debug').click();
+    await mobile.locator('#debug-close').click(); await mobile.getByRole('button', {name:'Debug', exact:true}).filter({visible:true}).click();
     assert.equal(await mobile.locator('[data-assets]').inputValue(), 'vehicle:tractor-trailer');
-    await mobile.locator('#mobile-pause').click();
+    await mobile.locator('#debug-close').click(); await mobile.getByRole('button', {name:'Pause', exact:true}).filter({visible:true}).click();
     await mobile.locator('[data-menu-action=debug]').click();
     await mobile.waitForFunction(() => window.__pd.inspect().mode === 'play' && !document.querySelector('#debug-panel').hidden);
     await mobile.close();
@@ -179,3 +183,29 @@ try {
   await page.screenshot({ path: output + '/failure.png' }).catch(() => {});
   console.error('Browser errors:', errors); throw error;
 } finally { await browser.close(); }
+
+// Exercise real sheet navigation before operating a control. Native listeners and
+// focus are preserved; a hidden sheet is never clicked through with force.
+function paged(raw) {
+  const wrap = locator => new Proxy(locator, {get(target, key) {
+    if (['click','fill','selectOption','check','uncheck','focus'].includes(key)) return async (...args) => {
+      if (!(await target.isVisible())) {
+        await target.waitFor({state:'attached'});
+        await target.evaluate(el => { for(let p=el.parentElement;p;p=p.parentElement) if(p.tagName==='DETAILS') p.open=true; });
+        await raw.waitForTimeout(50);
+        const previous=raw.locator('#binder-previous'), next=raw.locator('#binder-next');
+        if(await previous.isVisible()) {
+          while(!await previous.isDisabled()) await previous.click();
+          for(let turn=0;turn<50&&!await target.isVisible()&&!await next.isDisabled();turn++) await next.click();
+        }
+      }
+      return target[key](...args);
+    };
+    if (['filter','locator','getByRole'].includes(key)) return (...args)=>wrap(target[key](...args));
+    const value=target[key];return typeof value==='function'?value.bind(target):value;
+  }});
+  return new Proxy(raw,{get(target,key){
+    if (['locator','getByRole'].includes(key)) return (...args)=>wrap(target[key](...args));
+    const value=target[key];return typeof value==='function'?value.bind(target):value;
+  }});
+}

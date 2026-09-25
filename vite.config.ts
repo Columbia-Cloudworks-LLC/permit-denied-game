@@ -5,6 +5,7 @@ import { version } from './package.json';
 
 /** Heavy generation matrices: Linux CI only. */
 export const INTEGRATION_TESTS = [
+  "src/world/seasonCoverage.test.ts",
   "src/world/district.test.ts",
   "src/world/campaignLayout.test.ts",
   "src/world/urbanGeography.test.ts",
