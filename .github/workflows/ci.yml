@@ -83,6 +83,7 @@ jobs:
           - { suite: seasons }
           - { suite: ice }
           - { suite: performance }
+          - { suite: hud }
     steps:
       - uses: actions/checkout@v7.0.1
         with:

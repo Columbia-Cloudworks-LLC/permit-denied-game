@@ -1,14 +1,21 @@
 import {chromium} from 'playwright';
 import assert from 'node:assert/strict';
 import {mkdir,writeFile} from 'node:fs/promises';
+import {spawn} from 'node:child_process';
+const base=process.env.HUD_TEST_URL||'http://127.0.0.1:5181';
+let server;
 const browser=await chromium.launch({headless:true});
 const out='artifacts/hud-instruments';await mkdir(out,{recursive:true});
 const reports=[];
 try {
+if(!process.env.HUD_TEST_URL){
+ server=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port','5181','--strictPort'],{stdio:'pipe',windowsHide:true});
+ for(let i=0;i<100;i++){try{if((await fetch(base)).ok)break;}catch{}if(i===99)throw new Error('HUD fixture server did not start');await new Promise(r=>setTimeout(r,100));}
+}
 for(const touch of [false,true]) {
  const page=await browser.newPage({viewport:{width:1024,height:768},hasTouch:touch,recordVideo:{dir:out,size:{width:1024,height:768}}});
  await page.route('**/__hud-fixture',r=>r.fulfill({contentType:'text/html',body:'<meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="/src/style.css"><div id="game-root"><canvas></canvas></div><div id="hud-root"></div>'}));
- await page.goto('http://127.0.0.1:5178/__hud-fixture');
+ await page.goto(base+'/__hud-fixture');
  await page.evaluate(async touch=>{
   const {Hud}=await import('/src/render/hud.ts');
   if(touch)document.documentElement.classList.add('touch-ui');
@@ -48,8 +55,23 @@ for(const touch of [false,true]) {
    assert.deepEqual(await page.evaluate(()=>[window.fixture.state.cash,window.fixture.state.elapsed]),[1000,60]);
   }
  }
+ await page.evaluate(()=>{
+  const f=window.fixture;
+  f.state.session='campaign';f.state.campaign={levelIndex:7,levelName:'Governor estate',landmarkName:'Governor mansion and grounds',dollarTarget:20000,levelEarned:1000,campaignEarned:12000,landmarkProgress:.37,landmarkReady:false,dollarsReady:false,briefing:'',victory:false,complete:false};
+  f.hud.render(f.state);
+ });
+ for(const width of [1536,768,430,390,320,240]){
+  await page.setViewportSize({width,height:768});await page.waitForTimeout(80);
+  const campaign=await page.evaluate(()=>{
+   const mode=document.querySelector('#hud-root').dataset.hudMode;
+   const el=document.querySelector(mode==='full'?'#hud-landmark':'#mobile-job');
+   return {mode,text:el.textContent,rect:el.getBoundingClientRect().toJSON(),overflow:document.documentElement.scrollWidth>innerWidth};
+  });
+  assert.ok(campaign.text.includes('37%')&&campaign.rect.height>0&&campaign.rect.left>=0&&campaign.rect.right<=width&&!campaign.overflow,JSON.stringify(campaign));
+  reports.push({touch,width,campaign,mode:campaign.mode});await page.screenshot({path:`${out}/campaign-${width}-${touch}.png`});
+ }
  await page.close();
 }
 assert.deepEqual(reports.filter(r=>!r.touch).map(r=>r.mode),reports.filter(r=>r.touch).map(r=>r.mode));
 await writeFile(out+'/measurements.json',JSON.stringify(reports,null,2));console.log('HUD measurements passed',reports.length);
-}finally{await browser.close();}
+}finally{await browser.close();server?.kill();}
