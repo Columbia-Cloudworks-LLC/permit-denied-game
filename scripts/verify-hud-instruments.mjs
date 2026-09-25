@@ -31,6 +31,7 @@ for(const touch of [false,true]) {
    await page.setViewportSize({width,height:768});await page.waitForTimeout(80);
    const report=await page.evaluate(()=>({width:innerWidth,mode:document.querySelector('#hud-root').dataset.hudMode,cash:document.querySelector('#hud-cash').getAttribute('aria-label'),time:document.querySelector('#hud-time').getAttribute('aria-label'),overflow:document.documentElement.scrollWidth>innerWidth,visible:[...document.querySelectorAll('.top .stat,.top .hud-actions,.mobile-readouts strong')].filter(e=>e.getBoundingClientRect().height>0).map(e=>({id:e.id||e.className,r:e.getBoundingClientRect().toJSON()}))}));
    assert.equal(report.overflow,false,JSON.stringify(report));
+   assert.equal(await page.locator('.mobile-hud').isVisible(),touch||report.mode!=='full','Auxiliary meters are visible only for touch or constrained layouts');
    for(const v of report.visible) assert.ok(v.r.left>=0&&v.r.right<=width+1,JSON.stringify(report));
    reports.push({...report,touch,values});
    if(touch&&values[0]===1000)await page.screenshot({path:`${out}/${width}-${report.mode}.png`});

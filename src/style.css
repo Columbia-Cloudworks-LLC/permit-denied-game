@@ -573,7 +573,8 @@ dt { color: #d9b96f; font: bold 11px/1.5 var(--mono); } dd { margin: 0; color: #
 #hud-root[data-hud-mode] .cash-counter { font-size:22px; }
 #hud-root[data-hud-mode] .clock-digit { width:20px; height:38px; }
 #hud-root[data-hud-mode] .clock-colon { width:8px; height:38px; }
-#hud-root[data-hud-mode] .mobile-hud { display:block; position:absolute; top:calc(var(--top-panel-height) + 22px); left:max(12px, env(safe-area-inset-left)); right:max(12px, env(safe-area-inset-right)); height:auto; background:#172019e8; padding:4px 8px; }
+#hud-root[data-hud-mode] .mobile-hud { display:none; position:absolute; top:calc(var(--top-panel-height) + 22px); left:max(12px, env(safe-area-inset-left)); right:max(12px, env(safe-area-inset-right)); height:auto; background:#172019e8; padding:4px 8px; }
+#hud-root:is([data-hud-mode=compact],[data-hud-mode=text]) .mobile-hud, .touch-ui #hud-root[data-hud-mode] .mobile-hud { display:block; }
 #hud-root[data-hud-mode] .mobile-readouts { display:none; }
 #hud-root[data-hud-mode=compact] .top { flex-wrap:wrap; justify-content:space-between; }
 #hud-root[data-hud-mode=compact] .top > :is(#hud-permit,.campaign-stat) { display:none; }
