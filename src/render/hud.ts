@@ -151,6 +151,7 @@ export class Hud {
           <div class="debug-tabs" role="tablist" aria-label="Debug tools">
             ${(['assets', 'inspector', 'session'] as const).map(tab => `<button type="button" role="tab" id="debug-tab-${tab}" aria-controls="debug-${tab}" aria-selected="${tab === 'assets'}" tabindex="${tab === 'assets' ? 0 : -1}" data-debug-tab="${tab}">${tab[0].toUpperCase() + tab.slice(1)}</button>`).join('')}
           </div>
+          <h3 id="binder-subsection">Asset catalog</h3>
           <div class="debug-pages">
           <section id="debug-inspector" role="tabpanel" aria-labelledby="debug-tab-inspector" hidden>
           <p>Hidden objects still collide and simulate.</p>

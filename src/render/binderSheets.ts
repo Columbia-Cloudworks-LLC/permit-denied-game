@@ -13,6 +13,7 @@ export class BinderSheets {
       }
     });
     new ResizeObserver(() => this.refresh()).observe(panel);
+    new ResizeObserver(() => this.refresh()).observe(panel.querySelector('.debug-pages')!);
     new MutationObserver(records => {
       const changed = records.some(record => {
         if (record.type === 'attributes') return record.oldValue !== (record.target as Element).getAttribute(record.attributeName!);
@@ -53,7 +54,7 @@ export class BinderSheets {
           el.classList.add('binder-flow');
           if (el instanceof HTMLDetailsElement && !el.open) {
             const summary = el.querySelector<HTMLElement>(':scope > summary');
-            if (summary) { summary.classList.add('binder-atom'); atoms.push(summary); }
+            if (summary) { summary.classList.remove('binder-off-sheet'); summary.classList.add('binder-atom'); atoms.push(summary); }
           } else walk(el);
         }
       }
@@ -82,6 +83,10 @@ export class BinderSheets {
     const label = this.panel.querySelector<HTMLElement>('#binder-sheet-number')!;
     const section = this.active?.getAttribute('aria-labelledby');
     const name = section ? document.getElementById(section)?.textContent : '';
+    const first = this.groups[this.sheet]?.[0];
+    const flat = this.groups.flat();
+    const heading = flat.slice(0, flat.indexOf(first!) + 1).reverse().find(el => el.matches('h3, legend, summary'));
+    this.panel.querySelector('#binder-subsection')!.textContent = heading?.textContent ?? (name === 'Assets' ? 'Asset catalog' : name === 'Inspector' ? 'Visibility and diagnostics' : 'Operating session');
     label.textContent = `${name} · Sheet ${this.sheet + 1} / ${this.groups.length}`;
     this.panel.querySelector<HTMLButtonElement>('#binder-previous')!.disabled = this.sheet === 0;
     this.panel.querySelector<HTMLButtonElement>('#binder-next')!.disabled = this.sheet === this.groups.length - 1;

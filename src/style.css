@@ -656,3 +656,17 @@ dt { color: #d9b96f; font: bold 11px/1.5 var(--mono); } dd { margin: 0; color: #
 #hud-root[data-hud-mode=text] #mobile-pause { grid-column:3; grid-row:1 / 3; }
 #hud-root[data-hud-mode=text] .mobile-readouts strong { white-space:normal; overflow-wrap:anywhere; font-size:14px; }
 #hud-root[data-hud-mode=text] .mobile-readouts small { white-space:normal; }
+/* Block-level sheet atoms avoid anonymous inline line-box height between rows. */
+#debug-panel .binder-atom { display:block; }
+#debug-panel summary.binder-atom::before { content:'▸ '; }
+#debug-panel details[open] > summary.binder-atom::before { content:'▾ '; }
+#debug-panel #binder-subsection { flex:none; margin:4px 0; min-height:18px; border-bottom:1px solid #b8ad91; }
+#debug-panel #binder-subsection { height:36px; line-height:18px; overflow:hidden; overflow-wrap:anywhere; }
+@media (max-width:500px) {
+  #hud-root #debug-panel .debug-heading small:first-child { display:none; }
+  #hud-root #debug-panel .debug-heading button { position:absolute; right:0; width:57px; font-size:10px; }
+  #hud-root #debug-panel #debug-collapse { top:8px; }
+  #hud-root #debug-panel #debug-close { top:58px; }
+  #hud-root #debug-panel .debug-tabs { top:124px; }
+  #hud-root #debug-panel.binder-collapsed { min-height:112px; padding-right:70px; }
+}
