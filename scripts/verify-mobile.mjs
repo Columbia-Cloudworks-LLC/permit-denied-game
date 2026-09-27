@@ -17,6 +17,7 @@ const browser = await chromium.launch({ headless: true });
 const errors = [];
 const page = await browser.newPage({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
 await privacyTestSetup(page);
+page.on('dialog', dialog => dialog.accept());
 page.on('pageerror', error => errors.push(error.message));
 
 async function assertPwaDiscovery(target) {
@@ -93,7 +94,6 @@ try {
   await page.getByRole('button',{name:'Pause',exact:true}).filter({visible:true}).click();
   await page.locator('.operator-menu').getByRole('button',{name:'Debug',exact:true}).click();
   await page.getByRole('tab',{name:'Session',exact:true}).click();
-  while(!await page.getByRole('button',{name:'Brick Building Demolition',exact:true}).isVisible()) await page.getByRole('button',{name:'Next sheet',exact:true}).click();
   await page.getByRole('button',{name:'Brick Building Demolition',exact:true}).click();
   await page.locator('#mobile-job').waitFor({state:'visible'});
 

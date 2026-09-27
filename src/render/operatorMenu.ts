@@ -134,7 +134,8 @@ export class OperatorMenu {
       this.actions.page?.(null);
       this.introVersion++;
       this.intro.stop();
-      document.querySelector<HTMLCanvasElement>('#game-root canvas')?.focus();
+      const debug = document.querySelector<HTMLElement>('#debug-panel:not([hidden])');
+      (debug ?? document.querySelector<HTMLCanvasElement>('#game-root canvas'))?.focus();
     }
   }
 
@@ -171,8 +172,8 @@ export class OperatorMenu {
     this.body.querySelector<HTMLSelectElement>('#dispatch-effects')!.value = this.effects;
     const note = this.body.querySelector('#season-note')!;
     note.textContent = this.session === 'challenge'
-      ? 'The season is chosen once for the campaign and kept through all seven levels, including the estate. Winter ice can be crossed.'
-      : 'Random resolves when the run starts and is shown on the level line. Restart keeps it. New Layout rerolls Random and keeps Spring, Summer, Autumn, or Winter.';
+      ? 'One randomly chosen season lasts for the whole campaign.'
+      : 'Choose a season, or let the game choose.';
     this.body.querySelector('#mode-description')!.textContent = MODE_DESCRIPTIONS[this.session];
   }
 
@@ -194,7 +195,7 @@ export class OperatorMenu {
     if (page === 'dispatch') {
       const seasonOptions = [`<option value="random">Random</option>`, ...SEASONS.map((id) => `<option value="${id}">${seasonLabel(id)}</option>`)].join('');
       const effectOptions = WEATHER_DETAILS.map((id) => `<option value="${id}">${id === 'on' ? 'On' : id === 'reduced' ? 'Reduced' : 'Off'}</option>`).join('');
-      this.body.innerHTML = `<div class="dispatch-fields"><label>Mode<select id="dispatch-mode">${Object.entries(MODE_LABELS).map(([id, label]) => `<option value="${id}">${label}</option>`).join('')}</select></label><label id="dispatch-lot-field">Level<select id="dispatch-lot"></select></label><label id="dispatch-season-field">Season<select id="dispatch-season">${seasonOptions}</select></label><label id="dispatch-effects-field">Weather<select id="dispatch-effects">${effectOptions}</select></label></div><p class="fine-print" id="season-note"></p><p class="fine-print" id="mode-description"></p>${this.mode === 'pause' ? '<p class="caution">Starting a new game replaces your current progress and upgrades.</p>' : ''}<button class="primary" data-menu-action="start">${L.start}</button><button data-nav="back">Back</button>`;
+      this.body.innerHTML = `<div class="dispatch-fields"><label>Mode<select id="dispatch-mode">${Object.entries(MODE_LABELS).map(([id, label]) => `<option value="${id}">${label}</option>`).join('')}</select><span class="fine-print" id="mode-description"></span></label><label id="dispatch-lot-field">Level<select id="dispatch-lot"></select></label><label id="dispatch-season-field">Season<select id="dispatch-season">${seasonOptions}</select></label><label id="dispatch-effects-field">Weather<select id="dispatch-effects">${effectOptions}</select></label></div><p class="fine-print" id="season-note"></p>${this.mode === 'pause' ? '<p class="caution">Starting a new game replaces your current progress and upgrades.</p>' : ''}<button class="primary" data-menu-action="start">${L.start}</button><button data-nav="back">Back</button>`;
       this.syncSetup();
     }
     if (page === 'controls') this.body.innerHTML = `<dl class="control-list"><div><dt>W / S or ↑ / ↓</dt><dd>Drive forward / reverse</dd></div><div><dt>A / D or ← / →</dt><dd>Steer left / right</dd></div><div><dt>Hold SPACE</dt><dd>Power the blade</dd></div><div><dt>Esc / Pause</dt><dd>Pause / Resume</dd></div><div><dt>R</dt><dd>${L.restart}</dd></div><div><dt>N</dt><dd>${L.newLayout}</dd></div><div><dt>1 / 2 / 3</dt><dd>${L.blade} / ${L.engine} / ${L.push} upgrade</dd></div><div><dt>M</dt><dd>Toggle sound</dd></div></dl><div class="instruction-card"><strong>Touch Controls</strong><p>Drag the left stick to drive and steer. Hold the right POWER BLADE button while driving. Release the stick to coast. Release the blade to finish the current push.</p></div><p class="fine-print">Watch ENGINE HEAT and TRACK STRESS. Above 65%, release the blade or back off rubble. In sandbox these gauges remain advisory.</p>`;

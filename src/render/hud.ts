@@ -1,4 +1,3 @@
-import { BinderSheets } from './binderSheets';
 import { version as buildVersion } from '../../package.json';
 import { clockValue } from './instrumentValues';
 import { CashCounter } from './cashCounter';
@@ -82,7 +81,6 @@ export class Hud {
   readonly permitLogo: PermitLogo;
   onResubmit?: () => number | null;
   readonly binder = createDebugBinderState();
-  private sheets: BinderSheets;
   private binderBlocked = false;
   private binderWidth = 0;
   private binderVisible = false;
@@ -141,13 +139,14 @@ export class Hud {
         <div class="hud-actions"><button type="button" id="debug-toggle" aria-expanded="false" aria-controls="debug-panel">${L.debug}</button><button type="button" id="hud-menu">${L.pause}</button></div>
       </div>
       <div class="mobile-hud"><div class="mobile-readouts"><div><strong id="mobile-cash"></strong><small id="mobile-target"></small></div><div><strong id="mobile-clock"></strong><small id="mobile-clock-label"></small></div><button type="button" id="mobile-debug" aria-label="Debug" aria-expanded="false" aria-controls="debug-panel">Debug</button><button type="button" id="mobile-pause" aria-label="Pause">Ⅱ</button></div><div class="mobile-meters">${['heat', 'track'].map(id => `<div id="mobile-${id}" role="meter" aria-label="${id === 'heat' ? 'Engine heat' : 'Track stress'}" aria-valuemin="0" aria-valuemax="100"><span>${id === 'heat' ? 'Heat' : 'Track'} <output>0%</output></span><i></i></div>`).join('')}</div><div class="mobile-notices"><div id="mobile-warning" role="status" hidden></div><div id="mobile-job" hidden></div></div></div>
+      <div id="simulation-frozen" role="status" hidden><span>Simulation frozen</span><button type="button" id="resume-simulation">Resume</button></div>
       <div class="session" id="hud-session"></div>
       <div id="hud-job" class="job" hidden></div>
       <div class="debug-menu">
         <section id="debug-panel" aria-label="${L.debug}" tabindex="-1" hidden>
           <div class="binder-hardware" aria-hidden="true"><i></i><i></i><i></i></div><div class="debug-heading"><div><small>COUNTY FIELD OPERATIONS · DIAGNOSTICS</small><h2>Equipment field manual</h2><small>PD–01 · Revision ${buildVersion}</small></div><button type="button" id="debug-collapse" aria-label="Collapse binder" aria-expanded="true">Fold</button><button type="button" id="debug-close" aria-label="Close Debug">Close binder</button></div>
-          <div class="debug-map"><span id="debug-map-name"></span><button type="button" id="debug-open-yard" aria-label="Open complete asset yard">Scope: complete yard</button><button type="button" id="debug-reset-test" hidden>Reset Test</button></div>
-          <div class="debug-toolbar"><label><input type="checkbox" data-debug="freeze"> Freeze Simulation</label><button type="button" id="debug-step" disabled>Step One Frame</button></div>
+          <div class="debug-map"><span id="debug-map-name"></span><button type="button" id="debug-open-yard">Open All-Assets Test Map</button><button type="button" id="debug-reset-test" hidden>Reset Test</button></div>
+          <div class="debug-toolbar"><label><input type="checkbox" data-debug="freeze"> Freeze Simulation</label><button type="button" id="debug-run" hidden>Run Simulation</button><button type="button" id="debug-step" disabled>Step One Frame</button></div>
           <div class="debug-tabs" role="tablist" aria-label="Debug tools">
             ${(['assets', 'inspector', 'session'] as const).map(tab => `<button type="button" role="tab" id="debug-tab-${tab}" aria-controls="debug-${tab}" aria-selected="${tab === 'assets'}" tabindex="${tab === 'assets' ? 0 : -1}" data-debug-tab="${tab}">${tab[0].toUpperCase() + tab.slice(1)}</button>`).join('')}
           </div>
@@ -167,7 +166,6 @@ export class Hud {
           <section id="debug-session" role="tabpanel" aria-labelledby="debug-tab-session" hidden></section>
           <section id="debug-assets" role="tabpanel" aria-labelledby="debug-tab-assets"><div id="debug-asset-host"></div></section>
           </div>
-          <nav class="binder-pagination" aria-label="Manual sheets"><button type="button" id="binder-previous" aria-label="Previous sheet">← Back</button><output id="binder-sheet-number" aria-live="polite"></output><button type="button" id="binder-next" aria-label="Next sheet">Next →</button></nav>
         </section>
       </div>
       <div class="instrument-deck">
@@ -206,7 +204,7 @@ export class Hud {
       },
       resume: () => this.onResume?.(), start: (kind, level, season, effects) => this.onStart?.(kind, level, season, effects),
       restart: () => this.onRestart?.(),
-      debug: () => { this.onResume?.(); this.openDebug(); },
+      debug: () => { this.onDebugToggle?.("freeze", true); this.onResume?.(); this.openDebug(); },
       title: () => this.onTitle?.(), mute: () => this.onMute?.(), click: () => this.onClick?.(),
       unlockSound: () => this.onUnlockSound?.() ?? Promise.resolve(),
       titleSound: (kind, index) => this.onTitleSound?.(kind, index),
@@ -228,7 +226,6 @@ export class Hud {
     });
     this.bindSessionBar();
     this.bindDebugMenu();
-    this.sheets = new BinderSheets(root.querySelector<HTMLElement>("#debug-panel")!);
     const top = root.querySelector<HTMLElement>('.top')!;
     new ResizeObserver(() => {
       root.style.setProperty('--top-panel-height', top.offsetHeight + 'px');
@@ -295,6 +292,11 @@ export class Hud {
     for (const selector of ['#debug-toggle', '#mobile-debug']) this.root.querySelector(selector)!.addEventListener('click', () => {
       if (panel.hidden) this.openDebug(); else this.closeDebug(true);
     });
+    for (const id of ['#debug-run', '#resume-simulation']) this.root.querySelector(id)!.addEventListener('click', () => {
+      this.onDebugToggle?.('freeze', false);
+      if (id === '#resume-simulation') document.querySelector<HTMLCanvasElement>('#game-root canvas')?.focus();
+      else this.root.querySelector<HTMLInputElement>('[data-debug=freeze]')!.focus();
+    });
     this.root.querySelector('#debug-close')!.addEventListener('click', () => this.closeDebug(true));
     this.root.querySelector('#debug-collapse')!.addEventListener('click', () => {
       this.binder.collapsed = !this.binder.collapsed; this.syncBinder(); this.onDebugOpen?.();
@@ -351,8 +353,8 @@ export class Hud {
       button.tabIndex = selected ? 0 : -1;
       this.root.querySelector<HTMLElement>('#debug-' + button.dataset.debugTab)!.hidden = !selected;
     });
-    pages.scrollTop = 0;
-    this.sheets?.reset();
+    pages.scrollTop = this.binder.scroll[tab];
+    this.root.querySelector('#binder-subsection')!.textContent = { assets: 'Asset catalog', inspector: 'Visibility and diagnostics', session: 'Operating session' }[tab];
     this.onDebugOpen?.();
   }
 
@@ -385,7 +387,7 @@ export class Hud {
     collapse.setAttribute('aria-label', this.binder.collapsed ? 'Expand binder' : 'Collapse binder');
     collapse.setAttribute('aria-expanded', String(!this.binder.collapsed));
     if (!panel.hidden && !this.binder.collapsed && (!this.binderVisible || this.binderWasCollapsed)) {
-      this.sheets?.refresh();
+      this.binderScroller.scrollTop = this.binder.scroll[this.binder.tab];
     }
     this.binderVisible = !panel.hidden;
     this.binderWasCollapsed = this.binder.collapsed;
@@ -415,6 +417,8 @@ export class Hud {
     });
     this.root.querySelector<HTMLSelectElement>("#debug-floor")!.value = String(view.maxFloor);
     this.root.querySelector<HTMLButtonElement>("#debug-step")!.disabled = !view.freeze;
+    this.root.querySelector<HTMLElement>("#simulation-frozen")!.hidden = !view.freeze;
+    this.root.querySelector<HTMLElement>("#debug-run")!.hidden = !view.freeze;
     this.root.querySelector<HTMLButtonElement>("#debug-toggle")!.textContent = L.debug;
   }
 
@@ -538,7 +542,7 @@ export class Hud {
     this.root.querySelector<HTMLElement>('[data-act="newseed"]')!.hidden = s.hasYard || !!s.campaign;
     this.root.classList.toggle('modal-open', modal);
     document.querySelector<HTMLElement>('#game-root')!.inert = modal;
-    for (const selector of ['.top', '.mobile-hud', '.instrument-deck', '#touch-controls']) {
+    for (const selector of ['.top', '.mobile-hud', '.instrument-deck', '#touch-controls', '#simulation-frozen']) {
       const el = this.root.querySelector<HTMLElement>(selector);
       if (el) el.inert = modal;
     }
