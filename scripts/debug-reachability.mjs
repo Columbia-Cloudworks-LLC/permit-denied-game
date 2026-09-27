@@ -7,12 +7,12 @@ export async function assertDebugControlsReachable(page, selector) {
   for (let i = 0; i < await controls.count(); i++) {
     const control = controls.nth(i);
     if (!await control.isVisible()) continue;
-    await control.scrollIntoViewIfNeeded();
     const state = await control.evaluate(el => {
+      el.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' });
       const r = el.getBoundingClientRect();
       const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
       return { name: el.getAttribute('aria-label') || el.textContent || el.outerHTML,
-        rect: r.toJSON(), hit: hit === el || el.contains(hit), width: innerWidth, height: innerHeight };
+        rect: r.toJSON(), hit: hit === el || el.contains(hit), covering: hit?.outerHTML.slice(0, 200), width: innerWidth, height: innerHeight };
     });
     assert.ok(state.rect.x >= 0 && state.rect.right <= state.width + 1 && state.rect.y >= 0 && state.rect.bottom <= state.height + 1, JSON.stringify(state));
     assert.ok(state.hit, `Control is covered: ${JSON.stringify(state)}`);

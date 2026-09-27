@@ -56,7 +56,7 @@ try {
   await (await dialog).accept(); await click;
   await page.waitForFunction(() => window.__pd.inspect().request?.kind === 'yard');
   assert.equal(await page.locator('#debug-open-yard').innerText(), 'Open All-Assets Test Map');
-  for (const size of [{ width: 1440, height: 900 }, { width: 640, height: 360 }, { width: 390, height: 844 }]) {
+  for (const size of [{ width: 1440, height: 900 }, { width: 640, height: 360 }, { width: 390, height: 844 }, { width: 320, height: 568 }]) {
     await page.setViewportSize(size);
     await page.getByRole('tab', { name: 'Assets', exact: true }).click();
     await assertDebugControlsReachable(page, '#debug-panel .debug-toolbar');
