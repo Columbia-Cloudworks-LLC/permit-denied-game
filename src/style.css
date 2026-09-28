@@ -617,16 +617,7 @@ dt { color: #d9b96f; font: bold 11px/1.5 var(--mono); } dd { margin: 0; color: #
 #hud-root #debug-panel .debug-tabs button { position:relative; left:5px; width:83px; min-height:54px; border:1px solid #8c8066; border-left:0; border-radius:0 12px 12px 0; padding:8px 4px; box-shadow:2px 3px #0003; }
 #hud-root #debug-panel .debug-tabs [aria-selected=true] { left:-4px; width:92px; border-left:5px double #526047; padding-top:8px; box-shadow:3px 5px #0004; text-decoration:underline; text-underline-offset:4px; z-index:2; }
 #hud-root #debug-panel .debug-pages { flex:1 1 0; min-height:0; overflow:hidden; padding:6px 2px 0; }
-#debug-panel .binder-flow { display:contents; }
-#debug-panel .binder-flow[hidden], #debug-panel .binder-off-sheet { display:none !important; }
-#debug-panel .binder-atom { margin:0 0 6px !important; break-inside:avoid; max-width:100%; overflow-wrap:anywhere; }
-#debug-panel .binder-atom:is(button,input,select) { width:100%; }
-#debug-panel label.binder-atom { display:flex; flex-wrap:wrap; }
-#debug-panel label.binder-atom input:not([type=checkbox]) { width:100px; min-width:0; }
-#hud-root #debug-panel select { appearance:none; background:#f6efdb url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%2329332d' stroke-width='2'/%3E%3C/svg%3E") right 8px center / 10px no-repeat; padding-right:24px; }
-#debug-panel .binder-pagination { display:grid; grid-template-columns:64px 1fr 64px; align-items:center; gap:4px; border-top:1px solid #a79877; padding-top:6px; flex:none; }
-#debug-panel .binder-pagination output { text-align:center; font:10px/1.3 var(--mono); color:#394337; }
-#hud-root #debug-panel .binder-pagination button { padding:4px; font-size:11px; }
+#hud-root #debug-panel select:not([multiple]) { appearance:none; background:#f6efdb url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%2329332d' stroke-width='2'/%3E%3C/svg%3E") right 8px center / 10px no-repeat; padding-right:24px; }
 #hud-root #debug-panel.binder-collapsed { height:auto; width:min(430px,calc(100% - 32px)); padding-right:12px; }
 #hud-root #debug-panel.binder-collapsed > :not(.debug-heading) { display:none; }
 @media (max-width:500px) {
@@ -638,7 +629,6 @@ dt { color: #d9b96f; font: bold 11px/1.5 var(--mono); } dd { margin: 0; color: #
   #hud-root #debug-panel .debug-tabs { width:57px; }
   #hud-root #debug-panel .debug-tabs button { width:59px; font-size:10px; }
   #hud-root #debug-panel .debug-tabs [aria-selected=true] { width:68px; }
-  #debug-panel .binder-pagination { grid-template-columns:48px 1fr 48px; }
   #hud-root #debug-panel .debug-toolbar { flex-wrap:wrap; }
 }
 @media (max-height:500px) and (min-width:501px) {
@@ -646,9 +636,6 @@ dt { color: #d9b96f; font: bold 11px/1.5 var(--mono); } dd { margin: 0; color: #
   #hud-root #debug-panel .debug-heading { padding-bottom:3px; }
   #hud-root #debug-panel .debug-heading small { display:none; }
   #debug-panel .debug-heading h2 { font-size:18px; }
-  #hud-root #debug-panel .debug-map { position:absolute; right:94px; top:60px; width:42%; }
-  #debug-panel .debug-map #debug-map-name { display:none; }
-  #hud-root #debug-panel .debug-toolbar { width:52%; }
 }
 #hud-root #debug-panel [data-assets] { min-height:44px !important; padding:8px 24px 8px 8px !important; }
 #hud-root[data-hud-mode=text] .mobile-readouts { height:auto; grid-template-columns:minmax(0,1fr) 48px 48px; gap:4px; }
@@ -658,9 +645,6 @@ dt { color: #d9b96f; font: bold 11px/1.5 var(--mono); } dd { margin: 0; color: #
 #hud-root[data-hud-mode=text] .mobile-readouts strong { white-space:normal; overflow-wrap:anywhere; font-size:14px; }
 #hud-root[data-hud-mode=text] .mobile-readouts small { white-space:normal; }
 /* Block-level sheet atoms avoid anonymous inline line-box height between rows. */
-#debug-panel .binder-atom { display:block; }
-#debug-panel summary.binder-atom::before { content:'▸ '; }
-#debug-panel details[open] > summary.binder-atom::before { content:'▾ '; }
 #debug-panel #binder-subsection { flex:none; margin:4px 0; min-height:18px; border-bottom:1px solid #b8ad91; }
 #debug-panel #binder-subsection { height:36px; line-height:18px; overflow:hidden; overflow-wrap:anywhere; }
 @media (max-width:500px) {
@@ -670,4 +654,26 @@ dt { color: #d9b96f; font: bold 11px/1.5 var(--mono); } dd { margin: 0; color: #
   #hud-root #debug-panel #debug-close { top:58px; }
   #hud-root #debug-panel .debug-tabs { top:124px; }
   #hud-root #debug-panel.binder-collapsed { min-height:112px; padding-right:70px; }
+}
+
+/* Keep related debug choices together in one scrollable section. */
+#hud-root #debug-panel .debug-pages { overflow-y:auto; overflow-x:hidden; flex:1 1 auto; min-height:0; padding:8px 6px 8px 2px; }
+#hud-root #debug-panel .debug-map { position:static; display:flex; flex-wrap:wrap; width:auto; }
+#debug-map-name { flex-basis:100%; }
+#hud-root #debug-panel .debug-toolbar { width:auto; display:flex; flex-wrap:wrap; }
+#debug-panel .yard-filters { display:grid; grid-template-columns:1fr; gap:8px; }
+#debug-panel .yard-filters select { flex:none; }
+#debug-panel .yard-filters label, #debug-panel label:has([data-assets]) { display:flex; flex-direction:column; align-items:stretch; gap:4px; }
+#debug-panel label:has([data-assets]) { margin-top:10px; }
+#debug-panel .yard-row { display:flex; }
+#hud-root #debug-panel .yard-row > label { flex:1 1 140px; flex-wrap:wrap; }
+#hud-root #debug-panel .yard-row input:not([type=checkbox]) { flex:0 0 80px; min-width:64px; width:80px; }
+#hud-root #debug-panel :is(button,select,input,summary):focus-visible { outline:3px solid #285c88; outline-offset:2px; }
+#simulation-frozen { position:absolute; z-index:12; top:max(110px,calc(env(safe-area-inset-top) + 110px)); left:max(16px,env(safe-area-inset-left)); max-width:calc(100% - 32px); display:flex; flex-wrap:wrap; align-items:center; gap:8px; padding:8px 12px; background:#1b211f; border:2px solid var(--yellow); color:var(--cream); pointer-events:auto; }
+#hud-root.modal-open #simulation-frozen { display:none; }
+.dispatch-fields #mode-description { display:block; font-weight:normal; letter-spacing:normal; }
+@media (max-height:500px) {
+  #hud-root #debug-panel { overflow-y:auto; overflow-x:hidden; }
+  #hud-root #debug-panel .debug-pages { overflow:visible; flex:none; }
+  #hud-root #debug-panel .debug-heading { position:sticky; top:-6px; z-index:3; background:#f2ebd6; }
 }

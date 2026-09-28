@@ -901,6 +901,13 @@ export class Game {
     this.app.destroy();
   }
 
+  /** UI map changes must disclose that they replace the current run. */
+  private confirmReplacement(action: string): boolean {
+    this.releaseControls();
+    const hasProgress = this.elapsed > 0 || this.cash > 0 || this.campaign !== null || Object.values(this.upgrades).some(value => value > 0) || !!this.rules.testMap;
+    return !hasProgress || window.confirm(`${action}? This replaces your current run, including demolition and upgrades. You cannot undo this. Cancel to keep playing.`);
+  }
+
   private bindHud(): void {
     bindHudSession(this.hud, {
       onMute: () => {
@@ -967,7 +974,7 @@ export class Game {
         this.reset("same");
         this.syncSessionUrl();
       },
-      onTestYard: () => { void this.openTestYard(); },
+      onTestYard: () => { if (this.confirmReplacement("Open All-Assets Test Map")) void this.openTestYard(); },
       onResetTest: () => this.reset("same"),
       onChoice: (id) => this.pickUpgrade(id),
       onResume: () => {
@@ -982,10 +989,10 @@ export class Game {
         this.reset("same");
       },
       onNewSeed: () => this.reset("new"),
-      onSession: (kind) => this.setSession(kind),
+      onSession: (kind) => { if (this.confirmReplacement(`Start ${kind === "sandbox" ? "Sandbox" : "Time Challenge"}`)) this.setSession(kind); },
       onDistrict: (id) => this.setDistrict(id),
-      onCampaignLevel: (id) => this.jumpCampaignLevel(id),
-      onJob: () => this.startJob(),
+      onCampaignLevel: (id) => { if (this.confirmReplacement(`Start ${CAMPAIGN_LEVELS.find(level => level.id === id)!.name}`)) this.jumpCampaignLevel(id); },
+      onJob: () => { if (this.confirmReplacement("Start Brick Building Demolition")) this.startJob(); },
       onDebugOpen: () => {
         this.releaseControls();
         void this.ensureYardPanel();
@@ -1025,7 +1032,7 @@ export class Game {
         },
         frame: (bay) => { this.yardFocus = bay; this.followRoadCamera = false; this.renderer.showNhood = false; },
         followVehicle: (bay) => { if (bay.vehicle) { this.town.roadCar = bay.vehicle; this.followRoadCamera = true; this.yardFocus = undefined; } },
-        testAsset: (assetId, variant) => this.loadTestMap({ kind: "asset", assetId, variant }),
+        testAsset: (assetId, variant) => { if (this.confirmReplacement("Open focused asset test map")) this.loadTestMap({ kind: "asset", assetId, variant }); },
         releaseInput: () => this.releaseControls(),
         preview: (bays, valid) => { this.renderer.yardPreview = bays; this.renderer.yardPreviewValid = valid; },
         changed: () => this.renderer.invalidate(),

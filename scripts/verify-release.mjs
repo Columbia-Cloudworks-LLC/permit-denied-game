@@ -3,6 +3,7 @@ const origin=process.env.RELEASE_TEST_URL||'http://127.0.0.1:4179';
 const suites={
  'layout':['scripts/verify-open-issues.mjs','ISSUES_TEST_URL'],
  'binder':['scripts/verify-debug-binder.mjs','DEBUG_TEST_URL'],
+ 'menus':['scripts/verify-menu-usability.mjs','DEBUG_TEST_URL'],
  'coverage':['scripts/verify-binder-coverage.mjs','DEBUG_TEST_URL'],
  'seasons':['scripts/verify-seasons.mjs','SEASONS_TEST_URL'],
  'ice':['scripts/verify-ice.mjs','SEASONS_TEST_URL'],

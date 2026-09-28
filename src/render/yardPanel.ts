@@ -31,8 +31,8 @@ export class YardPanel {
     this.root.innerHTML = `<summary>Asset catalog</summary><div class="yard-body">
       <p data-coverage></p>
       <input data-search aria-label="Search assets" placeholder="Search name or stable ID">
-      <div class="yard-filters"><select data-category aria-label="Category"></select><select data-material aria-label="Material"></select><select data-profile aria-label="Destruction profile"></select></div>
-      <select data-assets aria-label="Asset picker"></select>
+      <div class="yard-filters"><label>Category<select data-category aria-label="Category"></select></label><label>Material<select data-material aria-label="Material"></select></label><label>Destruction profile<select data-profile aria-label="Destruction profile"></select></label></div>
+      <label>Asset<select data-assets aria-label="Asset picker"></select></label>
       <div class="yard-row"><label>Variant <input data-variant type="number" value="0" min="0" aria-label="Variant"></label><button class="binder-primary" data-test>Test This Asset</button></div>
       <p data-status role="status"></p>
       <section data-loaded><h3>Loaded example</h3>
@@ -127,7 +127,7 @@ export class YardPanel {
     this.el<HTMLInputElement>('[data-search]').value = this.state.search;
     for (const [field, key] of [['category', 'category'], ['material', 'material'], ['profile', 'destruction']] as const) {
       const select = this.el<HTMLSelectElement>(`[data-${field}]`);
-      this.options(select, [['', field[0].toUpperCase() + field.slice(1)], ...[...new Set(this.assets.map(a => a[key]))].map(v => [v, v] as [string, string])]);
+      this.options(select, [['', 'All'], ...[...new Set(this.assets.map(a => a[key]))].map(v => [v, v] as [string, string])]);
       select.value = this.state[field];
     }
     this.root.querySelectorAll<HTMLElement>('[data-yard-only]').forEach(el => { el.hidden = yard?.request.kind !== 'yard'; });

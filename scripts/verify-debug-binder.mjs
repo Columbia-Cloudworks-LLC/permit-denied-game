@@ -8,8 +8,9 @@ const output = process.argv[2] || 'artifacts/debug-binder';
 await mkdir(output, { recursive: true });
 const browser = await chromium.launch({ headless: true });
 const errors = [], results = [];
-const page = paged(await browser.newPage({ viewport: { width: 1440, height: 1000 } }));
+const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
 await privacyTestSetup(page);
+page.on('dialog', dialog => dialog.accept());
 page.on('pageerror', e => errors.push(e.message));
 const button = name => page.getByRole('button', { name, exact: true });
 const tab = name => page.getByRole('tab', { name, exact: true });
@@ -99,10 +100,10 @@ try {
   await page.screenshot({ path: output + '/desktop-focused.png' });
   results.push('Ten damage/reset cycles, stable camera following, expanded sections, and input isolation.');
 
-  await button('Open complete asset yard').click(); await settle();
+  await button('Open All-Assets Test Map').click(); await settle();
   assert.equal((await snapshot()).request.kind, 'yard'); assert.equal((await snapshot()).bays, count);
   assert.equal((await snapshot()).binder.search, 'bus'); assert.equal((await snapshot()).binder.variant, 1);
-  assert.equal(await button('Open complete asset yard').isVisible(), true);
+  assert.equal(await button('Open All-Assets Test Map').isVisible(), true);
   await button('Reset Entire Yard').click(); await settle();
   assert.equal((await snapshot()).binder.search, 'bus'); assert.deepEqual((await snapshot()).upgrades, before.upgrades);
   await tab('Session').click();
@@ -139,9 +140,10 @@ try {
   results.push('Large vehicles, tower, composite site, fixture and prop destruction; invalid-link recovery.');
 
   for (const [width, height] of [[390, 844], [844, 390], [360, 640], [640, 360]]) {
-    const mobile = paged(await browser.newPage({ viewport: { width, height }, isMobile: true, hasTouch: true }));
+    const mobile = await browser.newPage({ viewport: { width, height }, isMobile: true, hasTouch: true });
     mobile.on('pageerror', e => errors.push(e.message));
     await privacyTestSetup(mobile);
+    mobile.on('dialog', dialog => dialog.accept());
     await mobile.goto(base + '/?testAsset=vehicle:bus&controls=1'); await mobile.waitForFunction(() => window.__pd?.version === 1);
     const geometry = await mobile.evaluate(() => {
       const rect = s => { const r = document.querySelector(s).getBoundingClientRect(); return { x: r.x, y: r.y, right: r.right, bottom: r.bottom }; };
@@ -172,9 +174,15 @@ try {
     assert.equal(await mobile.locator('[data-assets]').inputValue(), 'vehicle:tractor-trailer');
     await mobile.locator('#debug-close').click(); await mobile.getByRole('button', {name:'Pause', exact:true}).filter({visible:true}).click();
     await mobile.locator('[data-menu-action=debug]').click();
-    await mobile.waitForFunction(() => window.__pd.inspect().mode === 'play' && !document.querySelector('#debug-panel').hidden);
+    await mobile.waitForFunction(() => window.__pd.inspect().debug.freeze && !document.querySelector('#debug-panel').hidden);
+    const pausedElapsed = await mobile.evaluate(() => window.__pd.inspect().elapsed);
+    await mobile.waitForTimeout(150);
+    assert.equal(await mobile.evaluate(() => window.__pd.inspect().elapsed), pausedElapsed);
+    await mobile.locator('#debug-close').click();
+    await mobile.locator('#resume-simulation').click();
+    assert.equal(await mobile.evaluate(() => window.__pd.inspect().debug.freeze), false);
     await mobile.close();
-    results.push('Mobile ' + width + 'x' + height + ': reachable controls, reset, drawer, touch driving, pause-to-live Debug.');
+    results.push('Mobile ' + width + 'x' + height + ': reachable controls, reset, drawer, touch driving, paused Debug and visible resume.');
   }
   assert.deepEqual(errors, []);
   await writeFile(output + '/browser-report.json', JSON.stringify({ browser: browser.version(), errors, results }, null, 2));
@@ -183,29 +191,3 @@ try {
   await page.screenshot({ path: output + '/failure.png' }).catch(() => {});
   console.error('Browser errors:', errors); throw error;
 } finally { await browser.close(); }
-
-// Exercise real sheet navigation before operating a control. Native listeners and
-// focus are preserved; a hidden sheet is never clicked through with force.
-function paged(raw) {
-  const wrap = locator => new Proxy(locator, {get(target, key) {
-    if (['click','fill','selectOption','check','uncheck','focus'].includes(key)) return async (...args) => {
-      if (!(await target.isVisible())) {
-        await target.waitFor({state:'attached'});
-        await target.evaluate(el => { for(let p=el.parentElement;p;p=p.parentElement) if(p.tagName==='DETAILS') p.open=true; });
-        await raw.waitForTimeout(50);
-        const previous=raw.locator('#binder-previous'), next=raw.locator('#binder-next');
-        if(await previous.isVisible()) {
-          while(!await previous.isDisabled()) await previous.click();
-          for(let turn=0;turn<50&&!await target.isVisible()&&!await next.isDisabled();turn++) await next.click();
-        }
-      }
-      return target[key](...args);
-    };
-    if (['filter','locator','getByRole'].includes(key)) return (...args)=>wrap(target[key](...args));
-    const value=target[key];return typeof value==='function'?value.bind(target):value;
-  }});
-  return new Proxy(raw,{get(target,key){
-    if (['locator','getByRole'].includes(key)) return (...args)=>wrap(target[key](...args));
-    const value=target[key];return typeof value==='function'?value.bind(target):value;
-  }});
-}

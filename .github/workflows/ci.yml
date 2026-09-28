@@ -79,6 +79,7 @@ jobs:
           - { suite: layout, width: 320 }
           - { suite: layout, width: 1920 }
           - { suite: binder }
+          - { suite: menus }
           - { suite: coverage }
           - { suite: seasons }
           - { suite: ice }
