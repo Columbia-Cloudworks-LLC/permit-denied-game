@@ -28,7 +28,7 @@ export const INTEGRATION_TESTS = [
 ];
 
 const SOAK_TESTS = ["src/sim/soak.test.ts"];
-const BENCH_TESTS = ["src/sim/bench.test.ts", "src/render/denseCityBench.test.ts"];
+const BENCH_TESTS = ["src/sim/bench.test.ts", "src/render/denseCityBench.test.ts", "src/render/chugBench.test.ts"];
 
 const testShared = {
   environment: "node" as const,

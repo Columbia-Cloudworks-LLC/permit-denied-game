@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { PileField, pileBlocked, pileResistance, queryObstruction } from "./pile";
+import { PILE_TILE, PileField, pileBlocked, pileResistance, queryObstruction } from "./pile";
 
 describe("pile field excavation", () => {
   it("deducts extracted mass immediately and keeps composition", () => {
@@ -34,5 +34,22 @@ describe("pile field excavation", () => {
     expect(obs.blocked).toBe(true);
     expect(pileBlocked(obs.height, obs.resistance, 0, obs.height && pile.sample(2, 2).mass)).toBe(true);
     expect(pileResistance(obs.height, obs.compaction, pile.sample(2, 2).mass)).toBeGreaterThan(1);
+  });
+
+  it("dirties only the tiles a mutation and its sampling apron reach", () => {
+    const pile = new PileField(0, 0, 64, 64);
+    const span = PILE_TILE * pile.cell;
+    const tile = (x: number, y: number) => Math.floor(y / span) * pile.tilesX + Math.floor(x / span);
+    const before = Array.from(pile.tileRevision);
+    pile.addMass(span * 1.5, span * 1.5, 2, "brick");
+    const moved = Array.from(pile.tileRevision).flatMap((r, t) => (r !== before[t] ? [t] : []));
+    expect(moved).toEqual([tile(span * 1.5, span * 1.5)]);
+    const edge = Array.from(pile.tileRevision);
+    pile.compactPoint(span * 2 + 0.1, span * 1.5, 0.5);
+    const touched = Array.from(pile.tileRevision).flatMap((r, t) => (r !== edge[t] ? [t] : []));
+    expect(touched).toEqual([tile(span * 1.5, span * 1.5), tile(span * 2.5, span * 1.5)]);
+    const quiet = Array.from(pile.tileRevision);
+    pile.compactPoint(span * 2 + 0.1, span * 1.5, 0);
+    expect(Array.from(pile.tileRevision)).toEqual(quiet);
   });
 });

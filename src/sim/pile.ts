@@ -39,6 +39,11 @@ export function pileBlocked(height: number, resistance: number, bodyMass: number
   return resistance > 2.15 || (height > 0.18 && bodyMass + pileMass > 1.35);
 }
 
+/** Pile cells per side of one change-tracking tile. */
+export const PILE_TILE = 16;
+/** Views sample up to two cells past a changed one, so a change dirties tiles within this apron. */
+const TILE_APRON = 2;
+
 export class PileField {
   ownerAt?: (x: number, y: number) => string | undefined;
   private owners = new Map<string, Map<number, number>>();
@@ -57,8 +62,10 @@ export class PileField {
     return next;
   }
   clearArea(x: number, y: number, w: number, d: number): void {
-    for (let iy = Math.max(0, Math.floor((y - this.oy) / this.cell)); iy < Math.min(this.rows, Math.ceil((y + d - this.oy) / this.cell)); iy++) {
-      for (let ix = Math.max(0, Math.floor((x - this.ox) / this.cell)); ix < Math.min(this.cols, Math.ceil((x + w - this.ox) / this.cell)); ix++) {
+    const ix0 = Math.max(0, Math.floor((x - this.ox) / this.cell)), ix1 = Math.min(this.cols, Math.ceil((x + w - this.ox) / this.cell));
+    const iy0 = Math.max(0, Math.floor((y - this.oy) / this.cell)), iy1 = Math.min(this.rows, Math.ceil((y + d - this.oy) / this.cell));
+    for (let iy = iy0; iy < iy1; iy++) {
+      for (let ix = ix0; ix < ix1; ix++) {
         const i = iy * this.cols + ix;
         this.mass[i] = 0; this.height[i] = 0; this.compact[i] = 0;
         for (const mat of this.mats) mat[i] = 0;
@@ -66,19 +73,23 @@ export class PileField {
         for (const [key, cells] of this.ownerMaterials) { cells.delete(i); if (!cells.size) this.ownerMaterials.delete(key); }
       }
     }
-    this.revision++;
+    this.touch(ix0, iy0, ix1 - 1, iy1 - 1);
   }
   removeOwner(owner: string): void {
     const cells = this.owners.get(owner);
     if (!cells) return;
+    let ix0 = this.cols, iy0 = this.rows, ix1 = -1, iy1 = -1;
     for (const [i, amount] of cells) {
+      const ix = i % this.cols, iy = Math.floor(i / this.cols);
+      ix0 = Math.min(ix0, ix); ix1 = Math.max(ix1, ix); iy0 = Math.min(iy0, iy); iy1 = Math.max(iy1, iy);
       const ratio = Math.max(0, 1 - amount / Math.max(1e-9, this.mass[i]!));
       this.mass[i] *= ratio; this.height[i] *= ratio;
       if (this.mass[i]! < 1e-6) { this.mass[i] = 0; this.height[i] = 0; this.compact[i] = 0; }
       const composition = this.ownerMaterials.get(owner)?.get(i);
       for (let m = 0; m < this.mats.length; m++) this.mats[m]![i] = Math.max(0, this.mats[m]![i]! - (composition?.[m] ?? 0));
     }
-    this.owners.delete(owner); this.ownerMaterials.delete(owner); this.revision++;
+    this.owners.delete(owner); this.ownerMaterials.delete(owner);
+    if (ix1 >= 0) this.touch(ix0, iy0, ix1, iy1); else this.revision++;
   }
 
   readonly cell: number;
@@ -91,6 +102,10 @@ export class PileField {
   readonly compact: Float32Array;
   readonly mats: Float32Array[];
   revision = 1;
+  readonly tilesX: number;
+  readonly tilesY: number;
+  /** Per-tile change counters (apron included) so views can redraw only touched tiles. */
+  readonly tileRevision: Uint32Array;
 
   constructor(ox: number, oy: number, w: number, d: number, cell = 0.5) {
     this.cell = cell;
@@ -103,6 +118,17 @@ export class PileField {
     this.mass = new Float32Array(n);
     this.compact = new Float32Array(n);
     this.mats = PILE_MATERIALS.map(() => new Float32Array(n));
+    this.tilesX = Math.ceil(this.cols / PILE_TILE);
+    this.tilesY = Math.ceil(this.rows / PILE_TILE);
+    this.tileRevision = new Uint32Array(this.tilesX * this.tilesY);
+  }
+
+  /** Bump the global revision and every tile whose drawing reads cells in [ix0..ix1] x [iy0..iy1]. */
+  private touch(ix0: number, iy0: number, ix1: number, iy1: number): void {
+    this.revision++;
+    const tx0 = Math.max(0, Math.floor((ix0 - TILE_APRON) / PILE_TILE)), tx1 = Math.min(this.tilesX - 1, Math.floor((ix1 + TILE_APRON) / PILE_TILE));
+    const ty0 = Math.max(0, Math.floor((iy0 - TILE_APRON) / PILE_TILE)), ty1 = Math.min(this.tilesY - 1, Math.floor((iy1 + TILE_APRON) / PILE_TILE));
+    for (let ty = ty0; ty <= ty1; ty++) for (let tx = tx0; tx <= tx1; tx++) this.tileRevision[ty * this.tilesX + tx]!++;
   }
 
   private index(ix: number, iy: number): number {
@@ -155,7 +181,7 @@ export class PileField {
       const compact = this.compact[hit.i]!;
       this.height[hit.i] += add * 0.16 * (1 - 0.38 * compact);
     }
-    this.revision++;
+    this.touch(ix - 1, iy - 1, ix + 1, iy + 1);
   }
 
   compactPoint(x: number, y: number, amount: number): void {
@@ -174,7 +200,7 @@ export class PileField {
         changed = true;
       }
     }
-    if (changed) this.revision++;
+    if (changed) this.touch(ix - 1, iy - 1, ix + 1, iy + 1);
   }
 
   extractDisk(x: number, y: number, radius: number, maxMass: number): ExtractedPile {
@@ -238,7 +264,7 @@ export class PileField {
       height = Math.max(height, this.height[hit.i]!);
       compact = Math.max(compact, this.compact[hit.i]!);
     }
-    this.revision++;
+    this.touch(ix - reach, iy - reach, ix + reach, iy + reach);
     return {
       owners,
       mass: extracted,

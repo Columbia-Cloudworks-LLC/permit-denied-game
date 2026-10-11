@@ -81,17 +81,24 @@ export function buildingHidesDozer(d: OccludeDozer, b: Building): boolean {
 }
 
 /** Only touched visible objects remain cached. No simulation state is stored or mutated. */
+/** Under the 1/1000 rounding fade versions already use, so snapping never shows. */
+const SETTLED_FADE = 1e-3;
+
 export class VisibilityFades {
   private values = new Map<string, number>();
   private touched = new Set<string>();
   begin(): void { this.touched.clear(); }
+  /** Eases toward `target` and lands on it exactly once within a thousandth, so callers can tell a settled fade. */
   sample(key: string, target: number, dt: number): number {
     this.touched.add(key);
     const old = this.values.get(key) ?? 1;
-    const value = old + (target - old) * (1 - Math.exp(-12 * Math.min(.1, dt)));
+    const eased = old + (target - old) * (1 - Math.exp(-12 * Math.min(.1, dt)));
+    const value = Math.abs(target - eased) < SETTLED_FADE ? target : eased;
     this.values.set(key, value);
     return value;
   }
+  /** Holds fades a cached draw reused this frame without sampling them. */
+  keep(keys: Iterable<string>): void { for (const key of keys) this.touched.add(key); }
   end(): void { for (const key of this.values.keys()) if (!this.touched.has(key)) this.values.delete(key); }
 }
 
