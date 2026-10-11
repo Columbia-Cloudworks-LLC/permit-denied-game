@@ -389,13 +389,17 @@ function printCli(report) {
   }
 }
 
+function printHook(report) {
+  process.stdout.write(`${JSON.stringify({
+    hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: formatSessionContext(report) },
+  })}\n`);
+}
+
 async function main() {
   const hookMode = process.argv.includes('--hook');
-  const stdin = hookMode ? await readStdinJson() : null;
-  const mode = stdin && typeof stdin.composer_mode === 'string' ? stdin.composer_mode : 'agent';
   const report = await runPreflight({ cwd: process.cwd(), requireIdentity: !process.argv.includes('--allow-any-repo') });
   if (hookMode) {
-    process.stdout.write(`${JSON.stringify({ additional_context: formatSessionContext(report, { mode }) })}\n`);
+    printHook(report);
     return;
   }
   printCli(report);
@@ -410,7 +414,7 @@ if (invokedDirectly) {
       summary: `FRESHNESS UNVERIFIED: preflight crashed (${message}). Make no changes.`,
     }));
     if (process.argv.includes('--hook')) {
-      process.stdout.write(`${JSON.stringify({ additional_context: formatSessionContext(report, { mode: 'agent' }) })}\n`);
+      printHook(report);
     } else {
       printCli(report);
     }

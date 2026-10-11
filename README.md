@@ -54,7 +54,7 @@ On current Android Chrome, open the site and use **Install app**. That installs 
 
 Source: https://github.permitdenied.app (permanent redirect to the GitHub repository)
 
-Vercel hosts the Vite static build. GitHub Actions owns deployment to the linked `permit-denied` project on the Columbia Cloudworks LLC team. After Linux and Windows CI pass, internal pull requests get preview deployments and `main` gets production deployments. Ship with `/release` (`.cursor/commands/release.md`): one pull request into `main`, inspect remaining work, bump `package.json` and `package-lock.json` to the next `1.0.N` (patch unless specified), title the PR `Release 1.0.N: <short what shipped>`, then commit, wait on CI, merge, and sync `main`. About & Credits shows that package version. Do not merge a ship without the bump. A stacked PR is a different topology — several branches and several pull requests, each based on the branch under it — and is not several commits inside that one ship pull request (`.cursor/skills/stacked-pr/SKILL.md`). Internal pull requests get their own preview whichever branch they target. Deployment links appear in GitHub deployments and the CI job summary. `vercel.json` disables Vercel's automatic Git builds to avoid duplicate deployments. Fork PRs run checks without deployment credentials.
+Vercel hosts the Vite static build. GitHub Actions owns deployment to the linked `permit-denied` project on the Columbia Cloudworks LLC team. After Linux and Windows CI pass, internal pull requests get preview deployments and `main` gets production deployments. Ship with the Claude Code `/release` skill (`.claude/skills/release/SKILL.md`): one pull request into `main`, inspect remaining work, bump `package.json` and `package-lock.json` to the next `1.0.N` (patch unless specified), title the PR `Release 1.0.N: <short what shipped>`, then commit, wait on CI, merge, and sync `main`. About & Credits shows that package version. Do not merge a ship without the bump. A stacked PR is a different topology — several branches and several pull requests, each based on the branch under it — and is not several commits inside that one ship pull request (`/stacked-pr`, `.claude/skills/stacked-pr/SKILL.md`). Internal pull requests get their own preview whichever branch they target. Deployment links appear in GitHub deployments and the CI job summary. `vercel.json` disables Vercel's automatic Git builds to avoid duplicate deployments. Fork PRs run checks without deployment credentials.
 
 GitHub Actions repository variables are the source of truth for `FACEBOOK_APP_ID`, `VERCEL_ORG_ID`, and `VERCEL_PROJECT_ID`. `VERCEL_TOKEN` is a repository secret used only by deployment steps. `FACEBOOK_APP_SECRET` remains stored for future server-side integration and is never passed to the build or browser. There is no duplicate App ID setting to maintain in Vercel or source code. The Vite HTML transform injects the public `fb:app_id` from the workflow environment; deployment builds fail if it is missing or malformed. Local builds omit the tag unless `FACEBOOK_APP_ID` is provided.
 
@@ -120,7 +120,7 @@ TypeScript + Vite + PixiJS v8. Simulation is world-space; isometric projection i
 
 ## Repository freshness
 
-Cursor Cloud Agents and the Windows checkout (`C:\Users\viral\PERMIT-DENIED`) are independent clones. Merging a pull request updates GitHub; it does not fast-forward the other worktree.
+Every checkout is an independent clone. Merging a pull request updates GitHub; it does not fast-forward any local worktree.
 
 Before repository-dependent review or implementation, run:
 
@@ -128,11 +128,8 @@ Before repository-dependent review or implementation, run:
 npm run repo:preflight
 ```
 
-That command fetches and prunes `origin` (including current GitHub `main`) and fast-forwards only when it is safe: a clean `main` that is behind, or a clean branch with **zero** unique commits that is only behind `origin/main`. Dirty files, unique commits, divergence, and detached HEAD are left untouched. Fetch or auth failure prints `FRESHNESS UNVERIFIED` and changes nothing. The session-start hook runs the same check. It is not part of `npm install`, `npm run build`, the game runtime, or CI production builds.
+That command fetches and prunes `origin` (including current GitHub `main`) and fast-forwards only when it is safe: a clean `main` that is behind, or a clean branch with **zero** unique commits that is only behind `origin/main`. Dirty files, unique commits, divergence, and detached HEAD are left untouched. Fetch or auth failure prints `FRESHNESS UNVERIFIED` and changes nothing. The Claude Code `SessionStart` hook (`.claude/hooks/session-start.mjs`) runs the same check. It is not part of `npm install`, `npm run build`, the game runtime, or CI production builds.
 
-Cursor Cloud Builds are an operational prerequisite stored by Cursor, not Git. They cannot be guaranteed by `.cursor/environment.json` or an install command:
+## Working with Claude Code
 
-1. Cloud Agents environment → **Builds**.
-2. Enable **Update stale builds**.
-3. Set **Staleness threshold** to **0** so default-branch runs pull the latest default-branch code at startup.
-4. Start new tasks from `main`. Resuming an old agent or selecting an old feature branch intentionally preserves that older branch state.
+Agent guidance lives in [`CLAUDE.md`](CLAUDE.md). Project hooks are registered in `.claude/settings.json`; skills (`/release`, `/stacked-pr`, `/grill-me`, `/grill-with-ui`) live under `.claude/skills/`. Personal overrides go in the gitignored `.claude/settings.local.json`.

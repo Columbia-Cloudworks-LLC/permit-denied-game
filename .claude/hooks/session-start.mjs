@@ -1,12 +1,16 @@
-import { formatSessionContext, readStdinJson, runPreflight } from '../../scripts/repo-preflight.mjs';
+import { formatSessionContext, runPreflight } from '../../scripts/repo-preflight.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
+function emit(additionalContext) {
+  process.stdout.write(`${JSON.stringify({
+    hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext },
+  })}\n`);
+}
+
 async function main() {
-  const input = await readStdinJson();
-  const mode = input && typeof input.composer_mode === 'string' ? input.composer_mode : 'agent';
   let report;
   try {
     report = await runPreflight({ cwd: repoRoot, requireIdentity: true });
@@ -26,11 +30,9 @@ async function main() {
       summary: `FRESHNESS UNVERIFIED: session preflight crashed (${message}). Make no changes.`,
     };
   }
-  process.stdout.write(`${JSON.stringify({ additional_context: formatSessionContext(report, { mode }) })}\n`);
+  emit(formatSessionContext(report));
 }
 
 main().catch(() => {
-  process.stdout.write(`${JSON.stringify({
-    additional_context: 'PERMIT DENIED. TypeScript + Vite + PixiJS v8 client. FRESHNESS UNVERIFIED: sessionStart hook failed open. Run `npm run repo:preflight` before repository-dependent work.',
-  })}\n`);
+  emit('PERMIT DENIED. TypeScript + Vite + PixiJS v8 client. FRESHNESS UNVERIFIED: SessionStart hook failed open. Run `npm run repo:preflight` before repository-dependent work.');
 });
