@@ -60,7 +60,7 @@ try {
     await page.waitForTimeout(200);
     const geometry = await page.evaluate(() => {
       const rect = selector => { const r = document.querySelector(selector).getBoundingClientRect(); return { x:r.x,y:r.y,w:r.width,h:r.height,right:r.right,bottom:r.bottom }; };
-      return { game:rect('#game-root'), hud:rect('.mobile-hud'), stick:rect('.touch-stick'), blade:rect('.touch-blade'), pause:rect(document.querySelector('#hud-root').dataset.hudMode === 'text' ? '#mobile-pause' : '#hud-menu'), overflow:document.documentElement.scrollWidth > innerWidth, center:document.elementFromPoint(innerWidth/2,innerHeight/2)?.tagName };
+      return { mode:document.querySelector('#hud-root').dataset.hudMode, actions:rect('.hud-actions'), cashStat:rect('.cash-stat'), clockStat:rect('.clock-stat'), game:rect('#game-root'), hud:rect('.mobile-hud'), stick:rect('.touch-stick'), blade:rect('.touch-blade'), pause:rect(document.querySelector('#hud-root').dataset.hudMode === 'text' ? '#mobile-pause' : '#hud-menu'), overflow:document.documentElement.scrollWidth > innerWidth, center:document.elementFromPoint(innerWidth/2,innerHeight/2)?.tagName };
     });
     assert.equal(geometry.game.h, height);
     assert.equal(geometry.game.w, width);
@@ -72,6 +72,12 @@ try {
     assert.equal(geometry.center,'CANVAS');
     for (const box of [geometry.hud,geometry.stick,geometry.blade]) assert.ok(box.x >= 0 && box.right <= width && box.y >= 0 && box.bottom <= height);
     assert.ok(geometry.stick.right < geometry.blade.x);
+    if (width > height && height <= 500 && geometry.mode !== 'text') {
+      // Landscape phones split the dash: controls rail left, readouts rail right, meters under the readouts.
+      assert.ok(geometry.actions.right < width / 2 && geometry.actions.right < geometry.cashStat.x, JSON.stringify(geometry));
+      assert.ok(geometry.clockStat.right >= width - 24 && geometry.clockStat.right <= width, JSON.stringify(geometry));
+      assert.ok(Math.abs(geometry.hud.x - geometry.cashStat.x) <= 1 && geometry.hud.y >= geometry.cashStat.bottom, JSON.stringify(geometry));
+    }
     await page.screenshot({ path:`${output}/${width}x${height}.png` });
     console.log(`${width}x${height}: canvas ${geometry.game.h}px, HUD ${geometry.hud.h}px`);
   }
