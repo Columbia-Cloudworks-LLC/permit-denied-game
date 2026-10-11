@@ -65,3 +65,4 @@ Linux CI runs unit, integration, soak, script tests, build, PWA, catalog, and pr
 - Hosting: Vercel project `permit-denied` (Columbia Cloudworks LLC). GitHub Actions deploys prebuilt output after Linux/Windows checks: `main` to production, internal PRs to previews. Vercel Git builds are disabled in `vercel.json`. `.vercel/` stays gitignored.
 - Repository variables: `FACEBOOK_APP_ID`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`; secret `VERCEL_TOKEN`. Never pass `FACEBOOK_APP_SECRET` to a browser build.
 - DNS: IONOS is registrar only; nameservers are Cloudflare. Catalog assets are on Cloudflare R2 at `assets.permitdenied.app`.
+- `scripts/configure-catalog-ci.mjs` installs the R2 publishing secrets. It requires `COLUMBIA_GITHUB_TOKEN` (an organization token) and deliberately never falls back to the personal `gh` login.

@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { gameUrl, waitForGame, withGameCapture } from "./capture/harness.mjs";
 
-const OUT = "/cursor/stores/bc-524f4be0-4e64-4fbf-b510-6f6f7ef1c582/media/terrain-features";
+const OUT = "artifacts/terrain-features";
 
 const shots = [
   {

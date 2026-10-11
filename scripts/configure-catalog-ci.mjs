@@ -1,10 +1,10 @@
 import { spawnSync } from 'node:child_process';
 
 const repository = 'Columbia-Cloudworks-LLC/permit-denied-game';
-// Use the Columbia connector identity explicitly; never fall back to the
-// personal GitHub login or persist changes to the user's gh authentication.
-const token = process.env['github-pat-cursor-columbia-cloudworks-llc'];
-if (!token) throw new Error('Columbia GitHub connector credentials are unavailable');
+// Use the Columbia Cloudworks organization token explicitly; never fall back to
+// the personal GitHub login or persist changes to the user's gh authentication.
+const token = process.env.COLUMBIA_GITHUB_TOKEN;
+if (!token) throw new Error('COLUMBIA_GITHUB_TOKEN (Columbia Cloudworks organization token) is required');
 const names = ['R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY'];
 for (const name of names) if (!process.env[name]) throw new Error(`${name} is required`);
 for (const name of names) {

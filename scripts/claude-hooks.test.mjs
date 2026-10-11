@@ -49,6 +49,42 @@ test('shell-guard denies dist/exe commits, asks on force-push, and allows ordina
   assert.equal(inspectShellCommand('npm test').permission, 'allow');
 });
 
+test('shell-guard checks git arguments, not message text or unrelated commands', () => {
+  const allow = (command, options) => assert.equal(inspectShellCommand(command, options).permission, 'allow', command);
+  const deny = (command) => assert.equal(inspectShellCommand(command).permission, 'deny', command);
+  const ask = (command, options) => assert.equal(inspectShellCommand(command, options).permission, 'ask', command);
+
+  // Messages and prose that mention the guarded paths.
+  allow('git commit -m "guard dist/ and *.exe from git add"');
+  allow("git commit -am 'stop git add of dist/game.exe'");
+  allow('git commit --message="add dist/ checks"');
+  allow('git add src/a.ts && git commit -F msg.txt');
+  allow("git commit -q -F - <<'EOF'\nPreToolUse (dist/exe guard): git add dist/x is denied\nEOF\ngit push -u origin topic");
+  allow("git commit -m @'\nblocks git add dist/x\n'@");
+  allow('echo git add dist/x');
+  allow('rg -n "git add dist/" scripts');
+  allow('node -e "x" # git add dist/x');
+  allow('git log --oneline -- dist/');
+  allow('git -c safe.directory=D:/repos/dist/x add src/main.ts');
+
+  // Real binary staging, however it is spelled.
+  deny('git add dist');
+  deny('git add -f "dist\\index.html"');
+  deny('npm run build && git add -f dist/index.html');
+  deny('git -c safe.directory=D:/x -C repo add permitdenied.exe');
+  deny('& git.exe add "C:/repo/dist/app.js"');
+  deny('git commit -m ok -- src/a.ts dist/game.exe');
+  deny('git add \\\n  dist/index.html');
+
+  ask('git push --force-with-lease origin topic');
+  ask('git push -uf origin topic');
+  ask('git push origin +topic');
+  allow('git push -u origin topic');
+  allow('git commit -m "--force push notes" && git push');
+  ask('git add -A', { exeHits: ['permitdenied.exe'] });
+  allow('git add -A');
+});
+
 test('shell-guard emits Claude Code PreToolUse output only for deny and ask', () => {
   assert.equal(toHookOutput(inspectShellCommand('git status')), null);
   const denied = toHookOutput(inspectShellCommand('git add dist/index.html'));
