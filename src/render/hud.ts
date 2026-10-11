@@ -232,7 +232,7 @@ export class Hud {
       this.layoutInstruments();
     }).observe(top);
     new ResizeObserver(() => this.layoutInstruments()).observe(root);
-    for (const id of ["#hud-cash", "#hud-time"]) new ResizeObserver(() => this.layoutInstruments()).observe(root.querySelector(id)!);
+    for (const id of ["#hud-cash", "#hud-time", ".cash-stat", "#hud-campaign", ".clock-stat"]) new ResizeObserver(() => this.layoutInstruments()).observe(root.querySelector(id)!);
   }
 
   private layoutInstruments(): void {
@@ -246,6 +246,9 @@ export class Hud {
       const time = this.root.querySelector<HTMLElement>('#hud-time')!;
       if (cash.offsetWidth + time.offsetWidth + 36 > top.clientWidth) this.root.dataset.hudMode = 'text';
     }
+    // Landscape phones hang the meters under the readout rail (cash through clock).
+    const readouts = top.querySelector('.cash-stat')!.getBoundingClientRect().left;
+    this.root.style.setProperty('--readout-width', Math.round(top.getBoundingClientRect().right - readouts) + 'px');
   }
 
   private renderMobile(s: HudState, elapsedClock: boolean, advisory: string): void {

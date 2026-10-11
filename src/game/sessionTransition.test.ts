@@ -66,5 +66,6 @@ describe("mode transitions", () => {
         expect(map.lots.length).toBeGreaterThan(0);
       }
     }
-  });
+    // Generates 28 full towns; under a parallel unit run this exceeds the 30s default.
+  }, 120_000);
 });

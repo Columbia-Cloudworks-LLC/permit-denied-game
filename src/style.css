@@ -677,3 +677,34 @@ dt { color: #d9b96f; font: bold 11px/1.5 var(--mono); } dd { margin: 0; color: #
   #hud-root #debug-panel .debug-pages { overflow:visible; flex:none; }
   #hud-root #debug-panel .debug-heading { position:sticky; top:-6px; z-index:3; background:#f2ebd6; }
 }
+/* Landscape phones: split the dash into a left control rail and a right readout rail.
+   The drive thumb sweeps the left edge; numbers sit right, over the blade thumb, and
+   the meters and notices hang under the readouts so the middle of the lot stays open. */
+@media (max-height:500px) {
+  .touch-ui:not(.touch-portrait) #hud-root:not([data-hud-mode=text]) > .top { top:max(6px, env(safe-area-inset-top)); left:max(12px, env(safe-area-inset-left)); right:max(12px, env(safe-area-inset-right)); flex-wrap:nowrap; align-items:stretch; gap:0; padding:0; background:none; border:0; box-shadow:none; pointer-events:none; }
+  .touch-ui:not(.touch-portrait) #hud-root:not([data-hud-mode=text]) > .top > * { margin:0; padding:5px 10px; background:#1b211ff5; border:1px solid #697061; border-top:3px solid var(--yellow); border-inline-width:0; pointer-events:auto; }
+  .touch-ui:not(.touch-portrait) #hud-root:not([data-hud-mode=text]) > .top > #hud-permit { order:0; flex:0 0 auto; padding-right:4px; border-left-width:1px; border-radius:4px 0 0 4px; }
+  .touch-ui:not(.touch-portrait) #hud-root:not([data-hud-mode=text]) > .top > .hud-actions { order:1; flex:0 0 auto; align-items:center; gap:6px; margin-right:auto; padding-left:6px; border-right-width:1px; border-radius:0 4px 4px 0; }
+  .touch-ui:not(.touch-portrait) #hud-root:not([data-hud-mode=text])[data-hud-mode=compact] > .top > .hud-actions { border-left-width:1px; border-radius:4px; }
+  .touch-ui:not(.touch-portrait) #hud-root:not([data-hud-mode=text]) > .top > .cash-stat { order:2; border-left-width:1px; border-radius:4px 0 0 4px; }
+  .touch-ui:not(.touch-portrait) #hud-root:not([data-hud-mode=text]) > .top > .campaign-stat { order:3; min-width:0; padding-inline:0 10px; }
+  .touch-ui:not(.touch-portrait) #hud-root:not([data-hud-mode=text]) > .top > .clock-stat { order:4; padding-left:0; border-right-width:1px; border-radius:0 4px 4px 0; }
+  .touch-ui:not(.touch-portrait) #hud-root:not([data-hud-mode=text]) > .top > :is(.campaign-stat,.clock-stat) > * { padding-left:10px; border-left:1px solid var(--line); }
+  .touch-ui:not(.touch-portrait) #hud-root:not([data-hud-mode=text]) > .top > .clock-stat > .equipment-clock { margin-left:10px; padding-left:6px; }
+  .touch-ui:not(.touch-portrait) #hud-root:not([data-hud-mode=text]) > .top > #hud-permit { padding-left:4px; }
+  .touch-ui:not(.touch-portrait) #hud-root:not([data-hud-mode=text]) #hud-permit .permit-logo:not(.resubmitting), .touch-ui:not(.touch-portrait) #hud-root:not([data-hud-mode=text]) #hud-permit .permit-logo:not(.resubmitting) :is(.permit-logo-button,.permit-slot) { width:96px; }
+  .touch-ui:not(.touch-portrait) #hud-root:not([data-hud-mode=text]) #hud-permit .permit-logo:not(.resubmitting) .permit-paper { margin-left:40px; }
+  .touch-ui:not(.touch-portrait) #hud-root:not([data-hud-mode=text]) .hud-actions button { min-height:44px; padding:4px 12px; }
+  .touch-ui:not(.touch-portrait) #hud-root:not([data-hud-mode=text]) .top .instrument-label { font-size:9px; letter-spacing:.08em; }
+  .touch-ui:not(.touch-portrait) #hud-root:not([data-hud-mode=text]) .cash-counter { font-size:17px; margin-top:2px; padding:3px 5px; }
+  .touch-ui:not(.touch-portrait) #hud-root:not([data-hud-mode=text]) .cash-target { margin-top:2px; }
+  .touch-ui:not(.touch-portrait) #hud-root:not([data-hud-mode=text]) .equipment-clock { margin-top:2px; padding:3px 6px; gap:2px; }
+  .touch-ui:not(.touch-portrait) #hud-root:not([data-hud-mode=text]) .clock-digit { width:13px; height:25px; }
+  .touch-ui:not(.touch-portrait) #hud-root:not([data-hud-mode=text]) .clock-colon { width:5px; height:25px; }
+  .touch-ui:not(.touch-portrait) #hud-root:not([data-hud-mode=text]) .campaign-stat strong { font-size:14px; }
+  .touch-ui:not(.touch-portrait) #hud-root:not([data-hud-mode=text]) .mobile-hud { top:calc(max(6px, env(safe-area-inset-top)) + var(--top-panel-height) + 4px); left:auto; right:max(12px, env(safe-area-inset-right)); width:var(--readout-width, 360px); max-width:calc(100% - 24px); padding:5px 10px; border:1px solid #697061; border-radius:4px; }
+  .touch-ui:not(.touch-portrait) #hud-root:not([data-hud-mode=text]) .mobile-meters { gap:14px; }
+  .touch-ui:not(.touch-portrait) #hud-root:not([data-hud-mode=text]) .mobile-notices { align-items:flex-end; }
+  /* The readout rail already carries landmark progress while the campaign stat is shown. */
+  .touch-ui:not(.touch-portrait) #hud-root:not([data-hud-mode=text])[data-hud-mode=full]:has(#hud-campaign:not([hidden])) #mobile-job { display:none; }
+}
