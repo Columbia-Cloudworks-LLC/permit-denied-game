@@ -49,14 +49,27 @@ export function existingBinaryHits(root = repoRoot) {
   return hits;
 }
 
+// Claude Code PreToolUse output. "allow" prints nothing so the user's normal
+// permission prompts still apply; only deny/ask are forwarded.
+export function toHookOutput(decision) {
+  if (decision.permission === 'allow') return null;
+  return {
+    hookSpecificOutput: {
+      hookEventName: 'PreToolUse',
+      permissionDecision: decision.permission,
+      permissionDecisionReason: decision.permission === 'deny' ? decision.agent_message : decision.user_message,
+    },
+  };
+}
+
 async function main() {
   try {
     const input = await readStdinJson();
-    const command = input && typeof input.command === 'string' ? input.command : '';
-    const decision = inspectShellCommand(command, { exeHits: existingBinaryHits() });
-    process.stdout.write(`${JSON.stringify(decision)}\n`);
+    const command = typeof input?.tool_input?.command === 'string' ? input.tool_input.command : '';
+    const output = toHookOutput(inspectShellCommand(command, { exeHits: existingBinaryHits() }));
+    if (output) process.stdout.write(`${JSON.stringify(output)}\n`);
   } catch {
-    process.stdout.write(`${JSON.stringify({ permission: 'allow' })}\n`);
+    // Fail open.
   }
 }
 

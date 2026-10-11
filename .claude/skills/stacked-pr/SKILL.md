@@ -10,7 +10,7 @@ description: >
 
 # Stacked pull requests
 
-This file is the canonical procedure. `/release` (`.cursor/commands/release.md`) is a different command: one versioned pull request into `main`.
+This file is the canonical procedure. `/release` (`.claude/skills/release/SKILL.md`) is a different skill: one versioned pull request into `main`.
 
 ## Terms
 
@@ -48,7 +48,7 @@ Read the issues and the code they touch. Group by dependency, not by issue numbe
 - Split one issue across layers when it crosses a real boundary (model, then simulation, then presentation).
 - Do not invent a chain for independent work. Independent groups can be separate stacks, or separate pull requests into `main`.
 - Do not add empty layers to raise the pull request count.
-- Name each branch for that layer. Cloud agents still use the session branch template (`cursor/<layer>-f92a`).
+- Name each branch for that layer.
 
 Write the branch list and the base of each pull request down before the first commit.
 
@@ -61,9 +61,9 @@ Write the branch list and the base of each pull request down before the first co
 5. If a lower layer changes, update the branches above it (merge or rebase that layer into its children), re-run the tests those changes affect, and check each pull request still shows only its own diff. Do not leave the chain diverged.
 6. Merge bottom-up: A, then B, then C. After a layer merges, point the next pull request at `main` (GitHub does this when the merged base branch is deleted). Do not merge a child before its parent. Do not squash the whole chain into one review.
 
-Prefer `gh stack` when `gh stack --help` succeeds. This repo's GitHub CLI is 2.99, which does not include `gh stack` until `gh extension install github/gh-stack`. If that command is missing, use ordinary `git` and `gh pr create --base <parent-branch> --head <layer-branch>`. The branch and base topology is the requirement. The command name is not.
+Prefer `gh stack` when `gh stack --help` succeeds. The GitHub CLI does not include `gh stack` until `gh extension install github/gh-stack`. If that command is missing, use ordinary `git` and `gh pr create --base <parent-branch> --head <layer-branch>`. The branch and base topology is the requirement. The command name is not.
 
-GitHub writes for this repo go through the `user-github-columbia` MCP or `ManagePullRequest` when that is the session's pull-request tool. Do not use `user-github-viralarchitect`.
+GitHub writes for this repo go through the `gh` CLI.
 
 ## Issues
 

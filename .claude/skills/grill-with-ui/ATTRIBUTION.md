@@ -8,4 +8,4 @@ Copyright (c) 2026 Jason Ku. MIT License — see `LICENSE`.
 
 The interview method (frontier-per-round grilling, recommendations, durable decisions, Terms with Avoid lists) is built on **Grill Me** by [Matt Pocock](https://www.aihero.dev/skills-grill-me), published in [mattpocock/skills](https://github.com/mattpocock/skills) as `grill-me` and the `grilling` primitive.
 
-This repo also installs those base skills under `.cursor/skills/grill-me/` and `.cursor/skills/grilling/`. Do not strip this credit.
+This repo also installs those base skills under `.claude/skills/grill-me/` and `.claude/skills/grilling/`. Do not strip this credit.

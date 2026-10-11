@@ -3,7 +3,7 @@ dist/
 *.local
 .DS_Store
 Thumbs.db
-.cursor/hooks/state/
+.claude/settings.local.json
 .vite/
 coverage/
 .ranch-frames/
