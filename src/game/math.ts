@@ -139,3 +139,36 @@ export function pointBounds(points: readonly { x: number; y: number }[]): { minX
   }
   return { minX, minY, maxX, maxY };
 }
+
+/** Separating-axis test for two convex polygons. Only a gap wider than 1e-4 separates them, so touching counts as overlapping. */
+export function convexOverlap(a: readonly { x: number; y: number }[], b: readonly { x: number; y: number }[]): boolean {
+  return !separatingAxis(a, b) && !separatingAxis(b, a);
+}
+
+function separatingAxis(a: readonly { x: number; y: number }[], b: readonly { x: number; y: number }[]): boolean {
+  for (let i = 0; i < a.length; i++) {
+    const p = a[i]!;
+    const q = a[(i + 1) % a.length]!;
+    if (separatedAlong(a, b, p.y - q.y, q.x - p.x)) return true;
+  }
+  return false;
+}
+
+/** The two point sets project to disjoint ranges on the axis (nx, ny). */
+function separatedAlong(a: readonly { x: number; y: number }[], b: readonly { x: number; y: number }[], nx: number, ny: number): boolean {
+  let minA = Infinity;
+  let maxA = -Infinity;
+  let minB = Infinity;
+  let maxB = -Infinity;
+  for (const v of a) {
+    const d = v.x * nx + v.y * ny;
+    if (d < minA) minA = d;
+    if (d > maxA) maxA = d;
+  }
+  for (const v of b) {
+    const d = v.x * nx + v.y * ny;
+    if (d < minB) minB = d;
+    if (d > maxB) maxB = d;
+  }
+  return maxA < minB - 1e-4 || maxB < minA - 1e-4;
+}

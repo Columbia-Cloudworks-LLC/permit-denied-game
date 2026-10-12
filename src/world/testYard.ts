@@ -117,41 +117,59 @@ function ownerAt(town: Town, x: number, y: number): string | undefined {
 }
 export function planBatch(assets: YardAsset[], quantity: number, variants: boolean, x: number, y: number, variant = 0): YardBay[] {
   if (!Number.isInteger(quantity) || quantity < 1 || quantity > 100) throw new Error('Quantity must be 1–100.');
-  const out: YardBay[] = []; let cx = x, cy = y, row = 0;
+  const out: YardBay[] = [];
   const slots = assets.reduce((n, a) => n + yardGridSlots(a) * quantity * (variants ? a.variants : 1), 0);
   if (slots > 32768) throw new Error('Batch exceeds 32768 building grid slots; place fewer large structures.');
-  for (const asset of assets) for (let v = 0; v < (variants ? asset.variants : 1); v++) for (let n = 0; n < quantity; n++) {
-    if (out.length >= 500) throw new Error('Limit each placement to 500 instances.');
-    const issue = yardAssetIssue(asset); if (issue) throw new Error(issue);
-    const w = asset.w + asset.clearance * 2, d = asset.d + asset.clearance * 2;
-    if (cx > x && cx + w > x + 100) { cx = x; cy += row + 4; row = 0; }
-    out.push({ asset, variant: variants ? v : variant, key: '', baseline: false, x: cx, y: cy, w, d });
-    cx += w + 4; row = Math.max(row, d);
+  const cursor = { x0: x, cx: x, cy: y, row: 0 };
+  for (const asset of assets) for (let v = 0; v < (variants ? asset.variants : 1); v++) {
+    for (let n = 0; n < quantity; n++) out.push(nextBatchBay(asset, variants ? v : variant, cursor, out.length));
   }
   return out;
+}
+/** Lay bays left to right in 100-unit rows with 4 units between them. */
+function nextBatchBay(asset: YardAsset, variant: number, cursor: { x0: number; cx: number; cy: number; row: number }, placed: number): YardBay {
+  if (placed >= 500) throw new Error('Limit each placement to 500 instances.');
+  const issue = yardAssetIssue(asset); if (issue) throw new Error(issue);
+  const w = asset.w + asset.clearance * 2, d = asset.d + asset.clearance * 2;
+  if (cursor.cx > cursor.x0 && cursor.cx + w > cursor.x0 + 100) { cursor.cx = cursor.x0; cursor.cy += cursor.row + 4; cursor.row = 0; }
+  const bay: YardBay = { asset, variant, key: '', baseline: false, x: cursor.cx, y: cursor.cy, w, d };
+  cursor.cx += w + 4; cursor.row = Math.max(cursor.row, d);
+  return bay;
 }
 export function placementError(town: Town, plan: YardBay[], dozer?: { x: number; y: number }): string | undefined {
   if (!plan.length) return 'No matching assets.';
   if (town.buildings.reduce((n, b) => n + b.w * b.d * b.floors, 0) + plan.reduce((n, b) => n + yardGridSlots(b.asset), 0) > 65536) return 'Yard exceeds 65536 building grid slots; remove some structures first.';
   for (const [index, b] of plan.entries()) {
-    const issue = yardAssetIssue(b.asset); if (issue) return issue;
-    if (plan.slice(index + 1).some(other => overlap(b, other))) return "Batch bays overlap each other.";
-    if (![b.x, b.y, b.w, b.d].every(Number.isFinite)) return 'Coordinates must be finite numbers.';
-    if (b.x < 0 || b.y < 8 || b.x + b.w > town.maxX || b.y + b.d > 3200) return 'Outside yard bounds; use the experiment area or a smaller batch.';
-    if (town.yard?.bays.some(other => overlap(b, other))) return 'Overlaps a reserved test bay. Move into an empty area.';
-    if (dozer && overlap(b, { x: dozer.x - 1.5, y: dozer.y - 1.5, w: 3, d: 3 })) return 'Move the dozer out of the placement area.';
-    if(town.vehicles.some(v=>vehicleBoxes(v).some(q=>overlap(b,boxBounds(q))))) return 'Vehicle or wreck obstructs this area.';
-    if (town.props.some(p => !p.broken && overlap(b, p))) return 'An asset has moved into this area.';
-    const pile = town.pile;
-    for (let y = Math.max(0, Math.floor((b.y - pile.oy) / pile.cell)); y < Math.min(pile.rows, Math.ceil((b.y + b.d - pile.oy) / pile.cell)); y++) {
-      for (let x = Math.max(0, Math.floor((b.x - pile.ox) / pile.cell)); x < Math.min(pile.cols, Math.ceil((b.x + b.w - pile.ox) / pile.cell)); x++) {
-        if (pile.mass[y * pile.cols + x]! > 1e-5) return 'Pile material obstructs this area. Clear it first.';
-      }
-    }
-    if (town.rubble.some(r => overlap(b, rubbleAabb(r)))) return 'Debris obstructs this area. Clear it first.';
-    if (b.variant < 0 || b.variant >= b.asset.variants || !Number.isInteger(b.variant)) return 'Variant is out of range.';
+    const error = bayPlacementError(town, plan, index, b, dozer);
+    if (error) return error;
   }
   return undefined;
+}
+function bayPlacementError(town: Town, plan: YardBay[], index: number, b: YardBay, dozer?: { x: number; y: number }): string | undefined {
+  const issue = yardAssetIssue(b.asset); if (issue) return issue;
+  if (plan.slice(index + 1).some(other => overlap(b, other))) return "Batch bays overlap each other.";
+  if (![b.x, b.y, b.w, b.d].every(Number.isFinite)) return 'Coordinates must be finite numbers.';
+  if (b.x < 0 || b.y < 8 || b.x + b.w > town.maxX || b.y + b.d > 3200) return 'Outside yard bounds; use the experiment area or a smaller batch.';
+  if (town.yard?.bays.some(other => overlap(b, other))) return 'Overlaps a reserved test bay. Move into an empty area.';
+  return obstructionError(town, b, dozer);
+}
+/** Live things on the ground that a new bay would land on. */
+function obstructionError(town: Town, b: YardBay, dozer?: { x: number; y: number }): string | undefined {
+  if (dozer && overlap(b, { x: dozer.x - 1.5, y: dozer.y - 1.5, w: 3, d: 3 })) return 'Move the dozer out of the placement area.';
+  if(town.vehicles.some(v=>vehicleBoxes(v).some(q=>overlap(b,boxBounds(q))))) return 'Vehicle or wreck obstructs this area.';
+  if (town.props.some(p => !p.broken && overlap(b, p))) return 'An asset has moved into this area.';
+  if (pileUnder(town.pile, b)) return 'Pile material obstructs this area. Clear it first.';
+  if (town.rubble.some(r => overlap(b, rubbleAabb(r)))) return 'Debris obstructs this area. Clear it first.';
+  if (b.variant < 0 || b.variant >= b.asset.variants || !Number.isInteger(b.variant)) return 'Variant is out of range.';
+  return undefined;
+}
+function pileUnder(pile: Town['pile'], b: YardBay): boolean {
+  for (let y = Math.max(0, Math.floor((b.y - pile.oy) / pile.cell)); y < Math.min(pile.rows, Math.ceil((b.y + b.d - pile.oy) / pile.cell)); y++) {
+    for (let x = Math.max(0, Math.floor((b.x - pile.ox) / pile.cell)); x < Math.min(pile.cols, Math.ceil((b.x + b.w - pile.ox) / pile.cell)); x++) {
+      if (pile.mass[y * pile.cols + x]! > 1e-5) return true;
+    }
+  }
+  return false;
 }
 export function spawnBatch(town: Town, plan: YardBay[], dozer?: { x: number; y: number }): void {
   const error = placementError(town, plan, dozer); if (error) throw new Error(error);

@@ -85,40 +85,12 @@ function generateEstateLayout(level: CampaignLevelDef, seed: number, environment
   const lots: Lot[] = [];
   for (const building of placed.buildings) {
     const lot = estateLotFor(building, lots.length);
-    if (!attachEstateAccess(b, lot, building, lots)) {
-      if (!building.campaignLandmark) continue;
-    }
+    if (!attachEstateAccess(b, lot, building, lots) && !building.campaignLandmark) continue;
     building.lotId = lot.id;
     buildings.push(building);
     lots.push(lot);
   }
-
-  const extraIds = ['colonial', 'detached-garage', 'pump-house', 'colonial', 'detached-garage', 'pump-house', 'colonial'];
-  const extraSlots = [
-    { x: left + 6, y: bottom + 5 },
-    { x: left + 18, y: bottom + 5 },
-    { x: left + 30, y: bottom + 5 },
-    { x: left + 48, y: bottom + 5 },
-    { x: left + 62, y: bottom + 5 },
-    { x: right + 5, y: top + 16 },
-    { x: right + 5, y: top + 32 },
-  ];
-  for (let i = 0; i < extraIds.length && buildings.length < level.generation.buildingCount; i++) {
-    const slot = extraSlots[i]!;
-    const building = createBuildingFromArchetype(extraIds[i]!, extraIds[i]!.toUpperCase(), slot.x, slot.y);
-    if (buildings.some(other =>
-      building.x < other.x + other.w * other.cellSize + 1.2 &&
-      building.x + building.w * building.cellSize + 1.2 > other.x &&
-      building.y < other.y + other.d * other.cellSize + 1.2 &&
-      building.y + building.d * building.cellSize + 1.2 > other.y)) {
-      continue;
-    }
-    const lot = estateLotFor(building, lots.length);
-    if (!attachEstateAccess(b, lot, building, lots)) continue;
-    building.lotId = lot.id;
-    buildings.push(building);
-    lots.push(lot);
-  }
+  placeEstateOutbuildings(b, level.generation.buildingCount, { left, top, right, bottom }, buildings, lots);
 
   const network = b.finish({ normalize: false });
   for (const lot of lots) {
@@ -128,17 +100,7 @@ function generateEstateLayout(level: CampaignLevelDef, seed: number, environment
       lot.frontage.segmentId = acc.segmentId;
     }
   }
-
-  let minX = left - 4;
-  let minY = top - 4;
-  let maxX = right + 4;
-  let maxY = bottom + 20;
-  for (const building of buildings) {
-    minX = Math.min(minX, building.x - 1);
-    minY = Math.min(minY, building.y - 1);
-    maxX = Math.max(maxX, building.x + building.w * building.cellSize + 1);
-    maxY = Math.max(maxY, building.y + building.d * building.cellSize + 1);
-  }
+  const { minX, minY, maxX, maxY } = estateBounds(buildings, { minX: left - 4, minY: top - 4, maxX: right + 4, maxY: bottom + 20 });
 
   const ground: GroundPatch[] = [];
   enforceOpenCorridors(surface, network, lots, buildings);
@@ -216,6 +178,51 @@ function generateEstateLayout(level: CampaignLevelDef, seed: number, environment
     },
     urban: estateUrban(),
   };
+}
+
+const ESTATE_OUTBUILDINGS = ['colonial', 'detached-garage', 'pump-house', 'colonial', 'detached-garage', 'pump-house', 'colonial'];
+
+/** Fill the estate up to its building count from fixed outbuilding slots south and east of the grounds. */
+function placeEstateOutbuildings(b: RoadBuilder, buildingCount: number, edge: { left: number; top: number; right: number; bottom: number }, buildings: Building[], lots: Lot[]): void {
+  const { left, top, right, bottom } = edge;
+  const slots = [
+    { x: left + 6, y: bottom + 5 },
+    { x: left + 18, y: bottom + 5 },
+    { x: left + 30, y: bottom + 5 },
+    { x: left + 48, y: bottom + 5 },
+    { x: left + 62, y: bottom + 5 },
+    { x: right + 5, y: top + 16 },
+    { x: right + 5, y: top + 32 },
+  ];
+  for (let i = 0; i < ESTATE_OUTBUILDINGS.length && buildings.length < buildingCount; i++) {
+    const slot = slots[i]!, id = ESTATE_OUTBUILDINGS[i]!;
+    const building = createBuildingFromArchetype(id, id.toUpperCase(), slot.x, slot.y);
+    if (buildings.some(other => buildingsCrowd(building, other))) continue;
+    const lot = estateLotFor(building, lots.length);
+    if (!attachEstateAccess(b, lot, building, lots)) continue;
+    building.lotId = lot.id;
+    buildings.push(building);
+    lots.push(lot);
+  }
+}
+
+/** Footprints closer than 1.2 world units on both axes. */
+function buildingsCrowd(a: Building, b: Building): boolean {
+  return a.x < b.x + b.w * b.cellSize + 1.2 &&
+    a.x + a.w * a.cellSize + 1.2 > b.x &&
+    a.y < b.y + b.d * b.cellSize + 1.2 &&
+    a.y + a.d * a.cellSize + 1.2 > b.y;
+}
+
+function estateBounds(buildings: readonly Building[], start: { minX: number; minY: number; maxX: number; maxY: number }): { minX: number; minY: number; maxX: number; maxY: number } {
+  let { minX, minY, maxX, maxY } = start;
+  for (const building of buildings) {
+    minX = Math.min(minX, building.x - 1);
+    minY = Math.min(minY, building.y - 1);
+    maxX = Math.max(maxX, building.x + building.w * building.cellSize + 1);
+    maxY = Math.max(maxY, building.y + building.d * building.cellSize + 1);
+  }
+  return { minX, minY, maxX, maxY };
 }
 
 function estateLotFor(building: Building, index: number): Lot {

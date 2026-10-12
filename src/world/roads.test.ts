@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createTown } from "./town";
-import { convexOverlap } from "./parcels";
+import { convexOverlap } from "../game/math";
 import {
   canTransitionBetweenSurfaces,
   findRoadRoute,
@@ -14,6 +14,7 @@ import {
   pt,
   publicStreetsReachable,
   RoadBuilder,
+  roadsConnected,
   roadSurfaceAt,
   terrainHeightAt,
   validateRoadNetwork,
@@ -22,6 +23,31 @@ import {
 } from "./roads";
 
 const DRIVE_PAVE = 0x5a5248;
+
+describe("public road pruning and overpass clearance", () => {
+  it("keeps the street that bridges two separated lot clusters", () => {
+    const b = new RoadBuilder();
+    const nodes = [0, 40, 80, 120, 160].map((x) => b.node(x, 0, 0));
+    for (let i = 0; i < nodes.length - 1; i++) b.segment(nodes[i]!, nodes[i + 1]!, linePoints(pt(nodes[i]!), pt(nodes[i + 1]!)), { roadClass: "residential" });
+    b.dropPublicRoadsAwayFromLots([{ x: 2, y: 3, w: 6, d: 6 }, { x: 152, y: 3, w: 6, d: 6 }], 4);
+    const network = b.finish({ normalize: false });
+    expect(roadsConnected(network)).toBe(true);
+    for (const x of [5, 60, 100, 155]) expect(pointOnRoad(network, x, 0), `x=${x}`).toBe(true);
+  });
+
+  it("flags crossings on different layers without 1.4 units of headroom", () => {
+    const overpass = (elev: number) => {
+      const b = new RoadBuilder();
+      const w = b.node(0, 0, 0), e = b.node(40, 0, 0);
+      b.segment(w, e, linePoints(pt(w), pt(e)), { roadClass: "arterial" });
+      const s = b.node(20, -20, elev, undefined, 1), n = b.node(20, 20, elev, undefined, 1);
+      b.segment(s, n, linePoints(pt(s), pt(n)), { roadClass: "arterial", layer: 1 });
+      return validateRoadNetwork(b.finish({ normalize: false })).issues.filter((issue) => issue.code === "clearance");
+    };
+    expect(overpass(0.6)).toHaveLength(1);
+    expect(overpass(2.2)).toHaveLength(0);
+  });
+});
 
 function orientedContains(q: RoadMeshQuad, x: number, y: number): boolean {
   const fx = Math.cos(q.heading);

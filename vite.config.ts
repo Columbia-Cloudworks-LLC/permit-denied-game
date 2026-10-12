@@ -110,6 +110,8 @@ export default defineConfig({
   },
   test: {
     ...testShared,
+    // Off unless --coverage.enabled; scripts/fallow-health.mjs feeds it to `fallow health`.
+    coverage: { provider: "v8", include: ["src/**"], reporter: ["json"], reportsDirectory: "coverage/vitest" },
     projects: [
       {
         extends: true,

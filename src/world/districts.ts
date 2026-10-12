@@ -1,15 +1,15 @@
 import { campaignLevelById } from "../game/campaign";
 import { DRESSING } from "../game/constants";
-import { aabbOverlap, pointInAabb } from "../game/math";
+import { aabbOverlap, convexOverlap, pointInAabb } from "../game/math";
 import { buildingOccupy } from "./dressing";
 import type { DistrictId } from "../game/session";
-import type { Building, Prop } from "../structure/types";
+import type { Building, Lot, Prop } from "../structure/types";
 import { speciesCompatible } from "./biomes";
 import { groundConditionForSeason, resolveWeather, type SeasonId, type WeatherDetail } from "./season";
 import type { LayoutEnvironment } from "./rural";
 import { getAsset, validateCatalog } from "./catalog";
 import { movementBlocked, terrainTraversalAt, validateFeatureLayout } from "./terrainFeatures";
-import { aabbContainedInBox, aabbContainedInPoly, convexOverlap, parcelHitsRoad } from "./parcels";
+import { aabbContainedInBox, aabbContainedInPoly, parcelHitsRoad } from "./parcels";
 import type { CampaignLevelDef } from "../game/campaign";
 import { generateCampaignLayout } from "./campaignLayout";
 import { generateRuralLayout, spawnPointClear, type TopologyFamily } from "./rural";
@@ -83,21 +83,46 @@ export function generateDistrictLayout(
 }
 
 export function validateTown(town: Town): DistrictReport {
+  if (town.district === "classic") return validateClassicTown(town);
   const issues: DistrictIssue[] = [];
-  if (town.district === "classic") {
-    if (town.buildings.length !== 7) {
-      issues.push({ code: "count", detail: "classic fixture lost a building" });
-    }
-    if (!spawnClear(town.buildings, town.props, town.spawnX, town.spawnY)) {
-      issues.push({ code: "spawn", detail: "dozer spawn is blocked" });
-    }
-    pushPileCoverage(town, issues);
-    return { ok: issues.length === 0, issues };
-  }
-
   const catalog = validateCatalog();
   for (const issue of catalog.issues) issues.push(issue);
+  populationIssues(town, issues);
+  propIssues(town, issues);
+  for (let i = 0; i < town.buildings.length; i++) buildingPlacementIssues(town, i, issues);
+  for (const p of town.props) {
+    if (!p.broken && !getAsset(p.assetId).roadsideOk && pointOnRoad(town.network, p.x + p.w * 0.5, p.y + p.d * 0.5)) {
+      issues.push({ code: "prop-road", detail: `${p.assetId} sits on pavement` });
+    }
+  }
+  spawnIssues(town, issues);
+  terrainIssues(town, issues);
+  streetIssues(town, issues);
+  for (let i = 0; i < town.lots.length; i++) lotIssues(town, i, issues);
+  drivewayRouteIssues(town, issues);
+  for (const issue of town.diagnostic?.issues ?? []) {
+    if (!issues.some((o) => o.code === issue.code && o.detail === issue.detail)) issues.push(issue);
+  }
 
+  pushPileCoverage(town, issues);
+  return { ok: issues.length === 0, issues };
+}
+
+/** The hand-built classic lot only has to keep its seven buildings, a clear spawn and pile coverage. */
+function validateClassicTown(town: Town): DistrictReport {
+  const issues: DistrictIssue[] = [];
+  if (town.buildings.length !== 7) {
+    issues.push({ code: "count", detail: "classic fixture lost a building" });
+  }
+  if (!spawnClear(town.buildings, town.props, town.spawnX, town.spawnY)) {
+    issues.push({ code: "spawn", detail: "dozer spawn is blocked" });
+  }
+  pushPileCoverage(town, issues);
+  return { ok: issues.length === 0, issues };
+}
+
+/** Campaign maps need one landmark and a clear spawn; districts need their building count. */
+function populationIssues(town: Town, issues: DistrictIssue[]): void {
   if (town.campaignLevel) {
     const landmarks = town.buildings.filter(building => building.campaignLandmark);
     if (landmarks.length !== 1) {
@@ -106,16 +131,18 @@ export function validateTown(town: Town): DistrictReport {
     if (!spawnClear(town.buildings, town.props, town.spawnX, town.spawnY)) {
       issues.push({ code: "spawn", detail: "dozer spawn is blocked" });
     }
-  } else {
-    const expected = districtCount(town.district);
-    if (town.buildings.length !== expected) {
-      issues.push({
-        code: "count",
-        detail: `expected ${expected} buildings, got ${town.buildings.length}`,
-      });
-    }
+    return;
   }
+  const expected = districtCount(town.district);
+  if (town.buildings.length !== expected) {
+    issues.push({
+      code: "count",
+      detail: `expected ${expected} buildings, got ${town.buildings.length}`,
+    });
+  }
+}
 
+function propIssues(town: Town, issues: DistrictIssue[]): void {
   const ids = new Set<number>();
   for (const p of town.props) {
     if (ids.has(p.id)) issues.push({ code: "dup-prop", detail: `prop ${p.id}` });
@@ -136,63 +163,45 @@ export function validateTown(town: Town): DistrictReport {
   if (town.props.length > budget) {
     issues.push({ code: "density", detail: `${town.props.length} assets exceeds ${budget}` });
   }
+}
 
-  for (let i = 0; i < town.buildings.length; i++) {
-    const a = town.buildings[i]!;
-    for (const box of buildingOccupy(a)) {
-      if (box.x < town.minX - 0.4 || box.y < town.minY - 0.4 || box.x + box.w > town.maxX + 0.4 || box.y + box.d > town.maxY + 0.4) {
-        issues.push({ code: "bounds", detail: `${a.name} leaves world bounds` });
-      }
-    }
-    const footprint = { x: a.x, y: a.y, w: a.w * a.cellSize, d: a.d * a.cellSize };
-    if (aabbOverlapsRoad(town.network, footprint.x, footprint.y, footprint.w, footprint.d)) {
-      issues.push({ code: "road", detail: `${a.name} overlaps a street` });
-    }
-    for (const box of buildingOccupy(a)) {
-      if (aabbOverlapsRoad(town.network, box.x, box.y, box.w, box.d)) {
-        issues.push({ code: "road", detail: `${a.name} decor overlaps a street` });
-      }
-    }
-    const aw = a.w * a.cellSize;
-    const ad = a.d * a.cellSize;
-    for (let j = i + 1; j < town.buildings.length; j++) {
-      const b = town.buildings[j]!;
-      if (
-        aabbOverlap(
-          a.x - FOOTPRINT_GAP * 0.5,
-          a.y - FOOTPRINT_GAP * 0.5,
-          aw + FOOTPRINT_GAP,
-          ad + FOOTPRINT_GAP,
-          b.x,
-          b.y,
-          b.w * b.cellSize,
-          b.d * b.cellSize,
-        )
-      ) {
-        issues.push({ code: "overlap", detail: `${a.name} crowds ${b.name}` });
-      }
-    }
-    for (const p of town.props) {
-      if (p.broken) continue;
-      for (const box of buildingOccupy(a)) {
-        if (aabbOverlap(p.x, p.y, p.w, p.d, box.x, box.y, box.w, box.d)) {
-          issues.push({ code: "prop-building", detail: `${p.assetId} intersects ${a.name}` });
-        }
-      }
+/** Building `i` stays in bounds, off streets, clear of later buildings, and free of standing props. */
+function buildingPlacementIssues(town: Town, i: number, issues: DistrictIssue[]): void {
+  const a = town.buildings[i]!;
+  const occupied = buildingOccupy(a);
+  for (const box of occupied) {
+    if (box.x < town.minX - 0.4 || box.y < town.minY - 0.4 || box.x + box.w > town.maxX + 0.4 || box.y + box.d > town.maxY + 0.4) {
+      issues.push({ code: "bounds", detail: `${a.name} leaves world bounds` });
     }
   }
-
-  for (const p of town.props) {
-    if (p.broken) continue;
-    const def = getAsset(p.assetId);
-    if (
-      !def.roadsideOk &&
-      pointOnRoad(town.network, p.x + p.w * 0.5, p.y + p.d * 0.5)
-    ) {
-      issues.push({ code: "prop-road", detail: `${p.assetId} sits on pavement` });
+  const aw = a.w * a.cellSize;
+  const ad = a.d * a.cellSize;
+  if (aabbOverlapsRoad(town.network, a.x, a.y, aw, ad)) {
+    issues.push({ code: "road", detail: `${a.name} overlaps a street` });
+  }
+  for (const box of occupied) {
+    if (aabbOverlapsRoad(town.network, box.x, box.y, box.w, box.d)) {
+      issues.push({ code: "road", detail: `${a.name} decor overlaps a street` });
     }
   }
+  for (let j = i + 1; j < town.buildings.length; j++) {
+    const b = town.buildings[j]!;
+    if (aabbOverlap(a.x - FOOTPRINT_GAP * 0.5, a.y - FOOTPRINT_GAP * 0.5, aw + FOOTPRINT_GAP, ad + FOOTPRINT_GAP, b.x, b.y, b.w * b.cellSize, b.d * b.cellSize)) {
+      issues.push({ code: "overlap", detail: `${a.name} crowds ${b.name}` });
+    }
+  }
+  for (const p of town.props) if (!p.broken) propBuildingIssues(p, a, occupied, issues);
+}
 
+function propBuildingIssues(p: Prop, a: Building, occupied: readonly { x: number; y: number; w: number; d: number }[], issues: DistrictIssue[]): void {
+  for (const box of occupied) {
+    if (aabbOverlap(p.x, p.y, p.w, p.d, box.x, box.y, box.w, box.d)) {
+      issues.push({ code: "prop-building", detail: `${p.assetId} intersects ${a.name}` });
+    }
+  }
+}
+
+function spawnIssues(town: Town, issues: DistrictIssue[]): void {
   if (!spawnClear(town.buildings, town.props, town.spawnX, town.spawnY)) {
     issues.push({ code: "spawn", detail: "dozer spawn is blocked" });
   }
@@ -205,6 +214,9 @@ export function validateTown(town: Town): DistrictReport {
   if (terrainTraversalAt(town.features, town.roadSpawnX, town.roadSpawnY, town.surface) !== "open") {
     issues.push({ code: "road-spawn-terrain", detail: "test car spawn is in water or forest core" });
   }
+}
+
+function terrainIssues(town: Town, issues: DistrictIssue[]): void {
   for (const detail of validateFeatureLayout(
     town.features,
     town.network,
@@ -226,14 +238,19 @@ export function validateTown(town: Town): DistrictReport {
       }
     }
   }
+}
 
-  const onRoad =
-    pointOnRoad(town.network, town.spawnX, town.spawnY) ||
+function spawnOnRoad(town: Town): boolean {
+  return pointOnRoad(town.network, town.spawnX, town.spawnY) ||
     town.roads.some((road) => pointInAabb(town.spawnX, town.spawnY, road.x, road.y, road.w, road.d)) ||
     town.roads.some((road) =>
       aabbOverlap(town.spawnX - 0.4, town.spawnY - 0.4, 0.8, 0.8, road.x, road.y, road.w, road.d),
     );
-  if (!onRoad) issues.push({ code: "spawn-road", detail: "dozer spawn is not on a street" });
+}
+
+/** Spawn on a street, a reachable connected network, and every access tied to a lot, segment and lane. */
+function streetIssues(town: Town, issues: DistrictIssue[]): void {
+  if (!spawnOnRoad(town)) issues.push({ code: "spawn-road", detail: "dozer spawn is not on a street" });
 
   if (!roadsConnected(town.network) || !publicStreetsReachable(town.network, town.roadSpawnX, town.roadSpawnY)) {
     issues.push({ code: "streets", detail: "public streets are not reachable from the road spawn" });
@@ -254,42 +271,49 @@ export function validateTown(town: Town): DistrictReport {
       issues.push({ code: "access-lane", detail: acc.id });
     }
   }
+}
 
-  for (let i = 0; i < town.lots.length; i++) {
-    const lot = town.lots[i]!;
-    if (!lot.frontage?.segmentId) {
-      issues.push({ code: "frontage", detail: `${lot.id} missing frontage` });
-    }
-    if (lot.boundary?.length >= 3 && parcelHitsRoad(lot.boundary, town.network.segments.filter((s) => s.roadClass !== "driveway"))) {
-      issues.push({ code: "parcel-road", detail: `${lot.id} occupies a road corridor` });
-    }
-    for (let j = i + 1; j < town.lots.length; j++) {
-      const other = town.lots[j]!;
-      if (lot.boundary?.length >= 3 && other.boundary?.length >= 3 && convexOverlap(lot.boundary, other.boundary)) {
-        issues.push({ code: "parcel-overlap", detail: `${lot.id} overlaps ${other.id}` });
-      }
-    }
-    const acc = town.network.accesses.find((a) => a.id === lot.accessId || a.lotId === lot.id);
-    if (!acc) issues.push({ code: "access", detail: `${lot.id} missing road access` });
-    if (!lot.drivewayId || !town.network.segments.some((s) => s.id === lot.drivewayId && s.roadClass === "driveway")) {
-      issues.push({ code: "driveway", detail: `${lot.id} missing driveway geometry` });
-    }
-    if (lot.buildable && lot.boundary?.length >= 3 && !aabbContainedInPoly(lot.buildable, lot.boundary)) {
-      issues.push({ code: "envelope", detail: `${lot.id} buildable leaves parcel` });
-    }
-    const building = town.buildings[i];
-    if (building && lot.buildable) {
-      for (const box of buildingOccupy(building)) {
-        if (!aabbContainedInBox(box, lot.buildable, 0.05)) {
-          issues.push({ code: "envelope", detail: `${building.name} leaves ${lot.id} buildable envelope` });
-        }
-        if (lot.boundary?.length >= 3 && !aabbContainedInPoly(box, lot.boundary)) {
-          issues.push({ code: "parcel-contain", detail: `${building.name} is not inside ${lot.id}` });
-        }
-      }
+const hasParcel = (lot: Lot): boolean => lot.boundary?.length >= 3;
+
+/** Lot `i`: frontage, road clearance, no overlap with later lots, access, driveway, and its building inside the envelope. */
+function lotIssues(town: Town, i: number, issues: DistrictIssue[]): void {
+  const lot = town.lots[i]!;
+  if (!lot.frontage?.segmentId) {
+    issues.push({ code: "frontage", detail: `${lot.id} missing frontage` });
+  }
+  if (hasParcel(lot) && parcelHitsRoad(lot.boundary, town.network.segments.filter((s) => s.roadClass !== "driveway"))) {
+    issues.push({ code: "parcel-road", detail: `${lot.id} occupies a road corridor` });
+  }
+  for (let j = i + 1; j < town.lots.length; j++) {
+    const other = town.lots[j]!;
+    if (hasParcel(lot) && hasParcel(other) && convexOverlap(lot.boundary, other.boundary)) {
+      issues.push({ code: "parcel-overlap", detail: `${lot.id} overlaps ${other.id}` });
     }
   }
+  const acc = town.network.accesses.find((a) => a.id === lot.accessId || a.lotId === lot.id);
+  if (!acc) issues.push({ code: "access", detail: `${lot.id} missing road access` });
+  if (!lot.drivewayId || !town.network.segments.some((s) => s.id === lot.drivewayId && s.roadClass === "driveway")) {
+    issues.push({ code: "driveway", detail: `${lot.id} missing driveway geometry` });
+  }
+  if (lot.buildable && hasParcel(lot) && !aabbContainedInPoly(lot.buildable, lot.boundary)) {
+    issues.push({ code: "envelope", detail: `${lot.id} buildable leaves parcel` });
+  }
+  const building = town.buildings[i];
+  if (building && lot.buildable) lotBuildingIssues(lot, building, issues);
+}
 
+function lotBuildingIssues(lot: Lot, building: Building, issues: DistrictIssue[]): void {
+  for (const box of buildingOccupy(building)) {
+    if (!aabbContainedInBox(box, lot.buildable, 0.05)) {
+      issues.push({ code: "envelope", detail: `${building.name} leaves ${lot.id} buildable envelope` });
+    }
+    if (hasParcel(lot) && !aabbContainedInPoly(box, lot.boundary)) {
+      issues.push({ code: "parcel-contain", detail: `${building.name} is not inside ${lot.id}` });
+    }
+  }
+}
+
+function drivewayRouteIssues(town: Town, issues: DistrictIssue[]): void {
   const start = nearestLane(town.network, town.roadSpawnX, town.roadSpawnY);
   const drive = town.network.lanes.find((l) => {
     const seg = indexNetwork(town.network).segmentById.get(l.segmentId);
@@ -298,13 +322,6 @@ export function validateTown(town: Town): DistrictReport {
   if (start && drive && !findRoadRoute(town.network, start.id, drive.id)) {
     issues.push({ code: "driveway-route", detail: "no lane path from the road spawn into a driveway" });
   }
-
-  for (const issue of town.diagnostic?.issues ?? []) {
-    if (!issues.some((o) => o.code === issue.code && o.detail === issue.detail)) issues.push(issue);
-  }
-
-  pushPileCoverage(town, issues);
-  return { ok: issues.length === 0, issues };
 }
 
 function districtCount(id: DistrictId): number {

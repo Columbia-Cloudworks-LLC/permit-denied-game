@@ -3,13 +3,14 @@ import { Rng } from "../game/rng";
 import {
   aabbContainedInBox,
   allocateFrontage,
+  expandStreets,
   completeLot,
   parcelFromFrontage,
   parcelHitsRoad,
   placeBuildingInLot,
   PARCEL,
 } from "./parcels";
-import { linePoints, pt, RoadBuilder } from "./roads";
+import { linePoints, polylineLength, pt, RoadBuilder } from "./roads";
 import { createTown } from "./town";
 import { validateTown } from "./districts";
 
@@ -133,5 +134,36 @@ describe("frontage parcels", () => {
     });
     const report = validateTown(town);
     expect(report.issues.some((i) => i.code === "envelope" || i.code === "parcel-contain")).toBe(true);
+  });
+});
+
+describe("street expansion", () => {
+  function twoStreets(): RoadBuilder {
+    const b = new RoadBuilder();
+    const a0 = b.node(0, 0, 0), a1 = b.node(60, 0, 0);
+    b.segment(a0, a1, linePoints(pt(a0), pt(a1)), { roadClass: "rural" });
+    const b0 = b.node(0, 40, 0), b1 = b.node(50, 40, 0);
+    b.segment(b0, b1, linePoints(pt(b0), pt(b1)), { roadClass: "residential" });
+    return b;
+  }
+
+  it("branches a side street and loops it back to the next street on pass 0", () => {
+    const b = twoStreets();
+    expect(expandStreets(b, new Rng(3), 0)).toBe(true);
+    const added = b.segments.slice(2);
+    expect(added.length).toBeGreaterThanOrEqual(2);
+    expect(added.some((seg) => seg.roadClass === "residential")).toBe(true);
+  });
+
+  it("leaves a shorter dead end on pass 2", () => {
+    const b = twoStreets();
+    const before = b.segments.length;
+    expect(expandStreets(b, new Rng(3), 2)).toBe(true);
+    const spur = b.segments.find((seg, i) => i >= before - 1 && polylineLength(seg.points) < 30 && seg.roadClass !== "rural");
+    expect(spur).toBeDefined();
+  });
+
+  it("refuses a network with no public streets", () => {
+    expect(expandStreets(new RoadBuilder(), new Rng(1), 0)).toBe(false);
   });
 });

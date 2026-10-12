@@ -47,7 +47,9 @@ export function checkShape(value: unknown, shape: Shape, path: string): void {
     value.forEach((v, i) => checkShape(v, shape[0]!, `${path}[${i}]`)); return;
   }
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`${path}: expected object`);
-  const record = value as Record<string, unknown>, fields = shape as Record<string, Shape>;
+  checkFields(value as Record<string, unknown>, shape as Record<string, Shape>, path);
+}
+function checkFields(record: Record<string, unknown>, fields: Record<string, Shape>, path: string): void {
   if ('*' in fields) { for (const [key, v] of Object.entries(record)) checkShape(v, fields['*']!, `${path}.${key}`); return; }
   for (const key of Object.keys(record)) if (!(key in fields) && !(`${key}?` in fields)) throw new Error(`${path}.${key}: unknown field`);
   for (const [key, s] of Object.entries(fields)) {
@@ -81,126 +83,226 @@ const buildingShape: Shape = { version: 'number', id: 'string', kind: 'string', 
   zones: { residential: 'number', commercial: 'number', industrial: 'number' },
   'campaign?': { levels: { '*': 'number' }, 'maxRepeats?': 'number', 'landmarkOnly?': 'boolean', 'zones?': ['string'], 'family?': 'string', 'exception?': 'boolean', 'urbanBands?': ['string'], 'streetRole?': 'string' } };
 
+const BUILDING_KINDS: readonly string[] = ['house', 'shop', 'industrial'];
+const ROOF_STYLES: readonly string[] = ['gable', 'flat', 'shed', 'sawtooth'];
+const ROOF_AXES: readonly string[] = ['x', 'y'];
+const FACADE_THEMES: readonly string[] = ['cottage', 'ranch', 'colonial', 'walkup', 'porch', 'storefront', 'corner', 'civic', 'warehouse'];
+const DETAIL_SIDES: readonly string[] = ['south', 'east'];
+const GROUND_DETAILS: readonly string[] = ['entry-steps', 'porch', 'roll-up-door'];
+const OPENING_KINDS: readonly string[] = ['door', 'loading'];
+/** The support cell and its four neighbours must all sit inside the ground footprint. */
+const SUPPORT_CROSS = [[0, 0], [0, -1], [0, 1], [-1, 0], [1, 0]] as const;
+type GridPoint = { x: number; y: number };
+type FloorVoid = NonNullable<Archetype['floorVoids']>[number];
+type StairDef = NonNullable<LayoutDef['stairs']>[number];
+type RoomDef = LayoutDef['rooms'][number];
+type SiloDef = NonNullable<Archetype['silos']>[number];
+
+const within = (n: number, lo: number, hi: number): boolean => n >= lo && n <= hi;
+const oddWithin = (n: number, lo: number, hi: number): boolean => within(n, lo, hi) && n % 2 === 1;
+const occupied = (a: Archetype, floor: number, x: number, y: number): boolean => a.footprint[floor]?.[y]?.[x] === '#';
+const voidCovers = (a: Archetype, floor: number, gx: number, gy: number): boolean =>
+  !!a.floorVoids?.some(v => v.floor === floor && gx >= v.x && gx < v.x + v.w && gy >= v.y && gy < v.y + v.d);
+
 export function validateBuildingDefinition(a: Archetype): string[] {
   const issues = validateConstruction(a.construction);
+  const fatal = definitionHeaderIssue(a, issues);
+  if (fatal) return [...issues, fatal];
+  coreCollapseIssues(a, issues);
+  floorVoidIssues(a, issues);
+  elevatedTankIssues(a, issues);
+  facadeDetailIssues(a, issues);
+  if (!a.elevatedTank) issues.push(...validateLayout(a.layout, a.w, a.d, a.floors, occupiedMask(a), a.openings));
+  for (const stair of a.layout.stairs ?? []) stairIssues(a, stair, issues);
+  canopyIssues(a, issues);
+  openDeckIssues(a, issues);
+  siloIssues(a, issues);
+  openingIssues(a, issues);
+  return issues;
+}
+/** Push recoverable header issues; return the first one that makes deeper checks meaningless. */
+function definitionHeaderIssue(a: Archetype, issues: string[]): string | undefined {
   if (!a.id.trim() || !a.label.trim()) issues.push('Building needs an id and label');
-  if (![a.w, a.d, a.floors].every(n => Number.isInteger(n) && n > 0 && n <= 64)) return [...issues, 'Invalid building dimensions (1–64 cells/floors)'];
-  if (a.w * a.d * a.floors > 8192) return [...issues, 'Building exceeds 8192 grid slots; reduce cells or split the site'];
-  if (a.cellSize !== undefined && (!Number.isFinite(a.cellSize) || a.cellSize < .5 || a.cellSize > 4)) issues.push('cellSize must be 0.5–4 world units');
-  if (a.layout.rooms.length > 256 || a.layout.rooms.reduce((n, r) => n + r.contents.length, 0) > 512) return [...issues, 'Building exceeds 256 rooms or 512 contents'];
-  if (!['house', 'shop', 'industrial'].includes(a.kind) || !['gable', 'flat', 'shed', 'sawtooth'].includes(a.roof) ||
-    (a.roofAxis !== undefined && !['x', 'y'].includes(a.roofAxis)) ||
-    !['cottage', 'ranch', 'colonial', 'walkup', 'porch', 'storefront', 'corner', 'civic', 'warehouse'].includes(a.theme)) issues.push('Unknown building kind, roof, axis or theme');
+  if (![a.w, a.d, a.floors].every(n => Number.isInteger(n) && n > 0 && n <= 64)) return 'Invalid building dimensions (1–64 cells/floors)';
+  if (a.w * a.d * a.floors > 8192) return 'Building exceeds 8192 grid slots; reduce cells or split the site';
+  if (a.cellSize !== undefined && !(Number.isFinite(a.cellSize) && within(a.cellSize, .5, 4))) issues.push('cellSize must be 0.5–4 world units');
+  if (a.layout.rooms.length > 256 || a.layout.rooms.reduce((n, r) => n + r.contents.length, 0) > 512) return 'Building exceeds 256 rooms or 512 contents';
+  if (!knownStyle(a)) issues.push('Unknown building kind, roof, axis or theme');
   if (!Number.isInteger(a.windowStride) || a.windowStride < 1 || Object.values(a.zones).some(n => !Number.isFinite(n) || n < 0)) issues.push('Invalid window stride or zoning weight');
-  if (a.footprint.length !== a.floors || a.footprint.some(layer => layer.length !== a.d || layer.some(row => row.length !== a.w || /[^#.]/.test(row)) || !layer.some(row => row.includes('#')))) return [...issues, 'Footprint dimensions must match building dimensions and use # or .'];
-  if (a.coreCollapse) {
-    const c = a.coreCollapse, keys = new Set<string>();
-    if (a.floors < 4 || a.roof !== 'flat' || c.supports.length < 3 || c.supports.length > 32 || !(c.capacityThreshold > 0 && c.capacityThreshold < 1) || !(c.warningDuration >= .5 && c.warningDuration <= 5) || !(c.duration >= 2 && c.duration <= 12)) issues.push('Invalid coreCollapse configuration');
-    for (const p of c.supports) {
-      const key = p.x + ':' + p.y;
-      if (![p.x, p.y].every(Number.isInteger) || !(p.weight > 0 && p.weight <= 10) || keys.has(key) || [a.footprint[0]?.[p.y]?.[p.x], a.footprint[0]?.[p.y - 1]?.[p.x], a.footprint[0]?.[p.y + 1]?.[p.x], a.footprint[0]?.[p.y]?.[p.x - 1], a.footprint[0]?.[p.y]?.[p.x + 1]].some(v => v !== '#')) issues.push('Invalid or duplicate coreCollapse support ' + key + '; supports must be inside the ground footprint');
-      keys.add(key);
-    }
+  if (!footprintMatches(a)) return 'Footprint dimensions must match building dimensions and use # or .';
+  return undefined;
+}
+function knownStyle(a: Archetype): boolean {
+  return BUILDING_KINDS.includes(a.kind) && ROOF_STYLES.includes(a.roof) &&
+    (a.roofAxis === undefined || ROOF_AXES.includes(a.roofAxis)) && FACADE_THEMES.includes(a.theme);
+}
+function footprintMatches(a: Archetype): boolean {
+  return a.footprint.length === a.floors && a.footprint.every(layer => layer.length === a.d &&
+    layer.every(row => row.length === a.w && !/[^#.]/.test(row)) && layer.some(row => row.includes('#')));
+}
+function coreCollapseIssues(a: Archetype, issues: string[]): void {
+  const c = a.coreCollapse;
+  if (!c) return;
+  if (!(a.floors >= 4 && a.roof === 'flat' && within(c.supports.length, 3, 32) && c.capacityThreshold > 0 && c.capacityThreshold < 1 &&
+    within(c.warningDuration, .5, 5) && within(c.duration, 2, 12))) issues.push('Invalid coreCollapse configuration');
+  const keys = new Set<string>();
+  for (const p of c.supports) {
+    const key = p.x + ':' + p.y;
+    if (!coreSupportValid(a, p) || keys.has(key)) issues.push('Invalid or duplicate coreCollapse support ' + key + '; supports must be inside the ground footprint');
+    keys.add(key);
   }
-  const mask = occupiedMask(a);
-  if((a.floorVoids?.length??0)>16 || (a.floorVoids?.length && (a.coreCollapse || a.elevatedTank))) issues.push('Unsupported floor void configuration');
-  for(const v of a.floorVoids??[]) {
-    if(!Object.values(v).every(Number.isInteger) || v.floor<1 || v.floor>=a.floors || v.w<1 || v.d<1 ||
-      v.x<0 || v.y<0 || v.x+v.w>a.w || v.y+v.d>a.d) {issues.push('Invalid floor void');continue;}
-    for(let x=v.x;x<v.x+v.w;x++)for(let y=v.y;y<v.y+v.d;y++)
-      if(a.footprint[v.floor]?.[y]?.[x]!=='#')issues.push('Floor void crosses unoccupied envelope');
-    for(const r of a.layout.rooms.filter(r=>r.floor===v.floor))for(const s of r.contents) {
-      const x=(r.x+s.x*r.w)*a.w,y=(r.y+s.y*r.d)*a.d,w=s.w*r.w*a.w,d=s.d*r.d*a.d;
-      if(x<v.x+v.w && x+w>v.x && y<v.y+v.d && y+d>v.y)issues.push('Fixture overlaps floor void: '+s.id);
-    }
+}
+function coreSupportValid(a: Archetype, p: GridPoint & { weight: number }): boolean {
+  return Number.isInteger(p.x) && Number.isInteger(p.y) && p.weight > 0 && p.weight <= 10 &&
+    SUPPORT_CROSS.every(([dx, dy]) => occupied(a, 0, p.x + dx, p.y + dy));
+}
+function floorVoidIssues(a: Archetype, issues: string[]): void {
+  const count = a.floorVoids?.length ?? 0;
+  if (count > 16 || (count && (a.coreCollapse || a.elevatedTank))) issues.push('Unsupported floor void configuration');
+  for (const v of a.floorVoids ?? []) {
+    if (!floorVoidInBounds(a, v)) { issues.push('Invalid floor void'); continue; }
+    floorVoidEnvelopeIssues(a, v, issues);
+    for (const r of a.layout.rooms) if (r.floor === v.floor) fixtureVoidIssues(a, r, v, issues);
   }
-  if(a.elevatedTank) {
-    const t=a.elevatedTank;
-    if(a.coreCollapse || a.roof !== 'flat' || a.construction.walls !== 'frame' || a.floors<2 || a.floors>6 ||
-      a.w<3 || a.d<3 || a.w>9 || a.d>9 || a.w%2!==1 || a.d%2!==1 ||
-      !(t.radius>=.5 && t.radius<=Math.min(a.w,a.d)*(a.cellSize??1.15)/2) || !(t.height>=.5 && t.height<=4) ||
-      ![3,4].includes(t.minimumLegs) || !(t.warningDuration>=.2 && t.warningDuration<=2) || !(t.fallDuration>=1 && t.fallDuration<=5) ||
-      a.layout.rooms.length || a.layout.partitions || a.layout.connections?.length || a.facadeDetails?.length || a.openings.length)
-      issues.push('Invalid elevated tank configuration');
-    if(a.footprint.some(layer=>layer.some((row,y)=>[...row].some((v,x)=> (v==='#')!==((x===0||x===a.w-1)&&(y===0||y===a.d-1))))))
-      issues.push('Elevated tank footprint must contain exactly four continuous corner legs');
+}
+function floorVoidEnvelopeIssues(a: Archetype, v: FloorVoid, issues: string[]): void {
+  for (let x = v.x; x < v.x + v.w; x++) for (let y = v.y; y < v.y + v.d; y++)
+    if (!occupied(a, v.floor, x, y)) issues.push('Floor void crosses unoccupied envelope');
+}
+function floorVoidInBounds(a: Archetype, v: FloorVoid): boolean {
+  return Object.values(v).every(Number.isInteger) && v.floor >= 1 && v.floor < a.floors && v.w >= 1 && v.d >= 1 &&
+    v.x >= 0 && v.y >= 0 && v.x + v.w <= a.w && v.y + v.d <= a.d;
+}
+function fixtureVoidIssues(a: Archetype, r: RoomDef, v: FloorVoid, issues: string[]): void {
+  for (const s of r.contents) {
+    const x = (r.x + s.x * r.w) * a.w, y = (r.y + s.y * r.d) * a.d, w = s.w * r.w * a.w, d = s.d * r.d * a.d;
+    if (x < v.x + v.w && x + w > v.x && y < v.y + v.d && y + d > v.y) issues.push('Fixture overlaps floor void: ' + s.id);
   }
+}
+function elevatedTankIssues(a: Archetype, issues: string[]): void {
+  if (!a.elevatedTank) return;
+  if (!elevatedTankHostValid(a) || !elevatedTankValid(a) || !elevatedTankBare(a)) issues.push('Invalid elevated tank configuration');
+  if (a.footprint.some(layer => layer.some((row, y) => [...row].some((v, x) => (v === '#') !== ((x === 0 || x === a.w - 1) && (y === 0 || y === a.d - 1))))))
+    issues.push('Elevated tank footprint must contain exactly four continuous corner legs');
+}
+function elevatedTankHostValid(a: Archetype): boolean {
+  return !a.coreCollapse && a.roof === 'flat' && a.construction.walls === 'frame' && within(a.floors, 2, 6) && oddWithin(a.w, 3, 9) && oddWithin(a.d, 3, 9);
+}
+function elevatedTankValid(a: Archetype): boolean {
+  const t = a.elevatedTank!;
+  return within(t.radius, .5, Math.min(a.w, a.d) * (a.cellSize ?? 1.15) / 2) && within(t.height, .5, 4) && [3, 4].includes(t.minimumLegs) &&
+    within(t.warningDuration, .2, 2) && within(t.fallDuration, 1, 5);
+}
+/** The tank's legs carry no rooms, partitions, facade dressing or entrances. */
+function elevatedTankBare(a: Archetype): boolean {
+  return !a.layout.rooms.length && !a.layout.partitions && !a.layout.connections?.length && !a.facadeDetails?.length && !a.openings.length;
+}
+function facadeDetailIssues(a: Archetype, issues: string[]): void {
   const detailIds = new Set<string>();
   for (const detail of a.facadeDetails ?? []) {
-    if (!detail.id.trim() || detailIds.has(detail.id) || !FACADE_DETAIL_KINDS.includes(detail.kind) ||
-      !['south', 'east'].includes(detail.side) || ![detail.floor, detail.gx, detail.gy, detail.width].every(Number.isInteger) ||
-      detail.width < 1 || detail.width > 4 || detail.floor < 0 || detail.floor >= a.floors ||
-      (detail.text !== undefined && !/^[A-Z0-9 ]{1,16}$/.test(detail.text))) {
-      issues.push('Invalid facade detail ' + detail.id); continue;
-    }
+    if (detailIds.has(detail.id) || !facadeDetailValid(a, detail)) { issues.push('Invalid facade detail ' + detail.id); continue; }
     detailIds.add(detail.id);
-    if (detail.kind === 'roof-duct' && (a.roof !== 'flat' || detail.width !== 1 || detail.floor !== a.floors - 1))
-      issues.push('Roof ducts require a single mounting cell on the top flat roof');
-    if (detail.kind === 'dormer' && (a.roof !== 'gable' || detail.width !== 1 || detail.floor !== a.floors - 1))
-      issues.push('Dormers require a single mounting cell on the top gable roof');
-    if ((detail.kind === 'fire-escape' && detail.floor === 0) ||
-      (['entry-steps', 'porch', 'roll-up-door'].includes(detail.kind) && detail.floor !== 0))
-      issues.push('Invalid mounting floor for facade detail ' + detail.id);
-    for (let i = 0; i < detail.width; i++) {
-      const x = detail.gx + (detail.side === 'south' ? i : 0), y = detail.gy + (detail.side === 'east' ? i : 0);
-      if (a.footprint[detail.floor]?.[y]?.[x] !== '#' ||
-        a.footprint[detail.floor]?.[y + (detail.side === 'south' ? 1 : 0)]?.[x + (detail.side === 'east' ? 1 : 0)] === '#') {
-        issues.push('Facade detail requires exposed mounting cells: ' + detail.id); break;
-      }
-    }
+    facadeDetailMountIssues(a, detail, issues);
   }
-  if (!a.elevatedTank) issues.push(...validateLayout(a.layout, a.w, a.d, a.floors, mask, a.openings));
-  for (const stair of a.layout.stairs ?? []) {
-    const lower = a.layout.rooms.find(r => r.id === stair.a), upper = a.layout.rooms.find(r => r.id === stair.b);
-    if (!lower || !upper) continue;
-    if (!a.layout.partitions) issues.push('Stair access requires an explicit partitioned plan');
-    for (const {gx,gy:landingY} of stairLandingCells(stair,a.w,a.d,upper.floor))
-      if (a.footprint[upper.floor]?.[landingY]?.[gx] !== '#' || a.floorVoids?.some(v=>v.floor===upper.floor && gx>=v.x && gx<v.x+v.w && landingY>=v.y && landingY<v.y+v.d))
-        issues.push('Stairs require a solid landing at their upper end');
-    for (let gx=0;gx<a.w;gx++) for (let gy=0;gy<a.d;gy++) {
-      if (gx/a.w >= stair.x+stair.w || (gx+1)/a.w <= stair.x || gy/a.d >= stair.y+stair.d || (gy+1)/a.d <= stair.y) continue;
-      const voidAt = (floor:number) => a.floorVoids?.some(v=>v.floor===floor && gx>=v.x && gx<v.x+v.w && gy>=v.y && gy<v.y+v.d);
-      if (!voidAt(upper.floor) || voidAt(lower.floor)) issues.push('Stairs require a supporting lower slab and an open upper slab');
-    }
+}
+function facadeDetailValid(a: Archetype, detail: FacadeDetailDef): boolean {
+  return !!detail.id.trim() && FACADE_DETAIL_KINDS.includes(detail.kind) && DETAIL_SIDES.includes(detail.side) &&
+    [detail.floor, detail.gx, detail.gy, detail.width].every(Number.isInteger) && within(detail.width, 1, 4) && detail.floor >= 0 && detail.floor < a.floors &&
+    (detail.text === undefined || /^[A-Z0-9 ]{1,16}$/.test(detail.text));
+}
+const topRoofMount = (a: Archetype, detail: FacadeDetailDef, roof: RoofStyle): boolean => a.roof === roof && detail.width === 1 && detail.floor === a.floors - 1;
+function facadeDetailMountIssues(a: Archetype, detail: FacadeDetailDef, issues: string[]): void {
+  if (detail.kind === 'roof-duct' && !topRoofMount(a, detail, 'flat')) issues.push('Roof ducts require a single mounting cell on the top flat roof');
+  if (detail.kind === 'dormer' && !topRoofMount(a, detail, 'gable')) issues.push('Dormers require a single mounting cell on the top gable roof');
+  if ((detail.kind === 'fire-escape' && detail.floor === 0) || (GROUND_DETAILS.includes(detail.kind) && detail.floor !== 0))
+    issues.push('Invalid mounting floor for facade detail ' + detail.id);
+  if (!facadeDetailExposed(a, detail)) issues.push('Facade detail requires exposed mounting cells: ' + detail.id);
+}
+function facadeDetailExposed(a: Archetype, detail: FacadeDetailDef): boolean {
+  const south = detail.side === 'south';
+  for (let i = 0; i < detail.width; i++) {
+    const x = detail.gx + (south ? i : 0), y = detail.gy + (south ? 0 : i);
+    if (!occupied(a, detail.floor, x, y) || occupied(a, detail.floor, x + (south ? 0 : 1), y + (south ? 1 : 0))) return false;
   }
-  if (a.canopy) {
-    const columns = a.canopy.columns;
-    if (a.floors !== 1 || a.roof !== 'flat' || a.elevatedTank || a.coreCollapse || a.floorVoids?.length || a.openings.length || a.layout.partitions || a.layout.rooms.some(r => r.contents.length) ||
-      columns.length < 4 || columns.length > 8 || new Set(columns.map(p => `${p.x},${p.y}`)).size !== columns.length ||
-      columns.some(p => !Number.isInteger(p.x) || !Number.isInteger(p.y) || p.x < 0 || p.y < 0 || p.x >= a.w || p.y >= a.d || a.footprint[0]?.[p.y]?.[p.x] !== '#'))
-      issues.push('Canopies require a one-level flat roof, 4-8 distinct occupied column cells, empty unpartitioned space and no entrance panels');
+  return true;
+}
+function stairIssues(a: Archetype, stair: StairDef, issues: string[]): void {
+  const lower = a.layout.rooms.find(r => r.id === stair.a), upper = a.layout.rooms.find(r => r.id === stair.b);
+  if (!lower || !upper) return;
+  if (!a.layout.partitions) issues.push('Stair access requires an explicit partitioned plan');
+  for (const { gx, gy } of stairLandingCells(stair, a.w, a.d, upper.floor))
+    if (!occupied(a, upper.floor, gx, gy) || voidCovers(a, upper.floor, gx, gy)) issues.push('Stairs require a solid landing at their upper end');
+  stairSlabIssues(a, stair, lower.floor, upper.floor, issues);
+}
+function stairSlabIssues(a: Archetype, stair: StairDef, lowerFloor: number, upperFloor: number, issues: string[]): void {
+  for (let gx = 0; gx < a.w; gx++) for (let gy = 0; gy < a.d; gy++) {
+    if (stairCovers(a, stair, gx, gy) && (!voidCovers(a, upperFloor, gx, gy) || voidCovers(a, lowerFloor, gx, gy)))
+      issues.push('Stairs require a supporting lower slab and an open upper slab');
   }
-  if (a.openDecks) {
-    const columns=a.openDecks.columns;
-    if (a.floors<2 || a.floors>6 || a.roof!=='flat' || a.canopy || a.elevatedTank || a.coreCollapse || columns.length<4 || columns.length>16 ||
-      new Set(columns.map(p=>`${p.x},${p.y}`)).size!==columns.length || columns.some(p=>!Number.isInteger(p.x)||!Number.isInteger(p.y)||p.x<0||p.y<0||p.x>=a.w||p.y>=a.d || a.footprint.some(f=>f[p.y]?.[p.x]!=='#')))
-      issues.push('Open decks require 2-6 levels and 4-16 distinct continuous column cells');
+}
+function stairCovers(a: Archetype, stair: StairDef, gx: number, gy: number): boolean {
+  return !(gx / a.w >= stair.x + stair.w || (gx + 1) / a.w <= stair.x || gy / a.d >= stair.y + stair.d || (gy + 1) / a.d <= stair.y);
+}
+const gridCellInside = (a: Archetype, p: GridPoint): boolean =>
+  Number.isInteger(p.x) && Number.isInteger(p.y) && p.x >= 0 && p.y >= 0 && p.x < a.w && p.y < a.d;
+/** min-max distinct column cells, each accepted by `standsOn`. */
+function columnsValid(a: Archetype, columns: GridPoint[], min: number, max: number, standsOn: (p: GridPoint) => boolean): boolean {
+  return within(columns.length, min, max) && new Set(columns.map(p => `${p.x},${p.y}`)).size === columns.length &&
+    columns.every(p => gridCellInside(a, p) && standsOn(p));
+}
+function canopyIssues(a: Archetype, issues: string[]): void {
+  if (!a.canopy) return;
+  const hostValid = a.floors === 1 && a.roof === 'flat' && !a.elevatedTank && !a.coreCollapse && !a.floorVoids?.length && !a.openings.length &&
+    !a.layout.partitions && !a.layout.rooms.some(r => r.contents.length);
+  if (!hostValid || !columnsValid(a, a.canopy.columns, 4, 8, p => occupied(a, 0, p.x, p.y)))
+    issues.push('Canopies require a one-level flat roof, 4-8 distinct occupied column cells, empty unpartitioned space and no entrance panels');
+}
+function openDeckIssues(a: Archetype, issues: string[]): void {
+  if (!a.openDecks) return;
+  const hostValid = within(a.floors, 2, 6) && a.roof === 'flat' && !a.canopy && !a.elevatedTank && !a.coreCollapse;
+  if (!hostValid || !columnsValid(a, a.openDecks.columns, 4, 16, p => a.footprint.every(f => f[p.y]?.[p.x] === '#')))
+    issues.push('Open decks require 2-6 levels and 4-16 distinct continuous column cells');
+}
+function siloIssues(a: Archetype, issues: string[]): void {
+  const silos = a.silos;
+  if (!silos) return;
+  if (!within(silos.length, 1, 4) || a.canopy || a.openDecks || a.elevatedTank || a.coreCollapse) issues.push('Silos require an ordinary headhouse and 1-4 bins');
+  const ids = new Set<string>();
+  for (const s of silos) {
+    if (ids.has(s.id) || !siloBinValid(a, s) || !siloSupportValid(a, s)) issues.push('Invalid silo dimensions, support threshold or feed mount');
+    ids.add(s.id);
+    siloBaseIssues(a, s, issues);
+    for (const other of silos) if (other !== s && silosOverlap(s, other)) issues.push('Silo bins overlap');
   }
-  if(a.silos) {
-    if(a.silos.length<1 || a.silos.length>4 || a.canopy || a.openDecks || a.elevatedTank || a.coreCollapse)issues.push('Silos require an ordinary headhouse and 1-4 bins');
-    const ids=new Set<string>();
-    for(const s of a.silos) {
-      if(!s.id || ids.has(s.id) || ![s.gx,s.gy,s.diameter,s.minimumSupports,s.feed.gx,s.feed.gy,s.feed.floor].every(Number.isInteger) ||
-        s.diameter<5 || s.diameter>9 || s.diameter%2!==1 || s.gx<0 || s.gy<0 || s.gx+s.diameter>a.w || s.gy+s.diameter>a.d ||
-        !Number.isFinite(s.height) || s.height<3 || s.height>a.floors*2.35 || s.minimumSupports<3 || s.minimumSupports>7 ||
-        a.footprint[s.feed.floor]?.[s.feed.gy]?.[s.feed.gx]!=='#')issues.push('Invalid silo dimensions, support threshold or feed mount');
-      ids.add(s.id);
-      for(let y=s.gy;y<s.gy+s.diameter;y++)for(let x=s.gx;x<s.gx+s.diameter;x++) {
-        if(a.footprint[0]?.[y]?.[x]!=='#' || a.footprint.slice(1).some(f=>f[y]?.[x]==='#'))issues.push('Silos require an occupied base without upper floor rooms');
-      }
-      for(const other of a.silos)if(other!==s && s.gx<other.gx+other.diameter && s.gx+s.diameter>other.gx && s.gy<other.gy+other.diameter && s.gy+s.diameter>other.gy)issues.push('Silo bins overlap');
-    }
-  }
+}
+function siloBaseIssues(a: Archetype, s: SiloDef, issues: string[]): void {
+  for (let y = s.gy; y < s.gy + s.diameter; y++) for (let x = s.gx; x < s.gx + s.diameter; x++)
+    if (!occupied(a, 0, x, y) || a.footprint.slice(1).some(f => f[y]?.[x] === '#')) issues.push('Silos require an occupied base without upper floor rooms');
+}
+function siloBinValid(a: Archetype, s: SiloDef): boolean {
+  return !!s.id && [s.gx, s.gy, s.diameter, s.minimumSupports, s.feed.gx, s.feed.gy, s.feed.floor].every(Number.isInteger) &&
+    oddWithin(s.diameter, 5, 9) && s.gx >= 0 && s.gy >= 0 && s.gx + s.diameter <= a.w && s.gy + s.diameter <= a.d;
+}
+function siloSupportValid(a: Archetype, s: SiloDef): boolean {
+  return Number.isFinite(s.height) && within(s.height, 3, a.floors * 2.35) && within(s.minimumSupports, 3, 7) && occupied(a, s.feed.floor, s.feed.gx, s.feed.gy);
+}
+const silosOverlap = (s: SiloDef, o: SiloDef): boolean =>
+  s.gx < o.gx + o.diameter && s.gx + s.diameter > o.gx && s.gy < o.gy + o.diameter && s.gy + s.diameter > o.gy;
+function openingIssues(a: Archetype, issues: string[]): void {
   if (!a.elevatedTank && !a.canopy && !a.openings.some(o => o.floor === 0)) issues.push('Building needs a ground-floor entrance');
   for (const opening of a.openings) {
-    if (!Number.isInteger(opening.floor) || opening.floor < 0 || opening.floor >= a.floors || opening.side !== 'south' ||
-      !Number.isFinite(opening.at) || opening.at < 0 || opening.at > 1 || !['door', 'loading'].includes(opening.kind)) issues.push('Invalid entrance (supported frontage: south)');
-    else if (opening.cell) {
-      const { x, y } = opening.cell;
-      if (![x, y].every(Number.isInteger) || a.footprint[opening.floor]?.[y]?.[x] !== '#' || a.footprint[opening.floor]?.[y + 1]?.[x] === '#') issues.push('Entrance cell must touch exposed south frontage');
-    } else if (!a.footprint[opening.floor]![a.d - 1]!.includes('#')) issues.push('Entrance must touch occupied frontage');
+    const issue = openingIssue(a, opening);
+    if (issue) issues.push(issue);
   }
-  return issues;
+}
+function openingIssue(a: Archetype, opening: OpeningDef): string | undefined {
+  if (!(Number.isInteger(opening.floor) && opening.floor >= 0 && opening.floor < a.floors && opening.side === 'south' &&
+    Number.isFinite(opening.at) && within(opening.at, 0, 1) && OPENING_KINDS.includes(opening.kind))) return 'Invalid entrance (supported frontage: south)';
+  if (opening.cell) {
+    const { x, y } = opening.cell;
+    return Number.isInteger(x) && Number.isInteger(y) && occupied(a, opening.floor, x, y) && !occupied(a, opening.floor, x, y + 1) ? undefined : 'Entrance cell must touch exposed south frontage';
+  }
+  return a.footprint[opening.floor]![a.d - 1]!.includes('#') ? undefined : 'Entrance must touch occupied frontage';
 }
 export interface SectionDef {
   id: string; role: string; x: number; y: number; w: number; d: number;
@@ -210,97 +312,131 @@ interface BuildingPackage extends Omit<Archetype, 'construction' | 'layout' | 'f
   version: number; construction: string; layout?: string; footprint?: string[][];
   partitions?: boolean; connections?: LayoutDef['connections']; stairs?: LayoutDef['stairs'];
 }
+/** Lookups shared by every building package in one parse. */
+interface PackageContext {
+  constructions: Map<string, { file: string; def: ConstructionDef }>;
+  layouts: Map<string, LayoutDef>;
+  seen: Map<string, string>;
+  orders: Map<number, string>;
+  layoutOwners: Map<string, { id: string; file: string }>;
+}
 /** Pure seam also used by tests/tools. Layout references stay inside their owning directory. */
 export function parseBuildingPackages(files: Record<string, unknown>): readonly Archetype[] {
-  const constructions = new Map<string, { file: string; def: ConstructionDef }>();
-  const layouts = new Map<string, LayoutDef>();
   const entries = Object.entries(structuredClone(files)).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0);
+  const ctx: PackageContext = { constructions: new Map(), layouts: new Map(), seen: new Map(), orders: new Map(), layoutOwners: new Map() };
   for (const [file, input] of entries) {
-    if (file.endsWith('.construction.json')) {
-      checkShape(input, constructionShape, file);
-      const def = input as ConstructionDef, prior = constructions.get(def.id);
-      if (prior) throw new Error(`${file}: Duplicate construction id ${def.id}, first defined in ${prior.file}`);
-      const issues = validateConstruction(def);
-      if (issues.length) throw new Error(`${file} (construction ${def.id}): ${issues.join('; ')}`);
-      constructions.set(def.id, { file, def });
-    } else if (file.endsWith('.layout.json')) {
-      checkShape(input, layoutShape, file); layouts.set(file, input as LayoutDef);
-    }
+    if (file.endsWith('.construction.json')) registerConstruction(file, input, ctx);
+    else if (file.endsWith('.layout.json')) { checkShape(input, layoutShape, file); ctx.layouts.set(file, input as LayoutDef); }
   }
-  const seen = new Map<string, string>(), orders = new Map<number, string>();
-  const layoutOwners = new Map<string, { id: string; file: string }>();
   const result: Archetype[] = [];
   for (const [file, input] of entries.filter(([file]) => file.endsWith('.building.json'))) {
     const label = `${file} (building ${(input as { id?: string } | null)?.id ?? '?'})`;
-    try {
-      checkShape(input, buildingShape, label);
-      const entry = input as BuildingPackage;
-      if (entry.campaign) entry.campaign = parseCampaignPlacement(entry.campaign, `${label}.campaign`);
-      if (entry.version !== 1) throw new Error('Unsupported building package version');
-      if (seen.has(entry.id)) throw new Error(`Duplicate building id ${entry.id}, first defined in ${seen.get(entry.id)}`);
-      seen.set(entry.id, file);
-      if (entry.generationOrder !== undefined) {
-        if (!Number.isInteger(entry.generationOrder) || entry.generationOrder < 0 || orders.has(entry.generationOrder)) throw new Error(`Invalid or duplicate generationOrder (also ${orders.get(entry.generationOrder)})`);
-        orders.set(entry.generationOrder, file);
-      }
-      const construction = constructions.get(entry.construction);
-      if (!construction) throw new Error(`Unknown construction reference ${entry.construction}`);
-      const readLayout = (ref: string): LayoutDef => {
-        if (!/^[a-zA-Z0-9_-]+\.layout\.json$/.test(ref)) throw new Error(`Layout reference ${ref} must be a sibling .layout.json file`);
-        const path = file.slice(0, file.lastIndexOf('/') + 1) + ref;
-        const layout = layouts.get(path);
-        if (!layout) throw new Error(`Unknown layout reference ${path}`);
-        const owner = layoutOwners.get(path);
-        if (owner && owner.id !== entry.id) throw new Error(`Layout ${path} is already owned by ${owner.id} in ${owner.file}; copy the layout for this building`);
-        layoutOwners.set(path, { id: entry.id, file });
-        return structuredClone(layout);
-      };
-      let layout: LayoutDef, footprint: string[][];
-      if (entry.sections) {
-        if (entry.layout || entry.footprint) throw new Error('Use sections OR layout + footprint');
-        ({ layout, footprint } = compileSections(entry, readLayout));
-      } else {
-        if (!entry.layout || !entry.footprint) throw new Error('Building needs layout + footprint or sections');
-        if (entry.partitions !== undefined || entry.connections || entry.stairs) throw new Error('Flat packages own partitions, connections and stairs in their layout');
-        layout = readLayout(entry.layout); footprint = entry.footprint;
-      }
-      const { version: _version, partitions: _partitions, connections: _connections, stairs: _stairs, ...definition } = entry;
-      const a: Archetype = { ...definition, construction: structuredClone(construction.def), layout, footprint };
-      const issues = validateBuildingDefinition(a);
-      if (issues.length) throw new Error(`${entry.layout ?? entry.sections?.map(s => `${s.id}: ${s.layout}`).join(', ')}; construction ${construction.file}: ${issues.join('; ')}`);
-      result.push(freezeDefinition(a));
-    } catch (error) { throw new Error(`${label}: ${error instanceof Error ? error.message : String(error)}`); }
+    try { result.push(parseBuildingPackage(file, input, label, ctx)); }
+    catch (error) { throw new Error(`${label}: ${error instanceof Error ? error.message : String(error)}`); }
   }
   return Object.freeze(result.sort((a, b) => (a.generationOrder ?? Number.MAX_SAFE_INTEGER) - (b.generationOrder ?? Number.MAX_SAFE_INTEGER) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)));
 }
+function registerConstruction(file: string, input: unknown, ctx: PackageContext): void {
+  checkShape(input, constructionShape, file);
+  const def = input as ConstructionDef, prior = ctx.constructions.get(def.id);
+  if (prior) throw new Error(`${file}: Duplicate construction id ${def.id}, first defined in ${prior.file}`);
+  const issues = validateConstruction(def);
+  if (issues.length) throw new Error(`${file} (construction ${def.id}): ${issues.join('; ')}`);
+  ctx.constructions.set(def.id, { file, def });
+}
+function parseBuildingPackage(file: string, input: unknown, label: string, ctx: PackageContext): Archetype {
+  checkShape(input, buildingShape, label);
+  const entry = input as BuildingPackage;
+  if (entry.campaign) entry.campaign = parseCampaignPlacement(entry.campaign, `${label}.campaign`);
+  if (entry.version !== 1) throw new Error('Unsupported building package version');
+  registerBuildingId(file, entry, ctx);
+  const construction = ctx.constructions.get(entry.construction);
+  if (!construction) throw new Error(`Unknown construction reference ${entry.construction}`);
+  const { layout, footprint } = packageLayout(file, entry, ctx);
+  const { version: _version, partitions: _partitions, connections: _connections, stairs: _stairs, ...definition } = entry;
+  const a: Archetype = { ...definition, construction: structuredClone(construction.def), layout, footprint };
+  const issues = validateBuildingDefinition(a);
+  if (issues.length) throw new Error(`${entry.layout ?? entry.sections?.map(s => `${s.id}: ${s.layout}`).join(', ')}; construction ${construction.file}: ${issues.join('; ')}`);
+  return freezeDefinition(a);
+}
+function registerBuildingId(file: string, entry: BuildingPackage, ctx: PackageContext): void {
+  if (ctx.seen.has(entry.id)) throw new Error(`Duplicate building id ${entry.id}, first defined in ${ctx.seen.get(entry.id)}`);
+  ctx.seen.set(entry.id, file);
+  if (entry.generationOrder === undefined) return;
+  if (!Number.isInteger(entry.generationOrder) || entry.generationOrder < 0 || ctx.orders.has(entry.generationOrder)) throw new Error(`Invalid or duplicate generationOrder (also ${ctx.orders.get(entry.generationOrder)})`);
+  ctx.orders.set(entry.generationOrder, file);
+}
+function packageLayout(file: string, entry: BuildingPackage, ctx: PackageContext): { layout: LayoutDef; footprint: string[][] } {
+  const readLayout = (ref: string): LayoutDef => readOwnedLayout(file, entry.id, ref, ctx);
+  if (entry.sections) {
+    if (entry.layout || entry.footprint) throw new Error('Use sections OR layout + footprint');
+    return compileSections(entry, readLayout);
+  }
+  if (!entry.layout || !entry.footprint) throw new Error('Building needs layout + footprint or sections');
+  if (entry.partitions !== undefined || entry.connections || entry.stairs) throw new Error('Flat packages own partitions, connections and stairs in their layout');
+  return { layout: readLayout(entry.layout), footprint: entry.footprint };
+}
+function readOwnedLayout(file: string, id: string, ref: string, ctx: PackageContext): LayoutDef {
+  if (!/^[a-zA-Z0-9_-]+\.layout\.json$/.test(ref)) throw new Error(`Layout reference ${ref} must be a sibling .layout.json file`);
+  const path = file.slice(0, file.lastIndexOf('/') + 1) + ref;
+  const layout = ctx.layouts.get(path);
+  if (!layout) throw new Error(`Unknown layout reference ${path}`);
+  const owner = ctx.layoutOwners.get(path);
+  if (owner && owner.id !== id) throw new Error(`Layout ${path} is already owned by ${owner.id} in ${owner.file}; copy the layout for this building`);
+  ctx.layoutOwners.set(path, { id, file });
+  return structuredClone(layout);
+}
+type RoomList = LayoutDef['rooms'][number][];
+type ConnectionList = NonNullable<LayoutDef['connections']>[number][];
 function compileSections(entry: BuildingPackage, readLayout: (ref: string) => LayoutDef): { layout: LayoutDef; footprint: string[][] } {
   const { w, d, floors } = entry;
   if (![w, d, floors].every(n => Number.isInteger(n) && n > 0 && n <= 64) || w * d * floors > 8192) throw new Error('Invalid dimensions or exceeds 8192 grid slots');
-  if (!entry.sections?.length || entry.sections.length > 64) throw new Error('Expected 1–64 sections');
+  const sections = entry.sections;
+  if (!sections?.length || sections.length > 64) throw new Error('Expected 1–64 sections');
   const mask = Array.from({ length: floors }, () => Array.from({ length: d }, () => Array<string>(w).fill('.')));
-  const rooms: LayoutDef['rooms'][number][] = [], connections: NonNullable<LayoutDef['connections']>[number][] = [];
+  const rooms: RoomList = [], connections: ConnectionList = [];
   const ids = new Set<string>();
-  for (const s of entry.sections) {
-    if (!s.id.trim() || s.id.includes('/') || ids.has(s.id) || !s.role.trim()) throw new Error(`Invalid or duplicate section ${s.id}`);
-    ids.add(s.id);
-    if (![s.x, s.y, s.w, s.d, s.floor, s.floors].every(Number.isInteger) || s.x < 0 || s.y < 0 || s.floor < 0 || s.w < 1 || s.d < 1 || s.floors < 1 || s.x + s.w > w || s.y + s.d > d || s.floor + s.floors > floors) throw new Error(`Section ${s.id}: invalid bounds`);
-    const template = readLayout(s.layout);
-    if (template.stairs !== undefined) throw new Error('Section stair connections belong in the building package with expanded room IDs');
-    const issues = validateLayout(template, s.w, s.d, 1, fullMask(1, s.w, s.d));
-    if (issues.length) throw new Error(`Section ${s.id}, ${s.layout}: ${issues.join('; ')}`);
+  for (const s of sections) {
+    checkSection(entry, s, ids);
+    const template = readSectionTemplate(s, readLayout);
     for (let f = s.floor; f < s.floor + s.floors; f++) {
-      for (let y = s.y; y < s.y + s.d; y++) for (let x = s.x; x < s.x + s.w; x++) {
-        if (mask[f]![y]![x] === '#') throw new Error(`Section ${s.id}: overlaps another section at ${f}:${x},${y}`);
-        if (f > 0 && !entry.sections.some(b => b.floor <= f - 1 && b.floor + b.floors > f - 1 && x >= b.x && x < b.x + b.w && y >= b.y && y < b.y + b.d)) throw new Error(`Section ${s.id}: unsupported overhang at ${f}:${x},${y}`);
-        mask[f]![y]![x] = '#';
-      }
-      const id = (room: string) => `${s.id}/${f}/${room}`;
-      for (const r of template.rooms) rooms.push({ ...structuredClone(r), id: id(r.id), floor: f, x: (s.x + r.x * s.w) / w, y: (s.y + r.y * s.d) / d, w: r.w * s.w / w, d: r.d * s.d / d });
-      for (const c of template.connections ?? []) connections.push({ ...c, a: id(c.a), b: id(c.b) });
-      if (rooms.length > 256 || rooms.reduce((n, r) => n + r.contents.length, 0) > 512) throw new Error('Expanded sections exceed 256 rooms or 512 contents');
+      stampSectionFloor(sections, s, f, mask);
+      expandSectionFloor(entry, s, f, template, rooms, connections);
     }
   }
   return { footprint: mask.map(layer => layer.map(row => row.join(''))), layout: { partitions: entry.partitions ?? false, rooms, connections: [...connections, ...entry.connections ?? []], ...(entry.stairs ? { stairs: entry.stairs } : {}) } };
+}
+function checkSection(entry: BuildingPackage, s: SectionDef, ids: Set<string>): void {
+  if (!s.id.trim() || s.id.includes('/') || ids.has(s.id) || !s.role.trim()) throw new Error(`Invalid or duplicate section ${s.id}`);
+  ids.add(s.id);
+  if (!sectionInBounds(entry, s)) throw new Error(`Section ${s.id}: invalid bounds`);
+}
+function sectionInBounds(entry: BuildingPackage, s: SectionDef): boolean {
+  return [s.x, s.y, s.w, s.d, s.floor, s.floors].every(Number.isInteger) && s.x >= 0 && s.y >= 0 && s.floor >= 0 && s.w >= 1 && s.d >= 1 && s.floors >= 1 &&
+    s.x + s.w <= entry.w && s.y + s.d <= entry.d && s.floor + s.floors <= entry.floors;
+}
+function readSectionTemplate(s: SectionDef, readLayout: (ref: string) => LayoutDef): LayoutDef {
+  const template = readLayout(s.layout);
+  if (template.stairs !== undefined) throw new Error('Section stair connections belong in the building package with expanded room IDs');
+  const issues = validateLayout(template, s.w, s.d, 1, fullMask(1, s.w, s.d));
+  if (issues.length) throw new Error(`Section ${s.id}, ${s.layout}: ${issues.join('; ')}`);
+  return template;
+}
+const sectionHolds = (b: SectionDef, floor: number, x: number, y: number): boolean =>
+  b.floor <= floor && b.floor + b.floors > floor && x >= b.x && x < b.x + b.w && y >= b.y && y < b.y + b.d;
+function stampSectionFloor(sections: SectionDef[], s: SectionDef, f: number, mask: string[][][]): void {
+  for (let y = s.y; y < s.y + s.d; y++) for (let x = s.x; x < s.x + s.w; x++) {
+    if (mask[f]![y]![x] === '#') throw new Error(`Section ${s.id}: overlaps another section at ${f}:${x},${y}`);
+    if (f > 0 && !sections.some(b => sectionHolds(b, f - 1, x, y))) throw new Error(`Section ${s.id}: unsupported overhang at ${f}:${x},${y}`);
+    mask[f]![y]![x] = '#';
+  }
+}
+function expandSectionFloor(entry: BuildingPackage, s: SectionDef, f: number, template: LayoutDef, rooms: RoomList, connections: ConnectionList): void {
+  const { w, d } = entry;
+  const id = (room: string) => `${s.id}/${f}/${room}`;
+  for (const r of template.rooms) rooms.push({ ...structuredClone(r), id: id(r.id), floor: f, x: (s.x + r.x * s.w) / w, y: (s.y + r.y * s.d) / d, w: r.w * s.w / w, d: r.d * s.d / d });
+  for (const c of template.connections ?? []) connections.push({ ...c, a: id(c.a), b: id(c.b) });
+  if (rooms.length > 256 || rooms.reduce((n, r) => n + r.contents.length, 0) > 512) throw new Error('Expanded sections exceed 256 rooms or 512 contents');
 }
 export function parseContentFiles(raw: Record<string, string>): Record<string, unknown> {
   return Object.fromEntries(Object.entries(raw).map(([file, text]) => {

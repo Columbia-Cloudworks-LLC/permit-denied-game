@@ -25,19 +25,37 @@ const placementShapeKeys = new Set([
   'levels', 'maxRepeats', 'landmarkOnly', 'zones', 'family', 'exception', 'urbanBands', 'streetRole',
 ]);
 
+const isRecord = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
+const isBoolean = (value: unknown): boolean => typeof value === 'boolean';
+/** Optional placement fields in authoring order, each with its validity rule and complaint. */
+const OPTIONAL_PLACEMENT_FIELDS: readonly { key: Exclude<keyof CampaignPlacement, 'levels'>; valid: (value: unknown) => boolean; message: string }[] = [
+  { key: 'maxRepeats', valid: value => Number.isInteger(value) && (value as number) >= 1, message: 'campaign.maxRepeats must be an integer >= 1' },
+  { key: 'landmarkOnly', valid: isBoolean, message: 'campaign.landmarkOnly must be boolean' },
+  { key: 'zones', valid: value => Array.isArray(value) && value.every(zone => typeof zone === 'string'), message: 'campaign.zones must be an array of zone names' },
+  { key: 'family', valid: value => typeof value === 'string' && !!value.trim(), message: 'campaign.family must be a non-empty string' },
+  { key: 'exception', valid: isBoolean, message: 'campaign.exception must be boolean' },
+  { key: 'urbanBands', valid: value => Array.isArray(value) && value.length >= 1 && value.every(band => typeof band === 'string' && isUrbanBand(band)), message: 'campaign.urbanBands must list known urban bands' },
+  { key: 'streetRole', valid: value => typeof value === 'string' && isStreetRole(value), message: 'campaign.streetRole must be standard, corner, or run' },
+];
+
 export function parseCampaignPlacement(input: unknown, context: string): CampaignPlacement {
-  if (!input || typeof input !== 'object' || Array.isArray(input)) {
-    throw new Error(`${context}: campaign placement must be an object`);
-  }
-  const record = input as Record<string, unknown>;
-  for (const key of Object.keys(record)) {
+  if (!isRecord(input)) throw new Error(`${context}: campaign placement must be an object`);
+  for (const key of Object.keys(input)) {
     if (!placementShapeKeys.has(key)) throw new Error(`${context}: unknown field campaign.${key}`);
   }
-  if (!record.levels || typeof record.levels !== 'object' || Array.isArray(record.levels)) {
-    throw new Error(`${context}: campaign.levels must list allowed level IDs`);
+  const placement: CampaignPlacement = { levels: parseCampaignLevels(input.levels, context) };
+  for (const { key, valid, message } of OPTIONAL_PLACEMENT_FIELDS) {
+    if (input[key] === undefined) continue;
+    if (!valid(input[key])) throw new Error(`${context}: ${message}`);
+    (placement as unknown as Record<string, unknown>)[key] = input[key];
   }
+  return placement;
+}
+
+function parseCampaignLevels(input: unknown, context: string): Partial<Record<CampaignLevelId, number>> {
+  if (!input || !isRecord(input)) throw new Error(`${context}: campaign.levels must list allowed level IDs`);
   const levels: Partial<Record<CampaignLevelId, number>> = {};
-  for (const [id, weight] of Object.entries(record.levels as Record<string, unknown>)) {
+  for (const [id, weight] of Object.entries(input)) {
     if (!isCampaignLevelId(id)) throw new Error(`${context}: invalid campaign level id ${id}`);
     if (typeof weight !== 'number' || !Number.isFinite(weight) || weight < 0) {
       throw new Error(`${context}: campaign weight for ${id} must be a finite number >= 0`);
@@ -45,48 +63,8 @@ export function parseCampaignPlacement(input: unknown, context: string): Campaig
     levels[id] = weight;
   }
   if (!Object.keys(levels).length) throw new Error(`${context}: campaign.levels must include at least one level`);
-  const placement: CampaignPlacement = { levels };
-  if (record.maxRepeats !== undefined) {
-    if (!Number.isInteger(record.maxRepeats) || (record.maxRepeats as number) < 1) {
-      throw new Error(`${context}: campaign.maxRepeats must be an integer >= 1`);
-    }
-    placement.maxRepeats = record.maxRepeats as number;
-  }
-  if (record.landmarkOnly !== undefined) {
-    if (typeof record.landmarkOnly !== 'boolean') throw new Error(`${context}: campaign.landmarkOnly must be boolean`);
-    placement.landmarkOnly = record.landmarkOnly;
-  }
-  if (record.zones !== undefined) {
-    if (!Array.isArray(record.zones) || record.zones.some(zone => typeof zone !== 'string')) {
-      throw new Error(`${context}: campaign.zones must be an array of zone names`);
-    }
-    placement.zones = record.zones as LotCompat[];
-  }
-  if (record.family !== undefined) {
-    if (typeof record.family !== 'string' || !record.family.trim()) {
-      throw new Error(`${context}: campaign.family must be a non-empty string`);
-    }
-    placement.family = record.family;
-  }
-  if (record.exception !== undefined) {
-    if (typeof record.exception !== 'boolean') throw new Error(`${context}: campaign.exception must be boolean`);
-    placement.exception = record.exception;
-  }
-  if (record.urbanBands !== undefined) {
-    if (!Array.isArray(record.urbanBands) || record.urbanBands.length < 1 || record.urbanBands.some(band => typeof band !== 'string' || !isUrbanBand(band))) {
-      throw new Error(`${context}: campaign.urbanBands must list known urban bands`);
-    }
-    placement.urbanBands = record.urbanBands as UrbanBand[];
-  }
-  if (record.streetRole !== undefined) {
-    if (typeof record.streetRole !== 'string' || !isStreetRole(record.streetRole)) {
-      throw new Error(`${context}: campaign.streetRole must be standard, corner, or run`);
-    }
-    placement.streetRole = record.streetRole;
-  }
-  return placement;
+  return levels;
 }
-
 export function campaignWeight(placement: CampaignPlacement | undefined, level: CampaignLevelId): number {
   if (!placement) return 0;
   return placement.levels[level] ?? 0;
@@ -118,37 +96,56 @@ export function validateSiteCampaignRules(
   if (!site.campaign) return issues;
   for (const id of CAMPAIGN_LEVEL_IDS) {
     if (!(campaignWeight(site.campaign, id) > 0)) continue;
-    for (const member of site.buildings) {
-      const def = buildings.find(building => building.id === member.building);
-      if (!def) {
-        issues.push({ code: 'missing-building', detail: `${context}: unknown building ${member.building}` });
-        continue;
-      }
-      if (site.campaign.landmarkOnly) continue;
-      if (!campaignEligible(def.campaign, id, { landmark: !!def.campaign?.landmarkOnly })) {
-        issues.push({
-          code: 'site-member',
-          detail: `${context}: ${member.building} is not eligible for ${id}`,
-        });
-      }
-    }
-    for (const member of site.equipment) {
-      const def = assets.find(asset => asset.id === member.asset);
-      if (!def) {
-        issues.push({ code: 'missing-asset', detail: `${context}: unknown equipment ${member.asset}` });
-        continue;
-      }
-      if (!campaignEligible(def.campaign, id)) {
-        issues.push({
-          code: 'site-member',
-          detail: `${context}: ${member.asset} is not eligible for ${id}`,
-        });
-      }
-    }
+    siteBuildingIssues(site, buildings, id, context, issues);
+    siteEquipmentIssues(site, assets, id, context, issues);
   }
   return issues;
 }
 
+function siteBuildingIssues(
+  site: BuildingSite & { campaign?: CampaignPlacement },
+  buildings: readonly (Archetype & { campaign?: CampaignPlacement })[],
+  id: CampaignLevelId,
+  context: string,
+  issues: CampaignPlacementIssue[],
+): void {
+  for (const member of site.buildings) {
+    const def = buildings.find(building => building.id === member.building);
+    if (!def) {
+      issues.push({ code: 'missing-building', detail: `${context}: unknown building ${member.building}` });
+      continue;
+    }
+    if (site.campaign?.landmarkOnly) continue;
+    if (!campaignEligible(def.campaign, id, { landmark: !!def.campaign?.landmarkOnly })) {
+      issues.push({
+        code: 'site-member',
+        detail: `${context}: ${member.building} is not eligible for ${id}`,
+      });
+    }
+  }
+}
+
+function siteEquipmentIssues(
+  site: BuildingSite,
+  assets: readonly (AssetDef & { campaign?: CampaignPlacement })[],
+  id: CampaignLevelId,
+  context: string,
+  issues: CampaignPlacementIssue[],
+): void {
+  for (const member of site.equipment) {
+    const def = assets.find(asset => asset.id === member.asset);
+    if (!def) {
+      issues.push({ code: 'missing-asset', detail: `${context}: unknown equipment ${member.asset}` });
+      continue;
+    }
+    if (!campaignEligible(def.campaign, id)) {
+      issues.push({
+        code: 'site-member',
+        detail: `${context}: ${member.asset} is not eligible for ${id}`,
+      });
+    }
+  }
+}
 export function pickWeighted<T>(
   items: readonly T[],
   weightOf: (item: T) => number,

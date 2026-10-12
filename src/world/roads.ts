@@ -1,4 +1,4 @@
-import { aabbOverlap, clamp, len, lerp, pointBounds, wrapAngle } from "../game/math";
+import { aabbOverlap, clamp, convexOverlap, len, lerp, pointBounds, wrapAngle } from "../game/math";
 import { SpatialHash } from "../sim/spatial";
 import type { JunctionType, RoadClass, RoadSurfaceKind } from "../structure/types";
 import { drivewayPavementColor } from "./drivewayStyle";
@@ -195,6 +195,12 @@ function polylineEdges(points: readonly RoadPoint[]): { i: number; a: RoadPoint;
   return edges;
 }
 
+/** Append a copy of `p` unless it repeats the list's last point. */
+function pushDistinct(list: RoadPoint[], p: RoadPoint): void {
+  const last = list[list.length - 1]!;
+  if (len(last.x - p.x, last.y - p.y) > 1e-4) list.push({ x: p.x, y: p.y, elev: p.elev });
+}
+
 function splitPolyline(
   points: readonly RoadPoint[],
   t: number,
@@ -209,21 +215,13 @@ function splitPolyline(
   for (let i = 0; i < points.length - 1; i++) {
     const p0 = points[i]!;
     const p1 = points[i + 1]!;
-    const segLen = len(p1.x - p0.x, p1.y - p0.y) || 1e-6;
-    const next = walked + segLen;
-    if (!passed) {
-      if (cut <= next || i === points.length - 2) {
-        if (len(a[a.length - 1]!.x - mid.x, a[a.length - 1]!.y - mid.y) > 1e-4) {
-          a.push({ x: mid.x, y: mid.y, elev: mid.elev });
-        }
-        if (len(mid.x - p1.x, mid.y - p1.y) > 1e-4) b.push({ x: p1.x, y: p1.y, elev: p1.elev });
-        passed = true;
-      } else if (len(a[a.length - 1]!.x - p1.x, a[a.length - 1]!.y - p1.y) > 1e-4) {
-        a.push({ x: p1.x, y: p1.y, elev: p1.elev });
-      }
-    } else if (len(b[b.length - 1]!.x - p1.x, b[b.length - 1]!.y - p1.y) > 1e-4) {
-      b.push({ x: p1.x, y: p1.y, elev: p1.elev });
-    }
+    const next = walked + (len(p1.x - p0.x, p1.y - p0.y) || 1e-6);
+    if (passed) pushDistinct(b, p1);
+    else if (cut <= next || i === points.length - 2) {
+      pushDistinct(a, mid);
+      pushDistinct(b, p1);
+      passed = true;
+    } else pushDistinct(a, p1);
     walked = next;
   }
   if (a.length < 2) a.push({ x: mid.x, y: mid.y, elev: mid.elev });
@@ -454,33 +452,61 @@ export interface RoadIssue {
 
 export function validateRoadNetwork(network: RoadNetwork): { ok: boolean; issues: RoadIssue[] } {
   const issues: RoadIssue[] = [];
-  const nodeIds = new Set<string>();
+  const nodeIds = uniqueIds(network.nodes, "dup-node", issues);
   const segIds = new Set<string>();
-  const laneIds = new Set<string>();
-  const accessIds = new Set<string>();
-  for (const n of network.nodes) {
-    if (nodeIds.has(n.id)) issues.push({ code: "dup-node", detail: n.id });
-    nodeIds.add(n.id);
-  }
   for (const s of network.segments) {
     if (segIds.has(s.id)) issues.push({ code: "dup-seg", detail: s.id });
     segIds.add(s.id);
-    if (!nodeIds.has(s.startId) || !nodeIds.has(s.endId)) {
-      issues.push({ code: "dangle-node", detail: s.id });
-    }
-    if (s.points.length < 2) issues.push({ code: "geom", detail: `${s.id} needs two points` });
-    for (const laneId of s.laneIds) {
-      if (!network.lanes.some((l) => l.id === laneId)) issues.push({ code: "dangle-lane", detail: `${s.id} -> ${laneId}` });
-    }
-    const rise = Math.abs(s.points[0]!.elev - s.points[s.points.length - 1]!.elev);
-    let path = 0;
-    for (let i = 0; i < s.points.length - 1; i++) {
-      path += len(s.points[i + 1]!.x - s.points[i]!.x, s.points[i + 1]!.y - s.points[i]!.y);
-    }
-    const grade = path > 0.2 ? rise / path : 0;
-    const maxGrade = s.roadClass === "highway" || s.roadClass === "arterial" ? 0.08 : s.roadClass === "ramp" ? 0.18 : 0.14;
-    if (grade > maxGrade) issues.push({ code: "grade", detail: `${s.id} grade ${grade.toFixed(3)}` });
+    segmentIssues(network, s, nodeIds, issues);
   }
+  laneIssues(network, segIds, issues);
+  const accessIds = new Set<string>();
+  for (const a of network.accesses) {
+    if (accessIds.has(a.id)) issues.push({ code: "dup-access", detail: a.id });
+    accessIds.add(a.id);
+    if (!segIds.has(a.segmentId)) issues.push({ code: "dangle-access", detail: a.id });
+  }
+  for (const s of network.segments) clearanceIssues(network, s, issues);
+  return { ok: issues.length === 0, issues };
+}
+
+function uniqueIds(items: readonly { id: string }[], code: string, issues: RoadIssue[]): Set<string> {
+  const ids = new Set<string>();
+  for (const item of items) {
+    if (ids.has(item.id)) issues.push({ code, detail: item.id });
+    ids.add(item.id);
+  }
+  return ids;
+}
+
+function clearanceIssues(network: RoadNetwork, s: RoadSegment, issues: RoadIssue[]): void {
+  for (const o of network.segments) {
+    if (s.id < o.id && s.layer !== o.layer) clearanceIssue(s, o, issues);
+  }
+}
+
+const maxGrade = (roadClass: RoadClass): number =>
+  roadClass === "highway" || roadClass === "arterial" ? 0.08 : roadClass === "ramp" ? 0.18 : 0.14;
+
+function segmentIssues(network: RoadNetwork, s: RoadSegment, nodeIds: ReadonlySet<string>, issues: RoadIssue[]): void {
+  if (!nodeIds.has(s.startId) || !nodeIds.has(s.endId)) {
+    issues.push({ code: "dangle-node", detail: s.id });
+  }
+  if (s.points.length < 2) issues.push({ code: "geom", detail: `${s.id} needs two points` });
+  for (const laneId of s.laneIds) {
+    if (!network.lanes.some((l) => l.id === laneId)) issues.push({ code: "dangle-lane", detail: `${s.id} -> ${laneId}` });
+  }
+  const rise = Math.abs(s.points[0]!.elev - s.points[s.points.length - 1]!.elev);
+  let path = 0;
+  for (let i = 0; i < s.points.length - 1; i++) {
+    path += len(s.points[i + 1]!.x - s.points[i]!.x, s.points[i + 1]!.y - s.points[i]!.y);
+  }
+  const grade = path > 0.2 ? rise / path : 0;
+  if (grade > maxGrade(s.roadClass)) issues.push({ code: "grade", detail: `${s.id} grade ${grade.toFixed(3)}` });
+}
+
+function laneIssues(network: RoadNetwork, segIds: ReadonlySet<string>, issues: RoadIssue[]): void {
+  const laneIds = new Set<string>();
   for (const l of network.lanes) {
     if (laneIds.has(l.id)) issues.push({ code: "dup-lane", detail: l.id });
     laneIds.add(l.id);
@@ -489,32 +515,20 @@ export function validateRoadNetwork(network: RoadNetwork): { ok: boolean; issues
       if (!network.lanes.some((o) => o.id === n)) issues.push({ code: "dangle-next", detail: `${l.id} -> ${n}` });
     }
   }
-  for (const a of network.accesses) {
-    if (accessIds.has(a.id)) issues.push({ code: "dup-access", detail: a.id });
-    accessIds.add(a.id);
-    if (!segIds.has(a.segmentId)) issues.push({ code: "dangle-access", detail: a.id });
+}
+
+/** Segments on different layers that cross need 1.4 units of headroom unless one is a ramp. */
+function clearanceIssue(s: RoadSegment, o: RoadSegment, issues: RoadIssue[]): void {
+  const ab = segmentAabb(s);
+  const bb = segmentAabb(o);
+  if (!aabbOverlap(ab.x, ab.y, ab.w, ab.d, bb.x, bb.y, bb.w, bb.d)) return;
+  const mid = s.points[Math.floor(s.points.length / 2)]!;
+  const hit = projectPointToPolyline(o.points, mid.x, mid.y);
+  if (!(hit.dist < (s.width + o.width) * 0.25)) return;
+  const clearance = Math.abs(mid.elev - hit.elev);
+  if (clearance < 1.4 && s.roadClass !== "ramp" && o.roadClass !== "ramp") {
+    issues.push({ code: "clearance", detail: `${s.id} crosses ${o.id} with ${clearance.toFixed(2)}` });
   }
-  const layerPairs = new Map<string, number>();
-  for (const s of network.segments) {
-    for (const o of network.segments) {
-      if (s.id >= o.id) continue;
-      if (s.layer === o.layer) continue;
-      const ab = segmentAabb(s);
-      const bb = segmentAabb(o);
-      if (!aabbOverlap(ab.x, ab.y, ab.w, ab.d, bb.x, bb.y, bb.w, bb.d)) continue;
-      const mid = s.points[Math.floor(s.points.length / 2)]!;
-      const hit = projectPointToPolyline(o.points, mid.x, mid.y);
-      if (hit.dist < (s.width + o.width) * 0.25) {
-        const clearance = Math.abs(mid.elev - hit.elev);
-        layerPairs.set(`${s.id}:${o.id}`, clearance);
-        if (clearance < 1.4 && s.roadClass !== "ramp" && o.roadClass !== "ramp") {
-          issues.push({ code: "clearance", detail: `${s.id} crosses ${o.id} with ${clearance.toFixed(2)}` });
-        }
-      }
-    }
-  }
-  void layerPairs;
-  return { ok: issues.length === 0, issues };
 }
 
 function reachableSegments(
@@ -527,28 +541,28 @@ function reachableSegments(
   const surf = roadSurfaceAt(network, startX, startY, layer);
   const startId = surf.segmentId ?? network.segments[0]?.id;
   const seen = new Set<string>();
-  if (!startId) return seen;
-  const startSeg = idx.segmentById.get(startId);
-  if (!startSeg) return seen;
+  if (!startId || !idx.segmentById.get(startId)) return seen;
   seen.add(startId);
   const stack = [startId];
   while (stack.length) {
-    const id = stack.pop()!;
-    const seg = idx.segmentById.get(id);
-    if (!seg) continue;
-    for (const nid of [seg.startId, seg.endId]) {
-      const node = idx.nodeById.get(nid);
-      if (!node) continue;
-      for (const sid of node.segmentIds) {
-        if (seen.has(sid)) continue;
-        const other = idx.segmentById.get(sid);
-        if (!other || other.layer !== seg.layer) continue;
-        seen.add(sid);
-        stack.push(sid);
-      }
-    }
+    const seg = idx.segmentById.get(stack.pop()!);
+    if (seg) pushSameLayerNeighbours(idx, seg, seen, stack);
   }
   return seen;
+}
+
+function pushSameLayerNeighbours(idx: ReturnType<typeof indexNetwork>, seg: RoadSegment, seen: Set<string>, stack: string[]): void {
+  for (const nid of [seg.startId, seg.endId]) {
+    const node = idx.nodeById.get(nid);
+    if (!node) continue;
+    for (const sid of node.segmentIds) {
+      if (seen.has(sid)) continue;
+      const other = idx.segmentById.get(sid);
+      if (!other || other.layer !== seg.layer) continue;
+      seen.add(sid);
+      stack.push(sid);
+    }
+  }
 }
 
 export function roadsConnected(network: RoadNetwork): boolean {
@@ -751,34 +765,6 @@ function polyArea(poly: readonly { x: number; y: number }[]): number {
   return a * 0.5;
 }
 
-function convexPolysHit(a: readonly { x: number; y: number }[], b: readonly { x: number; y: number }[]): boolean {
-  const sep = (p: readonly { x: number; y: number }[], q: readonly { x: number; y: number }[]) => {
-    for (let i = 0; i < p.length; i++) {
-      const u = p[i]!;
-      const v = p[(i + 1) % p.length]!;
-      const nx = u.y - v.y;
-      const ny = v.x - u.x;
-      let minP = Infinity;
-      let maxP = -Infinity;
-      let minQ = Infinity;
-      let maxQ = -Infinity;
-      for (const t of p) {
-        const d = t.x * nx + t.y * ny;
-        if (d < minP) minP = d;
-        if (d > maxP) maxP = d;
-      }
-      for (const t of q) {
-        const d = t.x * nx + t.y * ny;
-        if (d < minQ) minQ = d;
-        if (d > maxQ) maxQ = d;
-      }
-      if (maxP < minQ - 1e-4 || maxQ < minP - 1e-4) return true;
-    }
-    return false;
-  };
-  return !sep(a, b) && !sep(b, a);
-}
-
 function outwardPlanes(poly: readonly { x: number; y: number }[]): HalfPlane[] {
   const ccw = polyArea(poly) > 0;
   const planes: HalfPlane[] = [];
@@ -799,7 +785,7 @@ function subtractConvex(
   poly: readonly { x: number; y: number }[],
   hole: readonly { x: number; y: number }[],
 ): { x: number; y: number }[][] {
-  if (poly.length < 3 || hole.length < 3 || !convexPolysHit(poly, hole)) return [poly.slice()];
+  if (poly.length < 3 || hole.length < 3 || !convexOverlap(poly, hole)) return [poly.slice()];
   const out: { x: number; y: number }[][] = [];
   for (const plane of outwardPlanes(hole)) {
     const piece = clipPolyHalfPlane(poly, plane);
@@ -953,24 +939,20 @@ function sideOf(along: number, otherOut: number): 1 | -1 | 0 {
   return c > 0 ? 1 : -1;
 }
 
+type EndCut = { pavement: number; shoulder: { 1: number; [-1]: number } };
+
 function endCuts(
   network: RoadNetwork,
   seg: RoadSegment,
   node: RoadNode | undefined,
   fromStart: boolean,
-): { pavement: number; shoulder: { 1: number; [-1]: number } } {
+): EndCut {
   const shoulder = { 1: 0, [-1]: 0 };
   if (!node) return { pavement: 0, shoulder };
   const publics = segsAt(network, node, (s) => s.roadClass !== "driveway" && s.layer === seg.layer);
   const drives = segsAt(network, node, (s) => s.roadClass === "driveway" && s.layer === seg.layer);
   const along = alongHeading(seg, fromStart);
-
-  if (seg.roadClass === "driveway") {
-    const host = publics.find((s) => s.id !== seg.id) ?? publics[0];
-    if (!host) return { pavement: 0, shoulder };
-    const hostAlong = alongHeading(host, host.startId === node.id);
-    return { pavement: (host.width * 0.5) / approachSin(hostAlong, along), shoulder };
-  }
+  if (seg.roadClass === "driveway") return { pavement: drivewayPavementCut(seg, node, publics, along), shoulder };
 
   const junction = isPublicJunction(publics, node);
   const half = junction ? junctionHalf(publics) : 0;
@@ -981,17 +963,148 @@ function endCuts(
       if (side !== 0) shoulder[side] = Math.max(shoulder[side], half + o.shoulder);
     }
   }
-  for (const d of drives) {
-    const outgoing = outgoingHeading(d, node);
-    const side = sideOf(along, outgoing);
-    if (side === 0) continue;
-    const ang = wrapAngle(outgoing - along);
-    const s = approachSin(along, outgoing);
-    const lean = Math.cos(ang);
-    const centerOff = (seg.width * 0.5) * (Math.abs(lean) / s) * Math.sign(lean);
-    shoulder[side] = Math.max(shoulder[side], Math.max(0.25, centerOff + d.width * 0.5 / s + 0.22));
-  }
+  for (const d of drives) drivewayShoulderCut(seg, node, d, along, shoulder);
   return { pavement: half, shoulder };
+}
+
+/** A driveway stops at its host street's near edge, measured along the driveway. */
+function drivewayPavementCut(seg: RoadSegment, node: RoadNode, publics: readonly RoadSegment[], along: number): number {
+  const host = publics.find((s) => s.id !== seg.id) ?? publics[0];
+  if (!host) return 0;
+  const hostAlong = alongHeading(host, host.startId === node.id);
+  return (host.width * 0.5) / approachSin(hostAlong, along);
+}
+
+/** Open the street shoulder wide enough for a driveway leaving node `node` on one side. */
+function drivewayShoulderCut(seg: RoadSegment, node: RoadNode, d: RoadSegment, along: number, shoulder: EndCut['shoulder']): void {
+  const outgoing = outgoingHeading(d, node);
+  const side = sideOf(along, outgoing);
+  if (side === 0) return;
+  const ang = wrapAngle(outgoing - along);
+  const s = approachSin(along, outgoing);
+  const lean = Math.cos(ang);
+  const centerOff = (seg.width * 0.5) * (Math.abs(lean) / s) * Math.sign(lean);
+  shoulder[side] = Math.max(shoulder[side], Math.max(0.25, centerOff + d.width * 0.5 / s + 0.22));
+}
+
+function buildRoadMesh(network: RoadNetwork): RoadMeshQuad[] {
+  const mesh: RoadMeshQuad[] = [];
+  const nodeById = new Map(network.nodes.map((n) => [n.id, n]));
+  for (const node of network.nodes) junctionMesh(network, node, mesh);
+  for (const seg of network.segments) segmentMesh(network, seg, nodeById, mesh);
+  openShouldersAtDriveways(mesh);
+  return mesh;
+}
+
+/** Dead ends get a round cap; real junctions get a disc that covers every approach. */
+function junctionMesh(network: RoadNetwork, node: RoadNode, mesh: RoadMeshQuad[]): void {
+  const byLayer = new Map<number, RoadSegment[]>();
+  for (const s of segsAt(network, node, (x) => x.roadClass !== "driveway")) {
+    const list = byLayer.get(s.layer) ?? [];
+    list.push(s);
+    byLayer.set(s.layer, list);
+  }
+  for (const [, publics] of byLayer) {
+    const seg = publics[0]!;
+    if (publics.length !== 1 && !isPublicJunction(publics, node)) continue;
+    const dead = publics.length === 1;
+    const r = dead ? seg.width * 0.55 : junctionHalf(publics) + 0.05;
+    mesh.push({
+      x: node.x,
+      y: node.y,
+      w: r * 2,
+      d: r * 2,
+      z: node.elev,
+      heading: 0,
+      color: PAVEMENT[seg.roadClass],
+      kind: seg.layer > 0 ? "deck" : "pavement",
+      poly: junctionDisc(node.x, node.y, r, dead ? 6 : 8),
+    });
+  }
+}
+
+/** Per-segment cut-backs at both ends, shared by every edge of the segment. */
+interface SegmentEnds {
+  head: EndCut;
+  tail: EndCut;
+  last: number;
+  atJunction: boolean;
+  totalLen: number;
+  drivePlanes: HalfPlane[];
+}
+
+function segmentMesh(network: RoadNetwork, seg: RoadSegment, nodeById: ReadonlyMap<string, RoadNode>, mesh: RoadMeshQuad[]): void {
+  const start = nodeById.get(seg.startId);
+  const end = nodeById.get(seg.endId);
+  const head = endCuts(network, seg, start, true);
+  const tail = endCuts(network, seg, end, false);
+  const ends: SegmentEnds = {
+    head,
+    tail,
+    last: seg.points.length - 2,
+    atJunction: head.pavement > 0.05 || tail.pavement > 0.05,
+    totalLen: polylineLength(seg.points),
+    drivePlanes: [...drivewayKeepPlanes(network, seg, start), ...drivewayKeepPlanes(network, seg, end)],
+  };
+  let walked = 0;
+  for (const edge of polylineEdges(seg.points)) {
+    edgeMesh(seg, edge, walked, ends, mesh);
+    walked += edge.length;
+  }
+}
+
+type PolyEdge = ReturnType<typeof polylineEdges>[number];
+
+function edgeMesh(seg: RoadSegment, edge: PolyEdge, walked: number, ends: SegmentEnds, mesh: RoadMeshQuad[]): void {
+  const { i, a, b } = edge;
+  const z = (a.elev + b.elev) * 0.5;
+  const remaining = ends.totalLen - walked - edge.length;
+  const cutA = remainCut(ends.head.pavement, walked);
+  const cutB = remainCut(ends.tail.pavement, remaining);
+  const driveway = seg.roadClass === "driveway";
+  if (seg.shoulder > 0.05 && !driveway) {
+    for (const side of [1, -1] as const) {
+      shoulderMesh(seg, edge, z, side, remainCut(ends.head.shoulder[side], walked), remainCut(ends.tail.shoulder[side], remaining), mesh);
+    }
+  }
+  const nearEnd = i <= 0 || i >= ends.last;
+  pavementMesh(seg, edge, z, cutA, cutB, nearEnd, ends.drivePlanes, mesh);
+  if (driveway || seg.roadClass === "service" || (nearEnd && ends.atJunction)) return;
+  const mark = shortenEdge(a.x, a.y, b.x, b.y, cutA + 0.4, cutB + 0.4, 0.35);
+  if (mark) {
+    emitRibbon(mesh, makeRibbon(mark.ax, mark.ay, mark.bx, mark.by, 0.1, z + 0.01, 0xd4c56a, "mark", 0));
+  }
+}
+
+/** Paved ribbon for one edge; driveways flare where they meet the street and clip to their keep planes. */
+function pavementMesh(seg: RoadSegment, edge: PolyEdge, z: number, cutA: number, cutB: number, nearEnd: boolean, drivePlanes: readonly HalfPlane[], mesh: RoadMeshQuad[]): void {
+  const { a, b } = edge;
+  const driveway = seg.roadClass === "driveway";
+  const paved = shortenEdge(a.x, a.y, b.x, b.y, cutA, cutB, driveway ? 0.05 : 0.1);
+  if (!paved) return;
+  const width = driveway && nearEnd ? seg.width * 1.08 : seg.width;
+  const quad = makeRibbon(paved.ax, paved.ay, paved.bx, paved.by, width, z, pavementColor(seg), seg.layer > 0 ? "deck" : "pavement", driveway ? 0.04 : 0.06);
+  emitRibbon(mesh, quad, driveway ? drivePlanes : []);
+}
+
+/** Shoulder strip on one side of an edge, plus a curb on curbed classes. */
+function shoulderMesh(seg: RoadSegment, edge: PolyEdge, z: number, side: 1 | -1, sCut: number, eCut: number, mesh: RoadMeshQuad[]): void {
+  const { a, b, heading } = edge;
+  const trimmed = shortenEdge(a.x, a.y, b.x, b.y, sCut, eCut, 0.16);
+  if (!trimmed) return;
+  const o0 = offsetPoint(trimmed.ax, trimmed.ay, heading, side * (seg.width * 0.5 + seg.shoulder * 0.5));
+  const o1 = offsetPoint(trimmed.bx, trimmed.by, heading, side * (seg.width * 0.5 + seg.shoulder * 0.5));
+  emitRibbon(
+    mesh,
+    makeRibbon(o0.x, o0.y, o1.x, o1.y, seg.shoulder, z, SHOULDER[seg.roadClass], "shoulder", 0.04),
+  );
+  if (!usesCurb(seg.roadClass)) return;
+  const c0 = offsetPoint(trimmed.ax, trimmed.ay, heading, side * (seg.width * 0.5 + 0.07));
+  const c1 = offsetPoint(trimmed.bx, trimmed.by, heading, side * (seg.width * 0.5 + 0.07));
+  emitRibbon(
+    mesh,
+    makeRibbon(c0.x, c0.y, c1.x, c1.y, 0.14, z + 0.005, CURB[seg.roadClass], "shoulder", 0.02),
+  );
 }
 
 function shortenEdge(
@@ -1054,119 +1167,84 @@ function emitRibbon(
   mesh.push(quad);
 }
 
-function buildRoadMesh(network: RoadNetwork): RoadMeshQuad[] {
-  const mesh: RoadMeshQuad[] = [];
-  const nodeById = new Map(network.nodes.map((n) => [n.id, n]));
+/** One root segment per connected component of `ids`. */
+function componentRoots(ids: ReadonlySet<string>, flood: (startId: string, allowed: ReadonlySet<string>) => Set<string>): string[] {
+  const roots: string[] = [];
+  const visited = new Set<string>();
+  for (const id of ids) {
+    if (visited.has(id)) continue;
+    for (const x of flood(id, ids)) visited.add(x);
+    roots.push(id);
+  }
+  return roots;
+}
 
-  for (const node of network.nodes) {
-    const byLayer = new Map<number, RoadSegment[]>();
-    for (const s of segsAt(network, node, (x) => x.roadClass !== "driveway")) {
-      const list = byLayer.get(s.layer) ?? [];
-      list.push(s);
-      byLayer.set(s.layer, list);
-    }
-    for (const [, publics] of byLayer) {
-      if (publics.length === 1) {
-        const seg = publics[0]!;
-        const cap = seg.width * 0.55;
-        mesh.push({
-          x: node.x,
-          y: node.y,
-          w: cap * 2,
-          d: cap * 2,
-          z: node.elev,
-          heading: 0,
-          color: PAVEMENT[seg.roadClass],
-          kind: seg.layer > 0 ? "deck" : "pavement",
-          poly: junctionDisc(node.x, node.y, cap, 6),
-        });
-        continue;
-      }
-      if (!isPublicJunction(publics, node)) continue;
-      const r = junctionHalf(publics) + 0.05;
-      mesh.push({
-        x: node.x,
-        y: node.y,
-        w: r * 2,
-        d: r * 2,
-        z: node.elev,
-        heading: 0,
-        color: PAVEMENT[publics[0]!.roadClass],
-        kind: publics[0]!.layer > 0 ? "deck" : "pavement",
-        poly: junctionDisc(node.x, node.y, r, 8),
-      });
+/** Breadth-first public path from `merged` into `target`; the segments on it, from the hit back, or null. */
+function bridgeSegments(
+  merged: ReadonlySet<string>,
+  target: ReadonlySet<string>,
+  byId: ReadonlyMap<string, RoadSegment>,
+  nodeToSegs: ReturnType<typeof segmentsByNode>,
+  allPublic: ReadonlySet<string>,
+): string[] | null {
+  const prev = new Map<string, string | null>();
+  const q = [...merged];
+  for (const id of merged) prev.set(id, null);
+  let hit: string | undefined;
+  while (q.length && !hit) {
+    const seg = byId.get(q.shift()!);
+    if (seg) hit = visitNeighbours(seg, nodeToSegs, allPublic, target, prev, q);
+  }
+  if (!hit) return null;
+  const path: string[] = [];
+  for (let cur: string | null = hit; cur; cur = prev.get(cur) ?? null) path.push(cur);
+  return path;
+}
+
+function visitNeighbours(
+  seg: RoadSegment,
+  nodeToSegs: ReturnType<typeof segmentsByNode>,
+  allPublic: ReadonlySet<string>,
+  target: ReadonlySet<string>,
+  prev: Map<string, string | null>,
+  q: string[],
+): string | undefined {
+  for (const sid of segmentNeighbors(seg, nodeToSegs)) {
+    if (!allPublic.has(sid) || prev.has(sid)) continue;
+    prev.set(sid, seg.id);
+    if (target.has(sid)) return sid;
+    q.push(sid);
+  }
+  return undefined;
+}
+
+function lanesAtNode(node: RoadNode, bySeg: ReadonlyMap<string, RoadSegment>, laneOf: ReadonlyMap<string, Lane>): Lane[] {
+  const lanes: Lane[] = [];
+  for (const sid of node.segmentIds) {
+    for (const lid of bySeg.get(sid)?.laneIds ?? []) {
+      const lane = laneOf.get(lid);
+      if (lane) lanes.push(lane);
     }
   }
+  return lanes;
+}
 
-  for (const seg of network.segments) {
-    const start = nodeById.get(seg.startId);
-    const end = nodeById.get(seg.endId);
-    const head = endCuts(network, seg, start, true);
-    const tail = endCuts(network, seg, end, false);
-    const last = seg.points.length - 2;
-    const junctionStart = head.pavement > 0.05;
-    const junctionEnd = tail.pavement > 0.05;
-    const totalLen = polylineLength(seg.points);
-    const drivePlanes = [...drivewayKeepPlanes(network, seg, start), ...drivewayKeepPlanes(network, seg, end)];
-    let walked = 0;
-    for (const { i, a, b, heading, length: edgeLen } of polylineEdges(seg.points)) {
-      const z = (a.elev + b.elev) * 0.5;
-      const cutA = remainCut(head.pavement, walked);
-      const cutB = remainCut(tail.pavement, totalLen - walked - edgeLen);
-      if (seg.shoulder > 0.05 && seg.roadClass !== "driveway") {
-        for (const side of [1, -1] as const) {
-          const sCut = remainCut(head.shoulder[side], walked);
-          const eCut = remainCut(tail.shoulder[side], totalLen - walked - edgeLen);
-          const trimmed = shortenEdge(a.x, a.y, b.x, b.y, sCut, eCut, 0.16);
-          if (!trimmed) continue;
-          const o0 = offsetPoint(trimmed.ax, trimmed.ay, heading, side * (seg.width * 0.5 + seg.shoulder * 0.5));
-          const o1 = offsetPoint(trimmed.bx, trimmed.by, heading, side * (seg.width * 0.5 + seg.shoulder * 0.5));
-          emitRibbon(
-            mesh,
-            makeRibbon(o0.x, o0.y, o1.x, o1.y, seg.shoulder, z, SHOULDER[seg.roadClass], "shoulder", 0.04),
-          );
-          if (usesCurb(seg.roadClass)) {
-            const c0 = offsetPoint(trimmed.ax, trimmed.ay, heading, side * (seg.width * 0.5 + 0.07));
-            const c1 = offsetPoint(trimmed.bx, trimmed.by, heading, side * (seg.width * 0.5 + 0.07));
-            emitRibbon(
-              mesh,
-              makeRibbon(c0.x, c0.y, c1.x, c1.y, 0.14, z + 0.005, CURB[seg.roadClass], "shoulder", 0.02),
-            );
-          }
-        }
-      }
-      const paved = shortenEdge(a.x, a.y, b.x, b.y, cutA, cutB, seg.roadClass === "driveway" ? 0.05 : 0.1);
-      if (paved) {
-        const seam = seg.roadClass === "driveway" ? 0.04 : 0.06;
-        const nearHost = seg.roadClass === "driveway" && (i <= 0 || i >= last);
-        emitRibbon(
-          mesh,
-          makeRibbon(
-            paved.ax,
-            paved.ay,
-            paved.bx,
-            paved.by,
-            nearHost ? seg.width * 1.08 : seg.width,
-            z,
-            pavementColor(seg),
-            seg.layer > 0 ? "deck" : "pavement",
-            seam,
-          ),
-          seg.roadClass === "driveway" ? drivePlanes : [],
-        );
-      }
-      const nearEnd = i <= 0 || i >= last;
-      if (seg.roadClass !== "driveway" && seg.roadClass !== "service" && !(nearEnd && (junctionStart || junctionEnd))) {
-        const mark = shortenEdge(a.x, a.y, b.x, b.y, cutA + 0.4, cutB + 0.4, 0.35);
-        if (mark) {
-          emitRibbon(mesh, makeRibbon(mark.ax, mark.ay, mark.bx, mark.by, 0.1, z + 0.01, 0xd4c56a, "mark", 0));
-        }
-      }
-      walked += edgeLen;
-    }
+/** Whether a lane on `seg` arrives at (`end`) or departs from (`start`) node `nodeId`. */
+function laneMeetsNode(seg: RoadSegment | undefined, lane: Lane, nodeId: string, at: "start" | "end"): boolean {
+  const forward = at === "end" ? seg?.endId : seg?.startId;
+  const backward = at === "end" ? seg?.startId : seg?.endId;
+  return (forward === nodeId && lane.dir === 1) || (backward === nodeId && lane.dir === -1);
+}
+
+/** Link an arriving lane to every departing lane at the node, except across layers off a ramp. */
+function linkDepartures(a: Lane, sa: RoadSegment | undefined, lanes: readonly Lane[], bySeg: ReadonlyMap<string, RoadSegment>, nodeId: string): void {
+  for (const b of lanes) {
+    if (a.id === b.id) continue;
+    const sb = bySeg.get(b.segmentId);
+    if (!laneMeetsNode(sb, b, nodeId, "start")) continue;
+    if (sa && sb && sa.layer !== sb.layer && sa.roadClass !== "ramp" && sb.roadClass !== "ramp") continue;
+    a.next.push(b.id);
   }
-  openShouldersAtDriveways(mesh);
-  return mesh;
 }
 
 export interface BuilderOpts {
@@ -1266,13 +1344,6 @@ export class RoadBuilder {
     }
   }
 
-  dropRejectedPublic(ids: ReadonlySet<string>): void {
-    for (const seg of [...this.segments]) {
-      if (ids.has(seg.id) && seg.roadClass !== "driveway" && seg.roadClass !== "ramp") this.detachSegment(seg);
-    }
-    this.stripDegenerate();
-  }
-
   /** Drop public streets and orphan driveways that sit outside the kept lot cluster. */
   dropPublicRoadsAwayFromLots(
     lots: readonly { x: number; y: number; w: number; d: number; drivewayId?: string; frontage?: { segmentId: string } }[],
@@ -1283,18 +1354,7 @@ export class RoadBuilder {
     for (const lot of lots) {
       if (lot.drivewayId) keep.add(lot.drivewayId);
     }
-    for (const seg of [...this.segments]) {
-      if (seg.roadClass === "driveway" || seg.roadClass === "ramp") {
-        if (lots.some((lot) => lot.drivewayId === seg.id)) keep.add(seg.id);
-        continue;
-      }
-      if (keep.has(seg.id)) continue;
-      const live = this.segments.find((s) => s.id === seg.id);
-      if (!live) continue;
-      const range = nearLotTRange(live, lots, pad);
-      if (!range) continue;
-      this.keepNearPortion(live, range.t0, range.t1, keep);
-    }
+    for (const seg of [...this.segments]) this.keepNearLots(seg, lots, pad, keep);
     for (const acc of this.accesses) keep.add(acc.segmentId);
     this.growNearKeep(keep, lots, pad * 1.5);
     this.connectKeptPublic(keep);
@@ -1303,6 +1363,24 @@ export class RoadBuilder {
       if (!keep.has(seg.id)) this.detachSegment(seg);
     }
     this.stripDegenerate();
+  }
+
+  /** Keep a lot's own driveway or ramp, or split off the stretch of public street that serves the lots. */
+  private keepNearLots(
+    seg: RoadSegment,
+    lots: readonly { x: number; y: number; w: number; d: number; drivewayId?: string }[],
+    pad: number,
+    keep: Set<string>,
+  ): void {
+    if (seg.roadClass === "driveway" || seg.roadClass === "ramp") {
+      if (lots.some((lot) => lot.drivewayId === seg.id)) keep.add(seg.id);
+      return;
+    }
+    if (keep.has(seg.id)) return;
+    const live = this.segments.find((s) => s.id === seg.id);
+    if (!live) return;
+    const range = nearLotTRange(live, lots, pad);
+    if (range) this.keepNearPortion(live, range.t0, range.t1, keep);
   }
 
   private keepNearPortion(seg: RoadSegment, raw0: number, raw1: number, keep: Set<string>): void {
@@ -1337,44 +1415,18 @@ export class RoadBuilder {
       floodSegments(startId, byId, nodeToSegs, allowed);
     const remaining = new Set(publicSegs.filter((s) => keep.has(s.id)).map((s) => s.id));
     if (remaining.size <= 1) return;
-    const roots: string[] = [];
-    const visited = new Set<string>();
-    for (const id of remaining) {
-      if (visited.has(id)) continue;
-      const comp = flood(id, remaining);
-      for (const x of comp) visited.add(x);
-      roots.push(id);
-    }
+    const roots = componentRoots(remaining, flood);
     if (roots.length <= 1) return;
     const allPublic = new Set(publicSegs.map((s) => s.id));
     const merged = flood(roots[0]!, remaining);
     for (let i = 1; i < roots.length; i++) {
       const target = flood(roots[i]!, remaining);
-      const prev = new Map<string, string | null>();
-      const q = [...merged];
-      for (const id of merged) prev.set(id, null);
-      let hit: string | undefined;
-      while (q.length && !hit) {
-        const id = q.shift()!;
-        const seg = byId.get(id);
-        if (!seg) continue;
-        for (const sid of segmentNeighbors(seg, nodeToSegs)) {
-          if (!allPublic.has(sid) || prev.has(sid)) continue;
-          prev.set(sid, id);
-          if (target.has(sid)) {
-            hit = sid;
-            break;
-          }
-          q.push(sid);
-        }
-      }
-      if (!hit) continue;
-      let cur: string | null = hit;
-      while (cur) {
-        keep.add(cur);
-        remaining.add(cur);
-        merged.add(cur);
-        cur = prev.get(cur) ?? null;
+      const bridge = bridgeSegments(merged, target, byId, nodeToSegs, allPublic);
+      if (!bridge) continue;
+      for (const id of bridge) {
+        keep.add(id);
+        remaining.add(id);
+        merged.add(id);
       }
       for (const id of target) merged.add(id);
     }
@@ -1495,43 +1547,47 @@ export class RoadBuilder {
 
   normalizeJunctions(): void {
     let guard = 0;
-    while (guard++ < 48) {
-      let changed = false;
-      const segs = [...this.segments];
-      for (let i = 0; i < segs.length; i++) {
-        const a = this.segments.find((s) => s.id === segs[i]!.id);
-        if (!a) continue;
-        for (let j = i + 1; j < segs.length; j++) {
-          const b = this.segments.find((s) => s.id === segs[j]!.id);
-          if (!b) continue;
-          if (a.layer !== b.layer) continue;
-          if (sharesEndpoint(a, b)) continue;
-          const hit = polylineIntersect(a.points, b.points);
-          if (!hit) continue;
-          const na = this.splitSegment(a, hit.ta).node;
-          const liveB = this.segments.find((s) => s.id === b.id) ?? this.segmentNear(hit.x, hit.y, b.layer);
-          if (liveB) this.splitSegment(liveB, projectPointToPolyline(liveB.points, hit.x, hit.y).t);
-          const snapped = this.joinAt(hit.x, hit.y, hit.elev, a.layer);
-          if (snapped.id !== na.id) {
-            this.mergeNodes(na, snapped);
-          }
-          changed = true;
-          break;
-        }
-        if (changed) break;
-      }
-      if (!changed) {
-        for (const node of [...this.nodes]) {
-          const touch = this.interiorHit(node);
-          if (!touch) continue;
-          this.splitSegment(touch.seg, touch.t);
-          changed = true;
-          break;
-        }
-      }
-      if (!changed) break;
+    while (guard++ < 48 && (this.splitFirstCrossing() || this.splitFirstInteriorTouch())) {
+      // Each pass changes the network, so rescan from the start.
     }
     this.stripDegenerate();
+  }
+
+  /** Split the first same-layer crossing between two segments that do not share an end. */
+  private splitFirstCrossing(): boolean {
+    const segs = [...this.segments];
+    for (let i = 0; i < segs.length; i++) {
+      const a = this.segments.find((s) => s.id === segs[i]!.id);
+      if (!a) continue;
+      for (let j = i + 1; j < segs.length; j++) {
+        const b = this.segments.find((s) => s.id === segs[j]!.id);
+        const hit = b && a.layer === b.layer && !sharesEndpoint(a, b) ? polylineIntersect(a.points, b.points) : null;
+        if (!b || !hit) continue;
+        this.splitAtCrossing(a, b, hit);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private splitAtCrossing(a: RoadSegment, b: RoadSegment, hit: NonNullable<ReturnType<typeof polylineIntersect>>): void {
+    const na = this.splitSegment(a, hit.ta).node;
+    const liveB = this.segments.find((s) => s.id === b.id) ?? this.segmentNear(hit.x, hit.y, b.layer);
+    if (liveB) this.splitSegment(liveB, projectPointToPolyline(liveB.points, hit.x, hit.y).t);
+    const snapped = this.joinAt(hit.x, hit.y, hit.elev, a.layer);
+    if (snapped.id !== na.id) {
+      this.mergeNodes(na, snapped);
+    }
+  }
+
+  private splitFirstInteriorTouch(): boolean {
+    for (const node of [...this.nodes]) {
+      const touch = this.interiorHit(node);
+      if (!touch) continue;
+      this.splitSegment(touch.seg, touch.t);
+      return true;
+    }
+    return false;
   }
 
   finish(opts: { normalize?: boolean } = {}): RoadNetwork {
@@ -1554,50 +1610,11 @@ export class RoadBuilder {
     const bySeg = new Map(this.segments.map((s) => [s.id, s]));
     const laneOf = new Map(this.lanes.map((l) => [l.id, l]));
     for (const node of this.nodes) {
-      const incoming: { lane: Lane; heading: number }[] = [];
-      for (const sid of node.segmentIds) {
-        const seg = bySeg.get(sid);
-        if (!seg) continue;
-        for (const lid of seg.laneIds) {
-          const lane = laneOf.get(lid);
-          if (!lane) continue;
-          const end = samplePolyline(seg.points, lane.dir === 1 ? 1 : 0);
-          const start = samplePolyline(seg.points, lane.dir === 1 ? 0 : 1);
-          const towardNode =
-            (lane.dir === 1 && seg.endId === node.id) || (lane.dir === -1 && seg.startId === node.id);
-          incoming.push({
-            lane,
-            heading: towardNode
-              ? Math.atan2(end.y - start.y, end.x - start.x)
-              : Math.atan2(start.y - end.y, start.x - end.x),
-          });
-        }
+      const lanes = lanesAtNode(node, bySeg, laneOf);
+      for (const a of lanes) {
+        const sa = bySeg.get(a.segmentId);
+        if (laneMeetsNode(sa, a, node.id, "end")) linkDepartures(a, sa, lanes, bySeg, node.id);
       }
-      for (const a of incoming) {
-        const arrives =
-          (bySeg.get(a.lane.segmentId)?.endId === node.id && a.lane.dir === 1) ||
-          (bySeg.get(a.lane.segmentId)?.startId === node.id && a.lane.dir === -1);
-        if (!arrives) continue;
-        for (const b of incoming) {
-          if (a.lane.id === b.lane.id) continue;
-          const leaves =
-            (bySeg.get(b.lane.segmentId)?.startId === node.id && b.lane.dir === 1) ||
-            (bySeg.get(b.lane.segmentId)?.endId === node.id && b.lane.dir === -1);
-          if (!leaves) continue;
-          const sa = bySeg.get(a.lane.segmentId);
-          const sb = bySeg.get(b.lane.segmentId);
-          if (sa && sb && sa.layer !== sb.layer && sa.roadClass !== "ramp" && sb.roadClass !== "ramp") continue;
-          a.lane.next.push(b.lane.id);
-        }
-      }
-    }
-    for (const lane of this.lanes) {
-      if (lane.next.length > 0) continue;
-      const seg = bySeg.get(lane.segmentId);
-      if (!seg) continue;
-      const endId = lane.dir === 1 ? seg.endId : seg.startId;
-      const node = this.nodes.find((n) => n.id === endId);
-      if (node && node.segmentIds.length === 1) continue;
     }
   }
 

@@ -11,9 +11,11 @@
   "ignorePatterns": [
     "!.claude/hooks/**"
   ],
-  // cloudflare-status.mjs spawns node_modules/wrangler/bin/wrangler.js by path.
+  // cloudflare-status.mjs spawns node_modules/wrangler/bin/wrangler.js by path;
+  // fallow-health.mjs runs c8 through npx to cover the node --test suites.
   "ignoreDependencies": [
-    "wrangler"
+    "wrangler",
+    "c8"
   ],
   "rules": {
     // The game ships as a static Vite bundle and CI always runs `npm ci`,

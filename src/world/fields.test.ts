@@ -31,6 +31,7 @@ import {
 import { churnFieldAt, type FieldFeature } from "./terrainFeatures";
 import { SURFACE_ID } from "./terrain";
 import type { TopologyFamily } from "./rural";
+import type { Lot } from "../structure/types";
 
 const MATRIX: TopologyFamily[] = ["county", "curve-farm", "frontage"];
 const SEEDS = [1, 7, 11, 19, 23, 29, 37, 41, 47, 53, 67, 71, 77, 83, 89, 97, 101, 107, 334353, 0x51a11];
@@ -124,62 +125,73 @@ describe("blade swath versus tracks", () => {
   });
 });
 
+function fieldNearFarm(field: FieldFeature, farms: readonly Lot[]): boolean {
+  const box = fieldWorldBox(field);
+  return farms.some((lot) => {
+    const dx = Math.max(0, box.x - (lot.x + lot.w), lot.x - (box.x + box.w));
+    const dy = Math.max(0, box.y - (lot.y + lot.d), lot.y - (box.y + box.d));
+    return Math.hypot(dx, dy) <= FIELD_FARM_RANGE;
+  }) || !!field.lotId;
+}
+
+/** A sampled crop cell sits off roads, water, developed ground, and every non-farm lot. */
+function expectCropCellUndeveloped(town: ReturnType<typeof createTown>, field: FieldFeature, row: number, col: number): void {
+  if (field.mask && !field.mask[row * field.cols + col]) return;
+  const fx = Math.cos(field.heading);
+  const fy = Math.sin(field.heading);
+  const ox = field.x + field.w * 0.5;
+  const oy = field.y + field.d * 0.5;
+  const x = ox + fx * ((col + 0.5) * field.cell - field.w * 0.5) - fy * ((row + 0.5) * field.cell - field.d * 0.5);
+  const y = oy + fy * ((col + 0.5) * field.cell - field.w * 0.5) + fx * ((row + 0.5) * field.cell - field.d * 0.5);
+  expect(pointOnRoad(town.network, x, y)).toBe(false);
+  expectSurfaceNotWaterOrDeveloped(town.surface, x, y);
+  for (const lot of town.lots) {
+    if (lot.identity !== "farm") expect(x >= lot.x && y >= lot.y && x <= lot.x + lot.w && y <= lot.y + lot.d).toBe(false);
+  }
+}
+
+function expectSurfaceNotWaterOrDeveloped(surface: ReturnType<typeof createTown>["surface"], x: number, y: number): void {
+  const ix = Math.floor(x - surface.ox);
+  const iy = Math.floor(y - surface.oy);
+  if (ix < 0 || iy < 0 || ix >= surface.cols || iy >= surface.rows) return;
+  const id = surface.surface[iy * surface.cols + ix]!;
+  expect(id).not.toBe(SURFACE_ID.water);
+  expect(id).not.toBe(SURFACE_ID.developed);
+}
+
+interface FarmlandTally { agPrimary: number; agTowns: number; near: number; totalFields: number }
+
+/** Count primary crops on agricultural plains and fields near farms, checking every field's cells on the way. */
+function tallyFarmland(town: ReturnType<typeof createTown>, tally: FarmlandTally): void {
+  const fields = town.features.filter((f): f is FieldFeature => f.kind === "field");
+  if (town.biome.id === "agricultural-plain") {
+    tally.agTowns++;
+    if (fields.some((f) => isPrimaryField(f) && (f.state === "mature" || f.state === "short"))) tally.agPrimary++;
+  }
+  const farms = town.lots.filter((lot) => lot.identity === "farm");
+  for (const field of fields) {
+    tally.totalFields++;
+    if (fieldNearFarm(field, farms) || farms.length === 0) tally.near++;
+    expect(field.cell).toBeGreaterThanOrEqual(0.55);
+    expect(field.cell).toBeLessThanOrEqual(0.8);
+    for (let row = 0; row < field.rows; row += 3) {
+      for (let col = 0; col < field.cols; col += 3) expectCropCellUndeveloped(town, field, row, col);
+    }
+  }
+}
+
 describe("rural farmland matrix", () => {
   it("keeps crop complexes property-scale, near farms, and off developed ground", () => {
     const shares: number[] = [];
-    let agPrimary = 0;
-    let agTowns = 0;
-    let near = 0;
-    let totalFields = 0;
+    const tally: FarmlandTally = { agPrimary: 0, agTowns: 0, near: 0, totalFields: 0 };
     for (const topology of MATRIX) {
       for (const seed of SEEDS) {
         const town = createTown({ district: "d10", seed, topology });
-        const share = undevelopedFieldShare(town.surface);
-        shares.push(share);
-        const fields = town.features.filter((f): f is FieldFeature => f.kind === "field");
-        if (town.biome.id === "agricultural-plain") {
-          agTowns++;
-          const primary = fields.find((f) => isPrimaryField(f) && (f.state === "mature" || f.state === "short"));
-          if (primary) agPrimary++;
-        }
-        const farms = town.lots.filter((lot) => lot.identity === "farm");
-        for (const field of fields) {
-          totalFields++;
-          const box = fieldWorldBox(field);
-          const close = farms.some((lot) => {
-            const dx = Math.max(0, box.x - (lot.x + lot.w), lot.x - (box.x + box.w));
-            const dy = Math.max(0, box.y - (lot.y + lot.d), lot.y - (box.y + box.d));
-            return Math.hypot(dx, dy) <= FIELD_FARM_RANGE;
-          }) || !!field.lotId;
-          if (close || farms.length === 0) near++;
-          expect(field.cell).toBeGreaterThanOrEqual(0.55);
-          expect(field.cell).toBeLessThanOrEqual(0.8);
-          for (let row = 0; row < field.rows; row += 3) {
-            for (let col = 0; col < field.cols; col += 3) {
-              if (field.mask && !field.mask[row * field.cols + col]) continue;
-              const fx = Math.cos(field.heading);
-              const fy = Math.sin(field.heading);
-              const ox = field.x + field.w * 0.5;
-              const oy = field.y + field.d * 0.5;
-              const x = ox + fx * ((col + 0.5) * field.cell - field.w * 0.5) - fy * ((row + 0.5) * field.cell - field.d * 0.5);
-              const y = oy + fy * ((col + 0.5) * field.cell - field.w * 0.5) + fx * ((row + 0.5) * field.cell - field.d * 0.5);
-              expect(pointOnRoad(town.network, x, y)).toBe(false);
-              const ix = Math.floor(x - town.surface.ox);
-              const iy = Math.floor(y - town.surface.oy);
-              if (ix >= 0 && iy >= 0 && ix < town.surface.cols && iy < town.surface.rows) {
-                const id = town.surface.surface[iy * town.surface.cols + ix]!;
-                expect(id).not.toBe(SURFACE_ID.water);
-                expect(id).not.toBe(SURFACE_ID.developed);
-              }
-              for (const lot of town.lots) {
-                if (lot.identity === "farm") continue;
-                expect(x >= lot.x && y >= lot.y && x <= lot.x + lot.w && y <= lot.y + lot.d).toBe(false);
-              }
-            }
-          }
-        }
+        shares.push(undevelopedFieldShare(town.surface));
+        tallyFarmland(town, tally);
       }
     }
+    const { agPrimary, agTowns, near, totalFields } = tally;
     const mean = shares.reduce((s, n) => s + n, 0) / shares.length;
     expect(mean).toBeGreaterThanOrEqual(0.15);
     expect(mean).toBeLessThanOrEqual(0.3);
