@@ -133,7 +133,7 @@ Developer overlay: `?nhood=1` or press `G` to draw nodes, segment IDs, parcel ri
 
 Civilian traffic must stay on road or driveway. The V-key test car follows lane connectivity on a generated route (curve + intersection), not a hard-coded east-west path. Full civilian traffic sim is out of scope.
 
-Police navigation is a **contract only** (`src/world/routing.ts`). Ordinary pursuit prefers roads. Police may leave the road only when the dozer is nearby, a valid off-road approach exists, and pursuit rules allow it. Off-road is slower (`offRoadCostMul`). Routing distinguishes a blocked road from an inaccessible destination. There is no police AI in this branch.
+Police navigation is a **contract only** (`src/world/routing.ts`). Ordinary pursuit prefers roads. Police may leave the road only when the dozer is nearby, a valid off-road approach exists, and pursuit rules allow it. Routes report their `RouteMode` (`road`, `offroad-pursuit`, `blocked`, `inaccessible`); no off-road travel cost is modelled yet. Routing distinguishes a blocked road from an inaccessible destination. There is no police AI in this branch.
 
 ## Wreckage lifecycle and performance
 
