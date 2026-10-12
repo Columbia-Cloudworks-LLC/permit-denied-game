@@ -286,3 +286,14 @@ it('reuses a near building build while the dozer is parked and its fades have la
   renderer.invalidate();
   renderer.root.destroy({ children: true });
 });
+
+it('forgets split runs and debris poses on invalidate, so a reloaded scene paints as it did fresh', () => {
+  const renderer = new WorldRenderer();
+  const internals = renderer as unknown as { chunkSplits: { lastSplit: Map<string, number> }; debrisPoses: Map<number, string> };
+  internals.chunkSplits.lastSplit.set('chunk:b1:a:b:3', 1);
+  internals.debrisPoses.set(7, '0:0:0:0');
+  renderer.invalidate();
+  expect(internals.chunkSplits.lastSplit.size).toBe(0);
+  expect(internals.debrisPoses.size).toBe(0);
+  renderer.root.destroy({ children: true });
+});

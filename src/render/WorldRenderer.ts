@@ -104,7 +104,7 @@ export class WorldRenderer {
   private readonly world = new Graphics();
   private readonly groundOverlays = new Graphics();
   private readonly drawing = new DrawCache();
-  private readonly chunkSplits = new ChunkSplitMemory();
+  private chunkSplits = new ChunkSplitMemory();
   /** Debris pose versions submitted last frame, to tell resting fragments from moving ones. */
   private debrisPoses = new Map<number, string>();
   private readonly cmds: Cmd[] = [];
@@ -167,6 +167,9 @@ export class WorldRenderer {
     this.overlayKey = "";
     this.pileHints.invalidate();
     this.siteKey = "";
+    // Frame-to-frame memory goes too, so a reloaded scene paints exactly as it did fresh.
+    this.chunkSplits = new ChunkSplitMemory();
+    this.debrisPoses = new Map();
   }
 
   layout(viewW: number, viewH: number, shakeX: number, shakeY: number): void {
