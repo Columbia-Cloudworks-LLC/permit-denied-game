@@ -1,7 +1,7 @@
 import { drawVehicleAssembly, vehicleRenderGroups } from './modularVehicle';
 import { BowlingStrikes } from './bowlingStrikes';
-import { corePileAreas, drawCorePiles } from './corePileDraw';
-import { drawCoreFloor } from './coreCollapseDraw';
+import { PileHintLayer } from './pileHints';
+import { coreFloorClear, drawCoreFloor } from './coreCollapseDraw';
 import { paintsFloorSlab } from '../structure/coreCollapse';
 import { cellWorldBox, cellPresent } from '../structure/types';
 import { DrawCache } from './drawCache';
@@ -12,7 +12,7 @@ import { Container, Graphics, Text } from "pixi.js";
 import { emptyGrassGrid, groundPatchContains, TERRAIN_GEN_VERSION } from "../world/terrain";
 import { drawForestGarnish, drawForestMass, planForestGarnish, planForestMasses, type ForestGarnish, type ForestMass } from "./forestCanopy";
 import { buildTerrainChunks, chunkCount, ensureTerrainAtlas, terrainAtlasRevision } from "./terrainTiles";
-import { DOZER, FLOOR_Z } from "../game/constants";
+import { DOZER, FLOOR_Z, ISO_W, ISO_Z } from "../game/constants";
 import { Rng } from "../game/rng";
 import { depthKey, screenAabbVisible, worldBoundsToScreen, worldToScreen } from "../world/iso";
 import type { ParticlePool } from "../fx/particles";
@@ -44,11 +44,12 @@ import { siloCommands } from './silos';
 import { clearNhoodOverlay, drawNhoodOverlay } from "./nhoodOverlay";
 import { buildingHidesDozer, objectOcclusionFade, pieceHidesDozer, VisibilityFades, wallSpanFadeRuns } from "./occlusion";
 import {
-  buildingDamaged,
+  buildingAnimating,
   buildingIsLive,
   buildingLod,
   buildingNeedsDetails,
   buildingNeedsInterior,
+  ChunkSplitMemory,
   coalesceStaticChunks,
   debugViewSignature,
 } from "./buildingLod";
@@ -63,10 +64,24 @@ interface CullBox {
   z1: number;
 }
 
+/** Painter-order batch for airborne particles, weather flakes, and birds. */
+const FX_CHUNK = "fx";
+
+interface NearBuildingDraw {
+  key: string;
+  cmds: Cmd[];
+  /** Fade keys the build sampled, kept alive on reuse. */
+  fades: string[];
+  occluded: boolean;
+  visible: number;
+}
+
 interface Cmd {
   floor?: number;
   key?: string;
   version?: string | number;
+  offsetY?: number;
+  mobile?: boolean;
   chunk?: string;
   depth: number;
   run: (g: Graphics) => void;
@@ -89,8 +104,13 @@ export class WorldRenderer {
   private readonly world = new Graphics();
   private readonly groundOverlays = new Graphics();
   private readonly drawing = new DrawCache();
+  private chunkSplits = new ChunkSplitMemory();
+  /** Debris pose versions submitted last frame, to tell resting fragments from moving ones. */
+  private debrisPoses = new Map<number, string>();
   private readonly cmds: Cmd[] = [];
   private readonly staticBuildingCmds = new WeakMap<Building, { key: string; cmds: Cmd[] }>();
+  /** A near building's last build, reused while the dozer and camera hold still and its fades have landed. */
+  private readonly nearBuildingCmds = new WeakMap<Building, NearBuildingDraw>();
   readonly debug = defaultDebugView();
   jobTarget?: Building;
   landmarkTarget?: Building;
@@ -113,6 +133,7 @@ export class WorldRenderer {
   private garnish: ForestGarnish[] = [];
   private forestMasses: ForestMass[] = [];
   private overlayKey = "";
+  private readonly pileHints = new PileHintLayer();
   private siteKey = "";
   stats = {
     total: 0,
@@ -124,12 +145,13 @@ export class WorldRenderer {
     terrainChunks: 0,
     terrainCells: 0,
     groundRebuilds: 0,
+    pileTilesRebuilt: 0,
   };
   dozerHidden = false;
 
   constructor() {
     this.nhood.addChild(this.nhoodGfx);
-    this.root.addChild(this.terrainLayer, this.ground, this.sites, this.overlay, this.groundOverlays, this.drawing.root, this.world, this.nhood, this.debugOverlay);
+    this.root.addChild(this.terrainLayer, this.ground, this.sites, this.overlay, this.pileHints.root, this.groundOverlays, this.drawing.root, this.world, this.nhood, this.debugOverlay);
     this.root.addChild(this.bowlingStrikes.root, this.landmarkPin);
     this.hudOverlay.addChild(this.landmarkArrow);
     this.root.sortableChildren = false;
@@ -143,7 +165,11 @@ export class WorldRenderer {
     this.garnish = [];
     this.forestMasses = [];
     this.overlayKey = "";
+    this.pileHints.invalidate();
     this.siteKey = "";
+    // Frame-to-frame memory goes too, so a reloaded scene paints exactly as it did fresh.
+    this.chunkSplits = new ChunkSplitMemory();
+    this.debrisPoses = new Map();
   }
 
   layout(viewW: number, viewH: number, shakeX: number, shakeY: number): void {
@@ -336,7 +362,7 @@ export class WorldRenderer {
   private passMarks(frame: RenderFrame): void {
     const { town, view } = frame;
     const camCell = `${Math.round(this.camX / 28)}:${Math.round(this.camY / 28)}`;
-    const oKey = `${view.effects}:${view.debris}:${town.visualRevision}:${town.pile.revision}:${camCell}:${town.marks.length}:${town.season}`;
+    const oKey = `${view.effects}:${town.visualRevision}:${camCell}:${town.marks.length}:${town.season}`;
     if (oKey !== this.overlayKey) {
       this.overlay.clear();
       for (const mark of view.effects ? town.marks : []) {
@@ -345,9 +371,9 @@ export class WorldRenderer {
         frame.visible++;
         drawGroundMark(this.overlay, mark, town.season);
       }
-      if (view.debris) drawPileHints(this.overlay, town, (x, y, w, d) => this.visibleBox(x, y, w, d, 0, 3.5));
       this.overlayKey = oKey;
     }
+    this.pileHints.update(town, view.debris, (x, y, w, d) => this.visibleBox(x, y, w, d, 0, 3.5));
   }
 
   /** Neighborhood band overlay. */
@@ -378,18 +404,27 @@ export class WorldRenderer {
       // The aggregate mound owns the finished visual; a ground slab must not paint over it.
       if (b.coreCollapse?.phase === 'settled') continue;
       if (b.coreCollapse?.phase === 'falling') {
+        const { drop } = b.coreCollapse;
+        const burial = Math.min(3.5, town.pile.sample(b.x + bw / 2, b.y + bd / 2).height);
         for (const rect of b.coreCollapse.floors) {
-          const z = rect.floor * FLOOR_Z - b.coreCollapse.drop;
+          const z = rect.floor * FLOOR_Z - drop;
           if (z + FLOOR_Z <= 0) continue;
           frame.visible++;
-          this.cmds.push({ depth: depthKey(b.x + (rect.x + rect.w / 2) * b.cellSize, b.y + (rect.y + rect.d / 2) * b.cellSize, Math.max(0, z)), key: `core:${b.id}:${rect.floor}:${rect.x}:${rect.y}`, version: b.visualRevision, run: g => drawCoreFloor(g, b, rect, Math.min(3.5, town.pile.sample(b.x + bw / 2, b.y + bd / 2).height)) });
+          const depth = depthKey(b.x + (rect.x + rect.w / 2) * b.cellSize, b.y + (rect.y + rect.d / 2) * b.cellSize, Math.max(0, z));
+          const key = `core:${b.id}:${rect.floor}:${rect.x}:${rect.y}`;
+          // Above the pile a shell keeps its standing geometry and slides down the screen;
+          // only floors the pile is swallowing repaint each tick.
+          this.cmds.push(coreFloorClear(b, rect, burial)
+            ? { depth, key, version: 'shell', mobile: true, offsetY: drop * ISO_Z, run: g => drawCoreFloor(g, b, rect, -Infinity, 0) }
+            : { depth, key, version: b.visualRevision, mobile: true, run: g => drawCoreFloor(g, b, rect, burial) });
         }
         continue;
       }
       const near = dozer.x > b.x - 6 && dozer.x < b.x + bw + 6 && dozer.y > b.y - 6 && dozer.y < b.y + bd + 6;
       const lod = buildingLod(near, view.overview, this.zoom);
-      const damaged = buildingDamaged(b);
-      const live = buildingIsLive(lod, damaged);
+      const animating = buildingAnimating(b);
+      // A damaged shell holding still between revisions stays on the static cache.
+      const live = buildingIsLive(lod, animating);
       const needsInterior = buildingNeedsInterior(b, view, lod);
       const needsDetails = buildingNeedsDetails(view, lod);
       const surfaces = getBuildingSurfaces(b);
@@ -409,7 +444,8 @@ export class WorldRenderer {
         drawBuildingFootprintShadow(this.groundOverlays, surfaces.footprint, 1);
       }
       const visBefore = frame.visible;
-      const cacheKey = live ? "" : `${b.visualRevision}:${frame.viewSig}:${needsInterior ? 1 : 0}:${needsDetails ? 1 : 0}:${town.season}`;
+      const buildKey = `${b.visualRevision}:${frame.viewSig}:${needsInterior ? 1 : 0}:${needsDetails ? 1 : 0}:${town.season}`;
+      const cacheKey = live ? "" : buildKey;
       if (cacheKey) {
         const hit = this.staticBuildingCmds.get(b);
         if (hit && hit.key === cacheKey) {
@@ -419,6 +455,35 @@ export class WorldRenderer {
           continue;
         }
       }
+      // A near building fades around the dozer and culls live against the camera, so its
+      // build holds only for one dozer pose and camera, and only once every fade has landed.
+      // The camera only culls, so whole pixels are enough while follow easing creeps in.
+      const nearKey = live && !animating
+        ? [buildKey, dozer.x.toFixed(2), dozer.y.toFixed(2), dozer.heading.toFixed(2),
+          Math.round(this.camX), Math.round(this.camY), this.zoom.toFixed(3), this.viewW, this.viewH].join(":")
+        : "";
+      if (nearKey) {
+        const hit = this.nearBuildingCmds.get(b);
+        if (hit && hit.key === nearKey) {
+          this.fades.keep(hit.fades);
+          if (hit.occluded) frame.occluded = true;
+          frame.visible = visBefore + hit.visible;
+          this.cmds.push(...hit.cmds);
+          continue;
+        }
+      }
+      const occludedBefore = frame.occluded;
+      frame.occluded = false;
+      const sampledFades: string[] = [];
+      let fadesSettled = true;
+      const fade = (key: string, target: number) => {
+        const fadeKey = `${b.id}:${key}`;
+        const alpha = this.fades.sample(fadeKey, target, dt);
+        sampledFades.push(fadeKey);
+        if (alpha !== target) fadesSettled = false;
+        fadeValues.push(Math.round(alpha * 1000));
+        return alpha;
+      };
       for (const c of b.cells) if (c.coreSupport && cellPresent(c) && view.walls) {
         const box = cellWorldBox(b, c);
         const alpha = !live || view.reveal || view.maxFloor === 0 ? 1 : objectOcclusionFade(dozer, box.x, box.y, box.w, box.d, 0, FLOOR_Z);
@@ -430,8 +495,7 @@ export class WorldRenderer {
       }
       const fadeBox = (key: string, x: number, y: number, w: number, d: number, z: number, top: number) => {
         if (!live) return 1;
-        const alpha = this.fades.sample(`${b.id}:${key}`, objectOcclusionFade(dozer, x, y, w, d, z, top), dt);
-        fadeValues.push(Math.round(alpha * 1000));
+        const alpha = fade(key, objectOcclusionFade(dozer, x, y, w, d, z, top));
         if (alpha < .6 || pieceHidesDozer(dozer, x, y, w, d, z, top)) frame.occluded = true;
         return alpha;
       };
@@ -494,11 +558,10 @@ export class WorldRenderer {
           const runW = s.dir === "east" ? .08 : (s.gx1 - s.gx0 + 1) * cs;
           const runD = s.dir === "south" ? .08 : (s.gy1 - s.gy0 + 1) * cs;
           const alpha = live
-            ? this.fades.sample(`${b.id}:wall:${s.dir}:${s.floor}:${s.gx0}:${s.gy0}`,
-              Math.min(run.fade, objectOcclusionFade(dozer, runX, runY, runW, runD, wallZ, wallTop)), dt)
+            ? fade(`wall:${s.dir}:${s.floor}:${s.gx0}:${s.gy0}`,
+              Math.min(run.fade, objectOcclusionFade(dozer, runX, runY, runW, runD, wallZ, wallTop)))
             : 1;
           if (live) {
-            fadeValues.push(Math.round(alpha * 1000));
             if (alpha < .6 || pieceHidesDozer(dozer, runX, runY, runW, runD, wallZ, wallTop)) frame.occluded = true;
           }
           frame.visible++;
@@ -574,12 +637,21 @@ export class WorldRenderer {
       const version = live
         ? [b.visualRevision, dozer.x.toFixed(2), dozer.y.toFixed(2), fadeValues.join(","), frame.viewSig].join(":")
         : [b.visualRevision, frame.viewSig].join(":");
-      const chunk = live ? undefined : `b${b.id}`;
+      // Every piece shares the building version, so adjacent pieces can share one Graphics
+      // after the painter sort whether the building is live or cached.
+      const chunk = `b${b.id}`;
       for (let j = commandStart; j < this.cmds.length; j++) {
         const cmd = this.cmds[j]!;
         if (!cmd.key) cmd.key = "building:" + b.id + ":" + (j - commandStart);
         cmd.version = version;
-        if (chunk) cmd.chunk = chunk;
+        cmd.chunk = chunk;
+      }
+      const occluded = frame.occluded;
+      frame.occluded = occludedBefore || occluded;
+      if (nearKey) {
+        if (fadesSettled) {
+          this.nearBuildingCmds.set(b, { key: nearKey, cmds: this.cmds.slice(commandStart), fades: sampledFades, occluded, visible: frame.visible - visBefore });
+        } else this.nearBuildingCmds.delete(b);
       }
       if (cacheKey) {
         const built = this.cmds.slice(commandStart);
@@ -644,32 +716,43 @@ export class WorldRenderer {
   /** Debris, yard loads, traffic, and the player dozer. */
   private passDynamics(frame: RenderFrame): void {
     const { town, dozer, showPlayer, view } = frame;
+    const debrisPoses = new Map<number, string>();
     for (const r of view.debris ? town.rubble : []) {
       frame.total++;
       if (!this.visibleBox(r.x - r.w, r.y - r.d, r.w * 2, r.d * 2, r.elev, r.elev + r.thickness + 0.25)) continue;
       frame.visible++;
+      // A fragment that moved since last frame repaints anyway, so it rides in the
+      // airborne fx batch instead of splitting it; at rest it keeps its own geometry.
+      const version = debrisVersion(r);
+      const moved = this.debrisPoses.get(r.id) !== version;
+      debrisPoses.set(r.id, version);
       this.cmds.push({
-        key: 'debris:' + r.id,
-        version: r.sleeping ? [r.x, r.y, r.elev, r.heading, r.w, r.d, r.damage].join(':') : undefined,
+        ...(moved ? { chunk: FX_CHUNK } : { key: 'debris:' + r.id, version }),
+        mobile: true,
         depth: depthKey(r.x, r.y, r.elev + r.thickness * 0.5),
         run: (g) => drawDebris(g, r),
       });
     }
+    this.debrisPoses = debrisPoses;
 
-    for(const load of town.yard?.loads??[]){const v=load.vehicle;this.cmds.push({depth:depthKey(v.x,v.y,load.z)+3000,run:g=>drawOrientedIsoBox(g,v.x,v.y,v.heading,3.5,2.2,load.z,.25,0x9da5a0,0x565d5a,0x7c8580)});}
+    for(const load of town.yard?.loads??[]){const v=load.vehicle;this.cmds.push({key:'yard-load:'+v.id,mobile:true,version:[v.x,v.y,v.heading,load.z].join(':'),depth:depthKey(v.x,v.y,load.z)+3000,run:g=>drawOrientedIsoBox(g,v.x,v.y,v.heading,3.5,2.2,load.z,.25,0x9da5a0,0x565d5a,0x7c8580)});}
     for(const v of view.vehicles ? town.vehicles : []) for(const group of vehicleRenderGroups(v)) {
       frame.total++;
       if(!screenAabbVisible(group.bounds,this.viewW,this.viewH,this.camX,this.camY,this.zoom))continue;
       frame.visible++;
-      this.cmds.push({key:'vehicle:'+v.id+':'+group.roots.join(','),version:[v.revision,v.x,v.y,v.heading,v.elev,v.pitch,v.roll,v.steer,v.debugParts].join(':'),depth:group.depth,run:g=>drawVehicleAssembly(g,v,group.roots)});
+      this.cmds.push({key:'vehicle:'+v.id+':'+group.roots.join(','),mobile:true,version:[v.revision,v.x,v.y,v.heading,v.elev,v.pitch,v.roll,v.steer,v.debugParts].join(':'),depth:group.depth,run:g=>drawVehicleAssembly(g,v,group.roots)});
     }
 
     if (view.vehicles && showPlayer) {
       frame.total++;
       frame.visible++;
+      const emphasis = frame.hideDressing || this.zoom < 0.7;
       this.cmds.push({
+        key: "dozer",
+        mobile: true,
+        version: [dozer.x, dozer.y, dozer.heading, dozer.bladeDown, dozer.odo, emphasis].join(":"),
         depth: depthKey(dozer.x, dozer.y, 0.4),
-        run: (g) => drawDozer(g, dozer, frame.hideDressing || this.zoom < 0.7),
+        run: (g) => drawDozer(g, dozer, emphasis),
       });
     }
   }
@@ -690,18 +773,28 @@ export class WorldRenderer {
       if (!this.visibleBox(flake.x - 0.2, flake.y - 0.2, 0.4, 0.4, 0, flake.z + 0.2)) continue;
       frame.visible++;
       this.cmds.push({
+        chunk: FX_CHUNK,
+        mobile: true,
         depth: depthKey(flake.x, flake.y, flake.z),
         run: (g) => drawWeatherFlake(g, flake),
       });
     }
-    for (const p of view.effects ? particles.items : []) {
+    // Airborne effects move every frame, so painter-adjacent runs share one Graphics.
+    // Settled chips only fade, and keep their own geometry between alpha steps.
+    const speck = frame.hideDressing;
+    const items = view.effects ? particles.items : [];
+    for (let i = 0; i < items.length; i++) {
+      const p = items[i]!;
       if (!p.alive) continue;
       frame.total++;
+      if (speck && particleBelowSpeck(p)) continue;
       if (!this.visibleBox(p.x - 0.3, p.y - 0.3, 0.6, 0.6, 0, p.z + 0.2)) continue;
       frame.visible++;
       this.cmds.push({
+        ...(p.settled ? { key: `particle:${i}`, version: `${settledParticleVersion(p)}:${speck ? 1 : 0}` } : { chunk: FX_CHUNK }),
+        mobile: true,
         depth: depthKey(p.x, p.y, p.z),
-        run: (g) => drawParticle(g, p),
+        run: speck ? (g) => drawParticleSpeck(g, p) : (g) => drawParticle(g, p),
       });
     }
 
@@ -710,6 +803,8 @@ export class WorldRenderer {
       if (!this.visibleBox(bird.x - 0.4, bird.y - 0.4, 0.8, 0.8, bird.z, bird.z + 0.2)) continue;
       frame.visible++;
       this.cmds.push({
+        chunk: FX_CHUNK,
+        mobile: true,
         depth: depthKey(bird.x, bird.y, bird.z),
         run: (g) => drawBird(g, bird),
       });
@@ -720,7 +815,8 @@ export class WorldRenderer {
   private submitDraw(frame: RenderFrame): void {
     const { town, dozer, view } = frame;
     this.cmds.sort((a, b) => a.depth - b.depth);
-    const submitted = coalesceStaticChunks(this.cmds);
+    this.chunkSplits.next();
+    const submitted = coalesceStaticChunks(this.cmds, this.chunkSplits);
     this.drawing.draw(submitted);
     const hidden = frame.occluded && !view.overview;
     this.dozerHidden = hidden;
@@ -750,6 +846,7 @@ export class WorldRenderer {
       terrainChunks: frame.terrainCounts.chunks,
       terrainCells: frame.terrainCounts.cells,
       groundRebuilds: frame.groundRebuilds,
+      pileTilesRebuilt: this.pileHints.rebuilt,
     };
   }
 
@@ -1160,6 +1257,18 @@ function drawFieldChurn(g: Graphics, feature: FieldFeature): void {
   }
 }
 
+/** Centimetre pose steps stay under a pixel at street zoom, even on 2x displays. */
+const poseStep = (v: number) => Math.round(v * 100);
+
+function debrisVersion(r: Rubble): string {
+  return `${poseStep(r.x)}:${poseStep(r.y)}:${poseStep(r.elev)}:${poseStep(r.heading)}:${r.w}:${r.d}:${r.thickness}:${r.damage}`;
+}
+
+function settledParticleVersion(p: Particle): string {
+  const fade = Math.min(1, p.life / p.maxLife);
+  return `${p.kind}:${poseStep(p.x)}:${poseStep(p.y)}:${poseStep(p.z)}:${poseStep(p.rot)}:${p.size}:${p.tint}:${Math.round(fade * 32)}`;
+}
+
 function drawWeatherFlake(g: Graphics, flake: WeatherFlake): void {
   const color = flake.kind === "rain" ? 0x9eb4c4 : flake.kind === "leaves" ? 0xc47a32 : 0xf4f7fb;
   const w = flake.kind === "rain" ? 0.05 : 0.12;
@@ -1167,35 +1276,36 @@ function drawWeatherFlake(g: Graphics, flake: WeatherFlake): void {
   drawOrientedIsoBox(g, flake.x, flake.y, 0.4, w, d, flake.z, 0.04, color, color, color, 0.7);
 }
 
-function drawParticle(g: Graphics, p: Particle): void {
+/** Dust this faded is under a tenth of opacity, which overview zoom shrinks to a couple of pixels. */
+const SPECK_DUST_FADE = 0.2;
+
+export function particleBelowSpeck(p: Particle): boolean {
+  return p.kind === "dust" && p.life / p.maxLife < SPECK_DUST_FADE;
+}
+
+/**
+ * Overview LOD: the contact shadow is under a pixel and a chip is a speck, so each
+ * particle is one fill in its lit face colour at the same screen spot.
+ */
+export function drawParticleSpeck(g: Graphics, p: Particle): void {
   const fade = Math.min(1, p.life / p.maxLife);
-  const s = worldToScreen(p.x, p.y, 0);
-  g.ellipse(s.x, s.y, 3.2, 1.6);
-  g.fill({ color: PAL.shadow, alpha: 0.2 * fade });
+  const c = worldToScreen(p.x, p.y, p.z);
   if (p.kind === "dust") {
-    const c = worldToScreen(p.x, p.y, p.z);
     const r = 5 + p.size * 10;
     g.rect(c.x - r / 2, c.y - r / 2, r, r);
     g.fill({ color: PAL.dust, alpha: 0.32 * fade });
     return;
   }
+  const { color, len, wid } = particleChip(p);
+  const s = (len + wid) * ISO_W * 0.5;
+  g.rect(c.x - s / 2, c.y - s / 4, s, s / 2);
+  g.fill({ color, alpha: (p.kind === "crop" ? 0.88 : 0.92) * fade });
+}
+
+function particleChip(p: Particle): { color: number; dark: number; len: number; wid: number } {
   if (p.kind === "crop") {
     const color = p.tint ?? 0xd4c44a;
-    drawOrientedIsoBox(
-      g,
-      p.x,
-      p.y,
-      p.rot,
-      0.09 + p.size * 0.18,
-      0.04 + p.size * 0.06,
-      p.z,
-      Math.max(0.03, p.size * 0.12),
-      color,
-      shade(color, 0.65),
-      shade(color, 0.8),
-      0.88 * fade,
-    );
-    return;
+    return { color, dark: shade(color, 0.65), len: 0.09 + p.size * 0.18, wid: 0.04 + p.size * 0.06 };
   }
   const color =
     p.kind === "wood"
@@ -1217,6 +1327,26 @@ function drawParticle(g: Graphics, p: Particle): void {
           : PAL.concreteDark;
   const len = p.kind === "wood" ? 0.18 + p.size * 0.35 : 0.1 + p.size * 0.22;
   const wid = p.kind === "wood" ? 0.05 + p.size * 0.08 : 0.07 + p.size * 0.12;
+  return { color, dark, len, wid };
+}
+
+function drawParticle(g: Graphics, p: Particle): void {
+  const fade = Math.min(1, p.life / p.maxLife);
+  const s = worldToScreen(p.x, p.y, 0);
+  g.ellipse(s.x, s.y, 3.2, 1.6);
+  g.fill({ color: PAL.shadow, alpha: 0.2 * fade });
+  if (p.kind === "dust") {
+    const c = worldToScreen(p.x, p.y, p.z);
+    const r = 5 + p.size * 10;
+    g.rect(c.x - r / 2, c.y - r / 2, r, r);
+    g.fill({ color: PAL.dust, alpha: 0.32 * fade });
+    return;
+  }
+  const { color, dark, len, wid } = particleChip(p);
+  if (p.kind === "crop") {
+    drawOrientedIsoBox(g, p.x, p.y, p.rot, len, wid, p.z, Math.max(0.03, p.size * 0.12), color, dark, shade(color, 0.8), 0.88 * fade);
+    return;
+  }
   drawOrientedIsoBox(g, p.x, p.y, p.rot, len, wid, p.z, Math.max(0.04, p.size * 0.2), color, dark, color, 0.92 * fade);
 }
 
@@ -1270,33 +1400,6 @@ function drawGroundMark(g: Graphics, mark: GroundMark, season: SeasonId = "summe
   });
   g.poly(q);
   g.fill({ color, alpha: mark.alpha });
-}
-
-function drawPileHints(
-  g: Graphics,
-  town: Town,
-  visible: (x: number, y: number, w: number, d: number) => boolean,
-): void {
-  const pile = town.pile;
-  const coreAreas = corePileAreas(town).filter(a => visible(a.x, a.y, a.w, a.d));
-  drawCorePiles(g, town, coreAreas);
-  for (let iy = 0; iy < pile.rows; iy++) {
-    for (let ix = 0; ix < pile.cols; ix++) {
-      const i = iy * pile.cols + ix;
-      const h = pile.height[i]!;
-      if (h < 0.05) continue;
-      const x = pile.ox + (ix + 0.12) * pile.cell;
-      const y = pile.oy + (iy + 0.12) * pile.cell;
-      if (coreAreas.some(a => x >= a.x && x <= a.x + a.w && y >= a.y && y <= a.y + a.d)) continue;
-      const s = pile.cell * 0.76;
-      if (!visible(x, y, s, s)) continue;
-      const alpha = Math.min(0.62, 0.16 + h * 0.85);
-      drawGroundPoly(g, x, y, s, s, PAL.lotDark, alpha);
-      if (h > 0.14) {
-        drawIsoBox(g, x + 0.04, y + 0.04, s * 0.72, s * 0.72, 0, Math.min(.42, h * .55), PAL.concrete, PAL.concreteDark, PAL.concrete, Math.min(0.85, 0.35 + h));
-      }
-    }
-  }
 }
 
 function drawDebris(g: Graphics, r: Rubble): void {

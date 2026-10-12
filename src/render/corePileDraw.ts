@@ -2,17 +2,23 @@ import type { Graphics } from 'pixi.js';
 import type { Town } from '../world/town';
 import { drawOrientedIsoBox, drawWorldPoly, PAL, shade } from './drawIso';
 
-export function corePileAreas(town: Town): { x: number; y: number; w: number; d: number }[] {
+export interface PileArea { x: number; y: number; w: number; d: number }
+
+export function corePileAreas(town: Town): PileArea[] {
   return town.buildings.filter(b => b.coreCollapse && ['falling', 'settled'].includes(b.coreCollapse.phase)).map(b => {
     const r = Math.max(b.w, b.d) * b.cellSize * .85 + 1;
     return { x: b.x + b.w * b.cellSize / 2 - r, y: b.y + b.d * b.cellSize / 2 - r, w: 2 * r, d: 2 * r };
   });
 }
 
-/** Coarse contiguous pile surface; still samples the editable simulation pile. */
-export function drawCorePiles(g: Graphics, town: Town, areas: ReturnType<typeof corePileAreas>): void {
+/**
+ * Coarse contiguous pile surface; still samples the editable simulation pile.
+ * `clip` limits drawing to pile cells [ix0, ix1) x [iy0, iy1) (even origin). Returns quads drawn.
+ */
+export function drawCorePiles(g: Graphics, town: Town, areas: readonly PileArea[], clip?: { ix0: number; iy0: number; ix1: number; iy1: number }): number {
   const pile = town.pile, step = pile.cell * 2;
   const drawn = new Set<number>();
+  const cx0 = clip?.ix0 ?? 0, cy0 = clip?.iy0 ?? 0, cx1 = clip?.ix1 ?? pile.cols, cy1 = clip?.iy1 ?? pile.rows;
   const height = (ix: number, iy: number) => {
     let sum = 0;
     for (let dy = -1; dy <= 0; dy++) for (let dx = -1; dx <= 0; dx++) {
@@ -21,14 +27,16 @@ export function drawCorePiles(g: Graphics, town: Town, areas: ReturnType<typeof 
     }
     return Math.min(3.5, sum / 4);
   };
+  let quads = 0;
   for (const a of areas) {
-    const x0 = Math.max(0, Math.floor((a.x - pile.ox) / step) * 2), y0 = Math.max(0, Math.floor((a.y - pile.oy) / step) * 2);
-    const x1 = Math.min(pile.cols - 1, Math.ceil((a.x + a.w - pile.ox) / step) * 2), y1 = Math.min(pile.rows - 1, Math.ceil((a.y + a.d - pile.oy) / step) * 2);
+    const x0 = Math.max(cx0, Math.floor((a.x - pile.ox) / step) * 2), y0 = Math.max(cy0, Math.floor((a.y - pile.oy) / step) * 2);
+    const x1 = Math.min(pile.cols - 1, cx1, Math.ceil((a.x + a.w - pile.ox) / step) * 2), y1 = Math.min(pile.rows - 1, cy1, Math.ceil((a.y + a.d - pile.oy) / step) * 2);
     for (let iy = y0; iy < y1; iy += 2) for (let ix = x0; ix < x1; ix += 2) {
       const i = iy * pile.cols + ix;
       if (drawn.has(i)) continue; drawn.add(i);
       const h = (pile.height[i]! + pile.height[i + 1]! + pile.height[i + pile.cols]! + pile.height[i + pile.cols + 1]!) / 4;
       if (h < .045) continue;
+      quads++;
       const x = pile.ox + ix * pile.cell, y = pile.oy + iy * pile.cell;
       const seed = (ix * 17 + iy * 13) % 11;
       const vertices = [{ x, y, z: height(ix, iy) }, { x: x + step, y, z: height(ix + 2, iy) },
@@ -44,4 +52,5 @@ export function drawCorePiles(g: Graphics, town: Town, areas: ReturnType<typeof 
       }
     }
   }
+  return quads;
 }

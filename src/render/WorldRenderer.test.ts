@@ -3,6 +3,8 @@ import { expect, it, vi } from 'vitest';
 import { frameIsolateLot, instantiateIsolateDefinition } from '../debug/isolateLot';
 import { ParticlePool } from '../fx/particles';
 import { archetypeById } from '../world/archetypes';
+import { ISO_Z } from '../game/constants';
+import type { Building } from '../structure/types';
 import { worldToScreen } from '../world/iso';
 import { createDozer } from '../vehicle/dozer';
 import { createTown } from '../world/town';
@@ -22,6 +24,14 @@ function spyPixiAddChildWarnings(): { messages: () => string[]; restore: () => v
       group.mockRestore();
     },
   };
+}
+
+function cacheEntries(renderer: WorldRenderer): Map<string, { graphic: Graphics }> {
+  return (renderer as unknown as { drawing: { entries: Map<string, { graphic: Graphics }> } }).drawing.entries;
+}
+
+function staticBuildingKey(renderer: WorldRenderer, building: Building): string | undefined {
+  return (renderer as unknown as { staticBuildingCmds: WeakMap<Building, { key: string }> }).staticBuildingCmds.get(building)?.key;
 }
 
 function dropStaticBuildingCache(renderer: WorldRenderer): void {
@@ -174,5 +184,116 @@ it('rebuilds cached ground when the map ground condition changes', () => {
   renderer.draw(town, dozer, particles, []);
   expect(renderer.stats.groundRebuilds).toBeGreaterThan(0);
   renderer.invalidate();
+  renderer.root.destroy({ children: true });
+});
+
+it('does not repaint a parked dozer or a settled chip, and reuses airborne effect Graphics', () => {
+  const lot = instantiateIsolateDefinition(archetypeById('farmhouse-rear-wing'));
+  const renderer = new WorldRenderer(), particles = new ParticlePool();
+  renderer.debug.effects = true;
+  frameIsolateLot(renderer, lot.camera, 1280, 960);
+  renderer.layout(1280, 960, 0, 0);
+  const front = lot.town.buildings[0]!;
+  const x = front.x + front.w * front.cellSize / 2, y = front.y + front.d * front.cellSize + 3;
+  Object.assign(lot.dozer, { x, y });
+  const chip = particles.items[0]!, dust = particles.items[1]!;
+  Object.assign(chip, { alive: true, settled: true, kind: 'concrete', x: x + 1, y: y + 1, z: 0, life: 5, maxLife: 5, size: .5, rot: 0 });
+  Object.assign(dust, { alive: true, settled: false, kind: 'dust', x: x - 1, y: y + 1, z: 1, life: 1, maxLife: 1, size: .5, rot: 0 });
+  renderer.draw(lot.town, lot.dozer, particles, [], 1 / 60);
+  const entries = cacheEntries(renderer);
+  const parked = vi.spyOn(entries.get('dozer')!.graphic, 'clear');
+  const settled = vi.spyOn(entries.get('particle:0')!.graphic, 'clear');
+  const airborne = entries.get('fx:0')!.graphic;
+  dust.z = .8;
+  renderer.draw(lot.town, lot.dozer, particles, [], 1 / 60);
+  expect(parked).not.toHaveBeenCalled();
+  expect(settled).not.toHaveBeenCalled();
+  expect(entries.get('fx:0')!.graphic).toBe(airborne);
+  lot.dozer.x += .5;
+  renderer.draw(lot.town, lot.dozer, particles, [], 1 / 60);
+  expect(parked).toHaveBeenCalledTimes(1);
+  renderer.invalidate();
+  renderer.root.destroy({ children: true });
+});
+
+it('keeps a still wreck on the static cache and slides clear core floors without repainting', () => {
+  const lot = instantiateIsolateDefinition(archetypeById('office-slab-eight'));
+  const renderer = new WorldRenderer(), particles = new ParticlePool();
+  renderer.debug.effects = false;
+  renderer.debug.debris = false;
+  frameIsolateLot(renderer, lot.camera, 1280, 960);
+  renderer.layout(1280, 960, 0, 0);
+  const b = lot.town.buildings.find((building) => building.coreCollapse)!;
+  lot.dozer.x = b.x - 40; lot.dozer.y = b.y - 40;
+  const draw = () => renderer.draw(lot.town, lot.dozer, particles, [], 1 / 60, false);
+  // A tower in its warning phase is damaged but holds still: no per-frame live rebuild.
+  b.cells.find((cell) => cell.floor === 0)!.state = 'gone';
+  b.coreCollapse!.phase = 'warning';
+  b.visualRevision++;
+  draw();
+  expect(staticBuildingKey(renderer, b)).toMatch(new RegExp(`^${b.visualRevision}:`));
+  draw();
+  expect(renderer.stats.rebuilt).toBe(0);
+  // A falling cell moves without a revision bump, so the building goes live.
+  b.cells.find((cell) => cell.state === 'intact')!.state = 'falling';
+  b.visualRevision++;
+  draw();
+  expect(staticBuildingKey(renderer, b)).not.toMatch(new RegExp(`^${b.visualRevision}:`));
+  // Floors above the pile keep their standing geometry and only shift down the screen.
+  b.coreCollapse!.phase = 'falling';
+  b.coreCollapse!.drop = .5;
+  b.visualRevision++;
+  draw();
+  const entries = cacheEntries(renderer);
+  const shell = entries.get([...entries.keys()].find((key) => key.startsWith(`core:${b.id}:3:`))!)!.graphic;
+  const repaint = vi.spyOn(shell, 'clear');
+  b.coreCollapse!.drop = 1.5;
+  b.visualRevision++;
+  draw();
+  expect(repaint).not.toHaveBeenCalled();
+  expect(shell.y).toBeCloseTo(1.5 * ISO_Z);
+  renderer.invalidate();
+  renderer.root.destroy({ children: true });
+});
+
+it('reuses a near building build while the dozer is parked and its fades have landed', () => {
+  const lot = instantiateIsolateDefinition(archetypeById('office-slab-eight'));
+  const renderer = new WorldRenderer(), particles = new ParticlePool();
+  renderer.debug.effects = false;
+  frameIsolateLot(renderer, lot.camera, 1280, 960);
+  renderer.layout(1280, 960, 0, 0);
+  const b = lot.town.buildings.find((building) => building.coreCollapse)!;
+  Object.assign(lot.dozer, { x: b.x + b.w * b.cellSize / 2, y: b.y - 1.5, heading: Math.PI / 2 });
+  const internals = renderer as unknown as {
+    nearBuildingCmds: WeakMap<Building, { cmds: unknown[]; fades: string[] }>;
+    fades: { values: Map<string, number> };
+  };
+  const draw = () => renderer.draw(lot.town, lot.dozer, particles, [], 1 / 60);
+  for (let i = 0; i < 90; i++) draw();
+  const parked = internals.nearBuildingCmds.get(b)!;
+  expect(parked.fades.length).toBeGreaterThan(0);
+  const hidden = renderer.dozerHidden, commands = renderer.stats.commands;
+  for (let i = 0; i < 5; i++) draw();
+  expect(internals.nearBuildingCmds.get(b)).toBe(parked);
+  expect(renderer.stats.rebuilt).toBe(0);
+  expect(renderer.stats.commands).toBe(commands);
+  expect(renderer.dozerHidden).toBe(hidden);
+  // Reuse keeps the sampled fades alive instead of letting the frame end drop them.
+  for (const key of parked.fades) expect(internals.fades.values.has(key)).toBe(true);
+  lot.dozer.x += .5;
+  draw();
+  expect(internals.nearBuildingCmds.get(b)).not.toBe(parked);
+  renderer.invalidate();
+  renderer.root.destroy({ children: true });
+});
+
+it('forgets split runs and debris poses on invalidate, so a reloaded scene paints as it did fresh', () => {
+  const renderer = new WorldRenderer();
+  const internals = renderer as unknown as { chunkSplits: { lastSplit: Map<string, number> }; debrisPoses: Map<number, string> };
+  internals.chunkSplits.lastSplit.set('chunk:b1:a:b:3', 1);
+  internals.debrisPoses.set(7, '0:0:0:0');
+  renderer.invalidate();
+  expect(internals.chunkSplits.lastSplit.size).toBe(0);
+  expect(internals.debrisPoses.size).toBe(0);
   renderer.root.destroy({ children: true });
 });

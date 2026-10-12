@@ -3,9 +3,19 @@ import { FLOOR_Z } from '../game/constants';
 import type { Building } from '../structure/types';
 import { drawIsoBox, drawWorldPoly, PAL } from './drawIso';
 
-/** A floor shell stays coherent while its base is swallowed by the pile. */
-export function drawCoreFloor(g: Graphics, b: Building, rect: NonNullable<Building['coreCollapse']>['floors'][number], burial = 0): void {
-  const drop = b.coreCollapse!.drop, cs = b.cellSize;
+export type CoreFloorRect = NonNullable<Building['coreCollapse']>['floors'][number];
+
+/** True while the pile has not reached a floor, so its shell only translates as it drops. */
+export function coreFloorClear(b: Building, rect: CoreFloorRect, burial: number): boolean {
+  return rect.floor * FLOOR_Z - b.coreCollapse!.drop >= burial;
+}
+
+/**
+ * A floor shell stays coherent while its base is swallowed by the pile. `drop` defaults to the
+ * live collapse; a clear floor paints once at drop 0 and is shifted on screen instead.
+ */
+export function drawCoreFloor(g: Graphics, b: Building, rect: CoreFloorRect, burial = 0, drop = b.coreCollapse!.drop): void {
+  const cs = b.cellSize;
   const bottom = rect.floor * FLOOR_Z - drop, top = bottom + FLOOR_Z;
   if (top <= burial) return;
   const x = b.x + rect.x * cs, y = b.y + rect.y * cs, w = rect.w * cs, d = rect.d * cs;

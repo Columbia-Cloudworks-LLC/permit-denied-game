@@ -25,3 +25,33 @@ it('keeps cached and moving objects in the submitted painter order', () => {
   expect(cache.root.children).toEqual([gb, ga]);
   cache.clear();
 });
+it('appends, inserts, and drops children without disturbing the stable prefix', () => {
+  const cache = new DrawCache();
+  const cmd = (key: string) => ({ key, version: 1, run: () => {} });
+  cache.draw([cmd('a'), cmd('b')]);
+  const [ga, gb] = cache.root.children;
+  cache.draw([cmd('a'), cmd('b'), cmd('c')]);
+  const gc = cache.root.children[2];
+  expect(cache.root.children).toEqual([ga, gb, gc]);
+  cache.draw([cmd('a'), cmd('x'), cmd('b'), cmd('c')]);
+  expect(cache.root.children[0]).toBe(ga);
+  expect(cache.root.children.slice(2)).toEqual([gb, gc]);
+  cache.draw([cmd('a'), cmd('c')]);
+  expect(cache.root.children).toEqual([ga, gc]);
+  expect(gb!.destroyed).toBe(true);
+  cache.clear();
+});
+it('shifts translate-only geometry without repainting it', () => {
+  const cache = new DrawCache();
+  let paints = 0;
+  const shell = (offsetY: number) => ({ key: 'core:1:3', version: 'shell', offsetY, run: () => { paints++; } });
+  cache.draw([shell(0)]);
+  const graphic = cache.root.children[0]!;
+  cache.draw([shell(12.5)]);
+  expect(paints).toBe(1);
+  expect(graphic.y).toBe(12.5);
+  cache.draw([{ key: 'core:1:3', version: 2, run: () => { paints++; } }]);
+  expect(paints).toBe(2);
+  expect(graphic.y).toBe(0);
+  cache.clear();
+});
