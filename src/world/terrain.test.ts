@@ -21,6 +21,25 @@ import {
   type TerrainSurface,
 } from "./terrain";
 
+/** Forest cells stay off roads and at least `pad` from every lot and building. */
+function expectForestCellClear(town: ReturnType<typeof createTown>, ix: number, iy: number, pad: number): void {
+  const grid = town.surface;
+  const id = grid.surface[iy * grid.cols + ix]!;
+  if (id !== SURFACE_ID["forest-core"] && id !== SURFACE_ID["forest-floor"]) return;
+  const x = grid.ox + (ix + 0.5) * grid.cell;
+  const y = grid.oy + (iy + 0.5) * grid.cell;
+  expect(pointOnRoad(town.network, x, y)).toBe(false);
+  expect(traversalAt(grid, x, y) === "forest-core" || surfaceAt(grid, x, y) === "forest-floor").toBe(true);
+  for (const lot of town.lots) {
+    expect(x < lot.x - pad || y < lot.y - pad || x > lot.x + lot.w + pad || y > lot.y + lot.d + pad).toBe(true);
+  }
+  for (const building of town.buildings) {
+    const bw = building.w * building.cellSize;
+    const bd = building.d * building.cellSize;
+    expect(x < building.x - pad || y < building.y - pad || x > building.x + bw + pad || y > building.y + bd + pad).toBe(true);
+  }
+}
+
 describe("terrain surface grid", () => {
   it("builds a d100 surface and stays within the cell cap", () => {
     const t0 = performance.now();
@@ -168,22 +187,7 @@ describe("terrain surface grid", () => {
       const counts = countNatural(grid);
       expect(counts["forest-core"] + counts["forest-floor"]).toBeGreaterThan(0);
       for (let iy = 0; iy < grid.rows; iy++) {
-        for (let ix = 0; ix < grid.cols; ix++) {
-          const id = grid.surface[iy * grid.cols + ix]!;
-          if (id !== SURFACE_ID["forest-core"] && id !== SURFACE_ID["forest-floor"]) continue;
-          const x = grid.ox + (ix + 0.5) * grid.cell;
-          const y = grid.oy + (iy + 0.5) * grid.cell;
-          expect(pointOnRoad(town.network, x, y)).toBe(false);
-          expect(traversalAt(grid, x, y) === "forest-core" || surfaceAt(grid, x, y) === "forest-floor").toBe(true);
-          for (const lot of town.lots) {
-            expect(x < lot.x - pad || y < lot.y - pad || x > lot.x + lot.w + pad || y > lot.y + lot.d + pad).toBe(true);
-          }
-          for (const building of town.buildings) {
-            const bw = building.w * building.cellSize;
-            const bd = building.d * building.cellSize;
-            expect(x < building.x - pad || y < building.y - pad || x > building.x + bw + pad || y > building.y + bd + pad).toBe(true);
-          }
-        }
+        for (let ix = 0; ix < grid.cols; ix++) expectForestCellClear(town, ix, iy, pad);
       }
     }
   });

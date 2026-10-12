@@ -45,16 +45,25 @@ export function findTrafficRoute(network: RoadNetwork, req: RouteRequest): Route
   const startOn = roadSurfaceAt(network, req.startX, req.startY, req.layer).on;
   const destOn = req.destOnRoad || roadSurfaceAt(network, req.destX, req.destY, req.layer).on;
 
-  if (req.role === "civilian") {
-    if (!startOn) return { ok: false, path: [], mode: "inaccessible", reason: "civilian-off-road-start" };
-    if (!destOn || !startLane || !destLane) {
-      return { ok: false, path: [], mode: "inaccessible", reason: "civilian-dest-not-on-road" };
-    }
-    const path = findRoadRoute(network, startLane.id, destLane.id);
-    if (path) return { ok: true, path, mode: "road", reason: "lane-path" };
-    return { ok: false, path: [], mode: "blocked", reason: "road-blocked" };
-  }
+  if (req.role === "civilian") return civilianRoute(network, startOn, destOn, startLane, destLane);
+  return pursuitRoute(network, req, destOn, startLane, destLane);
+}
 
+type RouteLane = ReturnType<typeof nearestLane>;
+
+/** Civilians only drive lane to lane between two points on the road. */
+function civilianRoute(network: RoadNetwork, startOn: boolean, destOn: boolean, startLane: RouteLane, destLane: RouteLane): RouteResult {
+  if (!startOn) return { ok: false, path: [], mode: "inaccessible", reason: "civilian-off-road-start" };
+  if (!destOn || !startLane || !destLane) {
+    return { ok: false, path: [], mode: "inaccessible", reason: "civilian-dest-not-on-road" };
+  }
+  const path = findRoadRoute(network, startLane.id, destLane.id);
+  if (path) return { ok: true, path, mode: "road", reason: "lane-path" };
+  return { ok: false, path: [], mode: "blocked", reason: "road-blocked" };
+}
+
+/** Police prefer lanes but may leave the road to chase a nearby dozer. */
+function pursuitRoute(network: RoadNetwork, req: RouteRequest, destOn: boolean, startLane: RouteLane, destLane: RouteLane): RouteResult {
   if (startLane && destLane) {
     const path = findRoadRoute(network, startLane.id, destLane.id);
     if (path) return { ok: true, path, mode: "road", reason: "prefer-road" };

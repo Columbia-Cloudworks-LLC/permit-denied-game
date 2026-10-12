@@ -301,14 +301,42 @@ export function dressLot(
   const template = storedOk ? stored : pickTemplate(lot.identity, rng, eligible);
   lot.templateId = template.id;
   if (building) building.lotId = lot.id;
+  const drive = drivewayPatch(lot);
+  const props = placeTemplateSlots(lot, building, template, rng, occ, Math.min(template.maxAssets, budget), corridors, eligible);
+
+  const patches: GroundPatch[] = [
+    {
+      x: lot.x,
+      y: lot.y,
+      w: lot.w,
+      d: lot.d,
+      heading: 0,
+      cover: template.cover,
+      seed: rng.int(1, 1_000_000),
+      z: 0,
+      poly: lot.boundary.length >= 3 ? lot.boundary.map((p) => ({ x: p.x, y: p.y })) : undefined,
+    },
+    { ...drive, heading: lot.heading, cover: "driveway", seed: rng.int(1, 1_000_000), z: 0.01 },
+  ];
+  wearPatches(lot, template.cover, rng, patches);
+  return { props, patches };
+}
+
+/** Roll each eligible slot, heaviest first, until the lot's asset cap. */
+function placeTemplateSlots(
+  lot: Lot,
+  building: Building | undefined,
+  template: DressTemplate,
+  rng: Rng,
+  occ: Occupancy,
+  max: number,
+  corridors: readonly { x: number; y: number }[][],
+  eligible: DressEligible | undefined,
+): Prop[] {
   const props: Prop[] = [];
   const extras: { x: number; y: number; w: number; d: number }[] = [];
-  const style = drivewayStyle(lot.identity);
-  const driveW = style.width * 0.85;
-  const drive = drivewayPatch(lot);
-
+  const driveW = drivewayStyle(lot.identity).width * 0.85;
   const slots = [...template.slots].filter((slot) => slotEligible(slot, eligible)).sort((a, b) => b.weight - a.weight);
-  const max = Math.min(template.maxAssets, budget);
   for (const slot of slots) {
     if (props.length >= max) break;
     if (!rng.chance(slot.weight)) continue;
@@ -332,112 +360,49 @@ export function dressLot(
     props.push(prop);
     extras.push({ x: prop.x, y: prop.y, w: prop.w, d: prop.d });
   }
+  return props;
+}
 
-  const patches: GroundPatch[] = [
-    {
-      x: lot.x,
-      y: lot.y,
-      w: lot.w,
-      d: lot.d,
-      heading: 0,
-      cover: template.cover,
-      seed: rng.int(1, 1_000_000),
-      z: 0,
-      poly: lot.boundary.length >= 3 ? lot.boundary.map((p) => ({ x: p.x, y: p.y })) : undefined,
-    },
-    { ...drive, heading: lot.heading, cover: "driveway", seed: rng.int(1, 1_000_000), z: 0.01 },
-  ];
-  if (template.cover === "grass" && rng.chance(0.7)) {
-    const worn = lotLocalToWorld(lot, 0.35, 0);
-    if (coverAllowed(lot, worn.x, worn.y)) {
-      patches.push({
-        x: worn.x - 0.7,
-        y: worn.y - 0.25,
-        w: 1.6,
-        d: 0.55,
-        heading: lot.heading,
-        cover: "tracks",
-        seed: rng.int(1, 1_000_000),
-        z: 0.012,
-      });
-    }
+/** One worn or planted patch around `at`, kept inside the parcel. `jitter` rolls a heading wobble only when it lands. */
+interface WearPatch { dx: number; dy: number; w: number; d: number; cover: GroundPatch['cover']; z: number; turn?: number; jitter?: number }
+function pushWearPatch(lot: Lot, rng: Rng, patches: GroundPatch[], at: { x: number; y: number }, patch: WearPatch): void {
+  if (!coverAllowed(lot, at.x, at.y)) return;
+  const heading = patch.jitter ? lot.heading + rng.range(-patch.jitter, patch.jitter) : patch.turn ? lot.heading + patch.turn : lot.heading;
+  patches.push({
+    x: at.x - patch.dx,
+    y: at.y - patch.dy,
+    w: patch.w,
+    d: patch.d,
+    heading,
+    cover: patch.cover,
+    seed: rng.int(1, 1_000_000),
+    z: patch.z,
+  });
+}
+
+/** A parking pad and, often, an oil-stained track. */
+function commercialWearPatches(lot: Lot, rng: Rng, patches: GroundPatch[]): void {
+  pushWearPatch(lot, rng, patches, lotLocalToWorld(lot, 0.22, 0), { dx: 1.2, dy: 1.1, w: 2.4, d: 2.2, cover: "parking", z: 0.012 });
+  if (!rng.chance(0.7)) return;
+  const stain = lotLocalToWorld(lot, 0.3, rng.chance(0.5) ? 0.18 : -0.18);
+  pushWearPatch(lot, rng, patches, stain, { dx: 0.45, dy: 0.35, w: 0.95, d: 0.7, cover: "tracks", z: 0.014, jitter: 0.2 });
+}
+
+function wearPatches(lot: Lot, cover: GroundPatch['cover'], rng: Rng, patches: GroundPatch[]): void {
+  if (cover === "grass" && rng.chance(0.7)) {
+    pushWearPatch(lot, rng, patches, lotLocalToWorld(lot, 0.35, 0), { dx: 0.7, dy: 0.25, w: 1.6, d: 0.55, cover: "tracks", z: 0.012 });
   }
-  if (template.cover === "grass" && rng.chance(0.45)) {
-    const bed = lotLocalToWorld(lot, 0.55, 0.32);
-    if (coverAllowed(lot, bed.x, bed.y)) {
-      patches.push({
-        x: bed.x - 0.45,
-        y: bed.y - 0.35,
-        w: 0.9,
-        d: 0.7,
-        heading: lot.heading,
-        cover: "planted",
-        seed: rng.int(1, 1_000_000),
-        z: 0.012,
-      });
-    }
+  if (cover === "grass" && rng.chance(0.45)) {
+    pushWearPatch(lot, rng, patches, lotLocalToWorld(lot, 0.55, 0.32), { dx: 0.45, dy: 0.35, w: 0.9, d: 0.7, cover: "planted", z: 0.012 });
   }
-  if (lot.identity === "shop" || lot.identity === "service") {
-    const pad = lotLocalToWorld(lot, 0.22, 0);
-    if (coverAllowed(lot, pad.x, pad.y)) {
-      patches.push({
-        x: pad.x - 1.2,
-        y: pad.y - 1.1,
-        w: 2.4,
-        d: 2.2,
-        heading: lot.heading,
-        cover: "parking",
-        seed: rng.int(1, 1_000_000),
-        z: 0.012,
-      });
-    }
-    if (rng.chance(0.7)) {
-      const stain = lotLocalToWorld(lot, 0.3, rng.chance(0.5) ? 0.18 : -0.18);
-      if (coverAllowed(lot, stain.x, stain.y)) {
-        patches.push({
-          x: stain.x - 0.45,
-          y: stain.y - 0.35,
-          w: 0.95,
-          d: 0.7,
-          heading: lot.heading + rng.range(-0.2, 0.2),
-          cover: "tracks",
-          seed: rng.int(1, 1_000_000),
-          z: 0.014,
-        });
-      }
-    }
-  }
-  if (template.cover === "gravel" && rng.chance(0.75)) {
+  if (lot.identity === "shop" || lot.identity === "service") commercialWearPatches(lot, rng, patches);
+  if (cover === "gravel" && rng.chance(0.75)) {
     const worn = lotLocalToWorld(lot, 0.4, rng.chance(0.5) ? 0.16 : -0.16);
-    if (coverAllowed(lot, worn.x, worn.y)) {
-      patches.push({
-        x: worn.x - 0.8,
-        y: worn.y - 0.35,
-        w: 1.7,
-        d: 0.7,
-        heading: lot.heading,
-        cover: "dirt",
-        seed: rng.int(1, 1_000_000),
-        z: 0.013,
-      });
-    }
+    pushWearPatch(lot, rng, patches, worn, { dx: 0.8, dy: 0.35, w: 1.7, d: 0.7, cover: "dirt", z: 0.013 });
   }
-  if (template.cover === "concrete" && rng.chance(0.6)) {
-    const crack = lotLocalToWorld(lot, 0.38, 0.08);
-    if (coverAllowed(lot, crack.x, crack.y)) {
-      patches.push({
-        x: crack.x - 0.9,
-        y: crack.y - 0.12,
-        w: 1.8,
-        d: 0.28,
-        heading: lot.heading + 0.15,
-        cover: "tracks",
-        seed: rng.int(1, 1_000_000),
-        z: 0.013,
-      });
-    }
+  if (cover === "concrete" && rng.chance(0.6)) {
+    pushWearPatch(lot, rng, patches, lotLocalToWorld(lot, 0.38, 0.08), { dx: 0.9, dy: 0.12, w: 1.8, d: 0.28, cover: "tracks", z: 0.013, turn: 0.15 });
   }
-  return { props, patches };
 }
 
 function coverAllowed(lot: Lot, x: number, y: number): boolean {

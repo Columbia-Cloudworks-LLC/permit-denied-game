@@ -81,28 +81,44 @@ export function layoutYard(assets = discoverYardAssets(), x = 8, y = 12): YardBa
 export function instantiateBay(bay: YardBay): void {
   const a = bay.asset, x = bay.x + a.clearance, y = bay.y + a.clearance;
   if(a.vehicle) {bay.vehicle=createVehicle(a.vehicle.id,x+a.w/2,y+a.d/2-6,0,bay.variant);bay.vehicle.yardOwner=bay.key;}
-  else if (a.site) {
-    bay.site = instantiateBuildingSite(a.site, x, y);
-    bay.site.vehicles=[];bay.site.props=bay.site.props.filter(p=>{if(!VEHICLES.some(d=>d.id===p.assetId))return true;const v=createVehicle(vehicleDefinition(p.assetId).id,p.x+p.w/2,p.y+p.d/2,p.heading,p.variant);v.yardOwner=bay.key;bay.site!.vehicles!.push(v);return false;});
-  } else if (a.archetype) {
+  else if (a.site) instantiateSiteBay(bay, a.site, x, y);
+  else if (a.archetype) {
     // Use the production constructor. Source registry additions need no yard placement edits.
     bay.building = createBuildingFromDefinition(a.archetype, a.name, x, y);
-  } else if (a.fixture) {
-    const levels=a.fixtureLevels??1, floors = bay.focused ? levels : levels * 2;
-    const b = createBuilding({ name: a.name, kind: 'shop', x, y, w: Math.round(a.w/CELL), d: Math.round(a.d/CELL), floors,
-      roof: 'flat', construction: archetypeById('rivertown').construction, openings: [],
-      layout: { partitions: false,
-        rooms: Array.from({length:floors},(_,floor) => ({ id: `room-${floor}`, kind: 'living', floor, x: 0, y: 0, w: 1, d: 1, finish: 'plank', contents: [] })) } });
-    if(levels>1)b.floorTiles=b.floorTiles.map(t=>t.floor%levels!==0 && t.gx>0 && t.gx<b.w-1 && t.gy>0 && t.gy<b.d-1?{...t,void:true}:t);
-    // Yard tests open the south wall so the fixture is reachable. Catalog capture
-    // keeps an intact facade — the public shot is not a cutaway or dollhouse.
-    if (!bay.intactFacade) {
-      for (const cell of b.cells) if (cell.gy === b.d - 1 && cell.gx >= 1 && cell.gx <= 3) {
-        cell.state = 'gone'; cell.hp = 0;
-      }
+  } else if (a.fixture) bay.building = fixtureBuilding(bay, a.fixture, x, y);
+  else if (a.prop) bay.prop = spawnAssetDefinition(a.prop, x, y, 0, bay.variant);
+}
+/** Site props that are really vehicles become live vehicles owned by the bay. */
+function instantiateSiteBay(bay: YardBay, site: NonNullable<YardAsset['site']>, x: number, y: number): void {
+  const vehicles: VehicleState[] = [];
+  const placed: NonNullable<YardBay['site']> = instantiateBuildingSite(site, x, y);
+  bay.site = placed;
+  placed.vehicles = vehicles;
+  placed.props = placed.props.filter(p => {
+    if (!VEHICLES.some(d => d.id === p.assetId)) return true;
+    const v = createVehicle(vehicleDefinition(p.assetId).id, p.x + p.w / 2, p.y + p.d / 2, p.heading, p.variant);
+    v.yardOwner = bay.key;
+    vehicles.push(v);
+    return false;
+  });
+}
+/** A cutaway test shell holding one fixture per focused level, or two stacked copies. */
+function fixtureBuilding(bay: YardBay, fixture: NonNullable<YardAsset['fixture']>, x: number, y: number): Building {
+  const a = bay.asset;
+  const levels=a.fixtureLevels??1, floors = bay.focused ? levels : levels * 2;
+  const b = createBuilding({ name: a.name, kind: 'shop', x, y, w: Math.round(a.w/CELL), d: Math.round(a.d/CELL), floors,
+    roof: 'flat', construction: archetypeById('rivertown').construction, openings: [],
+    layout: { partitions: false,
+      rooms: Array.from({length:floors},(_,floor) => ({ id: `room-${floor}`, kind: 'living', floor, x: 0, y: 0, w: 1, d: 1, finish: 'plank', contents: [] })) } });
+  if(levels>1)b.floorTiles=b.floorTiles.map(t=>t.floor%levels!==0 && t.gx>0 && t.gx<b.w-1 && t.gy>0 && t.gy<b.d-1?{...t,void:true}:t);
+  // Yard tests open the south wall so the fixture is reachable. Catalog capture
+  // keeps an intact facade — the public shot is not a cutaway or dollhouse.
+  if (!bay.intactFacade) {
+    for (const cell of b.cells) if (cell.gy === b.d - 1 && cell.gx >= 1 && cell.gx <= 3) {
+      cell.state = 'gone'; cell.hp = 0;
     }
-    const size=a.fixtureSize??{w:1,d:1,h:1};
-    b.fixtures = (bay.focused ? [0] : [0, levels]).map(floor => makeFixture(b, floor + 1, a.fixture!, 'living', floor, x + 2, y + 2, size.w, size.d, size.h));
-    bay.building = b;
-  } else if (a.prop) bay.prop = spawnAssetDefinition(a.prop, x, y, 0, bay.variant);
+  }
+  const size=a.fixtureSize??{w:1,d:1,h:1};
+  b.fixtures = (bay.focused ? [0] : [0, levels]).map(floor => makeFixture(b, floor + 1, fixture, 'living', floor, x + 2, y + 2, size.w, size.d, size.h));
+  return b;
 }

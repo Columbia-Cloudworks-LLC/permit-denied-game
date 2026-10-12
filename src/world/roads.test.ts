@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createTown } from "./town";
-import { convexOverlap } from "./parcels";
+import { convexOverlap } from "../game/math";
 import {
   canTransitionBetweenSurfaces,
   findRoadRoute,

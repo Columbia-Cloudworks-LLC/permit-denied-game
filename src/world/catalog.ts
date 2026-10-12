@@ -1471,23 +1471,24 @@ export interface CatalogIssue {
   detail: string;
 }
 
+/** Per-asset authoring rules, reported in this order after the duplicate-id check. */
+const ASSET_RULES: readonly { code: string; broken: (d: AssetDef) => boolean; detail: (d: AssetDef) => string }[] = [
+  { code: "id", broken: d => !d.id.trim(), detail: () => "empty asset id" },
+  { code: "footprint", broken: d => d.footprint.w <= 0 || d.footprint.d <= 0 || d.footprint.h <= 0, detail: d => `${d.id} has a non-positive footprint` },
+  { code: "stats", broken: d => d.hp <= 0 || d.mass <= 0, detail: d => `${d.id} needs positive hp and mass` },
+  { code: "variant", broken: d => d.variants < 1, detail: d => `${d.id} needs at least one variant` },
+  { code: "zone", broken: d => d.zones.length === 0, detail: d => `${d.id} has no compatible zones` },
+  { code: "cash", broken: d => d.cash < 0, detail: d => `${d.id} cash is negative` },
+  { code: "explode", broken: d => d.destruction === "explosive" && d.explodeRadius <= 0, detail: d => `${d.id} explosive profile missing radius` },
+];
+
 export function validateCatalog(defs: readonly AssetDef[] = ASSET_CATALOG): { ok: boolean; issues: CatalogIssue[] } {
   const issues: CatalogIssue[] = [];
   const seen = new Set<string>();
   for (const d of defs) {
     if (seen.has(d.id)) issues.push({ code: "dup", detail: `duplicate id ${d.id}` });
     seen.add(d.id);
-    if (!d.id.trim()) issues.push({ code: "id", detail: "empty asset id" });
-    if (d.footprint.w <= 0 || d.footprint.d <= 0 || d.footprint.h <= 0) {
-      issues.push({ code: "footprint", detail: `${d.id} has a non-positive footprint` });
-    }
-    if (d.hp <= 0 || d.mass <= 0) issues.push({ code: "stats", detail: `${d.id} needs positive hp and mass` });
-    if (d.variants < 1) issues.push({ code: "variant", detail: `${d.id} needs at least one variant` });
-    if (d.zones.length === 0) issues.push({ code: "zone", detail: `${d.id} has no compatible zones` });
-    if (d.cash < 0) issues.push({ code: "cash", detail: `${d.id} cash is negative` });
-    if (d.destruction === "explosive" && d.explodeRadius <= 0) {
-      issues.push({ code: "explode", detail: `${d.id} explosive profile missing radius` });
-    }
+    for (const rule of ASSET_RULES) if (rule.broken(d)) issues.push({ code: rule.code, detail: rule.detail(d) });
   }
   return { ok: issues.length === 0, issues };
 }

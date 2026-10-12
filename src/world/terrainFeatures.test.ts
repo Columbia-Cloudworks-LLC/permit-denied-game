@@ -20,6 +20,13 @@ import type { TopologyFamily } from "./rural";
 
 const TOPOLOGIES: TopologyFamily[] = ["county", "crossroads", "tjunction", "curve-farm", "loop", "frontage"];
 
+/** Centre of the first forest-core cell in row-major order. */
+function firstForestCore(grid: ReturnType<typeof createTown>["surface"]): { x: number; y: number } | undefined {
+  const i = grid.surface.indexOf(SURFACE_ID["forest-core"]);
+  if (i < 0) return undefined;
+  return { x: grid.ox + ((i % grid.cols) + 0.5) * grid.cell, y: grid.oy + (((i / grid.cols) | 0) + 0.5) * grid.cell };
+}
+
 describe("terrain features", () => {
   it("paints field ground only on masked cells", () => {
     const feature: FieldFeature = {
@@ -119,15 +126,7 @@ describe("terrain features", () => {
     let cx = forest ? forest.cx : water ? water.poly.reduce((sum, p) => sum + p.x, 0) / water.poly.length : river!.path[1]!.x;
     let cy = forest ? forest.cy : water ? water.poly.reduce((sum, p) => sum + p.y, 0) / water.poly.length : river!.path[1]!.y;
     if (forest) {
-      const grid = town.surface;
-      outer: for (let iy = 0; iy < grid.rows; iy++) {
-        for (let ix = 0; ix < grid.cols; ix++) {
-          if (grid.surface[iy * grid.cols + ix] !== SURFACE_ID["forest-core"]) continue;
-          cx = grid.ox + (ix + 0.5) * grid.cell;
-          cy = grid.oy + (iy + 0.5) * grid.cell;
-          break outer;
-        }
-      }
+      ({ x: cx, y: cy } = firstForestCore(town.surface) ?? { x: cx, y: cy });
       expect(terrainTraversalAt(town.features, cx, cy, town.surface)).toBe("forest-core");
     }
     const dozer = createDozer(cx, cy, 0);

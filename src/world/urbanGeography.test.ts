@@ -19,6 +19,17 @@ import {
 const CITY_SEEDS = [19, 0x51a11, 77, 1001, 42, 2026, 7, 31415];
 const PLAY_SEEDS = [19, 0x51a11, 77, 1001];
 
+/** Downtown-core lots hold no low rural stock, and only 4+ story buildings unless excepted. */
+function expectCoreStockUrban(layout: ReturnType<typeof generateCampaignLayout>): void {
+  for (const building of layout.buildings) {
+    const def = ARCHETYPES.find(entry => entry.id === building.archetypeId)!;
+    const lot = layout.lots.find(entry => entry.id === building.lotId);
+    if (lot?.urbanBand !== 'downtown-core') continue;
+    expect(def.campaign?.urbanBands?.includes('rural') && def.floors <= 2, `${building.archetypeId} rural leak`).toBe(false);
+    expect(def.floors >= 4 || !!def.campaign?.exception, `${building.archetypeId} in core`).toBe(true);
+  }
+}
+
 describe('campaign urban geography', () => {
   it('tags every campaign building with an explicit urban band', () => {
     const campaign = ARCHETYPES.filter(entry => entry.campaign);
@@ -95,16 +106,7 @@ describe('campaign urban geography', () => {
         if (level.id === 'governors-mansion') {
           expect(layout.lots.every(lot => lot.urbanBand === 'estate')).toBe(true);
         }
-        if (level.id === 'city-downtown' || level.id === 'city-borough') {
-          for (const building of layout.buildings) {
-            const def = ARCHETYPES.find(entry => entry.id === building.archetypeId)!;
-            const lot = layout.lots.find(entry => entry.id === building.lotId);
-            if (lot?.urbanBand === 'downtown-core') {
-              expect(def.campaign?.urbanBands?.includes('rural') && def.floors <= 2, `${building.archetypeId} rural leak`).toBe(false);
-              expect(def.floors >= 4 || !!def.campaign?.exception, `${building.archetypeId} in core`).toBe(true);
-            }
-          }
-        }
+        if (level.id === 'city-downtown' || level.id === 'city-borough') expectCoreStockUrban(layout);
         await pumpVitestRpc();
       }
     }

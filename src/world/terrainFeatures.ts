@@ -201,22 +201,25 @@ export function churnFieldAt(feature: FieldFeature, x: number, y: number, radius
   const col = Math.round(along / feature.cell);
   const row = Math.round(across / feature.cell);
   for (let iy = row - reach; iy <= row + reach; iy++) {
-    for (let ix = col - reach; ix <= col + reach; ix++) {
-      if (ix < 0 || iy < 0 || ix >= feature.cols || iy >= feature.rows) continue;
-      const cell = fieldCellWorld(feature, ix, iy);
-      if (len(cell.x - x, cell.y - y) > radius) continue;
-      const index = iy * feature.cols + ix;
-      if (feature.mask && !feature.mask[index]) continue;
-      const prev = feature.churn[index]!;
-      if (prev) {
-        if (mark > prev) feature.churn[index] = mark;
-        continue;
-      }
-      feature.churn[index] = mark;
-      marked++;
-    }
+    for (let ix = col - reach; ix <= col + reach; ix++) marked += churnCell(feature, ix, iy, x, y, radius, mark);
   }
   return marked;
+}
+
+/** Raise one in-range field cell to `mark`; returns 1 only when the cell was untouched. */
+function churnCell(feature: FieldFeature, ix: number, iy: number, x: number, y: number, radius: number, mark: number): number {
+  if (ix < 0 || iy < 0 || ix >= feature.cols || iy >= feature.rows) return 0;
+  const cell = fieldCellWorld(feature, ix, iy);
+  if (len(cell.x - x, cell.y - y) > radius) return 0;
+  const index = iy * feature.cols + ix;
+  if (feature.mask && !feature.mask[index]) return 0;
+  const prev = feature.churn[index]!;
+  if (!prev) {
+    feature.churn[index] = mark;
+    return 1;
+  }
+  if (mark > prev) feature.churn[index] = mark;
+  return 0;
 }
 
 /** Winter ice is open for the dozer. Forest cores and warm-season water stay blocked. */
@@ -245,6 +248,8 @@ export function resolveTraversal(
   return { x: startX, y: startY, blocked: true };
 }
 
+const ESCAPE_STEPS = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1], [2, 0], [-2, 0], [0, 2], [0, -2]] as const;
+
 function pushOutOfTerrain(
   features: readonly TerrainFeature[] | undefined,
   x: number,
@@ -252,7 +257,7 @@ function pushOutOfTerrain(
   grid?: SurfaceGrid | null,
 ): { x: number; y: number } | undefined {
   if (grid) {
-    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1], [2, 0], [-2, 0], [0, 2], [0, -2]] as const) {
+    for (const [dx, dy] of ESCAPE_STEPS) {
       const px = x + dx * 0.6;
       const py = y + dy * 0.6;
       if (traversalAt(grid, px, py) === "open") return { x: px, y: py };
@@ -260,55 +265,69 @@ function pushOutOfTerrain(
   }
   if (!features?.length) return undefined;
   for (const feature of features) {
-    switch (feature.kind) {
-      case "forest": {
-        const dx = x - feature.cx;
-        const dy = y - feature.cy;
-        const dist = len(dx, dy);
-        if (dist > feature.coreR) break;
-        const ux = dist > 1e-6 ? dx / dist : 1;
-        const uy = dist > 1e-6 ? dy / dist : 0;
-        const px = feature.cx + ux * (feature.coreR + 0.45);
-        const py = feature.cy + uy * (feature.coreR + 0.45);
-        if (terrainTraversalAt(features, px, py) === "open") return { x: px, y: py };
-        break;
-      }
-      case "pond":
-      case "lake": {
-        if (!pointInPoly(x, y, feature.poly)) break;
-        const box = featureBounds(feature);
-        const cx = box.x + box.w * 0.5;
-        const cy = box.y + box.d * 0.5;
-        const dx = x - cx;
-        const dy = y - cy;
-        const dist = len(dx, dy) || 0.001;
-        for (let step = 1; step <= 8; step++) {
-          const px = cx + (dx / dist) * (Math.max(box.w, box.d) * 0.15 * step);
-          const py = cy + (dy / dist) * (Math.max(box.w, box.d) * 0.15 * step);
-          if (terrainTraversalAt(features, px, py) === "open") return { x: px, y: py };
-        }
-        break;
-      }
-      case "river": {
-        if (!pointOnRiver(feature, x, y)) break;
-        const nearest = nearestRiverPoint(feature, x, y);
-        const dx = x - nearest.x;
-        const dy = y - nearest.y;
-        const dist = len(dx, dy) || 0.001;
-        const px = nearest.x + (dx / dist) * (feature.halfWidth + 0.4);
-        const py = nearest.y + (dy / dist) * (feature.halfWidth + 0.4);
-        if (terrainTraversalAt(features, px, py) === "open") return { x: px, y: py };
-        break;
-      }
-      case "field":
-        break;
-      default: {
-        const _never: never = feature;
-        return _never;
-      }
-    }
+    const escaped = escapeFeature(features, feature, x, y);
+    if (escaped) return escaped;
   }
   return undefined;
+}
+
+/** The nearest open point just outside the feature that traps (x, y), if it does. */
+function escapeFeature(features: readonly TerrainFeature[], feature: TerrainFeature, x: number, y: number): { x: number; y: number } | undefined {
+  switch (feature.kind) {
+    case "forest":
+      return escapeForest(features, feature, x, y);
+    case "pond":
+    case "lake":
+      return escapeBasin(features, feature, x, y);
+    case "river":
+      return escapeRiver(features, feature, x, y);
+    case "field":
+      return undefined;
+    default: {
+      const _never: never = feature;
+      return _never;
+    }
+  }
+}
+
+const openAt = (features: readonly TerrainFeature[], px: number, py: number): { x: number; y: number } | undefined =>
+  terrainTraversalAt(features, px, py) === "open" ? { x: px, y: py } : undefined;
+
+function escapeForest(features: readonly TerrainFeature[], feature: ForestFeature, x: number, y: number): { x: number; y: number } | undefined {
+  const dx = x - feature.cx;
+  const dy = y - feature.cy;
+  const dist = len(dx, dy);
+  if (dist > feature.coreR) return undefined;
+  const ux = dist > 1e-6 ? dx / dist : 1;
+  const uy = dist > 1e-6 ? dy / dist : 0;
+  return openAt(features, feature.cx + ux * (feature.coreR + 0.45), feature.cy + uy * (feature.coreR + 0.45));
+}
+
+/** Walk outward from the basin's centre in 15%-of-extent steps. */
+function escapeBasin(features: readonly TerrainFeature[], feature: BasinFeature, x: number, y: number): { x: number; y: number } | undefined {
+  if (!pointInPoly(x, y, feature.poly)) return undefined;
+  const box = featureBounds(feature);
+  const cx = box.x + box.w * 0.5;
+  const cy = box.y + box.d * 0.5;
+  const dx = x - cx;
+  const dy = y - cy;
+  const dist = len(dx, dy) || 0.001;
+  for (let step = 1; step <= 8; step++) {
+    const px = cx + (dx / dist) * (Math.max(box.w, box.d) * 0.15 * step);
+    const py = cy + (dy / dist) * (Math.max(box.w, box.d) * 0.15 * step);
+    const open = openAt(features, px, py);
+    if (open) return open;
+  }
+  return undefined;
+}
+
+function escapeRiver(features: readonly TerrainFeature[], feature: RiverFeature, x: number, y: number): { x: number; y: number } | undefined {
+  if (!pointOnRiver(feature, x, y)) return undefined;
+  const nearest = nearestRiverPoint(feature, x, y);
+  const dx = x - nearest.x;
+  const dy = y - nearest.y;
+  const dist = len(dx, dy) || 0.001;
+  return openAt(features, nearest.x + (dx / dist) * (feature.halfWidth + 0.4), nearest.y + (dy / dist) * (feature.halfWidth + 0.4));
 }
 
 function nearestRiverPoint(feature: RiverFeature, x: number, y: number): { x: number; y: number } {
@@ -349,26 +368,13 @@ export function deriveTerrainFeatures(ctx: FeatureContext): TerrainFeature[] {
   const seen = new Uint8Array(grid.surface.length);
   for (let i = 0; i < grid.surface.length; i++) {
     if (seen[i]) continue;
-    const id = grid.surface[i]!;
-    if (id !== SURFACE_ID.water && id !== SURFACE_ID["forest-floor"] && id !== SURFACE_ID["forest-core"] && id !== SURFACE_ID.field) {
+    const group = featureSurfaceGroup(grid.surface[i]!);
+    if (!group) {
       seen[i] = 1;
       continue;
     }
-    const cells = floodIds(grid, i, id === SURFACE_ID.water
-      ? [SURFACE_ID.water]
-      : id === SURFACE_ID.field
-        ? [SURFACE_ID.field]
-        : [SURFACE_ID["forest-floor"], SURFACE_ID["forest-core"]], seen);
-    if (id === SURFACE_ID.water) {
-      const water = waterFromBlob(grid, cells, features.length);
-      if (water) features.push(water);
-    } else if (id === SURFACE_ID.field) {
-      const field = fieldFromBlob(grid, cells, ctx, features.length);
-      if (field) features.push(field);
-    } else {
-      const forest = forestFromBlob(grid, cells, features.length);
-      if (forest) features.push(forest);
-    }
+    const feature = featureFromBlob(grid, grid.surface[i]!, floodIds(grid, i, group, seen), ctx, features.length);
+    if (feature) features.push(feature);
   }
   promotePrimaryField(features, ctx);
   for (const feature of features) {
@@ -376,6 +382,21 @@ export function deriveTerrainFeatures(ctx: FeatureContext): TerrainFeature[] {
   }
   placeEdgeTrees(ctx, features);
   return features;
+}
+
+/** Surface ids that flood together into one feature, or undefined for ordinary ground. */
+function featureSurfaceGroup(id: number): readonly number[] | undefined {
+  if (id === SURFACE_ID.water) return [SURFACE_ID.water];
+  if (id === SURFACE_ID.field) return [SURFACE_ID.field];
+  if (id === SURFACE_ID["forest-floor"] || id === SURFACE_ID["forest-core"]) return [SURFACE_ID["forest-floor"], SURFACE_ID["forest-core"]];
+  return undefined;
+}
+
+/** A flooded blob becomes water, a field, or a forest by the surface it started on. */
+function featureFromBlob(grid: SurfaceGrid, id: number, cells: number[], ctx: FeatureContext, n: number): TerrainFeature | undefined {
+  if (id === SURFACE_ID.water) return waterFromBlob(grid, cells, n);
+  if (id === SURFACE_ID.field) return fieldFromBlob(grid, cells, ctx, n);
+  return forestFromBlob(grid, cells, n);
 }
 
 function floodIds(grid: SurfaceGrid, start: number, ids: readonly number[], seen: Uint8Array): number[] {
@@ -448,30 +469,34 @@ function forestFromBlob(grid: SurfaceGrid, cells: number[], n: number): ForestFe
   return { kind: "forest", id: `forest-${n}`, cx, cy, coreR, canopyR, seed: n * 6271 + cells.length };
 }
 
-function fieldFromBlob(grid: SurfaceGrid, cells: number[], ctx: FeatureContext, n: number): FieldFeature | undefined {
-  if (cells.length < 16) return undefined;
-  const blocked = (x: number, y: number): boolean => {
-    if (pointOnRoad(ctx.network, x, y)) return true;
-    if (traversalAt(grid, x, y) === "water") return true;
-    for (const lot of ctx.lots) {
-      if (x >= lot.x && y >= lot.y && x <= lot.x + lot.w && y <= lot.y + lot.d) return true;
-    }
-    for (const building of ctx.buildings) {
-      const bw = building.w * building.cellSize;
-      const bd = building.d * building.cellSize;
-      if (x >= building.x - 1.2 && y >= building.y - 1.2 && x <= building.x + bw + 1.2 && y <= building.y + bd + 1.2) return true;
-    }
-    return false;
-  };
+/** Roads, water, lots, and a 1.2-unit ring around buildings keep crops off a cell. */
+function fieldCellBlocked(grid: SurfaceGrid, ctx: FeatureContext, x: number, y: number): boolean {
+  if (pointOnRoad(ctx.network, x, y)) return true;
+  if (traversalAt(grid, x, y) === "water") return true;
+  if (ctx.lots.some((lot) => x >= lot.x && y >= lot.y && x <= lot.x + lot.w && y <= lot.y + lot.d)) return true;
+  return ctx.buildings.some((building) => {
+    const bw = building.w * building.cellSize;
+    const bd = building.d * building.cellSize;
+    return x >= building.x - 1.2 && y >= building.y - 1.2 && x <= building.x + bw + 1.2 && y <= building.y + bd + 1.2;
+  });
+}
+
+/** Centres of field cells inside the world margin and not blocked. */
+function openFieldCells(grid: SurfaceGrid, cells: readonly number[], ctx: FeatureContext): { x: number; y: number }[] {
   const open: { x: number; y: number }[] = [];
   for (const i of cells) {
     const x = grid.ox + (i % grid.cols) + 0.5;
     const y = grid.oy + ((i / grid.cols) | 0) + 0.5;
     if (x < ctx.minX + 1.2 || y < ctx.minY + 1.2 || x > ctx.maxX - 1.2 || y > ctx.maxY - 1.2) continue;
     if (grid.surface[i] !== SURFACE_ID.field) continue;
-    if (blocked(x, y)) continue;
-    open.push({ x, y });
+    if (!fieldCellBlocked(grid, ctx, x, y)) open.push({ x, y });
   }
+  return open;
+}
+
+function fieldFromBlob(grid: SurfaceGrid, cells: number[], ctx: FeatureContext, n: number): FieldFeature | undefined {
+  if (cells.length < 16) return undefined;
+  const open = openFieldCells(grid, cells, ctx);
   if (open.length < 16) return undefined;
   const minX = Math.min(...open.map((p) => p.x)) - 0.5;
   const maxX = Math.max(...open.map((p) => p.x)) + 0.5;
@@ -484,27 +509,39 @@ function fieldFromBlob(grid: SurfaceGrid, cells: number[], ctx: FeatureContext, 
   const cy = (minY + maxY) * 0.5;
   const w = heading === 0 ? width : height;
   const d = heading === 0 ? height : width;
-  const x = cx - w * 0.5;
-  const y = cy - d * 0.5;
   const rng = new Rng(ctx.seed ^ FIELD_SALT ^ (n * 13));
-  const feature = makeField(x, y, w, d, heading, rng, ctx.biome, seasonOf(ctx), `field-${n}`);
+  const feature = makeField(cx - w * 0.5, cy - d * 0.5, w, d, heading, rng, ctx.biome, seasonOf(ctx), `field-${n}`);
+  feature.mask = fieldMask(grid, ctx, feature, open, { cx, cy, w, d, heading });
+  feature.valid = fieldValidCount(feature);
+  if (feature.valid < 24) return undefined;
+  feature.value = fieldValue(feature.valid * feature.cell * feature.cell);
+  feature.primary = isPrimaryField(feature);
+  const farms = ctx.lots.filter((lot) => lot.identity === "farm");
+  const bestLot = nearestFarm(farms, { x: minX, y: minY, w: width, d: height });
+  if (farms.length && !bestLot) return undefined;
+  if (bestLot) feature.lotId = bestLot.id;
+  if (ctx.biome.id === "agricultural-plain" && feature.primary) seedPrimaryCrop(feature, ctx, rng);
+  syncFieldPay(feature);
+  return feature;
+}
+
+/** Field grid cells whose centres land on an open blob cell. */
+function fieldMask(grid: SurfaceGrid, ctx: FeatureContext, feature: FieldFeature, open: readonly { x: number; y: number }[], frame: { cx: number; cy: number; w: number; d: number; heading: number }): Uint8Array {
+  const { cx, cy, w, d, heading } = frame;
   const occupied = new Set(open.map((p) => `${Math.floor(p.x)}:${Math.floor(p.y)}`));
   const mask = new Uint8Array(feature.cols * feature.rows);
   for (let row = 0; row < feature.rows; row++) {
     for (let col = 0; col < feature.cols; col++) {
       const px = cx + Math.cos(heading) * ((col + 0.5) * feature.cell - w * 0.5) - Math.sin(heading) * ((row + 0.5) * feature.cell - d * 0.5);
       const py = cy + Math.sin(heading) * ((col + 0.5) * feature.cell - w * 0.5) + Math.cos(heading) * ((row + 0.5) * feature.cell - d * 0.5);
-      if (blocked(px, py)) continue;
-      if (occupied.has(`${Math.floor(px)}:${Math.floor(py)}`)) mask[row * feature.cols + col] = 1;
+      if (!fieldCellBlocked(grid, ctx, px, py) && occupied.has(`${Math.floor(px)}:${Math.floor(py)}`)) mask[row * feature.cols + col] = 1;
     }
   }
-  feature.mask = mask;
-  feature.valid = fieldValidCount(feature);
-  if (feature.valid < 24) return undefined;
-  feature.value = fieldValue(feature.valid * feature.cell * feature.cell);
-  feature.primary = isPrimaryField(feature);
-  const farms = ctx.lots.filter((lot) => lot.identity === "farm");
-  const blobBox = { x: minX, y: minY, w: width, d: height };
+  return mask;
+}
+
+/** Closest farm lot within FIELD_FARM_RANGE of the blob, ties going to the later lot. */
+function nearestFarm(farms: readonly Lot[], blobBox: { x: number; y: number; w: number; d: number }): Lot | undefined {
   let bestLot: Lot | undefined;
   let bestD = FIELD_FARM_RANGE;
   for (const lot of farms) {
@@ -514,17 +551,16 @@ function fieldFromBlob(grid: SurfaceGrid, cells: number[], ctx: FeatureContext, 
       bestLot = lot;
     }
   }
-  if (farms.length && !bestLot) return undefined;
-  if (bestLot) feature.lotId = bestLot.id;
-  if (ctx.biome.id === "agricultural-plain" && feature.primary) {
-    const grow = rng.chance(0.35);
-    const allowed = permittedFieldStates(seasonOf(ctx));
-    if (allowed.includes("short") && allowed.includes("mature") && !allowed.includes("stubble")) {
-      feature.state = grow ? "short" : "mature";
-    }
+  return bestLot;
+}
+
+/** The plain's main field starts growing (short) or ripe (mature) when the season allows both. */
+function seedPrimaryCrop(feature: FieldFeature, ctx: FeatureContext, rng: Rng): void {
+  const grow = rng.chance(0.35);
+  const allowed = permittedFieldStates(seasonOf(ctx));
+  if (allowed.includes("short") && allowed.includes("mature") && !allowed.includes("stubble")) {
+    feature.state = grow ? "short" : "mature";
   }
-  syncFieldPay(feature);
-  return feature;
 }
 
 function aabbGap(
@@ -740,44 +776,44 @@ function placeFields(ctx: FeatureContext, features: TerrainFeature[]): void {
   }
 }
 
+const LOT_FIELD_SPOTS = [
+  { along: 0.74, across: 0.1 },
+  { along: 0.68, across: -0.16 },
+  { along: 0.8, across: 0.02 },
+  { along: 0.58, across: 0.2 },
+];
+
+type Box = { x: number; y: number; w: number; d: number };
+
 function fieldOnLot(ctx: FeatureContext, lot: Lot, rng: Rng): FieldFeature | undefined {
   const building = ctx.buildings.find((b) => b.lotId === lot.id);
   const size = lotAxisSizes(lot);
   const along = Math.max(3.2, size.along * 0.36);
   const across = Math.max(2.8, size.across * 0.4);
-  const tries = [
-    { along: 0.74, across: 0.1 },
-    { along: 0.68, across: -0.16 },
-    { along: 0.8, across: 0.02 },
-    { along: 0.58, across: 0.2 },
-  ];
   const drive = drivewayPatch(lot);
-  for (const tryAt of tries) {
+  for (const tryAt of LOT_FIELD_SPOTS) {
     const center = lotLocalToWorld(lot, tryAt.along, tryAt.across);
-    const x = center.x - along * 0.5;
-    const y = center.y - across * 0.5;
-    if (building) {
-      const bw = building.w * building.cellSize;
-      const bd = building.d * building.cellSize;
-      if (aabbOverlap(x, y, along, across, building.x - 0.35, building.y - 0.35, bw + 0.7, bd + 0.7)) continue;
-    }
-    if (aabbOverlap(x, y, along, across, drive.x, drive.y, drive.w, drive.d)) continue;
-    if (pointOnRoad(ctx.network, center.x, center.y)) continue;
-    if (boxNearRoad(ctx.network, x, y, along, across, 0.15)) continue;
-    return makeField(x, y, along, across, lot.heading, rng, ctx.biome, seasonOf(ctx), `field-${lot.id}`, lot.id);
+    const spot = { x: center.x - along * 0.5, y: center.y - across * 0.5, w: along, d: across };
+    if (!lotFieldSpotClear(ctx, building, drive, spot, center)) continue;
+    return makeField(spot.x, spot.y, along, across, lot.heading, rng, ctx.biome, seasonOf(ctx), `field-${lot.id}`, lot.id);
   }
-  const x = lot.x + lot.w * 0.1;
-  const y = lot.y + lot.d * 0.52;
-  const w = lot.w * 0.8;
-  const d = lot.d * 0.36;
-  if (building) {
-    const bw = building.w * building.cellSize;
-    const bd = building.d * building.cellSize;
-    if (aabbOverlap(x, y, w, d, building.x, building.y, bw, bd)) return undefined;
-  }
-  if (aabbOverlap(x, y, w, d, drive.x, drive.y, drive.w, drive.d)) return undefined;
-  if (pointOnRoad(ctx.network, x + w * 0.5, y + d * 0.5)) return undefined;
-  return makeField(x, y, w, d, lot.heading, rng, ctx.biome, seasonOf(ctx), `field-${lot.id}`, lot.id);
+  const fallback = { x: lot.x + lot.w * 0.1, y: lot.y + lot.d * 0.52, w: lot.w * 0.8, d: lot.d * 0.36 };
+  if (building && boxesOverlap(fallback, buildingBox(building, 0))) return undefined;
+  if (boxesOverlap(fallback, drive)) return undefined;
+  if (pointOnRoad(ctx.network, fallback.x + fallback.w * 0.5, fallback.y + fallback.d * 0.5)) return undefined;
+  return makeField(fallback.x, fallback.y, fallback.w, fallback.d, lot.heading, rng, ctx.biome, seasonOf(ctx), `field-${lot.id}`, lot.id);
+}
+
+const boxesOverlap = (a: Box, b: Box): boolean => aabbOverlap(a.x, a.y, a.w, a.d, b.x, b.y, b.w, b.d);
+const buildingBox = (building: Building, pad: number): Box =>
+  ({ x: building.x - pad, y: building.y - pad, w: building.w * building.cellSize + pad * 2, d: building.d * building.cellSize + pad * 2 });
+
+/** Off the farmhouse by 0.35, off the driveway, and clear of the street. */
+function lotFieldSpotClear(ctx: FeatureContext, building: Building | undefined, drive: Box, spot: Box, center: { x: number; y: number }): boolean {
+  if (building && boxesOverlap(spot, buildingBox(building, 0.35))) return false;
+  if (boxesOverlap(spot, drive)) return false;
+  if (pointOnRoad(ctx.network, center.x, center.y)) return false;
+  return !boxNearRoad(ctx.network, spot.x, spot.y, spot.w, spot.d, 0.15);
 }
 
 function fieldBesideLot(
@@ -853,28 +889,37 @@ function placeEdgeTrees(ctx: FeatureContext, features: TerrainFeature[]): void {
   let placed = 0;
   for (const feature of features) {
     if (feature.kind !== "forest" || placed >= cap) continue;
-    const ring = feature.canopyR + 0.55;
-    const count = Math.min(6, cap - placed);
-    for (let i = 0; i < count + 4 && placed < cap; i++) {
-      const a = (i / Math.max(1, count)) * Math.PI * 2 + rng.range(-0.12, 0.12);
-      const r = ring + rng.range(-0.15, 0.55);
-      const x = feature.cx + Math.cos(a) * r;
-      const y = feature.cy + Math.sin(a) * r;
-      if (len(x - feature.cx, y - feature.cy) <= feature.coreR + 0.35) continue;
-      if (terrainTraversalAt(features, x, y, ctx.surface) !== "open") continue;
-      const pool = i % 5 === 0 ? ctx.biome.shrubs : i % 4 === 0 ? ctx.biome.saplings : ctx.biome.trees;
-      const assetId = rng.pick(pool);
-      const def = getAsset(assetId);
-      const px = x - def.footprint.w * 0.5;
-      const py = y - def.footprint.d * 0.5;
-      if (px < ctx.minX || py < ctx.minY || px + def.footprint.w > ctx.maxX || py + def.footprint.d > ctx.maxY) continue;
-      if (blocked(ctx, features, px, py, def.footprint.w, def.footprint.d, 0.8, true)) continue;
-      if (ctx.props.some((p) => aabbOverlap(px, py, def.footprint.w, def.footprint.d, p.x, p.y, p.w, p.d))) continue;
-      const prop = spawnAsset(assetId, px, py, a + rng.range(-0.2, 0.2), rng.int(0, def.variants - 1));
-      ctx.props.push(prop);
-      placed++;
-    }
+    placed = ringForest(ctx, features, feature, rng, placed, cap);
   }
+}
+
+/** Saplings, shrubs and trees just outside one forest's canopy; returns the running placed count. */
+function ringForest(ctx: FeatureContext, features: TerrainFeature[], feature: ForestFeature, rng: Rng, placed: number, cap: number): number {
+  const ring = feature.canopyR + 0.55;
+  const count = Math.min(6, cap - placed);
+  for (let i = 0; i < count + 4 && placed < cap; i++) {
+    const a = (i / Math.max(1, count)) * Math.PI * 2 + rng.range(-0.12, 0.12);
+    const r = ring + rng.range(-0.15, 0.55);
+    const x = feature.cx + Math.cos(a) * r;
+    const y = feature.cy + Math.sin(a) * r;
+    if (len(x - feature.cx, y - feature.cy) <= feature.coreR + 0.35) continue;
+    if (terrainTraversalAt(features, x, y, ctx.surface) !== "open") continue;
+    const pool = i % 5 === 0 ? ctx.biome.shrubs : i % 4 === 0 ? ctx.biome.saplings : ctx.biome.trees;
+    if (edgeTree(ctx, features, rng.pick(pool), x, y, a, rng)) placed++;
+  }
+  return placed;
+}
+
+/** Plant one edge tree centred on (x, y) when it fits inside the world and clear of everything. */
+function edgeTree(ctx: FeatureContext, features: TerrainFeature[], assetId: string, x: number, y: number, a: number, rng: Rng): boolean {
+  const def = getAsset(assetId);
+  const px = x - def.footprint.w * 0.5;
+  const py = y - def.footprint.d * 0.5;
+  if (px < ctx.minX || py < ctx.minY || px + def.footprint.w > ctx.maxX || py + def.footprint.d > ctx.maxY) return false;
+  if (blocked(ctx, features, px, py, def.footprint.w, def.footprint.d, 0.8, true)) return false;
+  if (ctx.props.some((p) => aabbOverlap(px, py, def.footprint.w, def.footprint.d, p.x, p.y, p.w, p.d))) return false;
+  ctx.props.push(spawnAsset(assetId, px, py, a + rng.range(-0.2, 0.2), rng.int(0, def.variants - 1)));
+  return true;
 }
 
 export function featurePatches(feature: TerrainFeature): GroundPatch[] {
@@ -1046,25 +1091,10 @@ function blocked(
 ): boolean {
   if (boxNearRoad(ctx.network, x, y, w, d, roadMargin)) return true;
   if (hitsSpawn(ctx, x, y, w, d)) return true;
-  if (!ignoreLots) {
-    for (const lot of ctx.lots) {
-      if (aabbOverlap(x, y, w, d, lot.x - LOT_MARGIN, lot.y - LOT_MARGIN, lot.w + LOT_MARGIN * 2, lot.d + LOT_MARGIN * 2)) return true;
-    }
-  }
-  for (const building of ctx.buildings) {
-    const bw = building.w * building.cellSize;
-    const bd = building.d * building.cellSize;
-    if (aabbOverlap(x, y, w, d, building.x - BUILDING_MARGIN, building.y - BUILDING_MARGIN, bw + BUILDING_MARGIN * 2, bd + BUILDING_MARGIN * 2)) {
-      return true;
-    }
-  }
-  for (const feature of features) {
-    if (ignoreForest && feature.kind === "forest") continue;
-    if (feature.kind === "field") continue;
-    const box = featureBounds(feature);
-    if (aabbOverlap(x, y, w, d, box.x, box.y, box.w, box.d)) return true;
-  }
-  return false;
+  const box = { x, y, w, d };
+  if (!ignoreLots && ctx.lots.some((lot) => boxesOverlap(box, { x: lot.x - LOT_MARGIN, y: lot.y - LOT_MARGIN, w: lot.w + LOT_MARGIN * 2, d: lot.d + LOT_MARGIN * 2 }))) return true;
+  if (ctx.buildings.some((building) => boxesOverlap(box, buildingBox(building, BUILDING_MARGIN)))) return true;
+  return features.some((feature) => !(ignoreForest && feature.kind === "forest") && feature.kind !== "field" && boxesOverlap(box, featureBounds(feature)));
 }
 
 function boxNearRoad(network: RoadNetwork, x: number, y: number, w: number, d: number, margin: number): boolean {
@@ -1119,59 +1149,43 @@ export function validateFeatureLayout(
   if (movementBlocked(terrainTraversalAt(features, spawnX, spawnY, grid), season)) issues.push("spawn blocked by terrain");
   if (terrainTraversalAt(features, roadSpawnX, roadSpawnY, grid) !== "open") issues.push("road spawn blocked by terrain");
   if (grid) {
-    const seen = new Set<string>();
+    const report = new Set<string>();
     for (let iy = 0; iy < grid.rows; iy++) {
-      for (let ix = 0; ix < grid.cols; ix++) {
-        const id = grid.surface[iy * grid.cols + ix]!;
-        if (id !== SURFACE_ID.water && id !== SURFACE_ID["forest-core"] && id !== SURFACE_ID["forest-floor"]) continue;
-        const x = grid.ox + (ix + 0.5) * grid.cell;
-        const y = grid.oy + (iy + 0.5) * grid.cell;
-        const label = id === SURFACE_ID.water ? "water" : id === SURFACE_ID["forest-core"] ? "forest-core" : "forest-floor";
-        if (pointOnRoad(network, x, y)) {
-          const msg = `${label} overlaps a road`;
-          if (!seen.has(msg)) {
-            seen.add(msg);
-            issues.push(msg);
-          }
-        }
-        for (const building of buildings) {
-          const bw = building.w * building.cellSize;
-          const bd = building.d * building.cellSize;
-          if (x >= building.x && y >= building.y && x <= building.x + bw && y <= building.y + bd) {
-            const msg = `${label} overlaps ${building.name}`;
-            if (!seen.has(msg)) {
-              seen.add(msg);
-              issues.push(msg);
-            }
-          }
-        }
-        if (id !== SURFACE_ID.water) {
-          for (const lot of lots) {
-            if (x >= lot.x && y >= lot.y && x <= lot.x + lot.w && y <= lot.y + lot.d) {
-              const msg = `${label} overlaps lot ${lot.id}`;
-              if (!seen.has(msg)) {
-                seen.add(msg);
-                issues.push(msg);
-              }
-            }
-          }
-        }
-      }
+      for (let ix = 0; ix < grid.cols; ix++) surfaceCellOverlaps(grid, ix, iy, network, buildings, lots, report);
     }
+    issues.push(...report);
     return issues;
   }
   for (const feature of features) {
-    if (feature.kind === "field") continue;
-    if (featureHitsRoad(feature, network)) issues.push(`${feature.id} overlaps a road`);
-    for (const building of buildings) {
-      const bw = building.w * building.cellSize;
-      const bd = building.d * building.cellSize;
-      if (featureHitsBox(feature, { x: building.x, y: building.y, w: bw, d: bd })) {
-        issues.push(`${feature.id} overlaps ${building.name}`);
-      }
-    }
+    if (feature.kind !== "field") featureOverlapIssues(feature, network, buildings, issues);
   }
   return issues;
+}
+
+function featureOverlapIssues(feature: TerrainFeature, network: RoadNetwork, buildings: readonly Building[], issues: string[]): void {
+  if (featureHitsRoad(feature, network)) issues.push(`${feature.id} overlaps a road`);
+  for (const building of buildings) {
+    if (featureHitsBox(feature, buildingBox(building, 0))) issues.push(`${feature.id} overlaps ${building.name}`);
+  }
+}
+
+const pointInBox = (x: number, y: number, box: Box): boolean => x >= box.x && y >= box.y && x <= box.x + box.w && y <= box.y + box.d;
+
+/** Water and forest cells may not sit on roads or buildings, and forest may not sit on lots; each message once. */
+function surfaceCellOverlaps(grid: SurfaceGrid, ix: number, iy: number, network: RoadNetwork, buildings: readonly Building[], lots: readonly Lot[], report: Set<string>): void {
+  const id = grid.surface[iy * grid.cols + ix]!;
+  if (id !== SURFACE_ID.water && id !== SURFACE_ID["forest-core"] && id !== SURFACE_ID["forest-floor"]) return;
+  const x = grid.ox + (ix + 0.5) * grid.cell;
+  const y = grid.oy + (iy + 0.5) * grid.cell;
+  const label = id === SURFACE_ID.water ? "water" : id === SURFACE_ID["forest-core"] ? "forest-core" : "forest-floor";
+  if (pointOnRoad(network, x, y)) report.add(`${label} overlaps a road`);
+  for (const building of buildings) {
+    if (pointInBox(x, y, buildingBox(building, 0))) report.add(`${label} overlaps ${building.name}`);
+  }
+  if (id === SURFACE_ID.water) return;
+  for (const lot of lots) {
+    if (pointInBox(x, y, lot)) report.add(`${label} overlaps lot ${lot.id}`);
+  }
 }
 
 function featureHitsRoad(feature: TerrainFeature, network: RoadNetwork): boolean {

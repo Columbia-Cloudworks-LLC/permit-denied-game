@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { ARCHETYPES, archetypeById } from "./archetypes";
-import { DRESS_TEMPLATES } from "./dressing";
 import {
   identityFromArchetype,
   identityFromBuilding,
@@ -8,46 +7,11 @@ import {
   lotAllowsFuel,
   LOT_USE_PROFILES,
 } from "./lotUse";
+import { AGRICULTURAL_PROPS, lotUseViolations } from "./lotUseChecks";
 import { createTown } from "./town";
-import type { FieldFeature } from "./terrainFeatures";
-
-const AGRICULTURAL_PROPS = new Set([
-  "hay-bale-round",
-  "hay-bale-square",
-  "water-trough",
-  "farm-implement",
-  "tractor",
-  "grain-bin",
-]);
 
 function expectLotUse(town: ReturnType<typeof createTown>, label: string): void {
-  const byLot = new Map(town.lots.map((lot) => [lot.id, lot]));
-  for (const building of town.buildings) {
-    const lot = byLot.get(building.lotId ?? "");
-    if (!lot) continue;
-    expect(lot.identity, `${label} ${building.archetypeId} ${lot.id}`).toBe(identityFromBuilding(building));
-    if (!lot.templateId) continue;
-    const template = DRESS_TEMPLATES.find((entry) => entry.id === lot.templateId);
-    expect(template?.identities, `${label} ${lot.id} template`).toContain(lot.identity);
-  }
-  for (const prop of town.props) {
-    if (!prop.lotId) continue;
-    const lot = byLot.get(prop.lotId);
-    if (!lot) continue;
-    if (prop.assetId === "fuel-pump") {
-      expect(lotAllowsFuel(lot.identity), `${label} fuel-pump on ${lot.id}`).toBe(true);
-    }
-    if (AGRICULTURAL_PROPS.has(prop.assetId)) {
-      expect(lotAllowsAgriculture(lot.identity), `${label} ${prop.assetId} on ${lot.id}`).toBe(true);
-    }
-  }
-  for (const feature of town.features) {
-    if (feature.kind !== "field" || !feature.lotId) continue;
-    const field = feature as FieldFeature;
-    const lot = byLot.get(field.lotId ?? "");
-    expect(lot, `${label} field ${field.id}`).toBeTruthy();
-    expect(lotAllowsAgriculture(lot!.identity), `${label} field on ${lot!.id}`).toBe(true);
-  }
+  expect(lotUseViolations(town), label).toEqual([]);
 }
 
 describe("lot-use matching", () => {

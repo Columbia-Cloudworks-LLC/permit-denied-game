@@ -17,6 +17,17 @@ function aabbCorners(box: { x: number; y: number; w: number; d: number }): { x: 
   ];
 }
 
+/** A point in the lot's AABB but outside every parcel, road and driveway is never stamped developed. */
+function expectCornerUndeveloped(town: ReturnType<typeof createTown>, x: number, y: number): void {
+  if (town.lots.some((other) => lotFootprintContains(other, x, y))) return;
+  if (pointOnRoad(town.network, x, y)) return;
+  if (town.ground.some((pad) => pad.cover === "driveway" && groundPatchContains(pad, x, y))) return;
+  const ix = Math.floor((x - town.surface.ox) / town.surface.cell);
+  const iy = Math.floor((y - town.surface.oy) / town.surface.cell);
+  if (ix < 0 || iy < 0 || ix >= town.surface.cols || iy >= town.surface.rows) return;
+  expect(town.surface.surface[iy * town.surface.cols + ix], `cell ${x},${y}`).not.toBe(SURFACE_ID.developed);
+}
+
 describe("parcel-clipped lot covers", () => {
   it("keeps the frontage lot5 gravel patch inside its polygon", () => {
     const town = createTown({ district: "d10", seed: 19, topology: "frontage" });
@@ -51,16 +62,7 @@ describe("parcel-clipped lot covers", () => {
     const x1 = lot.x + lot.w;
     const y1 = lot.y + lot.d;
     for (let y = lot.y + 0.5; y < y1; y += 1) {
-      for (let x = lot.x + 0.5; x < x1; x += 1) {
-        if (lotFootprintContains(lot, x, y)) continue;
-        if (town.lots.some((other) => other.id !== lot.id && lotFootprintContains(other, x, y))) continue;
-        if (pointOnRoad(town.network, x, y)) continue;
-        if (town.ground.some((pad) => pad.cover === "driveway" && groundPatchContains(pad, x, y))) continue;
-        const ix = Math.floor((x - town.surface.ox) / town.surface.cell);
-        const iy = Math.floor((y - town.surface.oy) / town.surface.cell);
-        if (ix < 0 || iy < 0 || ix >= town.surface.cols || iy >= town.surface.rows) continue;
-        expect(town.surface.surface[iy * town.surface.cols + ix], `cell ${x},${y}`).not.toBe(SURFACE_ID.developed);
-      }
+      for (let x = lot.x + 0.5; x < x1; x += 1) expectCornerUndeveloped(town, x, y);
     }
   });
 

@@ -157,6 +157,32 @@ export function enumerateRoadBlocks(
   return blocks;
 }
 
+/** District role by level, from distance to the centre (0 core .. 1 edge), street class and corner. */
+const LEVEL_ROLES: Record<CampaignLevelId, (radius: number, roadClass: string, corner: boolean) => DistrictRole> = {
+  county: (radius) => radius <= 0.42 ? 'rural' : 'scattered',
+  village: (radius, roadClass) => radius <= 0.48 || roadClass === 'rural' ? 'village-main-street' : 'village-edge',
+  township: (radius) => {
+    if (radius <= 0.28) return 'civic-center';
+    return radius <= 0.72 ? 'mixed-neighborhood' : 'township-edge';
+  },
+  suburb: (radius, roadClass) => {
+    if (roadClass === 'commercial' || (roadClass === 'rural' && radius <= 0.62)) return 'commercial-corridor';
+    return radius <= 0.7 ? 'suburb-neighborhood' : 'suburb-edge';
+  },
+  'city-borough': (radius, roadClass, corner) => {
+    if (radius <= 0.38) return 'borough-center';
+    if ((roadClass === 'rural' || roadClass === 'commercial' || corner) && radius <= 0.6) return 'mixed-use-corridor';
+    return radius <= 0.84 ? 'borough-neighborhood' : 'industrial-service-edge';
+  },
+  'city-downtown': (radius) => {
+    if (radius <= 0.38) return 'downtown-core';
+    if (radius <= 0.64) return 'transition-ring';
+    return radius <= 0.86 ? 'borough-edge' : 'industrial-service-edge';
+  },
+  'governors-mansion': () => 'estate',
+};
+
+/** Service streets are always the industrial edge. */
 function roleForLevel(
   levelId: CampaignLevelId,
   radius: number,
@@ -164,38 +190,7 @@ function roleForLevel(
   corner: boolean,
 ): DistrictRole {
   if (roadClass === 'service') return 'industrial-service-edge';
-  switch (levelId) {
-    case 'county':
-      return radius <= 0.42 ? 'rural' : 'scattered';
-    case 'village':
-      return radius <= 0.48 || roadClass === 'rural' ? 'village-main-street' : 'village-edge';
-    case 'township':
-      if (radius <= 0.28) return 'civic-center';
-      if (radius <= 0.72) return 'mixed-neighborhood';
-      return 'township-edge';
-    case 'suburb':
-      if (roadClass === 'commercial' || (roadClass === 'rural' && radius <= 0.62)) return 'commercial-corridor';
-      if (radius <= 0.7) return 'suburb-neighborhood';
-      return 'suburb-edge';
-    case 'city-borough':
-      if (roadClass === 'service' && radius > 0.55) return 'industrial-service-edge';
-      if (radius <= 0.38) return 'borough-center';
-      if ((roadClass === 'rural' || roadClass === 'commercial' || corner) && radius <= 0.6) return 'mixed-use-corridor';
-      if (radius <= 0.84) return 'borough-neighborhood';
-      return 'industrial-service-edge';
-    case 'city-downtown':
-      if (roadClass === 'service' && radius > 0.55) return 'industrial-service-edge';
-      if (radius <= 0.38) return 'downtown-core';
-      if (radius <= 0.64) return 'transition-ring';
-      if (radius <= 0.86) return 'borough-edge';
-      return 'industrial-service-edge';
-    case 'governors-mansion':
-      return 'estate';
-    default: {
-      const _never: never = levelId;
-      return _never;
-    }
-  }
+  return LEVEL_ROLES[levelId](radius, roadClass, corner);
 }
 
 function preferredBand(role: DistrictRole): UrbanBand {
@@ -369,6 +364,9 @@ function floorsOf(building: Building, archetypes: readonly Archetype[]): number 
   return archetypes.find(entry => entry.id === building.archetypeId)?.floors ?? building.floors;
 }
 
+type FabricThresholds = (typeof URBAN_FABRIC_THRESHOLDS)['city-borough'];
+type CoreCensus = Pick<UrbanFabricReport, 'coreFourPlus' | 'coreOneStory' | 'coreTall' | 'coreTowers'> & { total: number };
+
 export function evaluateUrbanFabric(
   level: CampaignLevelDef,
   buildings: readonly Building[],
@@ -379,7 +377,8 @@ export function evaluateUrbanFabric(
   nodes: readonly RoadNode[],
 ): UrbanFabricReport {
   const issues: string[] = [];
-  const thresholds = level.id === 'city-borough' || level.id === 'city-downtown'
+  const city = level.id === 'city-borough' || level.id === 'city-downtown';
+  const thresholds: FabricThresholds | undefined = level.id === 'city-borough' || level.id === 'city-downtown'
     ? URBAN_FABRIC_THRESHOLDS[level.id]
     : undefined;
   const lotById = new Map(lots.map(lot => [lot.id, lot]));
@@ -389,81 +388,15 @@ export function evaluateUrbanFabric(
   if (thresholds && buildings.length !== thresholds.exactBuildings) {
     issues.push(`${level.id}: ${buildings.length} buildings, need ${thresholds.exactBuildings}`);
   }
-
-  const coreLots = lots.filter(lot => {
-    const role = lot.districtRole ?? infoById.get(lot.id)?.districtRole;
-    return role === 'downtown-core' || role === 'borough-center';
-  });
-  const coreBuildings = ordinary.filter(building => {
-    const lot = lotById.get(building.lotId ?? '');
-    const role = lot?.districtRole ?? infoById.get(building.lotId ?? '')?.districtRole;
-    return role === 'downtown-core' || role === 'borough-center';
-  });
-  const coreFourPlus = coreBuildings.filter(building => floorsOf(building, archetypes) >= 4).length;
-  const coreOneStory = coreBuildings.filter(building => floorsOf(building, archetypes) <= 1).length;
-  const coreTall = coreBuildings.filter(building => floorsOf(building, archetypes) >= 8).length;
-  const coreTowers = coreBuildings.filter(building => floorsOf(building, archetypes) >= 20).length;
-
-  if (thresholds) {
-    if (thresholds.coreNoOneStory && coreOneStory > 0) {
-      issues.push(`${level.id}: ${coreOneStory} one-story buildings in core`);
-    }
-    if (coreFourPlus < thresholds.coreMinFourPlus) {
-      issues.push(`${level.id}: core 4+ story count ${coreFourPlus}, need ${thresholds.coreMinFourPlus}`);
-    }
-    if (coreTall < thresholds.coreMinTall) {
-      issues.push(`${level.id}: core 8+ story count ${coreTall}, need ${thresholds.coreMinTall}`);
-    }
-    if (thresholds.coreMaxTowers === 0 && coreTowers > 0) {
-      issues.push(`${level.id}: ${coreTowers} towers in borough core`);
-    }
-    if (thresholds.coreMaxTowers > 0 && coreTowers > thresholds.coreMaxTowers) {
-      issues.push(`${level.id}: ${coreTowers} core towers, cap ${thresholds.coreMaxTowers}`);
-    }
-    if (coreBuildings.length && coreFourPlus / coreBuildings.length < thresholds.minCoreFourPlusShare - 1e-9) {
-      issues.push(`${level.id}: core 4+ share ${(coreFourPlus / coreBuildings.length * 100).toFixed(1)}%`);
-    }
-  }
-
+  const census = coreCensus(ordinary, lotById, infoById, archetypes);
+  if (thresholds) coreIssues(level.id, thresholds, census, issues);
   for (const building of ordinary) {
-    const def = archetypes.find(entry => entry.id === building.archetypeId);
     const lot = lotById.get(building.lotId ?? '');
     const band = (lot?.urbanBand ?? infoById.get(building.lotId ?? '')?.urbanBand) as UrbanBand | undefined;
-    const floors = floorsOf(building, archetypes);
-    if (band && LOW_RISE_PROHIBITED_BANDS.includes(band) && floors <= 1 && !def?.campaign?.exception) {
-      issues.push(`${level.id}: one-story ${building.archetypeId} in ${band}`);
-    }
-    if (band && CITY_DENSE_BANDS.includes(band)) {
-      const tags = def?.campaign?.urbanBands ?? [];
-      if (tags.some(tag => RURAL_SUBURBAN_BANDS.includes(tag)) && !tags.some(tag => CITY_DENSE_BANDS.includes(tag))) {
-        issues.push(`${level.id}: rural/suburban ${building.archetypeId} in ${band}`);
-      }
-    }
-    if (floors <= 1 && band === 'downtown-core') {
-      issues.push(`${level.id}: one-story ${building.archetypeId} in downtown-core`);
-    }
-    if (band === 'downtown-core' && def?.campaign?.urbanBands?.length && !def.campaign.urbanBands.includes('downtown-core') && floors < 4) {
-      issues.push(`${level.id}: ${building.archetypeId} tagged ${def.campaign.urbanBands.join(',')} but placed in ${band}`);
-    }
+    bandFitIssues(level.id, building, band, archetypes, issues);
   }
-
-  const developed = lots.filter(lot => !lot.openSpaceName);
-  const minX = Math.min(...developed.map(lot => lot.x));
-  const minY = Math.min(...developed.map(lot => lot.y));
-  const maxX = Math.max(...developed.map(lot => lot.x + lot.w));
-  const maxY = Math.max(...developed.map(lot => lot.y + lot.d));
-  const vacant = geography.blocks.filter(block =>
-    !block.reserved
-    && block.lotIds.length === 0
-    && block.w * block.d >= 90
-    && block.x >= minX - 4
-    && block.y >= minY - 4
-    && block.x + block.w <= maxX + 4
-    && block.y + block.d <= maxY + 4,
-  );
-  if ((level.id === 'city-borough' || level.id === 'city-downtown') && vacant.length) {
-    issues.push(`${level.id}: ${vacant.length} unclassified vacant blocks`);
-  }
+  const vacant = vacantBlocks(lots, geography);
+  if (city && vacant) issues.push(`${level.id}: ${vacant} unclassified vacant blocks`);
 
   const frontageFill = frontageFillRatio(lots, segments, nodes);
   const lotCoverage = lotCoverageRatio(buildings, lots);
@@ -473,19 +406,87 @@ export function evaluateUrbanFabric(
   if (thresholds && lotCoverage < thresholds.minLotCoverage) {
     issues.push(`${level.id}: lot coverage ${(lotCoverage * 100).toFixed(1)}%, need ${(thresholds.minLotCoverage * 100).toFixed(0)}%`);
   }
+  const { total: _total, ...core } = census;
+  return { ok: issues.length === 0, issues, geography, frontageFill, lotCoverage, ...core };
+}
 
-  void coreLots;
+/** Height counts for ordinary buildings on downtown-core or borough-center lots. */
+function coreCensus(
+  ordinary: readonly Building[],
+  lotById: ReadonlyMap<string, Lot>,
+  infoById: ReadonlyMap<string, UrbanGeographyReport['lots'][number]>,
+  archetypes: readonly Archetype[],
+): CoreCensus {
+  const floors = ordinary.filter(building => {
+    const lot = lotById.get(building.lotId ?? '');
+    const role = lot?.districtRole ?? infoById.get(building.lotId ?? '')?.districtRole;
+    return role === 'downtown-core' || role === 'borough-center';
+  }).map(building => floorsOf(building, archetypes));
   return {
-    ok: issues.length === 0,
-    issues,
-    geography,
-    frontageFill,
-    lotCoverage,
-    coreFourPlus,
-    coreOneStory,
-    coreTall,
-    coreTowers,
+    total: floors.length,
+    coreFourPlus: floors.filter(n => n >= 4).length,
+    coreOneStory: floors.filter(n => n <= 1).length,
+    coreTall: floors.filter(n => n >= 8).length,
+    coreTowers: floors.filter(n => n >= 20).length,
   };
+}
+
+function coreIssues(levelId: string, thresholds: FabricThresholds, census: CoreCensus, issues: string[]): void {
+  const { coreFourPlus, coreOneStory, coreTall, coreTowers, total } = census;
+  if (thresholds.coreNoOneStory && coreOneStory > 0) {
+    issues.push(`${levelId}: ${coreOneStory} one-story buildings in core`);
+  }
+  if (coreFourPlus < thresholds.coreMinFourPlus) {
+    issues.push(`${levelId}: core 4+ story count ${coreFourPlus}, need ${thresholds.coreMinFourPlus}`);
+  }
+  if (coreTall < thresholds.coreMinTall) {
+    issues.push(`${levelId}: core 8+ story count ${coreTall}, need ${thresholds.coreMinTall}`);
+  }
+  if (thresholds.coreMaxTowers === 0 && coreTowers > 0) {
+    issues.push(`${levelId}: ${coreTowers} towers in borough core`);
+  }
+  if (thresholds.coreMaxTowers > 0 && coreTowers > thresholds.coreMaxTowers) {
+    issues.push(`${levelId}: ${coreTowers} core towers, cap ${thresholds.coreMaxTowers}`);
+  }
+  if (total && coreFourPlus / total < thresholds.minCoreFourPlusShare - 1e-9) {
+    issues.push(`${levelId}: core 4+ share ${(coreFourPlus / total * 100).toFixed(1)}%`);
+  }
+}
+
+/** Dense city bands take no one-story or rural/suburban-only stock unless the definition is an exception. */
+function bandFitIssues(levelId: string, building: Building, band: UrbanBand | undefined, archetypes: readonly Archetype[], issues: string[]): void {
+  const def = archetypes.find(entry => entry.id === building.archetypeId);
+  const floors = floorsOf(building, archetypes);
+  const tags = def?.campaign?.urbanBands ?? [];
+  if (band && LOW_RISE_PROHIBITED_BANDS.includes(band) && floors <= 1 && !def?.campaign?.exception) {
+    issues.push(`${levelId}: one-story ${building.archetypeId} in ${band}`);
+  }
+  if (band && CITY_DENSE_BANDS.includes(band) && tags.some(tag => RURAL_SUBURBAN_BANDS.includes(tag)) && !tags.some(tag => CITY_DENSE_BANDS.includes(tag))) {
+    issues.push(`${levelId}: rural/suburban ${building.archetypeId} in ${band}`);
+  }
+  if (band !== 'downtown-core') return;
+  if (floors <= 1) issues.push(`${levelId}: one-story ${building.archetypeId} in downtown-core`);
+  if (tags.length && !tags.includes('downtown-core') && floors < 4) {
+    issues.push(`${levelId}: ${building.archetypeId} tagged ${tags.join(',')} but placed in ${band}`);
+  }
+}
+
+/** Unreserved, empty blocks of 90+ square units inside the developed footprint. */
+function vacantBlocks(lots: readonly Lot[], geography: UrbanGeographyReport): number {
+  const developed = lots.filter(lot => !lot.openSpaceName);
+  const minX = Math.min(...developed.map(lot => lot.x));
+  const minY = Math.min(...developed.map(lot => lot.y));
+  const maxX = Math.max(...developed.map(lot => lot.x + lot.w));
+  const maxY = Math.max(...developed.map(lot => lot.y + lot.d));
+  return geography.blocks.filter(block =>
+    !block.reserved
+    && block.lotIds.length === 0
+    && block.w * block.d >= 90
+    && block.x >= minX - 4
+    && block.y >= minY - 4
+    && block.x + block.w <= maxX + 4
+    && block.y + block.d <= maxY + 4,
+  ).length;
 }
 
 export function urbanDebugDump(
