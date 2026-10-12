@@ -140,7 +140,7 @@ export function pointBounds(points: readonly { x: number; y: number }[]): { minX
   return { minX, minY, maxX, maxY };
 }
 
-/** Separating-axis test for two convex polygons; touching within 1e-4 counts as apart. */
+/** Separating-axis test for two convex polygons. Only a gap wider than 1e-4 separates them, so touching counts as overlapping. */
 export function convexOverlap(a: readonly { x: number; y: number }[], b: readonly { x: number; y: number }[]): boolean {
   return !separatingAxis(a, b) && !separatingAxis(b, a);
 }

@@ -46,9 +46,10 @@ function collectCoverage(quick) {
   // Instrumentation slows the timing-bounded generation tests; `npm test` stays the correctness gate.
   // Test chatter goes to stderr so stdout carries only the fallow report (e.g. --format json).
   const vitest = run('npx', ['vitest', 'run', ...projects, '--coverage.enabled', '--coverage.reportOnFailure'], 2);
-  // An explicit --exclude replaces c8's default, which would drop the *.test.mjs files themselves.
+  // An explicit --exclude replaces c8's default, which would drop the *.test.mjs files themselves;
+  // --all scores scripts and hooks no test runs at 0% instead of leaving them to fallow's estimate.
   const scripts = run('npx', ['c8', '--reporter=json', `--report-dir=${SCRIPTS_DIR}`, '--include=scripts/**', '--include=.claude/hooks/**',
-    '--exclude=coverage/**', 'node', '--test', 'scripts/*.test.mjs'], 2);
+    '--exclude=coverage/**', '--all', 'node', '--test', 'scripts/*.test.mjs'], 2);
   if (vitest || scripts) console.warn('Some tests failed under coverage; the scores below still use what ran.');
   writeFileSync(path.join(ROOT, MERGED), JSON.stringify(mergeCoverageMaps(readMap(VITEST_JSON), readMap(`${SCRIPTS_DIR}/coverage-final.json`))));
 }
