@@ -111,8 +111,7 @@ export default defineConfig({
   test: {
     ...testShared,
     // Off unless --coverage.enabled; scripts/fallow-health.mjs feeds it to `fallow health`.
-    // Test files stay in (empty exclude) so helpers inside them are scored on real coverage.
-    coverage: { provider: "v8", include: ["src/**"], exclude: [], reporter: ["json"], reportsDirectory: "coverage/vitest" },
+    coverage: { provider: "v8", include: ["src/**"], reporter: ["json"], reportsDirectory: "coverage/vitest" },
     projects: [
       {
         extends: true,

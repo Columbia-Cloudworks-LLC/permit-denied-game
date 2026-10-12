@@ -137,17 +137,24 @@ const specs: Record<FixtureKind, ContentSpec> = {
   machine: { material: "metal", hp: 38, finish: "metal", destruction: "crush", boxes: [box(0, 0, 1, 1, 0, .2, metal), box(.1, .1, .65, .7, .2, .65, blue), box(.68, .25, .25, .45, .3, .7, metal), box(.7, .74, .2, .06, .6, .25, white)] },
 };
 
-export const CONTENT_ASSETS: readonly AssetDef[] = Object.entries(specs).map(([kind, spec]) => ({
-  id: `interior-${kind}`, family: "residential", tags: ["residential", "commercial"],
-  footprint: spec.size ?? { w: 1, d: 1, h: 1 }, collision: { w: spec.size?.w ?? 1, d: spec.size?.d ?? 1 },
-  material: spec.material, hp: spec.hp, mass: spec.material === "metal" ? 1.5 : .7,
-  resistance: .4, bladeMul: 1, trackHazard: 0, cash: spec.material === "metal" ? 10 : 6,
-  destruction: spec.destruction,
-  debris: { remnants: spec.destruction === "brittle" ? 0 : 1, fragments: 2, particles: 4, remnantScale: .65, pileMass: .1, shape: spec.destruction === "panel-collapse" ? "panel" : "chunk" },
-  variants: 1, boxes: spec.boxes.map(b=>({...b,along:b.along*(spec.size?.w??1),across:b.across*(spec.size?.d??1),
-    len:b.len*(spec.size?.w??1),wid:b.wid*(spec.size?.d??1),z:b.z*(spec.size?.h??1),h:b.h*(spec.size?.h??1)})), zones: ["residential", "commercial", "industrial"],
-  roadsideOk: false, minClear: .1, sparks: false, birdGag: false,
-  explodeRadius: 0, explodeImpulse: 0, explodeDamage: 0, yawResist: 0,
-}));
+export const CONTENT_ASSETS: readonly AssetDef[] = Object.entries(specs).map(([kind, spec]) => contentAsset(kind, spec));
+
+/** Interior objects are ordinary catalog assets scaled to their authored size (unit cube by default). */
+function contentAsset(kind: string, spec: ContentSpec): AssetDef {
+  const size = spec.size ?? { w: 1, d: 1, h: 1 };
+  const metal = spec.material === "metal";
+  return {
+    id: `interior-${kind}`, family: "residential", tags: ["residential", "commercial"],
+    footprint: size, collision: { w: size.w, d: size.d },
+    material: spec.material, hp: spec.hp, mass: metal ? 1.5 : .7,
+    resistance: .4, bladeMul: 1, trackHazard: 0, cash: metal ? 10 : 6,
+    destruction: spec.destruction,
+    debris: { remnants: spec.destruction === "brittle" ? 0 : 1, fragments: 2, particles: 4, remnantScale: .65, pileMass: .1, shape: spec.destruction === "panel-collapse" ? "panel" : "chunk" },
+    variants: 1, boxes: spec.boxes.map(b=>({...b,along:b.along*size.w,across:b.across*size.d,
+      len:b.len*size.w,wid:b.wid*size.d,z:b.z*size.h,h:b.h*size.h})), zones: ["residential", "commercial", "industrial"],
+    roadsideOk: false, minClear: .1, sparks: false, birdGag: false,
+    explodeRadius: 0, explodeImpulse: 0, explodeDamage: 0, yawResist: 0,
+  };
+}
 
 export function contentFinish(kind: FixtureKind): ContentSpec["finish"] { return specs[kind].finish; }

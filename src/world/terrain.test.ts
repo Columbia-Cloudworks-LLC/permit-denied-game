@@ -30,14 +30,14 @@ function expectForestCellClear(town: ReturnType<typeof createTown>, ix: number, 
   const y = grid.oy + (iy + 0.5) * grid.cell;
   expect(pointOnRoad(town.network, x, y)).toBe(false);
   expect(traversalAt(grid, x, y) === "forest-core" || surfaceAt(grid, x, y) === "forest-floor").toBe(true);
-  for (const lot of town.lots) {
-    expect(x < lot.x - pad || y < lot.y - pad || x > lot.x + lot.w + pad || y > lot.y + lot.d + pad).toBe(true);
-  }
+  for (const lot of town.lots) expectOutsidePadded(x, y, lot, pad);
   for (const building of town.buildings) {
-    const bw = building.w * building.cellSize;
-    const bd = building.d * building.cellSize;
-    expect(x < building.x - pad || y < building.y - pad || x > building.x + bw + pad || y > building.y + bd + pad).toBe(true);
+    expectOutsidePadded(x, y, { x: building.x, y: building.y, w: building.w * building.cellSize, d: building.d * building.cellSize }, pad);
   }
+}
+
+function expectOutsidePadded(x: number, y: number, box: { x: number; y: number; w: number; d: number }, pad: number): void {
+  expect(x < box.x - pad || y < box.y - pad || x > box.x + box.w + pad || y > box.y + box.d + pad).toBe(true);
 }
 
 describe("terrain surface grid", () => {

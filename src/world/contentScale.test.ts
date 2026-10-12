@@ -5,17 +5,20 @@ import { getBuildingSurfaces } from '../render/buildingSurfaces';
 import { interiorFloorCoverage } from '../structure/interior';
 import { roofCoversOnlyOccupied } from '../structure/roof';
 
+type ScaledBuilding = ReturnType<typeof createBuildingFromArchetype>;
+/** No slab tile on the floor above a roof sits inside that roof's outline. */
+function expectRoofClearOfSlabAbove(b: ScaledBuilding, roof: ScaledBuilding['roofs'][number]): void {
+  const xs = roof.verts.map(v => v.x), ys = roof.verts.map(v => v.y);
+  for (const tile of b.floorTiles.filter(t => t.floor === roof.floor + 1)) {
+    const x = b.x + (tile.gx + .5) * b.cellSize, y = b.y + (tile.gy + .5) * b.cellSize;
+    expect(x > Math.min(...xs) && x < Math.max(...xs) && y > Math.min(...ys) && y < Math.max(...ys)).toBe(false);
+  }
+}
 const examples = ['union-tower','logistics-hub','data-hall'] as const;
 it.each(examples)('%s remains intact when evaluated, reacts locally and fully collapses', id => {
   const b = createBuildingFromArchetype(id,id,0,0), p = new ParticlePool();
   expect(roofCoversOnlyOccupied(b)).toBe(true);
-  for (const roof of b.roofs) {
-    const xs = roof.verts.map(v => v.x), ys = roof.verts.map(v => v.y);
-    for (const tile of b.floorTiles.filter(t => t.floor === roof.floor + 1)) {
-      const x = b.x + (tile.gx + .5) * b.cellSize, y = b.y + (tile.gy + .5) * b.cellSize;
-      expect(x > Math.min(...xs) && x < Math.max(...xs) && y > Math.min(...ys) && y < Math.max(...ys)).toBe(false);
-    }
-  }
+  for (const roof of b.roofs) expectRoofClearOfSlabAbove(b, roof);
   b.structureDirty = true;
   for(let i=0;i<90;i++) stepStructures([b],1/60,p,[]);
   expect(b.cells.every(c=>c.state==='intact')).toBe(true);

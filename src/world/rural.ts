@@ -636,23 +636,25 @@ function selectLotCluster(lots: readonly Lot[], want: number, rng: Rng): Lot[] {
   const origin = lots[rng.int(0, lots.length - 1)]!;
   const picked: Lot[] = [origin];
   const remaining = lots.filter((l) => l.id !== origin.id);
-  while (picked.length < want && remaining.length) {
-    const cx = picked.reduce((s, l) => s + l.x + l.w * 0.5, 0) / picked.length;
-    const cy = picked.reduce((s, l) => s + l.y + l.d * 0.5, 0) / picked.length;
-    let bi = 0;
-    let best = Infinity;
-    for (let i = 0; i < remaining.length; i++) {
-      const l = remaining[i]!;
-      let score = (l.x + l.w * 0.5 - cx) ** 2 + (l.y + l.d * 0.5 - cy) ** 2;
-      if (picked.some((p) => p.frontage.segmentId === l.frontage.segmentId)) score *= 0.4;
-      if (score < best) {
-        best = score;
-        bi = i;
-      }
-    }
-    picked.push(remaining.splice(bi, 1)[0]!);
-  }
+  while (picked.length < want && remaining.length) picked.push(remaining.splice(nearestToCluster(picked, remaining), 1)[0]!);
   return picked;
+}
+
+/** Index of the remaining lot closest to the picked centroid; sharing a street frontage counts as much nearer. */
+function nearestToCluster(picked: readonly Lot[], remaining: readonly Lot[]): number {
+  const cx = picked.reduce((s, l) => s + l.x + l.w * 0.5, 0) / picked.length;
+  const cy = picked.reduce((s, l) => s + l.y + l.d * 0.5, 0) / picked.length;
+  let bi = 0;
+  let best = Infinity;
+  for (let i = 0; i < remaining.length; i++) {
+    const l = remaining[i]!;
+    const score = ((l.x + l.w * 0.5 - cx) ** 2 + (l.y + l.d * 0.5 - cy) ** 2) * (picked.some((p) => p.frontage.segmentId === l.frontage.segmentId) ? 0.4 : 1);
+    if (score < best) {
+      best = score;
+      bi = i;
+    }
+  }
+  return bi;
 }
 
 function buildBlockGrid(b: RoadBuilder, count: number, ox: number, oy: number, rng: Rng, blockW = 40, blockD = 36): void {

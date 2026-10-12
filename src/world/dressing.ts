@@ -178,7 +178,7 @@ export interface Occupancy {
 }
 
 /** Heading-aligned depth (along) and frontage (across). Axis-aligned AABBs used lot.w for both. */
-export function lotAxisSizes(lot: Lot): { along: number; across: number } {
+function lotAxisSizes(lot: Lot): { along: number; across: number } {
   const c = Math.abs(Math.cos(lot.heading));
   const s = Math.abs(Math.sin(lot.heading));
   return { along: c * lot.w + s * lot.d, across: s * lot.w + c * lot.d };

@@ -4,7 +4,6 @@ import type { Building, GroundPatch, Lot, Prop } from "../structure/types";
 import type { FieldCropId, FieldState, BiomeProfile } from "./biomes";
 import { permittedFieldStates, standingCrop, type SeasonId } from "./season";
 import { getAsset, spawnAsset } from "./catalog";
-import { drivewayPatch, lotAxisSizes, lotLocalToWorld } from "./dressing";
 import {
   FIELD_CELL,
   FIELD_FARM_RANGE,
@@ -19,8 +18,6 @@ import {
 import { derivedRoadBoxes, pointOnRoad, type RoadNetwork } from "./roads";
 import { neighbors4, SURFACE_ID, traversalAt, type SurfaceGrid } from "./terrain";
 
-const WATER_SALT = 0xa7e2;
-const FOREST_SALT = 0xf02e57;
 const FIELD_SALT = 0xf1e1d;
 const EDGE_SALT = 0xed9e;
 
@@ -96,11 +93,10 @@ export interface FeatureContext {
   roadSpawnX: number;
   roadSpawnY: number;
   propBudget: number;
-  surface?: SurfaceGrid;
+  surface: SurfaceGrid;
   season?: SeasonId;
 }
 
-const ROAD_MARGIN = 4.2;
 const LOT_MARGIN = 1.6;
 const BUILDING_MARGIN = 1.4;
 const SPAWN_CLEAR = 4.2;
@@ -350,20 +346,8 @@ function nearestRiverPoint(feature: RiverFeature, x: number, y: number): { x: nu
   return best;
 }
 
-function placeTerrainFeatures(ctx: FeatureContext): TerrainFeature[] {
-  if (ctx.surface) return deriveTerrainFeatures(ctx);
-  const features: TerrainFeature[] = [];
-  placeWater(ctx, features);
-  placeForests(ctx, features);
-  placeFields(ctx, features);
-  for (const feature of features) ctx.ground.push(...featurePatches(feature));
-  placeEdgeTrees(ctx, features);
-  return features;
-}
-
 export function deriveTerrainFeatures(ctx: FeatureContext): TerrainFeature[] {
   const grid = ctx.surface;
-  if (!grid) return placeTerrainFeatures({ ...ctx, surface: undefined });
   const features: TerrainFeature[] = [];
   const seen = new Uint8Array(grid.surface.length);
   for (let i = 0; i < grid.surface.length; i++) {
@@ -611,226 +595,11 @@ function outlineAround(pts: { x: number; y: number }[], cx: number, cy: number):
   ];
 }
 
-function placeWater(ctx: FeatureContext, features: TerrainFeature[]): void {
-  const rng = new Rng(ctx.seed ^ WATER_SALT);
-  if (!rng.chance(Math.max(0.4, ctx.biome.waterLikelihood))) return;
-  if ((ctx.biome.id === "mixed-woodland" || rng.chance(0.32)) && tryRiver(ctx, features, rng)) return;
-  tryBasin(ctx, features, rng, rng.chance(0.38) ? "lake" : "pond");
-}
-
-function tryBasin(ctx: FeatureContext, features: TerrainFeature[], rng: Rng, kind: "pond" | "lake"): boolean {
-  const rx = kind === "lake" ? rng.range(5.2, 7.4) : rng.range(3.2, 4.8);
-  const ry = kind === "lake" ? rng.range(4.2, 6.2) : rng.range(2.6, 4.1);
-  for (let attempt = 0; attempt < 28; attempt++) {
-    const cx = rng.range(ctx.minX + rx + 1.5, ctx.maxX - rx - 1.5);
-    const cy = rng.range(ctx.minY + ry + 1.5, ctx.maxY - ry - 1.5);
-    const poly = irregularPoly(cx, cy, rx, ry, kind === "lake" ? 10 : 8, (ctx.seed ^ (attempt * 9973)) >>> 0);
-    const box = polyBox(poly);
-    if (blocked(ctx, features, box.x, box.y, box.w, box.d, ROAD_MARGIN + 1.2)) continue;
-    if (poly.some((p) => pointNearRoad(ctx.network, p.x, p.y, ROAD_MARGIN))) continue;
-    features.push({ kind, id: `${kind}-${features.length}`, poly, seed: rng.int(1, 1_000_000) });
-    return true;
-  }
-  return false;
-}
-
-function tryRiver(ctx: FeatureContext, features: TerrainFeature[], rng: Rng): boolean {
-  const halfWidth = rng.range(1.15, 1.55);
-  if (tryPerimeterRiver(ctx, features, rng, halfWidth)) return true;
-  const vertical = rng.chance(0.5);
-  const start = vertical
-    ? { x: rng.range(ctx.minX + 3, ctx.maxX - 3), y: ctx.minY }
-    : { x: ctx.minX, y: rng.range(ctx.minY + 3, ctx.maxY - 3) };
-  const end = vertical
-    ? { x: rng.range(ctx.minX + 3, ctx.maxX - 3), y: ctx.maxY }
-    : { x: ctx.maxX, y: rng.range(ctx.minY + 3, ctx.maxY - 3) };
-  const midCount = 3;
-  const path = [start];
-  for (let i = 1; i <= midCount; i++) {
-    const t = i / (midCount + 1);
-    path.push({
-      x: start.x + (end.x - start.x) * t + rng.range(-4, 4),
-      y: start.y + (end.y - start.y) * t + rng.range(-4, 4),
-    });
-  }
-  path.push(end);
-  const box = polyBox(path, halfWidth);
-  if (blocked(ctx, features, box.x, box.y, box.w, box.d, ROAD_MARGIN + 0.4)) return false;
-  if (riverPathBlocked(ctx, features, path, halfWidth)) return false;
-  features.push({ kind: "river", id: `river-${features.length}`, path, halfWidth, seed: rng.int(1, 1_000_000) });
-  return true;
-}
-
-/** True when any padded segment of the river path hits a road or an earlier feature. */
-function riverPathBlocked(
-  ctx: FeatureContext,
-  features: readonly TerrainFeature[],
-  path: readonly { x: number; y: number }[],
-  halfWidth: number,
-): boolean {
-  for (let i = 1; i < path.length; i++) {
-    const a = path[i - 1]!;
-    const b = path[i]!;
-    const x = Math.min(a.x, b.x) - halfWidth;
-    const y = Math.min(a.y, b.y) - halfWidth;
-    const w = Math.abs(b.x - a.x) + halfWidth * 2;
-    const d = Math.abs(b.y - a.y) + halfWidth * 2;
-    if (blocked(ctx, features, x, y, w, d, ROAD_MARGIN)) return true;
-  }
-  return false;
-}
-
-function tryPerimeterRiver(
-  ctx: FeatureContext,
-  features: TerrainFeature[],
-  rng: Rng,
-  halfWidth: number,
-): boolean {
-  const inset = 2.5 + halfWidth;
-  const wobble = rng.range(-1.1, 1.1);
-  const sides: { x: number; y: number }[][] = [
-    [
-      { x: ctx.minX, y: ctx.minY + inset + wobble },
-      { x: (ctx.minX + ctx.maxX) * 0.5, y: ctx.minY + inset + wobble * 0.4 },
-      { x: ctx.maxX, y: ctx.minY + inset - wobble },
-    ],
-    [
-      { x: ctx.minX, y: ctx.maxY - inset + wobble },
-      { x: (ctx.minX + ctx.maxX) * 0.5, y: ctx.maxY - inset },
-      { x: ctx.maxX, y: ctx.maxY - inset - wobble },
-    ],
-    [
-      { x: ctx.minX + inset + wobble, y: ctx.minY },
-      { x: ctx.minX + inset, y: (ctx.minY + ctx.maxY) * 0.5 },
-      { x: ctx.minX + inset - wobble, y: ctx.maxY },
-    ],
-    [
-      { x: ctx.maxX - inset + wobble, y: ctx.minY },
-      { x: ctx.maxX - inset, y: (ctx.minY + ctx.maxY) * 0.5 },
-      { x: ctx.maxX - inset - wobble, y: ctx.maxY },
-    ],
-  ];
-  for (const path of sides) {
-    if (riverPathBlocked(ctx, features, path, halfWidth)) continue;
-    features.push({ kind: "river", id: `river-${features.length}`, path, halfWidth, seed: rng.int(1, 1_000_000) });
-    return true;
-  }
-  return false;
-}
-
-function placeForests(ctx: FeatureContext, features: TerrainFeature[]): void {
-  const rng = new Rng(ctx.seed ^ FOREST_SALT);
-  const area = Math.max(1, (ctx.maxX - ctx.minX) * (ctx.maxY - ctx.minY));
-  const want = Math.max(ctx.biome.forestDensity > 0.2 ? 1 : 0, Math.min(3, Math.round(area / 2200 * ctx.biome.forestDensity)));
-  for (let n = 0; n < want; n++) {
-    const coreR = rng.range(3.4, 5.2);
-    const canopyR = coreR + rng.range(2.6, 3.8);
-    let placed = false;
-    for (let attempt = 0; attempt < 24 && !placed; attempt++) {
-      const cx = rng.range(ctx.minX + canopyR + 1, ctx.maxX - canopyR - 1);
-      const cy = rng.range(ctx.minY + canopyR + 1, ctx.maxY - canopyR - 1);
-      const x = cx - canopyR;
-      const y = cy - canopyR;
-      const w = canopyR * 2;
-      const d = canopyR * 2;
-      if (blocked(ctx, features, x, y, w, d, ROAD_MARGIN + 0.8)) continue;
-      if (pointNearRoad(ctx.network, cx, cy, canopyR + ROAD_MARGIN)) continue;
-      features.push({
-        kind: "forest",
-        id: `forest-${features.length}`,
-        cx,
-        cy,
-        coreR,
-        canopyR,
-        seed: rng.int(1, 1_000_000),
-      });
-      placed = true;
-    }
-  }
-}
-
-function placeFields(ctx: FeatureContext, features: TerrainFeature[]): void {
-  const rng = new Rng(ctx.seed ^ FIELD_SALT);
-  const farms = ctx.lots.filter((lot) => lot.identity === "farm");
-  for (const lot of farms) {
-    const field = fieldOnLot(ctx, lot, rng) ?? fieldBesideLot(ctx, features, lot, rng);
-    if (field) features.push(field);
-  }
-  const haveField = features.some((feature) => feature.kind === "field");
-  if (ctx.biome.fieldDensity < 0.55 && haveField) return;
-  const extra = !haveField
-    ? 1
-    : ctx.biome.id === "agricultural-plain"
-      ? 1
-      : Math.min(1, Math.max(0, Math.round(ctx.biome.fieldDensity)));
-  for (let n = 0; n < extra; n++) {
-    const w = rng.range(6.2, 9.5);
-    const d = rng.range(4.8, 7.2);
-    for (let attempt = 0; attempt < 28; attempt++) {
-      const x = rng.range(ctx.minX + 1, ctx.maxX - w - 1);
-      const y = rng.range(ctx.minY + 1, ctx.maxY - d - 1);
-      if (blocked(ctx, features, x, y, w, d, ROAD_MARGIN, false, true)) continue;
-      features.push(makeField(x, y, w, d, rng.pick([0, Math.PI / 2]), rng, ctx.biome, seasonOf(ctx), `field-open-${features.length}`));
-      break;
-    }
-  }
-}
-
-const LOT_FIELD_SPOTS = [
-  { along: 0.74, across: 0.1 },
-  { along: 0.68, across: -0.16 },
-  { along: 0.8, across: 0.02 },
-  { along: 0.58, across: 0.2 },
-];
-
 type Box = { x: number; y: number; w: number; d: number };
-
-function fieldOnLot(ctx: FeatureContext, lot: Lot, rng: Rng): FieldFeature | undefined {
-  const building = ctx.buildings.find((b) => b.lotId === lot.id);
-  const size = lotAxisSizes(lot);
-  const along = Math.max(3.2, size.along * 0.36);
-  const across = Math.max(2.8, size.across * 0.4);
-  const drive = drivewayPatch(lot);
-  for (const tryAt of LOT_FIELD_SPOTS) {
-    const center = lotLocalToWorld(lot, tryAt.along, tryAt.across);
-    const spot = { x: center.x - along * 0.5, y: center.y - across * 0.5, w: along, d: across };
-    if (!lotFieldSpotClear(ctx, building, drive, spot, center)) continue;
-    return makeField(spot.x, spot.y, along, across, lot.heading, rng, ctx.biome, seasonOf(ctx), `field-${lot.id}`, lot.id);
-  }
-  const fallback = { x: lot.x + lot.w * 0.1, y: lot.y + lot.d * 0.52, w: lot.w * 0.8, d: lot.d * 0.36 };
-  if (building && boxesOverlap(fallback, buildingBox(building, 0))) return undefined;
-  if (boxesOverlap(fallback, drive)) return undefined;
-  if (pointOnRoad(ctx.network, fallback.x + fallback.w * 0.5, fallback.y + fallback.d * 0.5)) return undefined;
-  return makeField(fallback.x, fallback.y, fallback.w, fallback.d, lot.heading, rng, ctx.biome, seasonOf(ctx), `field-${lot.id}`, lot.id);
-}
 
 const boxesOverlap = (a: Box, b: Box): boolean => aabbOverlap(a.x, a.y, a.w, a.d, b.x, b.y, b.w, b.d);
 const buildingBox = (building: Building, pad: number): Box =>
   ({ x: building.x - pad, y: building.y - pad, w: building.w * building.cellSize + pad * 2, d: building.d * building.cellSize + pad * 2 });
-
-/** Off the farmhouse by 0.35, off the driveway, and clear of the street. */
-function lotFieldSpotClear(ctx: FeatureContext, building: Building | undefined, drive: Box, spot: Box, center: { x: number; y: number }): boolean {
-  if (building && boxesOverlap(spot, buildingBox(building, 0.35))) return false;
-  if (boxesOverlap(spot, drive)) return false;
-  if (pointOnRoad(ctx.network, center.x, center.y)) return false;
-  return !boxNearRoad(ctx.network, spot.x, spot.y, spot.w, spot.d, 0.15);
-}
-
-function fieldBesideLot(
-  ctx: FeatureContext,
-  features: TerrainFeature[],
-  lot: Lot,
-  rng: Rng,
-): FieldFeature | undefined {
-  const size = lotAxisSizes(lot);
-  const w = Math.max(5.2, size.along * 0.55);
-  const d = Math.max(3.8, size.across * 0.42);
-  const rear = lotLocalToWorld(lot, 1.12, 0);
-  const x = rear.x - w * 0.5;
-  const y = rear.y - d * 0.5;
-  if (blocked(ctx, features, x, y, w, d, 0.6, false, true)) return undefined;
-  return makeField(x, y, w, d, lot.heading, rng, ctx.biome, seasonOf(ctx), `field-rear-${lot.id}`, lot.id);
-}
 
 function seasonOf(ctx: FeatureContext): SeasonId {
   return ctx.season ?? "summer";
@@ -1060,24 +829,6 @@ function normalize(x: number, y: number): [number, number] {
   return [x / l, y / l];
 }
 
-function irregularPoly(cx: number, cy: number, rx: number, ry: number, n: number, seed: number): { x: number; y: number }[] {
-  const verts: { x: number; y: number }[] = [];
-  for (let i = 0; i < n; i++) {
-    const a = (i / n) * Math.PI * 2;
-    const wobble = 0.72 + (((seed + i * 9973) >>> 0) % 100) / 180;
-    verts.push({ x: cx + Math.cos(a) * rx * wobble, y: cy + Math.sin(a) * ry * wobble });
-  }
-  return verts;
-}
-
-function polyBox(poly: readonly { x: number; y: number }[], pad = 0): { x: number; y: number; w: number; d: number } {
-  const xs = poly.map((p) => p.x);
-  const ys = poly.map((p) => p.y);
-  const x = Math.min(...xs) - pad;
-  const y = Math.min(...ys) - pad;
-  return { x, y, w: Math.max(...xs) - x + pad, d: Math.max(...ys) - y + pad };
-}
-
 function blocked(
   ctx: FeatureContext,
   features: readonly TerrainFeature[],
@@ -1141,32 +892,19 @@ export function validateFeatureLayout(
   spawnY: number,
   roadSpawnX: number,
   roadSpawnY: number,
-  grid?: SurfaceGrid | null,
+  grid: SurfaceGrid,
   lots: readonly Lot[] = [],
   season: SeasonId = "summer",
 ): string[] {
   const issues: string[] = [];
   if (movementBlocked(terrainTraversalAt(features, spawnX, spawnY, grid), season)) issues.push("spawn blocked by terrain");
   if (terrainTraversalAt(features, roadSpawnX, roadSpawnY, grid) !== "open") issues.push("road spawn blocked by terrain");
-  if (grid) {
-    const report = new Set<string>();
-    for (let iy = 0; iy < grid.rows; iy++) {
-      for (let ix = 0; ix < grid.cols; ix++) surfaceCellOverlaps(grid, ix, iy, network, buildings, lots, report);
-    }
-    issues.push(...report);
-    return issues;
+  const report = new Set<string>();
+  for (let iy = 0; iy < grid.rows; iy++) {
+    for (let ix = 0; ix < grid.cols; ix++) surfaceCellOverlaps(grid, ix, iy, network, buildings, lots, report);
   }
-  for (const feature of features) {
-    if (feature.kind !== "field") featureOverlapIssues(feature, network, buildings, issues);
-  }
+  issues.push(...report);
   return issues;
-}
-
-function featureOverlapIssues(feature: TerrainFeature, network: RoadNetwork, buildings: readonly Building[], issues: string[]): void {
-  if (featureHitsRoad(feature, network)) issues.push(`${feature.id} overlaps a road`);
-  for (const building of buildings) {
-    if (featureHitsBox(feature, buildingBox(building, 0))) issues.push(`${feature.id} overlaps ${building.name}`);
-  }
 }
 
 const pointInBox = (x: number, y: number, box: Box): boolean => x >= box.x && y >= box.y && x <= box.x + box.w && y <= box.y + box.d;
@@ -1188,46 +926,3 @@ function surfaceCellOverlaps(grid: SurfaceGrid, ix: number, iy: number, network:
   }
 }
 
-function featureHitsRoad(feature: TerrainFeature, network: RoadNetwork): boolean {
-  switch (feature.kind) {
-    case "forest":
-      return pointNearRoad(network, feature.cx, feature.cy, feature.coreR + 0.25);
-    case "pond":
-    case "lake":
-      return feature.poly.some((p) => pointNearRoad(network, p.x, p.y, 0.35))
-        || boxNearRoad(network, ...boxArgs(featureBounds(feature)), 0.2);
-    case "river":
-      return feature.path.some((p) => pointNearRoad(network, p.x, p.y, feature.halfWidth + 0.2));
-    case "field":
-      return false;
-    default: {
-      const _never: never = feature;
-      return _never;
-    }
-  }
-}
-
-function featureHitsBox(feature: TerrainFeature, box: { x: number; y: number; w: number; d: number }): boolean {
-  switch (feature.kind) {
-    case "forest": {
-      const qx = Math.max(box.x, Math.min(feature.cx, box.x + box.w));
-      const qy = Math.max(box.y, Math.min(feature.cy, box.y + box.d));
-      return len(feature.cx - qx, feature.cy - qy) <= feature.coreR;
-    }
-    case "pond":
-    case "lake":
-    case "river":
-    case "field": {
-      const bounds = featureBounds(feature);
-      return aabbOverlap(bounds.x, bounds.y, bounds.w, bounds.d, box.x, box.y, box.w, box.d);
-    }
-    default: {
-      const _never: never = feature;
-      return _never;
-    }
-  }
-}
-
-function boxArgs(box: { x: number; y: number; w: number; d: number }): [number, number, number, number] {
-  return [box.x, box.y, box.w, box.d];
-}

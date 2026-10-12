@@ -8,6 +8,7 @@ import { planForestGarnish } from "../render/forestCanopy";
 import { pointOnRoad, RoadBuilder } from "./roads";
 import { selectCampaignBiome } from "./biomes";
 import { payFieldDamage } from "./fields";
+import { seasonTrackColor } from "./season";
 import { generateCampaignLayout } from "./campaignLayout";
 import { movementBlocked, resolveTraversal, terrainTraversalAt, validateFeatureLayout, type FieldFeature } from "./terrainFeatures";
 import { cellIndex, emptyGrassGrid, SURFACE_ID } from "./terrain";
@@ -221,5 +222,13 @@ describe("seasons", () => {
     expect(weather.flakes).toHaveLength(0);
     expect(presentationTint(0xd7e3ef, "off")).toBe(0xffffff);
     expect(presentationTint(0xd7e3ef, "on")).toBe(0xd7e3ef);
+  });
+});
+
+describe("season track colors", () => {
+  it("gives every season its own track tint", () => {
+    const colors = (["spring", "summer", "autumn", "winter"] as const).map(seasonTrackColor);
+    expect(new Set(colors).size).toBe(4);
+    expect(colors.every((c) => Number.isInteger(c) && c > 0 && c <= 0xffffff)).toBe(true);
   });
 });

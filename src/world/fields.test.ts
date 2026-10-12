@@ -144,17 +144,19 @@ function expectCropCellUndeveloped(town: ReturnType<typeof createTown>, field: F
   const x = ox + fx * ((col + 0.5) * field.cell - field.w * 0.5) - fy * ((row + 0.5) * field.cell - field.d * 0.5);
   const y = oy + fy * ((col + 0.5) * field.cell - field.w * 0.5) + fx * ((row + 0.5) * field.cell - field.d * 0.5);
   expect(pointOnRoad(town.network, x, y)).toBe(false);
-  const ix = Math.floor(x - town.surface.ox);
-  const iy = Math.floor(y - town.surface.oy);
-  if (ix >= 0 && iy >= 0 && ix < town.surface.cols && iy < town.surface.rows) {
-    const id = town.surface.surface[iy * town.surface.cols + ix]!;
-    expect(id).not.toBe(SURFACE_ID.water);
-    expect(id).not.toBe(SURFACE_ID.developed);
-  }
+  expectSurfaceNotWaterOrDeveloped(town.surface, x, y);
   for (const lot of town.lots) {
-    if (lot.identity === "farm") continue;
-    expect(x >= lot.x && y >= lot.y && x <= lot.x + lot.w && y <= lot.y + lot.d).toBe(false);
+    if (lot.identity !== "farm") expect(x >= lot.x && y >= lot.y && x <= lot.x + lot.w && y <= lot.y + lot.d).toBe(false);
   }
+}
+
+function expectSurfaceNotWaterOrDeveloped(surface: ReturnType<typeof createTown>["surface"], x: number, y: number): void {
+  const ix = Math.floor(x - surface.ox);
+  const iy = Math.floor(y - surface.oy);
+  if (ix < 0 || iy < 0 || ix >= surface.cols || iy >= surface.rows) return;
+  const id = surface.surface[iy * surface.cols + ix]!;
+  expect(id).not.toBe(SURFACE_ID.water);
+  expect(id).not.toBe(SURFACE_ID.developed);
 }
 
 interface FarmlandTally { agPrimary: number; agTowns: number; near: number; totalFields: number }

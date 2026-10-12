@@ -432,7 +432,7 @@ function coreCensus(
 }
 
 function coreIssues(levelId: string, thresholds: FabricThresholds, census: CoreCensus, issues: string[]): void {
-  const { coreFourPlus, coreOneStory, coreTall, coreTowers, total } = census;
+  const { coreFourPlus, coreOneStory, coreTall } = census;
   if (thresholds.coreNoOneStory && coreOneStory > 0) {
     issues.push(`${levelId}: ${coreOneStory} one-story buildings in core`);
   }
@@ -442,6 +442,12 @@ function coreIssues(levelId: string, thresholds: FabricThresholds, census: CoreC
   if (coreTall < thresholds.coreMinTall) {
     issues.push(`${levelId}: core 8+ story count ${coreTall}, need ${thresholds.coreMinTall}`);
   }
+  coreTowerIssues(levelId, thresholds, census, issues);
+}
+
+/** Tower caps per city level, and the minimum share of 4+ story buildings in the core. */
+function coreTowerIssues(levelId: string, thresholds: FabricThresholds, census: CoreCensus, issues: string[]): void {
+  const { coreFourPlus, coreTowers, total } = census;
   if (thresholds.coreMaxTowers === 0 && coreTowers > 0) {
     issues.push(`${levelId}: ${coreTowers} towers in borough core`);
   }
@@ -455,19 +461,24 @@ function coreIssues(levelId: string, thresholds: FabricThresholds, census: CoreC
 
 /** Dense city bands take no one-story or rural/suburban-only stock unless the definition is an exception. */
 function bandFitIssues(levelId: string, building: Building, band: UrbanBand | undefined, archetypes: readonly Archetype[], issues: string[]): void {
+  if (!band) return;
   const def = archetypes.find(entry => entry.id === building.archetypeId);
   const floors = floorsOf(building, archetypes);
   const tags = def?.campaign?.urbanBands ?? [];
-  if (band && LOW_RISE_PROHIBITED_BANDS.includes(band) && floors <= 1 && !def?.campaign?.exception) {
+  if (LOW_RISE_PROHIBITED_BANDS.includes(band) && floors <= 1 && !def?.campaign?.exception) {
     issues.push(`${levelId}: one-story ${building.archetypeId} in ${band}`);
   }
-  if (band && CITY_DENSE_BANDS.includes(band) && tags.some(tag => RURAL_SUBURBAN_BANDS.includes(tag)) && !tags.some(tag => CITY_DENSE_BANDS.includes(tag))) {
+  if (CITY_DENSE_BANDS.includes(band) && tags.some(tag => RURAL_SUBURBAN_BANDS.includes(tag)) && !tags.some(tag => CITY_DENSE_BANDS.includes(tag))) {
     issues.push(`${levelId}: rural/suburban ${building.archetypeId} in ${band}`);
   }
-  if (band !== 'downtown-core') return;
+  if (band === 'downtown-core') downtownCoreFitIssues(levelId, building, floors, tags, issues);
+}
+
+/** Downtown core takes no one-story buildings, nor sub-4-story stock tagged for other bands. */
+function downtownCoreFitIssues(levelId: string, building: Building, floors: number, tags: readonly UrbanBand[], issues: string[]): void {
   if (floors <= 1) issues.push(`${levelId}: one-story ${building.archetypeId} in downtown-core`);
   if (tags.length && !tags.includes('downtown-core') && floors < 4) {
-    issues.push(`${levelId}: ${building.archetypeId} tagged ${tags.join(',')} but placed in ${band}`);
+    issues.push(`${levelId}: ${building.archetypeId} tagged ${tags.join(',')} but placed in downtown-core`);
   }
 }
 
