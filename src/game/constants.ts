@@ -48,7 +48,6 @@ export const DOZER = {
 };
 
 export const PARTICLE_CAP = 420;
-export const RUBBLE_CAP = 180;
 
 export const DEBRIS = {
   retireRadius: 28,

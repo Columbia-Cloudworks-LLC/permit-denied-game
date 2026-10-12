@@ -1,4 +1,4 @@
-import { aabbOverlap, distToSegment, len, pointInAabb, pointInPoly } from "../game/math";
+import { aabbOverlap, distToSegment, len, orientedRect, pointBounds, pointInAabb, pointInPoly } from "../game/math";
 import { Rng } from "../game/rng";
 import type { Building, GroundPatch, Lot, Prop } from "../structure/types";
 import type { FieldCropId, FieldState, BiomeProfile } from "./biomes";
@@ -8,18 +8,21 @@ import { drivewayPatch, lotAxisSizes, lotLocalToWorld } from "./dressing";
 import {
   FIELD_CELL,
   FIELD_FARM_RANGE,
+  fieldCellWorld,
+  fieldFrame,
+  forEachFieldRun,
   fieldValidCount,
   fieldValue,
   fieldWorldBox,
   isPrimaryField,
 } from "./fields";
 import { derivedRoadBoxes, pointOnRoad, type RoadNetwork } from "./roads";
-import { SURFACE_ID, traversalAt, type SurfaceGrid } from "./terrain";
+import { neighbors4, SURFACE_ID, traversalAt, type SurfaceGrid } from "./terrain";
 
-export const WATER_SALT = 0xa7e2;
-export const FOREST_SALT = 0xf02e57;
-export const FIELD_SALT = 0xf1e1d;
-export const EDGE_SALT = 0xed9e;
+const WATER_SALT = 0xa7e2;
+const FOREST_SALT = 0xf02e57;
+const FIELD_SALT = 0xf1e1d;
+const EDGE_SALT = 0xed9e;
 
 export type TraversalKind = "open" | "water" | "forest-core";
 
@@ -133,7 +136,7 @@ export function terrainTraversalAt(
   return "open";
 }
 
-export function pointOnRiver(feature: RiverFeature, x: number, y: number): boolean {
+function pointOnRiver(feature: RiverFeature, x: number, y: number): boolean {
   for (let i = 1; i < feature.path.length; i++) {
     const a = feature.path[i - 1]!;
     const b = feature.path[i]!;
@@ -142,7 +145,7 @@ export function pointOnRiver(feature: RiverFeature, x: number, y: number): boole
   return false;
 }
 
-export function featureBounds(feature: TerrainFeature): { x: number; y: number; w: number; d: number } {
+function featureBounds(feature: TerrainFeature): { x: number; y: number; w: number; d: number } {
   switch (feature.kind) {
     case "forest":
       return {
@@ -176,11 +179,8 @@ export function featureBounds(feature: TerrainFeature): { x: number; y: number; 
   }
 }
 
-export function pointInField(feature: FieldFeature, x: number, y: number): boolean {
-  const fx = Math.cos(feature.heading);
-  const fy = Math.sin(feature.heading);
-  const cx = feature.x + feature.w * 0.5;
-  const cy = feature.y + feature.d * 0.5;
+function pointInField(feature: FieldFeature, x: number, y: number): boolean {
+  const { fx, fy, cx, cy } = fieldFrame(feature);
   const dx = x - cx;
   const dy = y - cy;
   const along = dx * fx + dy * fy;
@@ -188,32 +188,12 @@ export function pointInField(feature: FieldFeature, x: number, y: number): boole
   return Math.abs(along) <= feature.w * 0.5 && Math.abs(across) <= feature.d * 0.5;
 }
 
-export function churnFieldsUnder(
-  features: TerrainFeature[] | undefined,
-  points: readonly { x: number; y: number }[],
-  radius: number,
-  mark = 1,
-): number {
-  if (!features?.length) return 0;
-  let marked = 0;
-  for (const feature of features) {
-    if (feature.kind !== "field") continue;
-    for (const point of points) {
-      marked += churnFieldAt(feature, point.x, point.y, radius, mark);
-    }
-  }
-  return marked;
-}
-
 export function churnFieldAt(feature: FieldFeature, x: number, y: number, radius: number, mark = 1): number {
   const box = fieldWorldBox(feature);
   if (!pointInField(feature, x, y) && !pointInAabb(x, y, box.x - radius, box.y - radius, box.w + radius * 2, box.d + radius * 2)) {
     return 0;
   }
-  const fx = Math.cos(feature.heading);
-  const fy = Math.sin(feature.heading);
-  const cx = feature.x + feature.w * 0.5;
-  const cy = feature.y + feature.d * 0.5;
+  const { fx, fy, cx, cy } = fieldFrame(feature);
   let marked = 0;
   const reach = Math.max(1, Math.ceil(radius / feature.cell));
   const along = (x - cx) * fx + (y - cy) * fy + feature.w * 0.5;
@@ -223,9 +203,8 @@ export function churnFieldAt(feature: FieldFeature, x: number, y: number, radius
   for (let iy = row - reach; iy <= row + reach; iy++) {
     for (let ix = col - reach; ix <= col + reach; ix++) {
       if (ix < 0 || iy < 0 || ix >= feature.cols || iy >= feature.rows) continue;
-      const wx = cx + fx * ((ix + 0.5) * feature.cell - feature.w * 0.5) - fy * ((iy + 0.5) * feature.cell - feature.d * 0.5);
-      const wy = cy + fy * ((ix + 0.5) * feature.cell - feature.w * 0.5) + fx * ((iy + 0.5) * feature.cell - feature.d * 0.5);
-      if (len(wx - x, wy - y) > radius) continue;
+      const cell = fieldCellWorld(feature, ix, iy);
+      if (len(cell.x - x, cell.y - y) > radius) continue;
       const index = iy * feature.cols + ix;
       if (feature.mask && !feature.mask[index]) continue;
       const prev = feature.churn[index]!;
@@ -352,7 +331,7 @@ function nearestRiverPoint(feature: RiverFeature, x: number, y: number): { x: nu
   return best;
 }
 
-export function placeTerrainFeatures(ctx: FeatureContext): TerrainFeature[] {
+function placeTerrainFeatures(ctx: FeatureContext): TerrainFeature[] {
   if (ctx.surface) return deriveTerrainFeatures(ctx);
   const features: TerrainFeature[] = [];
   placeWater(ctx, features);
@@ -408,13 +387,7 @@ function floodIds(grid: SurfaceGrid, start: number, ids: readonly number[], seen
     const i = q.pop()!;
     if (!want.has(grid.surface[i]!)) continue;
     cells.push(i);
-    const ix = i % grid.cols;
-    const iy = (i / grid.cols) | 0;
-    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
-      const nx = ix + dx;
-      const ny = iy + dy;
-      if (nx < 0 || ny < 0 || nx >= grid.cols || ny >= grid.rows) continue;
-      const j = ny * grid.cols + nx;
+    for (const j of neighbors4(grid, i)) {
       if (seen[j] || !want.has(grid.surface[j]!)) continue;
       seen[j] = 1;
       q.push(j);
@@ -429,12 +402,7 @@ function waterFromBlob(grid: SurfaceGrid, cells: number[], n: number): BasinFeat
     x: grid.ox + (i % grid.cols) + 0.5,
     y: grid.oy + ((i / grid.cols) | 0) + 0.5,
   }));
-  const xs = pts.map((p) => p.x);
-  const ys = pts.map((p) => p.y);
-  const minX = Math.min(...xs);
-  const maxX = Math.max(...xs);
-  const minY = Math.min(...ys);
-  const maxY = Math.max(...ys);
+  const { minX, minY, maxX, maxY } = pointBounds(pts);
   const cx = (minX + maxX) * 0.5;
   const cy = (minY + maxY) * 0.5;
   const touchesW = minX <= grid.ox + 1.5;
@@ -652,6 +620,18 @@ function tryRiver(ctx: FeatureContext, features: TerrainFeature[], rng: Rng): bo
   path.push(end);
   const box = polyBox(path, halfWidth);
   if (blocked(ctx, features, box.x, box.y, box.w, box.d, ROAD_MARGIN + 0.4)) return false;
+  if (riverPathBlocked(ctx, features, path, halfWidth)) return false;
+  features.push({ kind: "river", id: `river-${features.length}`, path, halfWidth, seed: rng.int(1, 1_000_000) });
+  return true;
+}
+
+/** True when any padded segment of the river path hits a road or an earlier feature. */
+function riverPathBlocked(
+  ctx: FeatureContext,
+  features: readonly TerrainFeature[],
+  path: readonly { x: number; y: number }[],
+  halfWidth: number,
+): boolean {
   for (let i = 1; i < path.length; i++) {
     const a = path[i - 1]!;
     const b = path[i]!;
@@ -659,10 +639,9 @@ function tryRiver(ctx: FeatureContext, features: TerrainFeature[], rng: Rng): bo
     const y = Math.min(a.y, b.y) - halfWidth;
     const w = Math.abs(b.x - a.x) + halfWidth * 2;
     const d = Math.abs(b.y - a.y) + halfWidth * 2;
-    if (blocked(ctx, features, x, y, w, d, ROAD_MARGIN)) return false;
+    if (blocked(ctx, features, x, y, w, d, ROAD_MARGIN)) return true;
   }
-  features.push({ kind: "river", id: `river-${features.length}`, path, halfWidth, seed: rng.int(1, 1_000_000) });
-  return true;
+  return false;
 }
 
 function tryPerimeterRiver(
@@ -696,20 +675,7 @@ function tryPerimeterRiver(
     ],
   ];
   for (const path of sides) {
-    let clear = true;
-    for (let i = 1; i < path.length; i++) {
-      const a = path[i - 1]!;
-      const b = path[i]!;
-      const x = Math.min(a.x, b.x) - halfWidth;
-      const y = Math.min(a.y, b.y) - halfWidth;
-      const w = Math.abs(b.x - a.x) + halfWidth * 2;
-      const d = Math.abs(b.y - a.y) + halfWidth * 2;
-      if (blocked(ctx, features, x, y, w, d, ROAD_MARGIN)) {
-        clear = false;
-        break;
-      }
-    }
-    if (!clear) continue;
+    if (riverPathBlocked(ctx, features, path, halfWidth)) continue;
     features.push({ kind: "river", id: `river-${features.length}`, path, halfWidth, seed: rng.int(1, 1_000_000) });
     return true;
   }
@@ -991,63 +957,25 @@ function fieldMaskPatches(feature: FieldFeature): GroundPatch[] {
   const mask = feature.mask;
   if (!mask) return [fieldRectPatch(feature)];
   const patches: GroundPatch[] = [];
-  const fx = Math.cos(feature.heading);
-  const fy = Math.sin(feature.heading);
-  const ox = feature.x + feature.w * 0.5;
-  const oy = feature.y + feature.d * 0.5;
-  for (let row = 0; row < feature.rows; row++) {
-    let run = -1;
-    for (let col = 0; col <= feature.cols; col++) {
-      const live = col < feature.cols && mask[row * feature.cols + col] === 1;
-      if (live && run < 0) run = col;
-      if (live && col < feature.cols) continue;
-      if (run < 0) continue;
-      const end = col - 1;
-      const span = (end - run + 1) * feature.cell;
-      const mid = (run + end + 1) * 0.5;
-      const along = mid * feature.cell - feature.w * 0.5;
-      const across = (row + 0.5) * feature.cell - feature.d * 0.5;
-      const cx = ox + fx * along - fy * across;
-      const cy = oy + fy * along + fx * across;
-      const poly = orientedRect(cx, cy, feature.heading, span, feature.cell);
-      const xs = poly.map((p) => p.x);
-      const ys = poly.map((p) => p.y);
-      const minX = Math.min(...xs);
-      const minY = Math.min(...ys);
-      patches.push({
-        x: minX,
-        y: minY,
-        w: Math.max(...xs) - minX,
-        d: Math.max(...ys) - minY,
-        heading: feature.heading,
-        cover: fieldCover(feature.state),
-        seed: feature.seed + row * 17 + run,
-        z: 0.014,
-        poly,
-      });
-      run = -1;
-    }
-  }
+  forEachFieldRun(feature, 1, (i) => mask[i] === 1, (run, row, span, center) => {
+    const poly = orientedRect(center.x, center.y, feature.heading, span, feature.cell);
+    const xs = poly.map((p) => p.x);
+    const ys = poly.map((p) => p.y);
+    const minX = Math.min(...xs);
+    const minY = Math.min(...ys);
+    patches.push({
+      x: minX,
+      y: minY,
+      w: Math.max(...xs) - minX,
+      d: Math.max(...ys) - minY,
+      heading: feature.heading,
+      cover: fieldCover(feature.state),
+      seed: feature.seed + row * 17 + run,
+      z: 0.014,
+      poly,
+    });
+  });
   return patches.length ? patches : [fieldRectPatch(feature)];
-}
-
-function orientedRect(
-  cx: number,
-  cy: number,
-  heading: number,
-  length: number,
-  width: number,
-): { x: number; y: number }[] {
-  const fx = Math.cos(heading);
-  const fy = Math.sin(heading);
-  const hl = length * 0.5;
-  const hw = width * 0.5;
-  return [
-    { x: cx + fx * hl - fy * hw, y: cy + fy * hl + fx * hw },
-    { x: cx + fx * hl + fy * hw, y: cy + fy * hl - fx * hw },
-    { x: cx - fx * hl + fy * hw, y: cy - fy * hl - fx * hw },
-    { x: cx - fx * hl - fy * hw, y: cy - fy * hl + fx * hw },
-  ];
 }
 
 function fieldCover(state: FieldState): GroundPatch["cover"] {

@@ -2,7 +2,8 @@ import { automaticCore, DETAILED_FLOORS, initializeCore, stepCoreCollapse, type 
 import { initializeElevatedTank, stepElevatedTank } from './elevatedTank';
 import { siloAt, siloSupports, stepSilos } from './silos';
 import { initializeFacadeDetails } from './facadeDetails';
-import { CELL, FLOOR_Z } from "../game/constants";
+import { CELL } from "../game/constants";
+import { cashFor } from "./cellCash";
 import { validateConstruction, validateLayout, roomAt, openingCell, type LayoutDef, type OpeningDef, type ConstructionDef } from "./construction";
 import { debrisKind, ParticlePool } from "../fx/particles";
 import { archetypeById, fullMask, occupiedMask, validateBuildingDefinition, type ArchetypeId, type Archetype } from "../world/archetypes";
@@ -384,6 +385,11 @@ function buildingNeedsStructureStep(building: Building): boolean {
   if (building.fullyDown && !roofsNeedStep(building)) return false;
   if (building.structureDirty || building.roofDirty) return true;
   if (roofsNeedStep(building)) return true;
+  return anyCellUnsettled(building);
+}
+
+/** Some standing cell is breached, falling, sagging, or losing support. */
+function anyCellUnsettled(building: Building): boolean {
   for (const cell of building.cells) {
     if (cell.state === "gone") continue;
     if (cell.state === "breached" || cell.state === "falling") return true;
@@ -394,14 +400,6 @@ function buildingNeedsStructureStep(building: Building): boolean {
 
 export function resetBuildingIds(): void {
   nextId = 1;
-}
-
-export function cashFor(cell: Cell, kind: "chip" | "breach" | "collapse"): number {
-  const base =
-    cell.material === "concrete" ? 18 : cell.material === "brick" ? 14 : cell.material === "metal" ? 16 : 10;
-  if (kind === "chip") return 3 + (cell.isSupport ? 2 : 0);
-  if (kind === "breach") return base + (cell.isSupport ? 12 : 0) + cell.floor * 4;
-  return base + 16 + cell.floor * 8 + (cell.isSupport ? 20 : 0);
 }
 
 export function applyCellDamage(
@@ -724,12 +722,7 @@ function buildingStillUnsettled(building: Building): boolean {
   if (building.silos?.some(s=>s.phase==='falling')) return true;
   if (building.fullyDown) return false;
   if (building.floorTiles.some(t => t.state === "falling")) return true;
-  for (const cell of building.cells) {
-    if (cell.state === "gone") continue;
-    if (cell.state === "breached" || cell.state === "falling") return true;
-    if (cell.sag > 1e-4 || cell.unsupportedTime > 1e-4) return true;
-  }
-  return false;
+  return anyCellUnsettled(building);
 }
 
 /** Ground slabs persist. Upper slabs fall only when their authored bearing line is lost. */
@@ -762,35 +755,8 @@ export function buildingBonus(building: Building): number {
   return 140;
 }
 
-export function hitCellsAt(
-  building: Building,
-  x: number,
-  y: number,
-  onlySolid = false,
-): Cell[] {
-  const hits: Cell[] = [];
-  if (building.retired) return hits;
-  if (x < building.x || y < building.y) return hits;
-  const gx = Math.floor((x - building.x) / building.cellSize);
-  const gy = Math.floor((y - building.y) / building.cellSize);
-  if (gx < 0 || gy < 0 || gx >= building.w || gy >= building.d) return hits;
-  for (let floor = 0; floor < building.floors; floor++) {
-    const cell = building.grid[floor]![gx]![gy]!;
-    if (cell.state === "gone" || cell.state === "falling") continue;
-    if (onlySolid && !cellPresent(cell)) continue;
-    if (floor > 0) continue;
-    hits.push(cell);
-  }
-  return hits;
-}
-
 export function footprintSolid(building: Building, gx: number, gy: number): boolean {
   const cell = building.grid[0]?.[gx]?.[gy];
   return !!cell && cellPresent(cell);
 }
 
-export function remainingCells(building: Building): number {
-  return building.cells.filter((c) => c.state !== "gone").length;
-}
-
-export { FLOOR_Z };

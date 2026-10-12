@@ -36,7 +36,7 @@ export function replaceRoadVehicle(town: Town, vehicle: RoadVehicle): void {
     town.vehicles.push(vehicle);
     town.roadCar = vehicle;
 }
-export function attachRoadRoute(town: Town, v: RoadVehicle): void {
+function attachRoadRoute(town: Town, v: RoadVehicle): void {
     if (v.route.length)
         return;
     const demo = pickVerificationRoute(town.network);

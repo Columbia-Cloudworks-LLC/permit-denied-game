@@ -16,7 +16,7 @@ export type WeatherKind = "clear" | "rain" | "flurries" | "leaves";
 export const SEASON_COMPATIBILITY = "missing-or-invalid-season-is-summer";
 
 /** Separate from layout, biome, and weather streams. */
-export const SEASON_SALT = 0x5ea501;
+const SEASON_SALT = 0x5ea501;
 export const WEATHER_SALT = 0x7ea7e2;
 
 export const WEATHER_DETAILS: readonly WeatherDetail[] = ["on", "reduced", "off"];
@@ -31,7 +31,7 @@ export interface WeatherPreset {
   haze: number;
 }
 
-export const WEATHER_PRESETS: Record<SeasonId, readonly WeatherPreset[]> = {
+const WEATHER_PRESETS: Record<SeasonId, readonly WeatherPreset[]> = {
   spring: [
     { season: "spring", kind: "rain", gameplay: "none", light: 0xd5e4d0, haze: 0.08 },
     { season: "spring", kind: "clear", gameplay: "none", light: 0xe7f3dc, haze: 0.02 },
@@ -63,19 +63,8 @@ export function resolveSeason(seed: number): SeasonId {
   return SEASONS[rng.int(0, SEASONS.length - 1)]!;
 }
 
-/** Explicit seasons pass through. Random rolls once. Missing or invalid values are summer. */
-export function resolveSeasonSelection(selection: SeasonSelection | undefined, seed: number): SeasonId {
-  if (selection === "random") return resolveSeason(seed);
-  if (selection && isSeasonId(selection)) return selection;
-  return "summer";
-}
-
 export function groundConditionForSeason(season: SeasonId): GroundCondition {
   return season === "winter" ? "snow" : "clear";
-}
-
-export function waterFrozen(season: SeasonId): boolean {
-  return season === "winter";
 }
 
 export function seasonLabel(season: SeasonId): string {

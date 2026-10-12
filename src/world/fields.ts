@@ -7,8 +7,8 @@ export const FIELD_CELL = 0.65;
 export const FIELD_COMPLETE_RATIO = 0.9;
 export const FIELD_VALUE_CAP = 350;
 export const FIELD_COMPLETION_SHARE = 0.2;
-export const FIELD_MIN_SHORT = 10;
-export const FIELD_MIN_LONG = 24;
+const FIELD_MIN_SHORT = 10;
+const FIELD_MIN_LONG = 24;
 export const FIELD_MIN_AREA = 240;
 export const FIELD_FARM_RANGE = 12;
 export const FIELD_TRACK_RADIUS = 0.26;
@@ -92,32 +92,61 @@ export function fieldNoticeText(feature: FieldFeature, intro: boolean): string {
   return `${name} ${Math.floor(fieldProgress(feature) * 100)}%`;
 }
 
-export function fieldCellWorld(feature: FieldFeature, col: number, row: number): { x: number; y: number } {
-  const fx = Math.cos(feature.heading);
-  const fy = Math.sin(feature.heading);
-  const cx = feature.x + feature.w * 0.5;
-  const cy = feature.y + feature.d * 0.5;
+/** Field heading axes and world centre. */
+export function fieldFrame(feature: FieldFeature): { fx: number; fy: number; cx: number; cy: number } {
   return {
-    x: cx + fx * ((col + 0.5) * feature.cell - feature.w * 0.5) - fy * ((row + 0.5) * feature.cell - feature.d * 0.5),
-    y: cy + fy * ((col + 0.5) * feature.cell - feature.w * 0.5) + fx * ((row + 0.5) * feature.cell - feature.d * 0.5),
+    fx: Math.cos(feature.heading),
+    fy: Math.sin(feature.heading),
+    cx: feature.x + feature.w * 0.5,
+    cy: feature.y + feature.d * 0.5,
   };
 }
 
+/** World point at field-local offsets measured from the field centre. */
+function fieldPoint(feature: FieldFeature, along: number, across: number): { x: number; y: number } {
+  const { fx, fy, cx, cy } = fieldFrame(feature);
+  return { x: cx + fx * along - fy * across, y: cy + fy * along + fx * across };
+}
+
+export function fieldCellWorld(feature: FieldFeature, col: number, row: number): { x: number; y: number } {
+  return fieldPoint(feature, (col + 0.5) * feature.cell - feature.w * 0.5, (row + 0.5) * feature.cell - feature.d * 0.5);
+}
+
+/** Visit each maximal run of live cells on every `rowStep`-th field row, with its length and world centre. */
+export function forEachFieldRun(
+  feature: FieldFeature,
+  rowStep: number,
+  live: (index: number) => boolean,
+  visit: (run: number, row: number, span: number, center: { x: number; y: number }) => void,
+): void {
+  for (let row = 0; row < feature.rows; row += rowStep) {
+    let run = -1;
+    for (let col = 0; col <= feature.cols; col++) {
+      const on = col < feature.cols && live(row * feature.cols + col);
+      if (on && run < 0) run = col;
+      if (on) continue;
+      if (run < 0) continue;
+      const end = col - 1;
+      visit(run, row, (end - run + 1) * feature.cell, fieldRunCenter(feature, run, end, row));
+      run = -1;
+    }
+  }
+}
+
+/** World centre of the cell run `run`..`end` (inclusive) on one field row. */
+export function fieldRunCenter(feature: FieldFeature, run: number, end: number, row: number): { x: number; y: number } {
+  const mid = (run + end + 1) * 0.5;
+  return fieldPoint(feature, mid * feature.cell - feature.w * 0.5, (row + 0.5) * feature.cell - feature.d * 0.5);
+}
+
 export function fieldWorldBox(feature: FieldFeature): { x: number; y: number; w: number; d: number } {
-  const fx = Math.cos(feature.heading);
-  const fy = Math.sin(feature.heading);
-  const cx = feature.x + feature.w * 0.5;
-  const cy = feature.y + feature.d * 0.5;
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;
   let maxY = -Infinity;
   for (const sx of [-1, 1] as const) {
     for (const sy of [-1, 1] as const) {
-      const lx = sx * feature.w * 0.5;
-      const ly = sy * feature.d * 0.5;
-      const x = cx + fx * lx - fy * ly;
-      const y = cy + fy * lx + fx * ly;
+      const { x, y } = fieldPoint(feature, sx * feature.w * 0.5, sy * feature.d * 0.5);
       minX = Math.min(minX, x);
       minY = Math.min(minY, y);
       maxX = Math.max(maxX, x);
@@ -154,12 +183,9 @@ export function undevelopedFieldShare(grid: SurfaceGrid): number {
 }
 
 export function fieldChurnSpan(feature: FieldFeature): number {
-  const fx = Math.cos(feature.heading);
-  const fy = Math.sin(feature.heading);
+  const { fx, fy, cx, cy } = fieldFrame(feature);
   let minAcross = Infinity;
   let maxAcross = -Infinity;
-  const cx = feature.x + feature.w * 0.5;
-  const cy = feature.y + feature.d * 0.5;
   for (let iy = 0; iy < feature.rows; iy++) {
     for (let ix = 0; ix < feature.cols; ix++) {
       if (!feature.churn[iy * feature.cols + ix]) continue;

@@ -1,9 +1,10 @@
-import { buildingBonus, cashFor } from '../structure/building';
+import { buildingBonus } from '../structure/building';
+import { cashFor } from '../structure/cellCash';
 import type { Building } from '../structure/types';
 import { getAsset } from '../world/catalog';
 import type { Town } from '../world/town';
 
-export function availableBuildingValue(building: Building): number {
+function availableBuildingValue(building: Building): number {
   let cash = building.collapseBonusPaid ? 0 : buildingBonus(building);
   for (const cell of building.cells) {
     if (cell.state === 'gone') continue;

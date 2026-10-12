@@ -2,8 +2,9 @@ import type { Graphics } from "pixi.js";
 import type { BiomeProfile } from "../world/biomes";
 import type { SeasonId } from "../world/season";
 import { Rng } from "../game/rng";
-import { SURFACE_CHUNK, SURFACE_ID, type SurfaceGrid } from "../world/terrain";
-import { drawOrientedIsoBox, headingOffset, shade } from "./drawIso";
+import { forEachSurfaceCell, SURFACE_CHUNK, SURFACE_ID, type SurfaceGrid } from "../world/terrain";
+import { drawOrientedIsoBox, headingOffset } from "./drawIso";
+import { shade } from "./palette";
 
 export const FOREST_GARNISH_CHUNK_CAP = 140;
 
@@ -68,23 +69,19 @@ const BLOSSOM = { t: 0xf2d0dc, l: 0xc890a4, r: 0xe0b0c0 };
 
 export function planForestGarnish(grid: SurfaceGrid, biome: BiomeProfile, seed: number, season: SeasonId = "summer"): ForestGarnish[] {
   const buckets = new Map<number, { core: { ix: number; iy: number }[]; floor: { ix: number; iy: number }[] }>();
-  for (let iy = 0; iy < grid.rows; iy++) {
-    for (let ix = 0; ix < grid.cols; ix++) {
-      const i = iy * grid.cols + ix;
-      const id = grid.surface[i]!;
-      if (id !== SURFACE_ID["forest-core"] && id !== SURFACE_ID["forest-floor"]) continue;
-      const cx = (ix / SURFACE_CHUNK) | 0;
-      const cy = (iy / SURFACE_CHUNK) | 0;
-      const key = cy * 1024 + cx;
-      let bucket = buckets.get(key);
-      if (!bucket) {
-        bucket = { core: [], floor: [] };
-        buckets.set(key, bucket);
-      }
-      if (id === SURFACE_ID["forest-core"]) bucket.core.push({ ix, iy });
-      else bucket.floor.push({ ix, iy });
+  forEachSurfaceCell(grid, (_i, ix, iy, id) => {
+    if (id !== SURFACE_ID["forest-core"] && id !== SURFACE_ID["forest-floor"]) return;
+    const cx = (ix / SURFACE_CHUNK) | 0;
+    const cy = (iy / SURFACE_CHUNK) | 0;
+    const key = cy * 1024 + cx;
+    let bucket = buckets.get(key);
+    if (!bucket) {
+      bucket = { core: [], floor: [] };
+      buckets.set(key, bucket);
     }
-  }
+    if (id === SURFACE_ID["forest-core"]) bucket.core.push({ ix, iy });
+    else bucket.floor.push({ ix, iy });
+  });
   const out: ForestGarnish[] = [];
   for (const cells of buckets.values()) {
     for (const picked of pickChunkCells(grid, cells.core, cells.floor, seed)) {

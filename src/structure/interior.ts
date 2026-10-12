@@ -23,7 +23,7 @@ export function interiorRoomAt(building: Building, gx: number, gy: number, floor
   if (!room) throw new Error(`No room at ${floor}:${gx},${gy}`);
   return room.kind;
 }
-export type FixtureFinish = "wood" | "ceramic" | "metal";
+
 export function fixtureCatalog(kind: FixtureKind) {
   return { ...getAsset(`interior-${kind}`), finish: contentFinish(kind) };
 }
@@ -311,10 +311,6 @@ export function interiorFloorCoverage(building: Building, reveal = false): Inter
 }
 
 /** Adjacent exposed cells of the same finish become one rectangle so floors share an edge. */
-export function cellDrawsInteriorFloor(building: Building, gx: number, gy: number, floor: number): boolean {
-  return interiorFloorCoverage(building).hasFloor(gx, gy, floor);
-}
-
 export function interiorFloorSpans(building: Building): InteriorFloorSpan[] {
   return interiorFloorCoverage(building).spans;
 }

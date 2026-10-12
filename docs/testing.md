@@ -11,6 +11,7 @@
 | `node --test scripts/*.test.mjs` | — | Operational script tests (paths, deploy helpers, capture harness) | Linux + Windows |
 | `npm run check` | — | `tsc` for `src` and `checkJs` for operational scripts | Linux + Windows |
 | `npm run build` | — | Typecheck, production bundle, initial-JS budget | Linux + Windows |
+| `npx fallow dead-code` / `npx fallow dupes` | — | Unused files/exports, import cycles, copy-paste clones (should report none) | Manual |
 
 CI and the title-screenshot workflow run on every pull request, not only pull requests into `main`. A stack layer whose base is the previous feature branch still gets Linux and Windows checks and, for an internal PR, its own preview. Fork PRs are not deployed.
 
@@ -21,3 +22,5 @@ Linux `build` runs unit + integration + soak, then packaging. Catalog capture re
 The previous Vitest worker-source rewrite (`scripts/vitest-rpc-timeout*.mjs`) is gone. Integration, soak, and bench run a single worker so birpc ACKs stay under 60s; soak and the long campaign-generation matrices also yield with `pumpVitestRpc()`.
 
 Expected local budgets: unit cases finish in seconds; integration can take a few minutes; soak is the long simulation; bench is measurement-only.
+
+`.fallowrc.jsonc` tells fallow which files run directly (`scripts/*.mjs`, `.claude/hooks/*.mjs`) so their exports count as used. When a new operational script is only invoked by path, it is covered by that glob; a script in a subdirectory needs its own entry.

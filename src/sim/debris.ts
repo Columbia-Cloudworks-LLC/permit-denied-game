@@ -446,38 +446,6 @@ function materialSeed(material: Material): number {
   }
 }
 
-export function spawnPropDebris(town: Town, x: number, y: number, w: number, d: number, material: Material): void {
-  const cx = x + w * 0.5;
-  const cy = y + d * 0.5;
-  addDebrisBody(town, {
-    x: cx,
-    y: cy,
-    w: Math.max(0.28, w * 0.7),
-    d: Math.max(0.2, d * 0.65),
-    material,
-    layer: "remnant",
-    heading: playRng.range(-0.4, 0.4),
-    vx: playRng.range(-0.6, 0.6),
-    vy: playRng.range(-0.6, 0.6),
-    omega: playRng.range(-2, 2),
-  });
-  if (material !== "glass") {
-    addDebrisBody(town, {
-      x: cx + playRng.range(-0.2, 0.2),
-      y: cy + playRng.range(-0.2, 0.2),
-      w: playRng.range(0.16, 0.32),
-      d: playRng.range(0.1, 0.18),
-      material,
-      layer: "fragment",
-      heading: playRng.range(0, Math.PI * 2),
-      vx: playRng.range(-1.4, 1.4),
-      vy: playRng.range(-1.4, 1.4),
-      omega: playRng.range(-6, 6),
-    });
-  }
-  addMark(town, cx, cy, material === "wood" ? "splinter" : "chip", material, playRng.range(0, Math.PI));
-}
-
 function absorbBody(town: Town, r: Rubble): void {
   town.pile.addMass(r.x, r.y, r.mass, r.material, r.yardOwner);
   addMark(town, r.x, r.y, r.material === "wood" ? "splinter" : "chip", r.material, r.heading, r.yardOwner);
@@ -490,7 +458,7 @@ function heapScore(town: Town, r: Rubble): number {
   return town.pile.sample(r.x, r.y).mass + r.mass;
 }
 
-export interface CleanupCandidate {
+interface CleanupCandidate {
   body: Rubble;
   dist2: number;
   sleeping: boolean;
@@ -510,7 +478,7 @@ function touchingDozer(r: Rubble, dozerX: number, dozerY: number, touching: Read
   return dx * dx + dy * dy <= reach * reach;
 }
 
-export function collectCleanupCandidates(
+function collectCleanupCandidates(
   bodies: readonly Rubble[],
   dozerX: number,
   dozerY: number,
@@ -1315,8 +1283,4 @@ export function obstructionAt(town: Town, x: number, y: number, radius = 0.7) {
     ...base,
     resistance: base.resistance + feel * 0.32,
   };
-}
-
-export function pathBlocked(town: Town, x: number, y: number, radius = 0.7): boolean {
-  return obstructionAt(town, x, y, radius).blocked;
 }

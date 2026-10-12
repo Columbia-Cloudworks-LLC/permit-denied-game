@@ -17,7 +17,7 @@ interface Source {
     steering: 'front' | 'rear' | 'tracks';
 }
 /** Assemblies use local +X forward. Children are placed in vehicle space, then inherit parent displacement. */
-export function buildVehicle(s: Source): VehicleDefinition {
+function buildVehicle(s: Source): VehicleDefinition {
     const { length: l, width: w, height: h } = s;
     const parts: VehiclePart[] = [];
     const add = (id: string, role: PartRole, x: number, y: number, z: number, length: number, width: number, height: number, parent = 'frame', shape: VehiclePart['shape'] = 'box', color: VehiclePart['color'] = 'paint') => {

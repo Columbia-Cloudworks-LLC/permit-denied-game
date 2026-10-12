@@ -1,9 +1,9 @@
 import { Graphics } from "pixi.js";
-import { FLOOR_Z } from "../game/constants";
+import { orientedRect } from "../game/math";
 import type { Material } from "../structure/types";
 import { depthKey, isoQuad, worldToScreen } from "../world/iso";
 import { roofSlopeLight } from "./lighting";
-import { PAL, matColors } from "./palette";
+import { PAL, matColors, shade } from "./palette";
 
 export function headingOffset(
   x: number,
@@ -43,17 +43,7 @@ export function drawOrientedGround(
   alpha = 1,
   z = 0,
 ): void {
-  const fx = Math.cos(heading);
-  const fy = Math.sin(heading);
-  const hl = length * 0.5;
-  const hw = width * 0.5;
-  const corners = [
-    { x: cx + fx * hl - fy * hw, y: cy + fy * hl + fx * hw },
-    { x: cx + fx * hl + fy * hw, y: cy + fy * hl - fx * hw },
-    { x: cx - fx * hl + fy * hw, y: cy - fy * hl - fx * hw },
-    { x: cx - fx * hl - fy * hw, y: cy - fy * hl + fx * hw },
-  ];
-  const q = corners.flatMap((p) => {
+  const q = orientedRect(cx, cy, heading, length, width).flatMap((p) => {
     const s = worldToScreen(p.x, p.y, z);
     return [s.x, s.y];
   });
@@ -251,10 +241,6 @@ export function drawShadow(
   drawGroundPoly(g, x, y, w, d, PAL.shadow, alpha);
 }
 
-export function floorZ(floor: number): number {
-  return floor * FLOOR_Z;
-}
-
 export function cellColors(material: Material, cracked: boolean): { top: number; left: number; right: number } {
   const c = matColors(material);
   if (!cracked) return { top: c.top, left: c.dark, right: c.side };
@@ -263,13 +249,6 @@ export function cellColors(material: Material, cracked: boolean): { top: number;
     left: shade(c.dark, 0.85),
     right: shade(c.side, 0.85),
   };
-}
-
-export function shade(color: number, mul: number): number {
-  const r = Math.round(((color >> 16) & 255) * mul);
-  const g = Math.round(((color >> 8) & 255) * mul);
-  const b = Math.round((color & 255) * mul);
-  return (r << 16) | (g << 8) | b;
 }
 
 function mixHex(a: number, b: number, t: number): number {
@@ -287,4 +266,4 @@ function mixHex(a: number, b: number, t: number): number {
   );
 }
 
-export { PAL, matColors };
+export { PAL };

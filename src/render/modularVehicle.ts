@@ -4,7 +4,7 @@ import { partPose, detachedRoot } from '../vehicle/runtime';
 import type { VehicleState } from '../vehicle/types';
 import { depthKey, worldBoundsToScreen, worldToScreen, type ScreenAabb } from '../world/iso';
 import { cross, faceVisible, orderVehicleFaces, type VehicleFace, type Vertex } from './vehiclePainter';
-export function vehicleAssemblies(v: VehicleState): (number | undefined)[] {
+function vehicleAssemblies(v: VehicleState): (number | undefined)[] {
     return [undefined, ...v.parts.flatMap((s, i) => s.detached ? [i] : [])];
 }
 interface RenderGroup { roots: (number | undefined)[]; bounds: ScreenAabb; depth: number }

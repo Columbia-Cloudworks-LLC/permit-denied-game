@@ -166,6 +166,24 @@ function generateEstateLayout(level: CampaignLevelDef, seed: number, environment
     season,
   });
 
+  const estateUrban = () => ({
+    center: { x: (minX + maxX) * 0.5, y: (minY + maxY) * 0.5 },
+    extent: Math.max(8, maxX - minX, maxY - minY),
+    lots: lots.map(lot => ({
+      lotId: lot.id,
+      districtRole: 'estate' as const,
+      urbanBand: 'estate' as const,
+      distToCenter: 0,
+      radius: 0,
+      corner: false,
+      roadClass: 'residential',
+    })),
+    openSpaces: [],
+    blocks: [],
+    byRole: { estate: lots.length },
+    byBand: { estate: lots.length },
+  });
+
   return {
     buildings,
     props,
@@ -194,41 +212,9 @@ function generateEstateLayout(level: CampaignLevelDef, seed: number, environment
     diagnostic: { ok: !!mansion, issues: mansion ? [] : [{ code: 'landmark', detail: 'estate missing mansion' }] },
     nhood: {
       rejected: [],
-      urban: {
-        center: { x: (minX + maxX) * 0.5, y: (minY + maxY) * 0.5 },
-        extent: Math.max(8, maxX - minX, maxY - minY),
-        lots: lots.map(lot => ({
-          lotId: lot.id,
-          districtRole: 'estate' as const,
-          urbanBand: 'estate' as const,
-          distToCenter: 0,
-          radius: 0,
-          corner: false,
-          roadClass: 'residential',
-        })),
-        openSpaces: [],
-        blocks: [],
-        byRole: { estate: lots.length },
-        byBand: { estate: lots.length },
-      },
+      urban: estateUrban(),
     },
-    urban: {
-      center: { x: (minX + maxX) * 0.5, y: (minY + maxY) * 0.5 },
-      extent: Math.max(8, maxX - minX, maxY - minY),
-      lots: lots.map(lot => ({
-        lotId: lot.id,
-        districtRole: 'estate' as const,
-        urbanBand: 'estate' as const,
-        distToCenter: 0,
-        radius: 0,
-        corner: false,
-        roadClass: 'residential',
-      })),
-      openSpaces: [],
-      blocks: [],
-      byRole: { estate: lots.length },
-      byBand: { estate: lots.length },
-    },
+    urban: estateUrban(),
   };
 }
 

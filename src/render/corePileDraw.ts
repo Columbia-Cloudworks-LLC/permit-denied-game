@@ -1,6 +1,7 @@
 import type { Graphics } from 'pixi.js';
 import type { Town } from '../world/town';
-import { drawOrientedIsoBox, drawWorldPoly, PAL, shade } from './drawIso';
+import { drawOrientedIsoBox, drawWorldPoly, PAL } from './drawIso';
+import { shade } from './palette';
 
 export interface PileArea { x: number; y: number; w: number; d: number }
 

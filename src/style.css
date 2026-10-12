@@ -20,7 +20,9 @@ html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background:
 #hud-root { position: fixed; inset: 0; pointer-events: none; z-index: 2; color: var(--cream); }
 #hud-root [hidden] { display: none !important; }
 #hud-root button, #hud-root a, #hud-root select, #hud-root input, #hud-root summary { pointer-events: auto; }
-#hud-root button, #hud-root .menu-social { min-height: 44px; border: 1px solid #6d7263; border-bottom: 3px solid #0b100d; border-radius: 4px; padding: 12px 16px; color: var(--cream); background: linear-gradient(#39403a, #292f29); font: bold 12px/1.35 var(--mono); letter-spacing: .055em; cursor: pointer; box-shadow: inset 0 1px #ffffff0d, 0 2px 3px #0003; transition: background .12s, transform .12s; }
+/* Chunky equipment button, shared with the site pages that import this sheet. */
+#hud-root button, #hud-root .menu-social, body.site-page button, body.site-page .site-nav a { min-height: 44px; border: 1px solid #6d7263; border-bottom: 3px solid #0b100d; border-radius: 4px; padding: 12px 16px; color: var(--cream); background: linear-gradient(#39403a, #292f29); font: bold 12px/1.35 var(--mono); letter-spacing: .055em; cursor: pointer; box-shadow: inset 0 1px #ffffff0d, 0 2px 3px #0003; }
+#hud-root button, #hud-root .menu-social { transition: background .12s, transform .12s; }
 #hud-root button:hover, #hud-root .menu-social:hover { background: #454d40; border-color: var(--yellow); }
 #hud-root button:active, #hud-root .menu-social:active { transform: translateY(2px); border-bottom-width: 1px; }
 #hud-root button:disabled { opacity: .4; cursor: default; transform: none; }
@@ -392,10 +394,6 @@ dt { color: #d9b96f; font: bold 11px/1.5 var(--mono); } dd { margin: 0; color: #
   .top > #hud-permit { order: 0; flex: 1 1 calc(100% - 170px); margin: 0; }
   .top > .hud-actions { order: 1; }
   .top > .cash-stat, .top > .clock-stat { order: 2; flex: 1 1 auto; min-width: max-content; padding: 6px 0 0; border-left: 0; border-top: 1px solid var(--line); }
-  .cash-counter { font-size: 18px; padding: 4px; }
-  .clock-digit { width: 13px; height: 25px; }
-  .clock-colon { width: 5px; height: 25px; }
-  .equipment-clock { gap: 2px; padding: 4px 6px; }
   #hud-job, #debug-panel { top: calc(max(8px, env(safe-area-inset-top)) + var(--top-panel-height, 170px) + 8px); }
 }
 @media (max-height: 500px) and (min-width: 701px) {
@@ -408,6 +406,10 @@ dt { color: #d9b96f; font: bold 11px/1.5 var(--mono); } dd { margin: 0; color: #
   .top > .stat { min-width: max-content; padding-left: 8px; }
   .top .hud-actions { gap: 5px; }
   #hud-root .hud-actions button { padding: 8px; min-width: 0; }
+}
+
+/* Compact cash counter and county clock below desktop width. */
+@media (max-width: 1000px) {
   .cash-counter { font-size: 18px; padding: 4px; }
   .clock-digit { width: 13px; height: 25px; }
   .clock-colon { width: 5px; height: 25px; }

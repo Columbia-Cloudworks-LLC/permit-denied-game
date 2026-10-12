@@ -5,11 +5,9 @@ import { resolveSeason, seasonLabel, type SeasonId } from '../world/season';
 import type { Upgrades } from './upgrades';
 import { COPY } from './constants';
 import {
-  CAMPAIGN_LEVELS,
   CAMPAIGN_LEVEL_COUNT,
   campaignLevelAt,
   type CampaignLevelDef,
-  type CampaignLevelId,
 } from './campaign';
 
 export type CampaignOutcome = 'continue' | 'win' | 'engine' | 'track' | 'clock';
@@ -38,7 +36,7 @@ export interface CampaignRun {
   biomeId: BiomeId;
 }
 
-export function emptyUpgrades(): Upgrades {
+function emptyUpgrades(): Upgrades {
   return { blade: 0, engine: 0, push: 0 };
 }
 
@@ -89,7 +87,7 @@ export function spendCampaignCash(run: CampaignRun, amount: number): boolean {
   return true;
 }
 
-export function landmarkBuildings(buildings: readonly Building[], level: CampaignLevelDef): Building[] {
+function landmarkBuildings(buildings: readonly Building[], level: CampaignLevelDef): Building[] {
   const ids = new Set(level.landmark.structureIds);
   return buildings.filter(building => building.campaignLandmark || ids.has(building.archetypeId));
 }
@@ -196,8 +194,3 @@ export function campaignBriefingText(level: CampaignLevelDef, season: SeasonId =
   return lines.join('\n');
 }
 
-export function campaignLevelId(run: CampaignRun): CampaignLevelId {
-  return currentLevel(run).id;
-}
-
-export { CAMPAIGN_LEVELS };

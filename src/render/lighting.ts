@@ -1,13 +1,12 @@
 import type { FloorFinish, Material } from "../structure/types";
-import { shade } from "./drawIso";
-import { matColors, PAL } from "./palette";
+import { matColors, PAL, shade } from "./palette";
 
 /** Fixed isometric sun from upper-west (world −X, −Y). */
-export const LIGHT_DIR = { x: -0.72, y: -0.68 };
+const LIGHT_DIR = { x: -0.72, y: -0.68 };
 
 export type WallFace = "south" | "east";
 
-export function wallFaceShade(face: WallFace): number {
+function wallFaceShade(face: WallFace): number {
   const dot = face === "east" ? LIGHT_DIR.x : LIGHT_DIR.y;
   return dot > 0 ? 1.04 : 0.86;
 }
@@ -23,14 +22,6 @@ export function topFaceColor(material: Material, damaged = false): number {
   const c = matColors(material);
   const lit = shade(c.top, 1.06);
   return damaged ? shade(lit, 0.88) : lit;
-}
-
-export function interiorColor(): number {
-  return PAL.plasterShadow;
-}
-
-export function plasterColor(occluded = false): number {
-  return occluded ? PAL.plasterShadow : PAL.plaster;
 }
 
 export function floorFinishColor(finish: FloorFinish, edge = false): number {

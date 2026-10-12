@@ -1,6 +1,7 @@
 import { campaignLevelById } from "../game/campaign";
 import { DRESSING } from "../game/constants";
 import { aabbOverlap, pointInAabb } from "../game/math";
+import { buildingOccupy } from "./dressing";
 import type { DistrictId } from "../game/session";
 import type { Building, Prop } from "../structure/types";
 import { speciesCompatible } from "./biomes";
@@ -11,7 +12,7 @@ import { movementBlocked, terrainTraversalAt, validateFeatureLayout } from "./te
 import { aabbContainedInBox, aabbContainedInPoly, convexOverlap, parcelHitsRoad } from "./parcels";
 import type { CampaignLevelDef } from "../game/campaign";
 import { generateCampaignLayout } from "./campaignLayout";
-import { generateRuralLayout, type TopologyFamily } from "./rural";
+import { generateRuralLayout, spawnPointClear, type TopologyFamily } from "./rural";
 import {
   aabbOverlapsRoad,
   findRoadRoute,
@@ -81,13 +82,6 @@ export function generateDistrictLayout(
   };
 }
 
-export function buildingOccupyBoxes(building: Building): { x: number; y: number; w: number; d: number }[] {
-  return [
-    { x: building.x, y: building.y, w: building.w * building.cellSize, d: building.d * building.cellSize },
-    ...building.decorBoxes.map((b) => ({ x: b.x, y: b.y, w: b.w, d: b.d })),
-  ];
-}
-
 export function validateTown(town: Town): DistrictReport {
   const issues: DistrictIssue[] = [];
   if (town.district === "classic") {
@@ -145,7 +139,7 @@ export function validateTown(town: Town): DistrictReport {
 
   for (let i = 0; i < town.buildings.length; i++) {
     const a = town.buildings[i]!;
-    for (const box of buildingOccupyBoxes(a)) {
+    for (const box of buildingOccupy(a)) {
       if (box.x < town.minX - 0.4 || box.y < town.minY - 0.4 || box.x + box.w > town.maxX + 0.4 || box.y + box.d > town.maxY + 0.4) {
         issues.push({ code: "bounds", detail: `${a.name} leaves world bounds` });
       }
@@ -154,7 +148,7 @@ export function validateTown(town: Town): DistrictReport {
     if (aabbOverlapsRoad(town.network, footprint.x, footprint.y, footprint.w, footprint.d)) {
       issues.push({ code: "road", detail: `${a.name} overlaps a street` });
     }
-    for (const box of buildingOccupyBoxes(a)) {
+    for (const box of buildingOccupy(a)) {
       if (aabbOverlapsRoad(town.network, box.x, box.y, box.w, box.d)) {
         issues.push({ code: "road", detail: `${a.name} decor overlaps a street` });
       }
@@ -180,7 +174,7 @@ export function validateTown(town: Town): DistrictReport {
     }
     for (const p of town.props) {
       if (p.broken) continue;
-      for (const box of buildingOccupyBoxes(a)) {
+      for (const box of buildingOccupy(a)) {
         if (aabbOverlap(p.x, p.y, p.w, p.d, box.x, box.y, box.w, box.d)) {
           issues.push({ code: "prop-building", detail: `${p.assetId} intersects ${a.name}` });
         }
@@ -285,7 +279,7 @@ export function validateTown(town: Town): DistrictReport {
     }
     const building = town.buildings[i];
     if (building && lot.buildable) {
-      for (const box of buildingOccupyBoxes(building)) {
+      for (const box of buildingOccupy(building)) {
         if (!aabbContainedInBox(box, lot.buildable, 0.05)) {
           issues.push({ code: "envelope", detail: `${building.name} leaves ${lot.id} buildable envelope` });
         }
@@ -321,17 +315,7 @@ function districtCount(id: DistrictId): number {
 }
 
 function spawnClear(buildings: Building[], props: Prop[], x: number, y: number): boolean {
-  const rad = 1.35;
-  for (const b of buildings) {
-    if (aabbOverlap(x - rad, y - rad, rad * 2, rad * 2, b.x, b.y, b.w * b.cellSize, b.d * b.cellSize)) {
-      return false;
-    }
-  }
-  for (const p of props) {
-    if (p.broken) continue;
-    if (aabbOverlap(x - rad, y - rad, rad * 2, rad * 2, p.x, p.y, p.w, p.d)) return false;
-  }
-  return true;
+  return spawnPointClear(buildings, props, x, y, 1.35);
 }
 
 function pushPileCoverage(town: Town, issues: DistrictIssue[]): void {

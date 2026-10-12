@@ -19,7 +19,7 @@ import type { ParticlePool } from "../fx/particles";
 import { applyBrokenRoofEdge, displacedRoofVerts, roofHeightAt, sectionOwnsRidge, sawtoothClosures } from "../structure/roof";
 import type { Bird, Building, CollapsedSite, CoverKind, GroundMark, GroundPatch, Particle, RoofSection, Rubble } from "../structure/types";
 import type { FieldFeature, TerrainFeature } from "../world/terrainFeatures";
-import { CHURN_SWATH, CHURN_TRACK } from "../world/fields";
+import { CHURN_SWATH, CHURN_TRACK, fieldRunCenter, forEachFieldRun } from "../world/fields";
 import type { Dozer } from "../vehicle/dozer";
 import type { Town } from "../world/town";
 import { getBuildingSurfaces, releaseBuildingSurfaces } from "./buildingSurfaces";
@@ -27,7 +27,8 @@ import { wallPaintSpans } from "./wallPaint";
 import { drawCatalogProp } from "./assets";
 import { drawRoofFrame, interiorCmds, roofCommandDepth, roofShowsFrame } from "./interiorDraw";
 import { coverColor, coverDark } from "./coverPalette";
-import { cellColors, drawGroundPoly, drawIsoBox, drawOrientedGround, drawOrientedIsoBox, drawShadow, drawSlopedQuad, drawWorldPoly, PAL, shade } from "./drawIso";
+import { cellColors, drawGroundPoly, drawIsoBox, drawOrientedGround, drawOrientedIsoBox, drawShadow, drawSlopedQuad, drawWorldPoly, PAL } from "./drawIso";
+import { shade } from "./palette";
 import type { GroundCondition } from "../world/groundCondition";
 import { seasonTrackColor, type SeasonId } from "../world/season";
 import { presentationTint, SeasonWeather, type WeatherFlake } from "../fx/seasonWeather";
@@ -1178,48 +1179,26 @@ function drawFieldCrops(g: Graphics, feature: FieldFeature, condition: GroundCon
   const style = cropRowStyle(feature, condition, season);
   const gap = Math.max(0.9, Math.min(1.2, feature.cell * 1.4));
   const stride = feature.rows > 7 ? 2 : 1;
-  const fx = Math.cos(feature.heading);
-  const fy = Math.sin(feature.heading);
-  const ox = feature.x + feature.w * 0.5;
-  const oy = feature.y + feature.d * 0.5;
-  for (let row = 0; row < feature.rows; row += stride) {
-    let run = -1;
-    for (let col = 0; col <= feature.cols; col++) {
-      const live = col < feature.cols
-        && (!feature.mask || feature.mask[row * feature.cols + col])
-        && !feature.churn[row * feature.cols + col];
-      if (live && run < 0) run = col;
-      if (live && col < feature.cols) continue;
-      if (run < 0) continue;
-      const end = col - 1;
-      const span = (end - run + 1) * feature.cell;
-      const mid = (run + end + 1) * 0.5;
-      const cx = ox + fx * (mid * feature.cell - feature.w * 0.5) - fy * ((row + 0.5) * feature.cell - feature.d * 0.5);
-      const cy = oy + fy * (mid * feature.cell - feature.w * 0.5) + fx * ((row + 0.5) * feature.cell - feature.d * 0.5);
-      drawOrientedIsoBox(
-        g,
-        cx,
-        cy,
-        feature.heading,
-        span,
-        Math.min(style.thick, gap * 0.72),
-        0.012,
-        style.h,
-        style.top,
-        style.left,
-        style.right,
-        feature.state === "stubble" ? 0.7 : 1,
-      );
-      run = -1;
-    }
-  }
+  const live = (i: number): boolean => (!feature.mask || !!feature.mask[i]) && !feature.churn[i];
+  forEachFieldRun(feature, stride, live, (_run, _row, span, center) => {
+    drawOrientedIsoBox(
+      g,
+      center.x,
+      center.y,
+      feature.heading,
+      span,
+      Math.min(style.thick, gap * 0.72),
+      0.012,
+      style.h,
+      style.top,
+      style.left,
+      style.right,
+      feature.state === "stubble" ? 0.7 : 1,
+    );
+  });
 }
 
 function drawFieldChurn(g: Graphics, feature: FieldFeature): void {
-  const fx = Math.cos(feature.heading);
-  const fy = Math.sin(feature.heading);
-  const ox = feature.x + feature.w * 0.5;
-  const oy = feature.y + feature.d * 0.5;
   for (let row = 0; row < feature.rows; row++) {
     let run = -1;
     let mark = 0;
@@ -1236,9 +1215,7 @@ function drawFieldChurn(g: Graphics, feature: FieldFeature): void {
       if (run < 0) continue;
       const end = col - 1;
       const span = (end - run + 1) * feature.cell;
-      const mid = (run + end + 1) * 0.5;
-      const cx = ox + fx * (mid * feature.cell - feature.w * 0.5) - fy * ((row + 0.5) * feature.cell - feature.d * 0.5);
-      const cy = oy + fy * (mid * feature.cell - feature.w * 0.5) + fx * ((row + 0.5) * feature.cell - feature.d * 0.5);
+      const { x: cx, y: cy } = fieldRunCenter(feature, run, end, row);
       const width = mark === CHURN_SWATH ? feature.cell * 1.02 : feature.cell * 0.62;
       drawOrientedGround(
         g,
@@ -1279,7 +1256,7 @@ function drawWeatherFlake(g: Graphics, flake: WeatherFlake): void {
 /** Dust this faded is under a tenth of opacity, which overview zoom shrinks to a couple of pixels. */
 const SPECK_DUST_FADE = 0.2;
 
-export function particleBelowSpeck(p: Particle): boolean {
+function particleBelowSpeck(p: Particle): boolean {
   return p.kind === "dust" && p.life / p.maxLife < SPECK_DUST_FADE;
 }
 
@@ -1287,19 +1264,24 @@ export function particleBelowSpeck(p: Particle): boolean {
  * Overview LOD: the contact shadow is under a pixel and a chip is a speck, so each
  * particle is one fill in its lit face colour at the same screen spot.
  */
-export function drawParticleSpeck(g: Graphics, p: Particle): void {
+function drawParticleSpeck(g: Graphics, p: Particle): void {
   const fade = Math.min(1, p.life / p.maxLife);
-  const c = worldToScreen(p.x, p.y, p.z);
   if (p.kind === "dust") {
-    const r = 5 + p.size * 10;
-    g.rect(c.x - r / 2, c.y - r / 2, r, r);
-    g.fill({ color: PAL.dust, alpha: 0.32 * fade });
+    drawDustSpeck(g, p, fade);
     return;
   }
+  const c = worldToScreen(p.x, p.y, p.z);
   const { color, len, wid } = particleChip(p);
   const s = (len + wid) * ISO_W * 0.5;
   g.rect(c.x - s / 2, c.y - s / 4, s, s / 2);
   g.fill({ color, alpha: (p.kind === "crop" ? 0.88 : 0.92) * fade });
+}
+
+function drawDustSpeck(g: Graphics, p: Particle, fade: number): void {
+  const c = worldToScreen(p.x, p.y, p.z);
+  const r = 5 + p.size * 10;
+  g.rect(c.x - r / 2, c.y - r / 2, r, r);
+  g.fill({ color: PAL.dust, alpha: 0.32 * fade });
 }
 
 function particleChip(p: Particle): { color: number; dark: number; len: number; wid: number } {
@@ -1336,10 +1318,7 @@ function drawParticle(g: Graphics, p: Particle): void {
   g.ellipse(s.x, s.y, 3.2, 1.6);
   g.fill({ color: PAL.shadow, alpha: 0.2 * fade });
   if (p.kind === "dust") {
-    const c = worldToScreen(p.x, p.y, p.z);
-    const r = 5 + p.size * 10;
-    g.rect(c.x - r / 2, c.y - r / 2, r, r);
-    g.fill({ color: PAL.dust, alpha: 0.32 * fade });
+    drawDustSpeck(g, p, fade);
     return;
   }
   const { color, dark, len, wid } = particleChip(p);

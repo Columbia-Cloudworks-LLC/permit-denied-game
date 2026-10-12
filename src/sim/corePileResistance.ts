@@ -6,7 +6,7 @@ import type { Dozer } from '../vehicle/dozer';
 const STOP_PRESSURE = .72;
 
 /** Radial influence locates the heap; actual remaining material determines access. */
-export function corePilePressure(town: Town, x: number, y: number): number {
+function corePilePressure(town: Town, x: number, y: number): number {
   let pressure = 0;
   for (const b of town.buildings) {
     if (b.coreCollapse?.phase !== 'settled') continue;

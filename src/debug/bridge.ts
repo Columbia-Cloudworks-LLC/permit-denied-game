@@ -194,7 +194,7 @@ export function serializeTownFeature(feature: TerrainFeature): TownFeatureSnapsh
 
 export type DebugHost = Omit<DebugBridge, "version">;
 
-export const DEBUG_QUERY_KEYS = [
+const DEBUG_QUERY_KEYS = [
   "debug",
   "yard",
   "testAsset",
@@ -233,10 +233,6 @@ export function exposeDebugBridge(bridge: DebugBridge): void {
     writable: false,
     value: bridge,
   });
-}
-
-export function clearDebugBridge(): void {
-  delete (window as Window & { __pd?: DebugBridge }).__pd;
 }
 
 declare global {

@@ -23,6 +23,7 @@
   "include": [
     "scripts/analyze-bundle.mjs",
     "scripts/deploy-vercel.mjs",
+    "scripts/vercel-api.mjs",
     "scripts/github-redirect.mjs",
     "scripts/repo-preflight.mjs",
     "scripts/catalog.mjs",

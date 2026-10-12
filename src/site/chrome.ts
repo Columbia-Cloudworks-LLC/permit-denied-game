@@ -9,10 +9,10 @@ const PAGES: { id: SitePage; href: string; label: string }[] = [
   { id: 'designer', href: '/designer/', label: 'Designer' },
 ];
 
-export const publisherMarkup = '<a class="publisher-brand" href="https://columbiacloudworks.com/" target="_blank" rel="noopener noreferrer"><img src="/brand/Columbia-Cloudworks-Icon-Small.png" width="28" height="28" alt="" /><span>Columbia Cloudworks LLC</span></a>';
-export const copyrightMarkup = `<span>© 2026</span>${publisherMarkup}<span>All rights reserved.</span>`;
+const publisherMarkup = '<a class="publisher-brand" href="https://columbiacloudworks.com/" target="_blank" rel="noopener noreferrer"><img src="/brand/Columbia-Cloudworks-Icon-Small.png" width="28" height="28" alt="" /><span>Columbia Cloudworks LLC</span></a>';
+const copyrightMarkup = `<span>© 2026</span>${publisherMarkup}<span>All rights reserved.</span>`;
 
-export function siteNavMarkup(current: SitePage): string {
+function siteNavMarkup(current: SitePage): string {
   return `<nav class="site-nav" aria-label="Site">${PAGES.map(page => {
     const currentAttr = page.id === current ? ' aria-current="page"' : '';
     return `<a href="${page.href}"${currentAttr}>${page.label}</a>`;

@@ -44,11 +44,7 @@ export function worldBoundsToScreen(
   z0 = 0,
   z1 = 0,
 ): ScreenAabb {
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-  const corners: [number, number, number][] = [
+  return screenBoundsOf([
     [x, y, z0],
     [x + w, y, z0],
     [x + w, y + d, z0],
@@ -57,8 +53,16 @@ export function worldBoundsToScreen(
     [x + w, y, z1],
     [x + w, y + d, z1],
     [x, y + d, z1],
-  ];
-  for (const [wx, wy, z] of corners) {
+  ]);
+}
+
+/** Screen-space bounds of world points given as [x, y, z]. */
+export function screenBoundsOf(points: readonly (readonly [number, number, number])[]): ScreenAabb {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const [wx, wy, z] of points) {
     const s = worldToScreen(wx, wy, z);
     if (s.x < minX) minX = s.x;
     if (s.y < minY) minY = s.y;

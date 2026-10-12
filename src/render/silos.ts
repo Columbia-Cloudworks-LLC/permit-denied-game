@@ -4,7 +4,8 @@ import type { DebugView } from '../debug/view';
 import { cellPresent, type Building } from '../structure/types';
 import { siloCells, siloPose } from '../structure/silos';
 import { depthKey } from '../world/iso';
-import { drawWorldPoly, shade } from './drawIso';
+import { drawWorldPoly } from './drawIso';
+import { shade } from './palette';
 
 export function siloCommands(b:Building,view:DebugView) {
   const commands:{depth:number;run:(g:Graphics)=>void}[]=[];

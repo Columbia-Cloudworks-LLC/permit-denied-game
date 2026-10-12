@@ -1,11 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { TERMS_VERSION } from "../terms-version.mjs";
-import { gameUrl, reservePort } from "./harness.mjs";
+import { TERMS_VERSION } from "./terms-version.mjs";
+import { gameUrl, reservePort } from "./capture/harness.mjs";
 
 test("consent version is read from src/privacy/state.ts", () => {
-  const source = readFileSync(new URL("../../src/privacy/state.ts", import.meta.url), "utf8");
+  const source = readFileSync(new URL("../src/privacy/state.ts", import.meta.url), "utf8");
   const match = source.match(/export const TERMS_VERSION = '([^']+)'/);
   assert.equal(TERMS_VERSION, match?.[1]);
   assert.match(TERMS_VERSION, /^\d{4}-\d{2}-\d{2}$/);

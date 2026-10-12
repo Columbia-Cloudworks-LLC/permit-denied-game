@@ -4,12 +4,12 @@ import type { BiomeProfile } from "./biomes";
 import { pointOnRoad, polylineLength, samplePolyline, type RoadNetwork, type RoadSegment } from "./roads";
 
 export const TERRAIN_GEN_VERSION = 1;
-export const SURFACE_CELL = 1;
+const SURFACE_CELL = 1;
 export const SURFACE_CHUNK = 16;
-export const SURFACE_MAX = 512;
+const SURFACE_MAX = 512;
 export const FOREST_DEVELOPMENT_CLEAR = 1.6;
 
-export const TERRAIN_SURFACES = [
+const TERRAIN_SURFACES = [
   "grass",
   "scrub",
   "dirt",
@@ -85,6 +85,7 @@ export interface GenerateSurfaceOpts {
   openFields?: boolean;
 }
 
+/** Rural road grid (east-west by north-south blocks) sized for `count` buildings. */
 export function ruralGridDims(count: number): { ew: number; ns: number } {
   const minSlots = count <= 12 ? count * 2.2 : count <= 36 ? count * 2.0 : count * 2.15;
   const target = count <= 12 ? count * 2.6 : count * 2.3;
@@ -156,14 +157,70 @@ export function cellIndex(grid: SurfaceGrid, ix: number, iy: number): number {
   return iy * grid.cols + ix;
 }
 
-export function worldToCell(grid: SurfaceGrid, x: number, y: number): { ix: number; iy: number } {
+const NEIGHBORS_4 = [[1, 0], [-1, 0], [0, 1], [0, -1]] as const;
+
+/** In-grid edge neighbours of cell `i`. */
+export function neighbors4(grid: SurfaceGrid, i: number): number[] {
+  const ix = i % grid.cols;
+  const iy = (i / grid.cols) | 0;
+  const out: number[] = [];
+  for (const [dx, dy] of NEIGHBORS_4) {
+    const j = cellIndex(grid, ix + dx, iy + dy);
+    if (j >= 0) out.push(j);
+  }
+  return out;
+}
+
+/** Row-major walk over every surface cell. */
+export function forEachSurfaceCell(grid: SurfaceGrid, visit: (i: number, ix: number, iy: number, id: number) => void): void {
+  for (let iy = 0; iy < grid.rows; iy++) {
+    for (let ix = 0; ix < grid.cols; ix++) {
+      const i = iy * grid.cols + ix;
+      visit(i, ix, iy, grid.surface[i]!);
+    }
+  }
+}
+
+/** Cells scoring above `min`, best first. A negative score skips the cell. */
+function scoreCells(
+  grid: SurfaceGrid,
+  min: number,
+  score: (i: number, ix: number, iy: number, id: number) => number,
+): { i: number; s: number }[] {
+  const scores: { i: number; s: number }[] = [];
+  forEachSurfaceCell(grid, (i, ix, iy, id) => {
+    const s = score(i, ix, iy, id);
+    if (s > min) scores.push({ i, s });
+  });
+  return scores.sort((a, b) => b.s - a.s);
+}
+
+/** Connected cells sharing the surface id at `start`; marks them in `seen`. */
+function floodSurface(grid: SurfaceGrid, start: number, seen: Uint8Array): number[] {
+  const id = grid.surface[start]!;
+  const cells: number[] = [];
+  const q = [start];
+  seen[start] = 1;
+  while (q.length) {
+    const i = q.pop()!;
+    cells.push(i);
+    for (const j of neighbors4(grid, i)) {
+      if (seen[j] || grid.surface[j] !== id) continue;
+      seen[j] = 1;
+      q.push(j);
+    }
+  }
+  return cells;
+}
+
+function worldToCell(grid: SurfaceGrid, x: number, y: number): { ix: number; iy: number } {
   return {
     ix: Math.floor((x - grid.ox) / grid.cell),
     iy: Math.floor((y - grid.oy) / grid.cell),
   };
 }
 
-export function surfaceIdAt(grid: SurfaceGrid, x: number, y: number): number {
+function surfaceIdAt(grid: SurfaceGrid, x: number, y: number): number {
   const { ix, iy } = worldToCell(grid, x, y);
   const i = cellIndex(grid, ix, iy);
   return i < 0 ? SURFACE_ID.grass : grid.surface[i]!;
@@ -318,10 +375,6 @@ export function sampleSegmentCenterline(seg: RoadSegment, step = 1): { x: number
   return out;
 }
 
-export function segmentTouchesReject(grid: SurfaceGrid, seg: RoadSegment): boolean {
-  return sampleSegmentCenterline(seg).some((p) => !Number.isFinite(roadCostAt(grid, p.x, p.y)));
-}
-
 export function enforceOpenCorridors(
   grid: SurfaceGrid,
   network: RoadNetwork,
@@ -329,40 +382,36 @@ export function enforceOpenCorridors(
   buildings: readonly { x: number; y: number; w: number; d: number; cellSize: number }[],
 ): void {
   const pad = FOREST_DEVELOPMENT_CLEAR;
-  for (let iy = 0; iy < grid.rows; iy++) {
-    for (let ix = 0; ix < grid.cols; ix++) {
-      const i = iy * grid.cols + ix;
-      const id = grid.surface[i]!;
-      const wooded = id === SURFACE_ID["forest-core"] || id === SURFACE_ID["forest-floor"];
-      const water = id === SURFACE_ID.water;
-      if (!wooded && !water) continue;
-      const x = grid.ox + (ix + 0.5) * grid.cell;
-      const y = grid.oy + (iy + 0.5) * grid.cell;
-      const jitter = wooded ? (hash2(ix, iy, 0xf02e57) - 0.5) * 0.55 : 0;
-      const clear = wooded ? Math.max(0.85, pad + jitter) : 0;
-      let blocked = nearRoad(network, x, y, clear);
-      if (!blocked && wooded) {
-        for (const lot of lots) {
-          if (inExpandedBox(x, y, lot.x, lot.y, lot.w, lot.d, clear)) {
-            blocked = true;
-            break;
-          }
+  forEachSurfaceCell(grid, (i, ix, iy, id) => {
+    const wooded = id === SURFACE_ID["forest-core"] || id === SURFACE_ID["forest-floor"];
+    const water = id === SURFACE_ID.water;
+    if (!wooded && !water) return;
+    const x = grid.ox + (ix + 0.5) * grid.cell;
+    const y = grid.oy + (iy + 0.5) * grid.cell;
+    const jitter = wooded ? (hash2(ix, iy, 0xf02e57) - 0.5) * 0.55 : 0;
+    const clear = wooded ? Math.max(0.85, pad + jitter) : 0;
+    let blocked = nearRoad(network, x, y, clear);
+    if (!blocked && wooded) {
+      for (const lot of lots) {
+        if (inExpandedBox(x, y, lot.x, lot.y, lot.w, lot.d, clear)) {
+          blocked = true;
+          break;
         }
       }
-      if (!blocked) {
-        const buildPad = wooded ? clear : 0.35;
-        for (const b of buildings) {
-          const bw = b.w * b.cellSize;
-          const bd = b.d * b.cellSize;
-          if (inExpandedBox(x, y, b.x, b.y, bw, bd, buildPad)) {
-            blocked = true;
-            break;
-          }
-        }
-      }
-      if (blocked) grid.surface[i] = openReplacement(grid, i);
     }
-  }
+    if (!blocked) {
+      const buildPad = wooded ? clear : 0.35;
+      for (const b of buildings) {
+        const bw = b.w * b.cellSize;
+        const bd = b.d * b.cellSize;
+        if (inExpandedBox(x, y, b.x, b.y, bw, bd, buildPad)) {
+          blocked = true;
+          break;
+        }
+      }
+    }
+    if (blocked) grid.surface[i] = openReplacement(grid, i);
+  });
   paintWetEdge(grid);
 }
 
@@ -383,34 +432,30 @@ export function stampDeveloped(
   ground: readonly GroundPatch[],
 ): void {
   const developedPads = ground.filter((patch) => isDevelopedCover(patch.cover));
-  for (let iy = 0; iy < grid.rows; iy++) {
-    for (let ix = 0; ix < grid.cols; ix++) {
-      const i = iy * grid.cols + ix;
-      const id = grid.surface[i]!;
-      if (id === SURFACE_ID.water) continue;
-      const x = grid.ox + (ix + 0.5) * grid.cell;
-      const y = grid.oy + (iy + 0.5) * grid.cell;
-      let stamp = false;
-      if (pointOnRoad(network, x, y)) stamp = true;
-      else {
-        for (const lot of lots) {
-          if (lotFootprintContains(lot, x, y)) {
-            stamp = true;
-            break;
-          }
+  forEachSurfaceCell(grid, (i, ix, iy, id) => {
+    if (id === SURFACE_ID.water) return;
+    const x = grid.ox + (ix + 0.5) * grid.cell;
+    const y = grid.oy + (iy + 0.5) * grid.cell;
+    let stamp = false;
+    if (pointOnRoad(network, x, y)) stamp = true;
+    else {
+      for (const lot of lots) {
+        if (lotFootprintContains(lot, x, y)) {
+          stamp = true;
+          break;
         }
       }
-      if (!stamp) {
-        for (const pad of developedPads) {
-          if (groundPatchContains(pad, x, y)) {
-            stamp = true;
-            break;
-          }
-        }
-      }
-      if (stamp) grid.surface[i] = SURFACE_ID.developed;
     }
-  }
+    if (!stamp) {
+      for (const pad of developedPads) {
+        if (groundPatchContains(pad, x, y)) {
+          stamp = true;
+          break;
+        }
+      }
+    }
+    if (stamp) grid.surface[i] = SURFACE_ID.developed;
+  });
   grid.stampRevision++;
 }
 
@@ -442,7 +487,7 @@ export function isolatedBaseCellCount(grid: SurfaceGrid): number {
       seen[i] = 1;
       continue;
     }
-    const size = floodCount(grid, i, id, seen);
+    const size = floodSurface(grid, i, seen).length;
     if (size === 1 && !adjacentToDeveloped(grid, i)) isolated++;
   }
   return isolated;
@@ -596,18 +641,11 @@ function rasterizeRiver(grid: SurfaceGrid, biome: BiomeProfile, seed: number, sp
 function growWater(grid: SurfaceGrid, passes: number): void {
   for (let p = 0; p < passes; p++) {
     const next = grid.surface.slice();
-    for (let iy = 0; iy < grid.rows; iy++) {
-      for (let ix = 0; ix < grid.cols; ix++) {
-        const i = iy * grid.cols + ix;
-        if (grid.surface[i] === SURFACE_ID.water) continue;
-        let n = 0;
-        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
-          const j = cellIndex(grid, ix + dx, iy + dy);
-          if (j >= 0 && grid.surface[j] === SURFACE_ID.water) n++;
-        }
-        if (n >= 3) next[i] = SURFACE_ID.water;
-      }
-    }
+    forEachSurfaceCell(grid, (i, _ix, _iy, id) => {
+      if (id === SURFACE_ID.water) return;
+      const n = neighbors4(grid, i).filter((j) => grid.surface[j] === SURFACE_ID.water).length;
+      if (n >= 3) next[i] = SURFACE_ID.water;
+    });
     grid.surface.set(next);
   }
 }
@@ -615,20 +653,12 @@ function growWater(grid: SurfaceGrid, passes: number): void {
 function reserveForest(grid: SurfaceGrid, biome: BiomeProfile, seed: number): void {
   const target = Math.floor(grid.cols * grid.rows * biome.forestDensity * 0.22);
   if (target < 12) return;
-  const scores: { i: number; s: number }[] = [];
-  for (let iy = 0; iy < grid.rows; iy++) {
-    for (let ix = 0; ix < grid.cols; ix++) {
-      const i = iy * grid.cols + ix;
-      if (grid.surface[i] === SURFACE_ID.water) continue;
-      const x = grid.ox + ix;
-      const y = grid.oy + iy;
-      const moist = fbm2(x, y, seed ^ 0x22, 0.038);
-      const rough = fbm2(x, y, seed ^ 0x33, 0.05);
-      const s = rough * 0.62 + moist * 0.38;
-      if (s > 0.52) scores.push({ i, s });
-    }
-  }
-  scores.sort((a, b) => b.s - a.s);
+  const forestScore = (ix: number, iy: number): number => {
+    const x = grid.ox + ix;
+    const y = grid.oy + iy;
+    return fbm2(x, y, seed ^ 0x33, 0.05) * 0.62 + fbm2(x, y, seed ^ 0x22, 0.038) * 0.38;
+  };
+  const scores = scoreCells(grid, 0.52, (_i, ix, iy, id) => (id === SURFACE_ID.water ? -1 : forestScore(ix, iy)));
   const marked = new Uint8Array(grid.surface.length);
   let placed = 0;
   for (const start of scores) {
@@ -641,16 +671,9 @@ function reserveForest(grid: SurfaceGrid, biome: BiomeProfile, seed: number): vo
     while (qi < q.length && blob.length < 90 && placed + blob.length < target) {
       const i = q[qi++]!;
       blob.push(i);
-      const ix = i % grid.cols;
-      const iy = (i / grid.cols) | 0;
-      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
-        const j = cellIndex(grid, ix + dx, iy + dy);
-        if (j < 0 || marked[j] || grid.surface[j] === SURFACE_ID.water) continue;
-        const x = grid.ox + (j % grid.cols);
-        const y = grid.oy + ((j / grid.cols) | 0);
-        const moist = fbm2(x, y, seed ^ 0x22, 0.038);
-        const rough = fbm2(x, y, seed ^ 0x33, 0.05);
-        if (rough * 0.62 + moist * 0.38 < 0.48) continue;
+      for (const j of neighbors4(grid, i)) {
+        if (marked[j] || grid.surface[j] === SURFACE_ID.water) continue;
+        if (forestScore(j % grid.cols, (j / grid.cols) | 0) < 0.48) continue;
         marked[j] = 1;
         q.push(j);
       }
@@ -675,12 +698,9 @@ function paintForestCore(grid: SurfaceGrid): void {
   let qi = 0;
   while (qi < q.length) {
     const i = q[qi++]!;
-    const ix = i % grid.cols;
-    const iy = (i / grid.cols) | 0;
     const nd = dist[i]! + 1;
-    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
-      const j = cellIndex(grid, ix + dx, iy + dy);
-      if (j < 0 || nd >= dist[j]!) continue;
+    for (const j of neighbors4(grid, i)) {
+      if (nd >= dist[j]!) continue;
       dist[j] = nd;
       q.push(j);
     }
@@ -697,21 +717,14 @@ function reserveFields(grid: SurfaceGrid, biome: BiomeProfile, seed: number): vo
   const share = agricultural ? 0.24 : biome.fieldDensity >= 0.3 ? 0.2 : Math.max(0.04, biome.fieldDensity * 0.45);
   const target = Math.floor(grid.cols * grid.rows * share);
   if (target < 8) return;
-  const scores: { i: number; s: number }[] = [];
-  for (let iy = 0; iy < grid.rows; iy++) {
-    for (let ix = 0; ix < grid.cols; ix++) {
-      const i = iy * grid.cols + ix;
-      const id = grid.surface[i]!;
-      if (id === SURFACE_ID.water || id === SURFACE_ID["forest-core"] || id === SURFACE_ID["forest-floor"]) continue;
-      const x = grid.ox + ix;
-      const y = grid.oy + iy;
-      const rough = fbm2(x, y, seed ^ 0x33, 0.05);
-      const elev = fbm2(x, y, seed ^ 0x11, 0.032);
-      const s = (1 - rough) * 0.7 + elev * 0.3;
-      if (s > 0.42) scores.push({ i, s });
-    }
-  }
-  scores.sort((a, b) => b.s - a.s);
+  const blocksField = (id: number): boolean =>
+    id === SURFACE_ID.water || id === SURFACE_ID["forest-core"] || id === SURFACE_ID["forest-floor"];
+  const scores = scoreCells(grid, 0.42, (_i, ix, iy, id) => {
+    if (blocksField(id)) return -1;
+    const x = grid.ox + ix;
+    const y = grid.oy + iy;
+    return (1 - fbm2(x, y, seed ^ 0x33, 0.05)) * 0.7 + fbm2(x, y, seed ^ 0x11, 0.032) * 0.3;
+  });
   const marked = new Uint8Array(grid.surface.length);
   let placed = 0;
   const paint = (start: number, vertical: boolean, longCells: number, shortCells: number, minCells: number): number => {
@@ -721,9 +734,7 @@ function reserveFields(grid: SurfaceGrid, biome: BiomeProfile, seed: number): vo
     const blob: number[] = [];
     const tryAdd = (ix: number, iy: number): void => {
       const j = cellIndex(grid, ix, iy);
-      if (j < 0 || marked[j]) return;
-      const id = grid.surface[j]!;
-      if (id === SURFACE_ID.water || id === SURFACE_ID["forest-core"] || id === SURFACE_ID["forest-floor"]) return;
+      if (j < 0 || marked[j] || blocksField(grid.surface[j]!)) return;
       marked[j] = 1;
       blob.push(j);
     };
@@ -776,32 +787,28 @@ function majorityFilter(grid: SurfaceGrid, passes: number): void {
   for (let p = 0; p < passes; p++) {
     const next = grid.surface.slice();
     const counts = new Uint16Array(TERRAIN_SURFACES.length);
-    for (let iy = 0; iy < grid.rows; iy++) {
-      for (let ix = 0; ix < grid.cols; ix++) {
-        const i = iy * grid.cols + ix;
-        const self = grid.surface[i]!;
-        if (self === SURFACE_ID["wet-edge"] || self === SURFACE_ID.field) continue;
-        counts.fill(0);
-        for (let dy = -1; dy <= 1; dy++) {
-          for (let dx = -1; dx <= 1; dx++) {
-            if (!dx && !dy) continue;
-            const j = cellIndex(grid, ix + dx, iy + dy);
-            const id = j < 0 ? self : grid.surface[j]!;
-            counts[id]++;
-          }
+    forEachSurfaceCell(grid, (i, ix, iy, self) => {
+      if (self === SURFACE_ID["wet-edge"] || self === SURFACE_ID.field) return;
+      counts.fill(0);
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          if (!dx && !dy) continue;
+          const j = cellIndex(grid, ix + dx, iy + dy);
+          const id = j < 0 ? self : grid.surface[j]!;
+          counts[id]++;
         }
-        let best = self;
-        let bestN = -1;
-        for (let id = 0; id < counts.length; id++) {
-          if (id === SURFACE_ID["wet-edge"]) continue;
-          if (counts[id]! > bestN) {
-            bestN = counts[id]!;
-            best = id;
-          }
-        }
-        if (bestN >= 5) next[i] = best;
       }
-    }
+      let best = self;
+      let bestN = -1;
+      for (let id = 0; id < counts.length; id++) {
+        if (id === SURFACE_ID["wet-edge"]) continue;
+        if (counts[id]! > bestN) {
+          bestN = counts[id]!;
+          best = id;
+        }
+      }
+      if (bestN >= 5) next[i] = best;
+    });
     grid.surface.set(next);
   }
 }
@@ -816,21 +823,7 @@ function dropSmallComponents(grid: SurfaceGrid, minSize: number): void {
       continue;
     }
     const fieldFloor = id === SURFACE_ID.field ? Math.max(minSize, 24) : minSize;
-    const cells: number[] = [];
-    const q = [start];
-    seen[start] = 1;
-    while (q.length) {
-      const i = q.pop()!;
-      cells.push(i);
-      const ix = i % grid.cols;
-      const iy = (i / grid.cols) | 0;
-      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
-        const j = cellIndex(grid, ix + dx, iy + dy);
-        if (j < 0 || seen[j] || grid.surface[j] !== id) continue;
-        seen[j] = 1;
-        q.push(j);
-      }
-    }
+    const cells = floodSurface(grid, start, seen);
     if (cells.length >= fieldFloor) continue;
     const fill = neighborMajority(grid, cells, id);
     for (const i of cells) grid.surface[i] = fill;
@@ -841,11 +834,8 @@ function neighborMajority(grid: SurfaceGrid, cells: readonly number[], skip: num
   const counts = new Uint16Array(TERRAIN_SURFACES.length);
   const cellSet = new Set(cells);
   for (const i of cells) {
-    const ix = i % grid.cols;
-    const iy = (i / grid.cols) | 0;
-    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
-      const j = cellIndex(grid, ix + dx, iy + dy);
-      if (j < 0 || cellSet.has(j)) continue;
+    for (const j of neighbors4(grid, i)) {
+      if (cellSet.has(j)) continue;
       const id = grid.surface[j]!;
       if (id === skip || id === SURFACE_ID["wet-edge"]) continue;
       counts[id]++;
@@ -917,11 +907,8 @@ function growSurfaceToQuota(
         grid.surface[i] = want;
         placed++;
       }
-      const ix = i % grid.cols;
-      const iy = (i / grid.cols) | 0;
-      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
-        const j = cellIndex(grid, ix + dx, iy + dy);
-        if (j < 0 || seen[j]) continue;
+      for (const j of neighbors4(grid, i)) {
+        if (seen[j]) continue;
         seen[j] = 1;
         const nid = grid.surface[j]!;
         if (nid === want || convertible(nid)) q.push(j);
@@ -960,24 +947,12 @@ function adjacentToDeveloped(grid: SurfaceGrid, i: number): boolean {
 
 function paintWetEdge(grid: SurfaceGrid): void {
   const next = grid.surface.slice();
-  for (let iy = 0; iy < grid.rows; iy++) {
-    for (let ix = 0; ix < grid.cols; ix++) {
-      const i = iy * grid.cols + ix;
-      if (grid.surface[i] === SURFACE_ID.water) continue;
-      if (grid.surface[i] === SURFACE_ID["forest-core"]) continue;
-      if (grid.surface[i] === SURFACE_ID.developed) continue;
-      let wet = false;
-      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
-        const j = cellIndex(grid, ix + dx, iy + dy);
-        if (j >= 0 && grid.surface[j] === SURFACE_ID.water) {
-          wet = true;
-          break;
-        }
-      }
-      if (wet) next[i] = SURFACE_ID["wet-edge"];
-      else if (grid.surface[i] === SURFACE_ID["wet-edge"]) next[i] = SURFACE_ID.grass;
-    }
-  }
+  forEachSurfaceCell(grid, (i, _ix, _iy, id) => {
+    if (id === SURFACE_ID.water || id === SURFACE_ID["forest-core"] || id === SURFACE_ID.developed) return;
+    const wet = neighbors4(grid, i).some((j) => grid.surface[j] === SURFACE_ID.water);
+    if (wet) next[i] = SURFACE_ID["wet-edge"];
+    else if (id === SURFACE_ID["wet-edge"]) next[i] = SURFACE_ID.grass;
+  });
   grid.surface.set(next);
 }
 
@@ -990,11 +965,8 @@ function ensureLandCorridor(grid: SurfaceGrid, spawnBand?: GenerateSurfaceOpts["
   while (qi < q.length) {
     const i = q[qi++]!;
     if (grid.surface[i] === SURFACE_ID.water || grid.surface[i] === SURFACE_ID["forest-core"]) continue;
-    const ix = i % grid.cols;
-    const iy = (i / grid.cols) | 0;
-    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
-      const j = cellIndex(grid, ix + dx, iy + dy);
-      if (j < 0 || seen[j]) continue;
+    for (const j of neighbors4(grid, i)) {
+      if (seen[j]) continue;
       seen[j] = 1;
       q.push(j);
     }
@@ -1050,25 +1022,6 @@ function spawnIndex(grid: SurfaceGrid, spawnBand?: GenerateSurfaceOpts["spawnBan
     if (i >= 0) return i;
   }
   return cellIndex(grid, Math.floor(grid.cols * 0.2), Math.floor(grid.rows * 0.2));
-}
-
-function floodCount(grid: SurfaceGrid, start: number, id: number, seen: Uint8Array): number {
-  const q = [start];
-  seen[start] = 1;
-  let n = 0;
-  while (q.length) {
-    const i = q.pop()!;
-    n++;
-    const ix = i % grid.cols;
-    const iy = (i / grid.cols) | 0;
-    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
-      const j = cellIndex(grid, ix + dx, iy + dy);
-      if (j < 0 || seen[j] || grid.surface[j] !== id) continue;
-      seen[j] = 1;
-      q.push(j);
-    }
-  }
-  return n;
 }
 
 function nearRoad(network: RoadNetwork, x: number, y: number, pad: number): boolean {

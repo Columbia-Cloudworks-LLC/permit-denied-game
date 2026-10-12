@@ -7,7 +7,7 @@ import type { Rng } from '../game/rng';
 import { bandAllowsArchetype } from './urbanGeography';
 import type { UrbanBand } from './urbanBands';
 
-export const HEIGHT_CLASSES = ['low-rise', 'mid-rise', 'high-rise', 'skyscraper'] as const;
+const HEIGHT_CLASSES = ['low-rise', 'mid-rise', 'high-rise', 'skyscraper'] as const;
 export type HeightClass = (typeof HEIGHT_CLASSES)[number];
 
 export function heightClass(floors: number): HeightClass {
@@ -35,7 +35,7 @@ export interface CompositionReport {
   byFamily: Record<string, number>;
 }
 
-export function ordinaryBuildings(buildings: readonly Building[]): Building[] {
+function ordinaryBuildings(buildings: readonly Building[]): Building[] {
   return buildings.filter(building => !building.campaignLandmark);
 }
 
@@ -301,7 +301,7 @@ export function planCampaignComposition(
   return { assignments, issues };
 }
 
-export function compositionCaps(level: CampaignLevelDef, ordinaryTarget: number): { maxEach: number; maxFamily: number } {
+function compositionCaps(level: CampaignLevelDef, ordinaryTarget: number): { maxEach: number; maxFamily: number } {
   const rules = level.composition;
   if (!rules) return { maxEach: ordinaryTarget, maxFamily: ordinaryTarget };
   return {
@@ -327,17 +327,6 @@ export function legalOrdinaryCandidates(
     .filter(archetype => allowedForBand(archetype, level))
     .filter(archetype => (used.get(archetype.id) ?? 0) < maxEach)
     .filter(archetype => (familyUsed.get(campaignFamily(archetype)) ?? 0) < maxFamily);
-}
-
-export function legalOrdinaryForLot(
-  level: CampaignLevelDef,
-  lot: Lot,
-  archetypes: readonly Archetype[],
-  used: ReadonlyMap<string, number>,
-  ordinaryTarget: number,
-): Archetype[] {
-  return legalOrdinaryCandidates(level, archetypes, used, ordinaryTarget)
-    .filter(archetype => matchesLotBand(archetype, lot));
 }
 
 export function sameBandCandidates(

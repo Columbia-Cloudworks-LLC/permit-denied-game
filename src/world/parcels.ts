@@ -1,5 +1,5 @@
 import { CELL } from "../game/constants";
-import { aabbOverlap, clamp } from "../game/math";
+import { aabbOverlap, clamp, pointBounds, pointInPoly } from "../game/math";
 import { Rng } from "../game/rng";
 import type { Building, Lot, LotFrontage, LotIdentity, LotSetbacks, LotSide, LotZone } from "../structure/types";
 import { createBuildingFromArchetype } from "../structure/building";
@@ -149,16 +149,7 @@ export function completeLot(
 }
 
 function aabbOfPoints(points: readonly { x: number; y: number }[]): { x: number; y: number; w: number; d: number } {
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-  for (const p of points) {
-    if (p.x < minX) minX = p.x;
-    if (p.y < minY) minY = p.y;
-    if (p.x > maxX) maxX = p.x;
-    if (p.y > maxY) maxY = p.y;
-  }
+  const { minX, minY, maxX, maxY } = pointBounds(points);
   return { x: minX, y: minY, w: maxX - minX, d: maxY - minY };
 }
 
@@ -175,17 +166,6 @@ function insetAabb(
     w: Math.max(0.2, box.w - left - right),
     d: Math.max(0.2, box.d - top - bottom),
   };
-}
-
-function pointInPoly(x: number, y: number, poly: readonly { x: number; y: number }[]): boolean {
-  let inside = false;
-  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-    const a = poly[i]!;
-    const b = poly[j]!;
-    const hit = a.y > y !== b.y > y && x < ((b.x - a.x) * (y - a.y)) / (b.y - a.y + 1e-9) + a.x;
-    if (hit) inside = !inside;
-  }
-  return inside;
 }
 
 export function convexOverlap(a: readonly { x: number; y: number }[], b: readonly { x: number; y: number }[]): boolean {
@@ -346,10 +326,7 @@ export function allocateFrontage(
         while (cursor + parcel.minFront * 0.92 <= usable && lots.length < safety) {
           const leftover = usable - cursor;
           const lotClass = pickLotClass(parcel, rng);
-          const minFront = lotClass?.minFront ?? parcel.minFront;
-          const maxFront = lotClass?.maxFront ?? parcel.maxFront;
-          const minDepth = lotClass?.minDepth ?? parcel.minDepth;
-          const maxDepth = lotClass?.maxDepth ?? parcel.maxDepth;
+          const { minFront, maxFront, minDepth, maxDepth } = lotClassBounds(parcel, lotClass);
           const squeeze = leftover < minFront && leftover >= minFront * 0.88;
           if (!squeeze && cursor + minFront > usable) break;
           const front = squeeze ? leftover : clamp(rng.range(minFront, maxFront), Math.min(minFront, leftover), leftover);
@@ -367,10 +344,7 @@ export function allocateFrontage(
       const side0: LotSide = rng.chance(0.5) ? 1 : -1;
       while (cursor + parcel.minFront <= usable && lots.length < safety) {
         const lotClass = pickLotClass(parcel, rng);
-        const minFront = lotClass?.minFront ?? parcel.minFront;
-        const maxFront = lotClass?.maxFront ?? parcel.maxFront;
-        const minDepth = lotClass?.minDepth ?? parcel.minDepth;
-        const maxDepth = lotClass?.maxDepth ?? parcel.maxDepth;
+        const { minFront, maxFront, minDepth, maxDepth } = lotClassBounds(parcel, lotClass);
         if (cursor + minFront > usable) break;
         const front = clamp(rng.range(minFront, maxFront), minFront, usable - cursor);
         const depth = rng.range(minDepth, maxDepth);
@@ -388,6 +362,19 @@ export function allocateFrontage(
     }
   }
   return { lots, rejected };
+}
+
+/** Frontage and depth range of a picked lot class, falling back to the parcel profile. */
+function lotClassBounds(
+  parcel: ParcelMetrics,
+  lotClass: ParcelLotClass | undefined,
+): { minFront: number; maxFront: number; minDepth: number; maxDepth: number } {
+  return {
+    minFront: lotClass?.minFront ?? parcel.minFront,
+    maxFront: lotClass?.maxFront ?? parcel.maxFront,
+    minDepth: lotClass?.minDepth ?? parcel.minDepth,
+    maxDepth: lotClass?.maxDepth ?? parcel.maxDepth,
+  };
 }
 
 function pickLotClass(parcel: ParcelMetrics, rng: Rng): ParcelLotClass | undefined {

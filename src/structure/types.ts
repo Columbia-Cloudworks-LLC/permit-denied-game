@@ -467,10 +467,6 @@ export function cellPresent(cell: Cell): boolean {
   return cell.state === "intact" || cell.state === "cracked";
 }
 
-export function cellSolid(cell: Cell): boolean {
-  return cell.state === "intact" || cell.state === "cracked";
-}
-
 export function cellWorldBox(b: Building, cell: Cell): { x: number; y: number; w: number; d: number } {
   if(cell.silo) {
     const s=cell.silo,angles=[s.angle-Math.PI/8,s.angle,s.angle+Math.PI/8];
@@ -503,20 +499,4 @@ export function cellCenter(b: Building, cell: Cell): { x: number; y: number; z: 
     y: b.y + (cell.gy + 0.5) * b.cellSize,
     z: cell.floor * 2.35 + 1.1,
   };
-}
-
-export function anyFloating(buildings: Building[]): boolean {
-  for (const b of buildings) {
-    for (const cell of b.cells) {
-      if (!cellPresent(cell)) continue;
-      if (cell.floor === 0) continue;
-      const under = b.grid[cell.floor - 1]?.[cell.gx]?.[cell.gy];
-      if (under && cellPresent(under)) continue;
-      if (cell.unsupportedTime < 0.05) continue;
-      if (cell.state === "intact" || cell.state === "cracked") {
-        if (cell.unsupportedTime > 0.6 && cell.sag < 0.2) return true;
-      }
-    }
-  }
-  return false;
 }

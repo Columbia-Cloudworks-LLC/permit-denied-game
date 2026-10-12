@@ -107,7 +107,7 @@ Density budgets live in `DRESSING`: per-lot caps and per-district maxima (`class
 
 `src/world/roads.ts` is the source of truth for the graph. Districts are generated **terrain-first** (`src/world/rural.ts`): bounds, biome, and surface grid, then an orthogonal block-grid skeleton scored by `roadCostAt`, then frontage parcels that consult `lotCostAt` / `lotEnvelopeRejected` before mutating the grid, then buildings. Wooded cells under retained streets, lots, and a short setback convert to grass (`enforceOpenCorridors`) before the developed stamp; water is cleared only under streets and building footprints. Features are derived from the stamped grid. `town.roads` AABB boxes are a derived compatibility view. Classic Rivertown and the Governor's estate keep authored building and road positions and stamp developed cells afterward.
 
-Types: `RoadNode`, `RoadSegment` (polyline + class + width + layer + elevation), `Lane`, `RoadAccess`, `TerrainField`. Queries: `roadSurfaceAt`, `terrainHeightAt`, `nearestRoadAccess`, `projectPointToRoad`, `connectedLanes`, `canTransitionBetweenSurfaces`, `findRoadRoute`, `publicStreetsReachable`. A spatial hash indexes segments so vehicles do not scan the whole graph each step. `invalidateNetworkIndex` clears that cache after a finished network is mutated.
+Types: `RoadNode`, `RoadSegment` (polyline + class + width + layer + elevation), `Lane`, `RoadAccess`, `TerrainField`. Queries: `roadSurfaceAt`, `terrainHeightAt`, `projectPointToRoad`, `canTransitionBetweenSurfaces`, `findRoadRoute`, `publicStreetsReachable`. A spatial hash indexes segments so vehicles do not scan the whole graph each step.
 
 `RoadBuilder.joinAt` / `splitSegment` / `normalizeJunctions` make same-layer T-junctions and crossings share real nodes. Connecting to a segment interior splits it and remaps lanes and accesses. Different layers do not join just because X/Y overlap. Graph mutations finish before `finish()` builds lane wiring and `network.mesh`.
 
@@ -133,7 +133,7 @@ Developer overlay: `?nhood=1` or press `G` to draw nodes, segment IDs, parcel ri
 
 Civilian traffic must stay on road or driveway. The V-key test car follows lane connectivity on a generated route (curve + intersection), not a hard-coded east-west path. Full civilian traffic sim is out of scope.
 
-Police navigation is a **contract only** (`src/world/routing.ts`). Ordinary pursuit prefers roads. Police may leave the road only when the dozer is nearby, a valid off-road approach exists, and pursuit rules allow it. Off-road is slower (`offRoadCostMul`). Routing distinguishes a blocked road from an inaccessible destination. There is no police AI in this branch.
+Police navigation is a **contract only** (`src/world/routing.ts`). Ordinary pursuit prefers roads. Police may leave the road only when the dozer is nearby, a valid off-road approach exists, and pursuit rules allow it. Routes report their `RouteMode` (`road`, `offroad-pursuit`, `blocked`, `inaccessible`); no off-road travel cost is modelled yet. Routing distinguishes a blocked road from an inaccessible destination. There is no police AI in this branch.
 
 ## Wreckage lifecycle and performance
 

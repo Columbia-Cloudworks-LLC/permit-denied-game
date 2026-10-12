@@ -87,3 +87,11 @@ export function matColors(material: Material): { side: number; dark: number; top
     }
   }
 }
+
+/** Scale each RGB channel, clamped so brightening never bleeds into the next channel. */
+export function shade(color: number, mul: number): number {
+  const r = Math.min(255, Math.round(((color >> 16) & 255) * mul));
+  const g = Math.min(255, Math.round(((color >> 8) & 255) * mul));
+  const b = Math.min(255, Math.round((color & 255) * mul));
+  return (r << 16) | (g << 8) | b;
+}

@@ -2,6 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import sharp from "sharp";
+import { BLOB47_MASKS, blobBits } from "../src/render/blobMask.ts";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const OUT_DIR = join(ROOT, "public", "terrain");
@@ -56,24 +57,6 @@ const DIRT_FROM = ["grass", "prairie", "leaf-litter", "duff", "scrub"];
 const FOREST_TO = ["grass", "duff", "leaf-litter"];
 const FIELD_TO = ["grass", "prairie", "dirt"];
 
-function validBlobMask(mask) {
-  const n = (mask & 1) !== 0;
-  const ne = (mask & 2) !== 0;
-  const e = (mask & 4) !== 0;
-  const se = (mask & 8) !== 0;
-  const s = (mask & 16) !== 0;
-  const sw = (mask & 32) !== 0;
-  const w = (mask & 64) !== 0;
-  const nw = (mask & 128) !== 0;
-  if (ne && !(n && e)) return false;
-  if (se && !(s && e)) return false;
-  if (sw && !(s && w)) return false;
-  if (nw && !(n && w)) return false;
-  return true;
-}
-
-const BLOB47 = [];
-for (let mask = 0; mask < 256; mask++) if (validBlobMask(mask)) BLOB47.push(mask);
 
 function rgb(color) {
   return [(color >> 16) & 255, (color >> 8) & 255, color & 255];
@@ -133,23 +116,8 @@ function wedgeBits(px, py) {
 }
 
 function maskHas(mask, bits) {
-  const n = (mask & 1) !== 0;
-  const ne = (mask & 2) !== 0;
-  const e = (mask & 4) !== 0;
-  const se = (mask & 8) !== 0;
-  const s = (mask & 16) !== 0;
-  const sw = (mask & 32) !== 0;
-  const w = (mask & 64) !== 0;
-  const nw = (mask & 128) !== 0;
-  if (bits.n && n) return true;
-  if (bits.ne && ne) return true;
-  if (bits.e && e) return true;
-  if (bits.se && se) return true;
-  if (bits.s && s) return true;
-  if (bits.sw && sw) return true;
-  if (bits.w && w) return true;
-  if (bits.nw && nw) return true;
-  return false;
+  const set = blobBits(mask);
+  return Object.keys(bits).some((dir) => bits[dir] && set[dir]);
 }
 
 function drawSolid(color, variant) {
@@ -193,23 +161,23 @@ for (const [name, color] of Object.entries(SNOW_SOLIDS)) {
   for (let v = 0; v < 3; v++) frames.push({ name: `snow-${name}-${v}`, buf: drawSolid(color, v) });
 }
 for (const from of DIRT_FROM) {
-  for (let i = 0; i < BLOB47.length; i++) {
-    frames.push({ name: `${from}__dirt-${i}`, buf: drawBlob(SOLIDS.dirt, BLOB47[i]) });
+  for (let i = 0; i < BLOB47_MASKS.length; i++) {
+    frames.push({ name: `${from}__dirt-${i}`, buf: drawBlob(SOLIDS.dirt, BLOB47_MASKS[i]) });
   }
 }
 for (const to of FOREST_TO) {
-  for (let i = 0; i < BLOB47.length; i++) {
-    frames.push({ name: `forest-floor__${to}-${i}`, buf: drawBlob(SOLIDS["forest-floor"], BLOB47[i]) });
+  for (let i = 0; i < BLOB47_MASKS.length; i++) {
+    frames.push({ name: `forest-floor__${to}-${i}`, buf: drawBlob(SOLIDS["forest-floor"], BLOB47_MASKS[i]) });
   }
 }
 for (const to of FIELD_TO) {
-  for (let i = 0; i < BLOB47.length; i++) {
-    frames.push({ name: `field__${to}-${i}`, buf: drawBlob(SOLIDS.field, BLOB47[i]) });
+  for (let i = 0; i < BLOB47_MASKS.length; i++) {
+    frames.push({ name: `field__${to}-${i}`, buf: drawBlob(SOLIDS.field, BLOB47_MASKS[i]) });
   }
 }
-for (let i = 0; i < BLOB47.length; i++) {
-  frames.push({ name: `wet-edge__any-${i}`, buf: drawBlob(SOLIDS["wet-edge"], BLOB47[i]) });
-  frames.push({ name: `water__wet-edge-${i}`, buf: drawBlob(SOLIDS.water, BLOB47[i], 2) });
+for (let i = 0; i < BLOB47_MASKS.length; i++) {
+  frames.push({ name: `wet-edge__any-${i}`, buf: drawBlob(SOLIDS["wet-edge"], BLOB47_MASKS[i]) });
+  frames.push({ name: `water__wet-edge-${i}`, buf: drawBlob(SOLIDS.water, BLOB47_MASKS[i], 2) });
 }
 
 const COLS = 32;
@@ -262,4 +230,4 @@ await writeFile(
     },
   }),
 );
-console.log(`wrote ${frames.length} frames ${ATLAS_W}x${ATLAS_H} blob47=${BLOB47.length}`);
+console.log(`wrote ${frames.length} frames ${ATLAS_W}x${ATLAS_H} blob47=${BLOB47_MASKS.length}`);

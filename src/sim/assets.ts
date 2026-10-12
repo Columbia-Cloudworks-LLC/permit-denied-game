@@ -55,7 +55,7 @@ function spawnFromRecipe(town: Town, prop: Prop, def: AssetDef, nx: number, ny: 
   }
 }
 
-export function applyExplosion(
+function applyExplosion(
   town: Town,
   x: number,
   y: number,

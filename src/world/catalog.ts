@@ -1462,10 +1462,6 @@ export function getAsset(id: string): AssetDef {
   return found;
 }
 
-export function tryAsset(id: string): AssetDef | undefined {
-  return BY_ID.get(id);
-}
-
 export function assetsByFamily(family: AssetFamily): AssetDef[] {
   return ASSET_CATALOG.filter((a) => a.family === family);
 }
@@ -1537,8 +1533,4 @@ export function spawnAssetDefinition(def: AssetDef, x: number, y: number, headin
     vy: 0,
     omega: 0,
   };
-}
-
-export function propDef(prop: Prop): AssetDef {
-  return getAsset(prop.assetId);
 }

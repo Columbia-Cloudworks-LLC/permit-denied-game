@@ -1,12 +1,12 @@
 import { len } from "../game/math";
 import type { VehicleRole } from "../structure/types";
 import {
-  connectedLanes,
   findRoadRoute,
   indexNetwork,
   nearestLane,
   roadSurfaceAt,
   type RoadNetwork,
+  type RoadSegment,
 } from "./roads";
 
 export interface RouteRequest {
@@ -108,28 +108,30 @@ export function pickDrivewayDemoRoute(network: RoadNetwork): string[] | null {
   return best;
 }
 
-function routeUsesIntersection(network: RoadNetwork, path: string[]): boolean {
+/** Each lane on the route with its segment and whether it ends at a junction. */
+function routeLegs(network: RoadNetwork, path: readonly string[]): { seg: RoadSegment; junction: boolean }[] {
   const idx = indexNetwork(network);
+  const legs: { seg: RoadSegment; junction: boolean }[] = [];
   for (const id of path) {
     const lane = idx.laneById.get(id);
     if (!lane) continue;
     const seg = idx.segmentById.get(lane.segmentId);
     if (!seg) continue;
     const node = idx.nodeById.get(lane.dir === 1 ? seg.endId : seg.startId);
-    if (node && node.segmentIds.length >= 3) return true;
+    legs.push({ seg, junction: !!node && node.segmentIds.length >= 3 });
   }
-  return false;
+  return legs;
+}
+
+function routeUsesIntersection(network: RoadNetwork, path: string[]): boolean {
+  return routeLegs(network, path).some((leg) => leg.junction);
 }
 
 export function routeUsesCurveAndIntersection(network: RoadNetwork, path: string[]): boolean {
-  const idx = indexNetwork(network);
   let curved = false;
   let junction = false;
-  for (const id of path) {
-    const lane = idx.laneById.get(id);
-    if (!lane) continue;
-    const seg = idx.segmentById.get(lane.segmentId);
-    if (!seg) continue;
+  for (const leg of routeLegs(network, path)) {
+    const seg = leg.seg;
     if (seg.points.length >= 5) {
       const a = seg.points[0]!;
       const b = seg.points[seg.points.length - 1]!;
@@ -138,16 +140,7 @@ export function routeUsesCurveAndIntersection(network: RoadNetwork, path: string
       const via = len(mid.x - a.x, mid.y - a.y) + len(b.x - mid.x, b.y - mid.y);
       if (via > chord + 0.12) curved = true;
     }
-    const node = idx.nodeById.get(lane.dir === 1 ? seg.endId : seg.startId);
-    if (node && node.segmentIds.length >= 3) junction = true;
+    if (leg.junction) junction = true;
   }
   return curved && junction;
-}
-
-export function offRoadCostMul(): number {
-  return 2.4;
-}
-
-export function laneOpen(network: RoadNetwork, laneId: string): boolean {
-  return connectedLanes(network, laneId).length >= 0;
 }

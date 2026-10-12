@@ -92,9 +92,7 @@ import { bindHudSession } from "./hudBindings";
 import { startRuntimeTicker } from "./runtime";
 import { bootOpenedSession } from "./sessionBoot";
 
-export type GameMode = PlayMode;
-
-export class Game {
+class Game {
   private readonly analytics = new RunAnalytics();
   private app!: Application;
   private readonly input = new Input();
@@ -131,7 +129,7 @@ export class Game {
   private timeLeft = MATCH_SECONDS;
   private elapsed = 0;
   private hint = 1;
-  private mode: GameMode = "play";
+  private mode: PlayMode = "play";
   private death: string | null = null;
   private upgrades: Upgrades = { blade: 0, engine: 0, push: 0 };
   private nextUpgrade = 0;
@@ -760,14 +758,20 @@ export class Game {
     this.renderer.camY = framed.camY;
   }
 
+  /** Centre the camera on a screen-space box, zoomed so it fills `fill` of the view. */
+  private frameScreenBox(box: { minX: number; minY: number; maxX: number; maxY: number }, fill: number, viewW: number): void {
+    const zoom = Math.min(1.15, fill * Math.min(viewW / (box.maxX - box.minX), this.app.renderer.height / (box.maxY - box.minY)));
+    this.renderer.zoom = zoom;
+    this.renderer.camX = (box.minX + box.maxX) / 2 * zoom;
+    this.renderer.camY = (box.minY + box.maxY) / 2 * zoom;
+  }
+
   private draw(dt: number): void {
     const dock = this.hud.debugDockWidth, viewW = Math.max(160, this.app.renderer.width - dock);
     if (this.input.axis().throttle || this.input.axis().steer || !this.town.yard?.bays.includes(this.yardFocus!)) this.yardFocus = undefined;
     if (this.rules.towerTest && (this.towerOverview || this.town.buildings[0]?.coreCollapse?.phase === 'falling')) {
       const b = this.town.buildings[0]!;
-      const box = worldBoundsToScreen(b.x - 7, b.y - 7, b.w * b.cellSize + 14, b.d * b.cellSize + 14, 0, b.floors * 2.35 + 1);
-      const zoom = Math.min(1.15, .72 * Math.min(this.app.renderer.width / (box.maxX - box.minX), this.app.renderer.height / (box.maxY - box.minY)));
-      this.renderer.zoom = zoom; this.renderer.camX = (box.minX + box.maxX) / 2 * zoom; this.renderer.camY = (box.minY + box.maxY) / 2 * zoom;
+      this.frameScreenBox(worldBoundsToScreen(b.x - 7, b.y - 7, b.w * b.cellSize + 14, b.d * b.cellSize + 14, 0, b.floors * 2.35 + 1), .72, this.app.renderer.width);
     } else if (this.yardFocus) {
       const bay = this.yardFocus, asset = bay.asset;
       const height = Math.max(asset.vehicle?.height ?? 1, ...bayBuildings(bay).map(b => b.floors * 2.35 + .8));
@@ -779,11 +783,7 @@ export class Game {
           w = Math.max(...bounds.map(b => b.x + b.w)) - x; d = Math.max(...bounds.map(b => b.y + b.d)) - y;
         }
       }
-      const box = worldBoundsToScreen(x - 2, y - 2, w + 4, d + 4, 0, height);
-      const zoom = Math.min(1.15, .78 * Math.min(viewW / (box.maxX - box.minX), this.app.renderer.height / (box.maxY - box.minY)));
-      this.renderer.zoom = zoom;
-      this.renderer.camX = (box.minX + box.maxX) / 2 * zoom;
-      this.renderer.camY = (box.minY + box.maxY) / 2 * zoom;
+      this.frameScreenBox(worldBoundsToScreen(x - 2, y - 2, w + 4, d + 4, 0, height), .78, viewW);
     } else if (this.town.roadCar && this.followRoadCamera) {
       const car = this.town.roadCar;
       const focus = worldToScreen(car.x, car.y, 0.3);

@@ -5,9 +5,10 @@ import { Rng } from "../game/rng";
 import { DISTRICT_COUNTS, type DistrictId } from "../game/session";
 import type { Building, GroundPatch, Lot, Prop } from "../structure/types";
 import { selectBiome, type BiomeProfile } from "./biomes";
+import { ruralGridDims } from "./terrain";
 import type { SeasonId } from "./season";
 import { getAsset, spawnAsset } from "./catalog";
-import { buildingOccupy, dressLot } from "./dressing";
+import { buildingOccupy, dressLots } from "./dressing";
 import { deriveTerrainFeatures, type TerrainFeature } from "./terrainFeatures";
 import {
   PARCEL,
@@ -108,7 +109,7 @@ export interface RuralLayout {
   urban?: UrbanGeographyReport;
 }
 
-export function pickTopology(rng: Rng, count: number): TopologyFamily {
+function pickTopology(rng: Rng, count: number): TopologyFamily {
   const families: TopologyFamily[] = ["county", "crossroads", "tjunction", "curve-farm", "loop", "frontage"];
   void count;
   return rng.pick(families);
@@ -241,14 +242,15 @@ function generateRuralLayoutInner(
     });
   }
 
-  for (const lot of ordinaryLots) {
-    if (kept.length >= count) break;
-    if (lot.openSpaceName) continue;
-    if (kept.some(k => k.id === lot.id)) continue;
-    if (!placeCampaignLot(campaign, lot, rng, buildings, kept, corridors, publicSegs, b, used, pick, assignedId.get(lot.id), pool, rejected, count, surface)) {
-      continue;
+  const placeOrdinaryLots = (): void => {
+    for (const lot of ordinaryLots) {
+      if (kept.length >= count) break;
+      if (lot.openSpaceName) continue;
+      if (kept.some((k) => k.id === lot.id)) continue;
+      placeCampaignLot(campaign, lot, rng, buildings, kept, corridors, publicSegs, b, used, pick, assignedId.get(lot.id), pool, rejected, count, surface);
     }
-  }
+  };
+  placeOrdinaryLots();
 
   if (kept.length < count) {
     const extraSegs = selectStreetCluster(b.segments, b.nodes, Math.ceil(count * 3.2), new Rng(seed ^ 0x222));
@@ -262,22 +264,11 @@ function generateRuralLayoutInner(
     for (const lot of extra.lots) {
       if (kept.length >= count) break;
       if (kept.some((k) => k.id === lot.id)) continue;
-      if (!placeCampaignLot(campaign, lot, rng, buildings, kept, corridors, publicSegs, b, used, pick, undefined, extra.lots, rejected, count, surface)) {
-        continue;
-      }
+      placeCampaignLot(campaign, lot, rng, buildings, kept, corridors, publicSegs, b, used, pick, undefined, extra.lots, rejected, count, surface);
     }
   }
 
-  if (kept.length < count) {
-    for (const lot of ordinaryLots) {
-      if (kept.length >= count) break;
-      if (lot.openSpaceName) continue;
-      if (kept.some((k) => k.id === lot.id)) continue;
-      if (!placeCampaignLot(campaign, lot, rng, buildings, kept, corridors, publicSegs, b, used, pick, assignedId.get(lot.id), pool, rejected, count, surface)) {
-        continue;
-      }
-    }
-  }
+  if (kept.length < count) placeOrdinaryLots();
 
   if (kept.length < count) {
     issues.push({
@@ -311,13 +302,9 @@ function generateRuralLayoutInner(
   const eligible = campaign
     ? (assetId: string) => campaignEligible(getAsset(assetId).campaign, campaign.id)
     : undefined;
-  for (let i = 0; i < kept.length; i++) {
-    const lot = kept[i]!;
-    const dressed = dressLot(lot, buildings[i], rng, { boxes: occBoxes }, perLot, corridors, eligible);
-    props.push(...dressed.props);
-    ground.push(...dressed.patches);
-    for (const p of dressed.props) occBoxes.push({ x: p.x, y: p.y, w: p.w, d: p.d });
-  }
+  const dressed = dressLots(kept, buildings, rng, occBoxes, perLot, corridors, eligible);
+  props.push(...dressed.props);
+  ground.push(...dressed.patches);
 
   placeRoadside(network, kept, buildings, props, rng, count, corridors);
   for (let i = props.length - 1; i >= 0; i--) {
@@ -496,26 +483,6 @@ function addTopologyFlavor(b: RoadBuilder, topology: TopologyFamily, ox: number,
   void oy;
 }
 
-function gridDims(count: number): { ew: number; ns: number } {
-  const minSlots = count <= 12 ? count * 2.2 : count <= 36 ? count * 2.0 : count * 2.15;
-  const target = count <= 12 ? count * 2.6 : count * 2.3;
-  let best = { ew: 2, ns: 2 };
-  let bestScore = Infinity;
-  for (let ew = 2; ew <= 7; ew++) {
-    for (let ns = 2; ns <= 7; ns++) {
-      const segs = ew * ns + (ns + 1) * (ew - 1);
-      const slots = segs * 6;
-      if (slots < minSlots) continue;
-      const score = Math.abs(slots - target) + Math.abs(ew - ns) * 3 + ew * ns * 0.15;
-      if (score < bestScore) {
-        best = { ew, ns };
-        bestScore = score;
-      }
-    }
-  }
-  return best;
-}
-
 function selectStreetCluster(
   segments: readonly RoadSegment[],
   nodes: readonly RoadNode[],
@@ -611,7 +578,7 @@ function selectLotCluster(lots: readonly Lot[], want: number, rng: Rng): Lot[] {
 }
 
 function buildBlockGrid(b: RoadBuilder, count: number, ox: number, oy: number, rng: Rng, blockW = 40, blockD = 36): void {
-  const { ew, ns } = gridDims(count);
+  const { ew, ns } = ruralGridDims(count);
   const rows: ReturnType<RoadBuilder["node"]>[][] = [];
   for (let r = 0; r < ew; r++) {
     const y = oy + 12 + r * blockD + rng.range(-0.3, 0.3);
@@ -918,7 +885,7 @@ function pickSpawn(
       const p = samplePolyline(seg.points, t);
       if (avoid && len(p.x - avoid.x, p.y - avoid.y) < 6) continue;
       if (grid && traversalAt(grid, p.x, p.y) !== "open") continue;
-      if (clear(buildings, props, p.x, p.y)) candidates.push(p);
+      if (spawnPointClear(buildings, props, p.x, p.y, 1.4)) candidates.push(p);
     }
   }
   if (prefer && candidates.length) {
@@ -932,7 +899,7 @@ function pickSpawn(
         const p = samplePolyline(seg.points, t);
         if (avoid && len(p.x - avoid.x, p.y - avoid.y) < 6) continue;
         if (traversalAt(grid, p.x, p.y) !== "open") continue;
-        if (clear(buildings, props, p.x, p.y)) return p;
+        if (spawnPointClear(buildings, props, p.x, p.y, 1.4)) return p;
       }
     }
   }
@@ -940,12 +907,13 @@ function pickSpawn(
   return { x: fallback.x, y: fallback.y, heading: fallback.heading };
 }
 
-function clear(buildings: Building[], props: Prop[], x: number, y: number): boolean {
-  const rad = 1.4;
+/** No building or unbroken prop within the `rad` square around the point. */
+export function spawnPointClear(buildings: readonly Building[], props: readonly Prop[], x: number, y: number, rad: number): boolean {
   for (const b of buildings) {
     if (aabbOverlap(x - rad, y - rad, rad * 2, rad * 2, b.x, b.y, b.w * b.cellSize, b.d * b.cellSize)) return false;
   }
   for (const p of props) {
+    if (p.broken) continue;
     if (aabbOverlap(x - rad, y - rad, rad * 2, rad * 2, p.x, p.y, p.w, p.d)) return false;
   }
   return true;

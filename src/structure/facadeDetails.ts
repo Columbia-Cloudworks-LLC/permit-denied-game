@@ -20,7 +20,7 @@ export function facadeDetailSupports(b: Building, d: FacadeDetailDef): Cell[] {
     .filter((c): c is Cell => Boolean(c));
 }
 
-export function detailRoof(b: Building, d: FacadeDetailDef) {
+function detailRoof(b: Building, d: FacadeDetailDef) {
   return b.roofs.find(r => r.floor === d.floor && roofCoverage(r).some(p => p.gx === d.gx && p.gy === d.gy));
 }
 

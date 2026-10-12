@@ -20,3 +20,6 @@ coverage/
 .wrangler/
 .dev.vars
 .dev.vars.*
+
+# fallow analysis cache
+.fallow/

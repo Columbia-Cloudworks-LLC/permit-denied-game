@@ -16,10 +16,6 @@ export class AudioBus {
   private ambientKind: WeatherKind | "off" = "off";
   private ambientDetail: WeatherDetail = "off";
 
-  get ready(): boolean {
-    return this.started;
-  }
-
   async unlock(): Promise<void> {
     if (this.started) return;
     const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;

@@ -1,6 +1,6 @@
 import { stickAxes } from '../game/input';
 
-export interface TouchState { throttle: number; steer: number; blade: boolean }
+interface TouchState { throttle: number; steer: number; blade: boolean }
 interface TouchCallbacks {
   change: (state: TouchState) => void;
   release: () => void;

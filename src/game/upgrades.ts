@@ -4,7 +4,7 @@ export interface Upgrades {
   push: number;
 }
 
-export const UPGRADE_INCREMENTS = { blade: 0.42, engine: 0.28, push: 0.35 } as const;
+const UPGRADE_INCREMENTS = { blade: 0.42, engine: 0.28, push: 0.35 } as const;
 export interface UpgradeModifiers { bladeMul: number; engineMul: number; pushMul: number }
 
 export function upgradeModifiers(upgrades: Upgrades): UpgradeModifiers {

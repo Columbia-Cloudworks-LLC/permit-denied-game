@@ -5,20 +5,13 @@ import { boardingAccess } from './boarding-access-recipe.mjs';
 import { fourplexAccess } from './fourplex-access-recipe.mjs';
 import { mkdir, writeFile, access } from 'node:fs/promises';
 import { buildingDetails } from './building-detail-recipes.mjs';
+import { bakeryRooms, fixture as f, homeRooms as home, laundryRooms, room as r, roomDoors as doors } from './authoring-rooms.mjs';
 
 // Each entry below owns its generated layouts. Templates describe furnishing
 // arrangements, while the explicit sections below describe individual buildings.
-const f = (kind, x, y, w, d, h = 1) => ({ kind, x, y, w, d, h, rotation: 0 });
-const r = (id, kind, x, y, w, d, contents = [], finish = 'linoleum') => ({ id, kind, floor: 0, x, y, w, d, finish, contents: contents.map((v, i) => ({ id: `${id}-${i}`, ...v })) });
 const all = (id, kind, contents, finish) => r(id, kind, 0, 0, 1, 1, contents, finish);
 const rows = (kind, count = 3, depth = .7, h = 1.3) => Array.from({ length: count }, (_, i) => f(kind, .08 + i * .85 / count, .1, .12, depth, h));
 const desks = () => [.1, .57].flatMap(x => [.12, .62].map(y => f('office-desk', x, y, .3, .2, .8)));
-const home = () => [
-  r('sleep', 'bedroom', 0, 0, .65, .5, [f('bed', .12, .1, .6, .65, .7)], 'plank'),
-  r('bath', 'bathroom', .65, 0, .35, .5, [f('toilet', .15, .1, .4, .4, .7)], 'tile'),
-  r('living', 'living', 0, .5, .65, .5, [f('sofa', .08, .1, .7, .22, .8), f('table', .3, .6, .4, .25, .6)], 'plank'),
-  r('kitchen', 'kitchen', .65, .5, .35, .5, [f('counter', .05, .1, .25, .8, .8), f('fridge', .65, .1, .25, .3, 1.3)], 'tile'),
-];
 const recipes = {
   'open-volume':()=>[all('open-volume','living',[],'plank')],
   home,
@@ -28,8 +21,8 @@ const recipes = {
   retail: () => [r('sales', 'retail', 0, .25, 1, .75, [...rows('shelf', 3, .5), f('checkout-register', .55, .8, .3, .12, .85)], 'tile'), r('stock', 'storage', 0, 0, 1, .25, rows('pallet', 3, .65, .8), 'concrete')],
   stock: () => [all('stockroom', 'storage', rows('rack', 3), 'concrete')],
   machines: () => [all('work-floor', 'production', [.12, .58].flatMap(x => [.1, .6].map(y => f('machine', x, y, .22, .25, 1.2))), 'concrete')],
-  laundry: () => [all('laundry', 'retail', [f('washer-dryer', .05, .05, .4, .2, 1), f('washer-dryer', .55, .05, .4, .2, 1), f('washer-dryer', .05, .7, .4, .2, 1), f('table', .58, .68, .32, .2, .7)], 'tile')],
-  bakery: () => [r('sales', 'retail', 0, .6, 1, .4, [f('display-fridge', .08, .12, .45, .25, 1), f('checkout-register', .7, .12, .2, .25, .8)], 'tile'), r('bakehouse', 'kitchen', 0, 0, 1, .6, [f('commercial-oven', .08, .1, .3, .25, 1), f('commercial-oven', .6, .1, .3, .25, 1), f('counter', .1, .65, .75, .2, .8)], 'tile')],
+  laundry: laundryRooms,
+  bakery: bakeryRooms,
   furniture: () => [all('showroom', 'retail', [f('sofa', .1, .1, .3, .2), f('bed', .6, .08, .25, .3, .7), f('cabinet', .1, .6, .2, .3, 1.2), f('table', .55, .6, .25, .22, .7)], 'plank')],
   nursery: () => [r('plants', 'retail', 0, 0, .75, 1, rows('nursery-bench', 3, .55, 1), 'concrete'), r('supplies', 'storage', .75, 0, .25, 1, rows('shelf', 2), 'concrete')],
   stalls: () => Array.from({ length: 4 }, (_, i) => r(`stall-${i}`, 'storage', i / 4, 0, .25, 1, [f('pallet', .1, .1, .3, .22, .5)], 'plank')),
@@ -92,10 +85,6 @@ const plans = [
   ['B57', 'clock-hall', 'CLOCK HALL', 'civic', 'brick-mixed-use', 'flat', 'civic', 11, 8, [s('hall', 0, 0, 11, 8, 0, 2, 'meeting'), s('clock', 4, 2, 3, 4, 2, 3, 'pump')]],
   ['B58', 'twin-office-building', 'TWIN OFFICE BUILDING', 'commercial', 'concrete-bearing', 'flat', 'civic', 8, 7, [s('tower', 0, 0, 8, 7, 0, 10, 'office')]],
 ];
-const adjacent = (a, b) => a.floor === b.floor && (
-  ((Math.abs(a.x + a.w - b.x) < 1e-6 || Math.abs(b.x + b.w - a.x) < 1e-6) && Math.min(a.y + a.d, b.y + b.d) - Math.max(a.y, b.y) > 1e-6) ||
-  ((Math.abs(a.y + a.d - b.y) < 1e-6 || Math.abs(b.y + b.d - a.y) < 1e-6) && Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x) > 1e-6));
-const doors = rooms => rooms.flatMap((a, i) => rooms.slice(i + 1).filter(b => adjacent(a, b)).map(b => ({ a: a.id, b: b.id, at: .5, width: .35 })));
 for (const [backlog, id, label, group, construction, roof, theme, w, d, parts] of plans) {
   const refresh = process.argv.find(a => a.startsWith('--refresh='))?.slice(10);
   if (refresh && refresh !== id) continue;

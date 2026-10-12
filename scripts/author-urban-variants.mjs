@@ -1,16 +1,6 @@
 import { mkdir, writeFile } from 'node:fs/promises';
+import { bakeryRooms as bakery, fixture as f, homeRooms as home, laundryRooms as laundry, room, roomDoors as doors } from './authoring-rooms.mjs';
 
-const f = (kind, x, y, w, d, h = 1) => ({ kind, x, y, w, d, h, rotation: 0 });
-const room = (id, kind, x, y, w, d, contents = [], finish = 'linoleum') => ({
-  id, kind, floor: 0, x, y, w, d, finish,
-  contents: contents.map((v, i) => ({ id: `${id}-${i}`, ...v })),
-});
-const home = () => [
-  room('sleep', 'bedroom', 0, 0, .65, .5, [f('bed', .12, .1, .6, .65, .7)], 'plank'),
-  room('bath', 'bathroom', .65, 0, .35, .5, [f('toilet', .15, .1, .4, .4, .7)], 'tile'),
-  room('living', 'living', 0, .5, .65, .5, [f('sofa', .08, .1, .7, .22, .8), f('table', .3, .6, .4, .25, .6)], 'plank'),
-  room('kitchen', 'kitchen', .65, .5, .35, .5, [f('counter', .05, .1, .25, .8, .8), f('fridge', .65, .1, .25, .3, 1.3)], 'tile'),
-];
 const studio = () => [
   room('living', 'living', 0, 0, .7, 1, [f('bed', .08, .08, .45, .35, .7), f('sofa', .08, .58, .5, .2, .8)], 'plank'),
   room('bath', 'bathroom', .7, 0, .3, 1, [f('toilet', .15, .15, .45, .3, .7)], 'tile'),
@@ -22,14 +12,6 @@ const office = () => [
 const lobby = () => [room('lobby', 'retail', 0, 0, 1, 1, [f('counter', .1, .65, .15, .1, 1)], 'concrete')];
 const hall = () => [room('hall', 'living', 0, 0, 1, 1, [], 'linoleum')];
 const mech = () => [room('plant', 'storage', 0, 0, 1, 1, [f('filing-cabinet', .1, .1, .3, .75, 1.3)], 'concrete')];
-const bakery = () => [
-  room('sales', 'retail', 0, .6, 1, .4, [f('display-fridge', .08, .12, .45, .25, 1), f('checkout-register', .7, .12, .2, .25, .8)], 'tile'),
-  room('bakehouse', 'kitchen', 0, 0, 1, .6, [f('commercial-oven', .08, .1, .3, .25, 1), f('commercial-oven', .6, .1, .3, .25, 1), f('counter', .1, .65, .75, .2, .8)], 'tile'),
-];
-const laundry = () => [room('laundry', 'retail', 0, 0, 1, 1, [
-  f('washer-dryer', .05, .05, .4, .2, 1), f('washer-dryer', .55, .05, .4, .2, 1),
-  f('washer-dryer', .05, .7, .4, .2, 1), f('table', .58, .68, .32, .2, .7),
-], 'tile')];
 const grocery = () => [
   room('sales', 'retail', 0, .25, 1, .75, [
     f('shelf', .08, .1, .12, .5, 1.3), f('shelf', .36, .1, .12, .5, 1.3), f('shelf', .64, .1, .12, .5, 1.3),
@@ -37,11 +19,6 @@ const grocery = () => [
   ], 'tile'),
   room('stock', 'storage', 0, 0, 1, .25, [f('pallet', .1, .1, .3, .65, .8), f('pallet', .55, .1, .3, .65, .8)], 'concrete'),
 ];
-
-const adjacent = (a, b) => a.floor === b.floor && (
-  ((Math.abs(a.x + a.w - b.x) < 1e-6 || Math.abs(b.x + b.w - a.x) < 1e-6) && Math.min(a.y + a.d, b.y + b.d) - Math.max(a.y, b.y) > 1e-6) ||
-  ((Math.abs(a.y + a.d - b.y) < 1e-6 || Math.abs(b.y + b.d - a.y) < 1e-6) && Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x) > 1e-6));
-const doors = rooms => rooms.flatMap((a, i) => rooms.slice(i + 1).filter(b => adjacent(a, b)).map(b => ({ a: a.id, b: b.id, at: .5, width: .35 })));
 
 function stairRun(id, floors, w, d, hall) {
   const wide = hall.w >= 5;

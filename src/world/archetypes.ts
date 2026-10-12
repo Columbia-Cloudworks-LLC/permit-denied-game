@@ -338,9 +338,3 @@ export function pickArchetype(zone: LotZone, rng: { range(a: number, b: number):
   for (const a of pool) { pick -= a.zones[zone]; if (pick <= 0) return a; }
   return pool[pool.length - 1]!;
 }
-export function lotZoneFor(row: number, col: number, rows: number, cols: number): LotZone {
-  if (row === 0 || col === 0) return col + row === 0 ? 'commercial' : row === 0 ? 'commercial' : 'residential';
-  if (row === rows - 1 && col >= cols - 2 || row >= Math.max(1, rows - 2) && col >= Math.max(1, cols - 2)) return 'industrial';
-  if (col === cols - 1 && row <= 1) return 'commercial';
-  return 'residential';
-}
