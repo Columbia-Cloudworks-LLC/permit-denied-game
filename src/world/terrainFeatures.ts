@@ -362,7 +362,7 @@ export function deriveTerrainFeatures(ctx: FeatureContext): TerrainFeature[] {
   }
   promotePrimaryField(features, ctx);
   for (const feature of features) {
-    if (feature.kind === "field") ctx.ground.push(...featurePatches(feature));
+    if (feature.kind === "field") ctx.ground.push(...fieldPatches(feature));
   }
   placeEdgeTrees(ctx, features);
   return features;
@@ -691,69 +691,6 @@ function edgeTree(ctx: FeatureContext, features: TerrainFeature[], assetId: stri
   return true;
 }
 
-export function featurePatches(feature: TerrainFeature): GroundPatch[] {
-  switch (feature.kind) {
-    case "forest": {
-      const box = featureBounds(feature);
-      const n = 10;
-      const poly = Array.from({ length: n }, (_, i) => {
-        const a = (i / n) * Math.PI * 2;
-        const jitter = 0.88 + ((feature.seed >> (i % 8)) & 3) * 0.04;
-        return {
-          x: feature.cx + Math.cos(a) * feature.canopyR * jitter,
-          y: feature.cy + Math.sin(a) * feature.canopyR * jitter,
-        };
-      });
-      return [{
-        x: box.x,
-        y: box.y,
-        w: box.w,
-        d: box.d,
-        heading: 0,
-        cover: "forest-floor",
-        seed: feature.seed,
-        z: 0.006,
-        poly,
-      }];
-    }
-    case "pond":
-    case "lake": {
-      const box = featureBounds(feature);
-      return [{
-        x: box.x,
-        y: box.y,
-        w: box.w,
-        d: box.d,
-        heading: 0,
-        cover: "water",
-        seed: feature.seed,
-        z: 0.008,
-        poly: feature.poly,
-      }];
-    }
-    case "river": {
-      const box = featureBounds(feature);
-      return [{
-        x: box.x,
-        y: box.y,
-        w: box.w,
-        d: box.d,
-        heading: 0,
-        cover: "water",
-        seed: feature.seed,
-        z: 0.008,
-        poly: riverRibbon(feature),
-      }];
-    }
-    case "field":
-      return feature.mask ? fieldMaskPatches(feature) : [fieldRectPatch(feature)];
-    default: {
-      const _never: never = feature;
-      return _never;
-    }
-  }
-}
-
 function fieldRectPatch(feature: FieldFeature): GroundPatch {
   return {
     x: feature.x,
@@ -767,7 +704,8 @@ function fieldRectPatch(feature: FieldFeature): GroundPatch {
   };
 }
 
-function fieldMaskPatches(feature: FieldFeature): GroundPatch[] {
+/** Ground patches for a field: one oriented strip per masked run, or its whole rectangle. */
+export function fieldPatches(feature: FieldFeature): GroundPatch[] {
   const mask = feature.mask;
   if (!mask) return [fieldRectPatch(feature)];
   const patches: GroundPatch[] = [];
@@ -809,25 +747,6 @@ function fieldCover(state: FieldState): GroundPatch["cover"] {
   }
 }
 
-function riverRibbon(feature: RiverFeature): { x: number; y: number }[] {
-  const left: { x: number; y: number }[] = [];
-  const right: { x: number; y: number }[] = [];
-  for (let i = 0; i < feature.path.length; i++) {
-    const p = feature.path[i]!;
-    const prev = feature.path[i - 1] ?? p;
-    const next = feature.path[i + 1] ?? p;
-    const [nx, ny] = normalize(next.x - prev.x, next.y - prev.y);
-    left.push({ x: p.x - ny * feature.halfWidth, y: p.y + nx * feature.halfWidth });
-    right.push({ x: p.x + ny * feature.halfWidth, y: p.y - nx * feature.halfWidth });
-  }
-  return [...left, ...right.reverse()];
-}
-
-function normalize(x: number, y: number): [number, number] {
-  const l = Math.hypot(x, y);
-  if (l < 1e-8) return [1, 0];
-  return [x / l, y / l];
-}
 
 function blocked(
   ctx: FeatureContext,

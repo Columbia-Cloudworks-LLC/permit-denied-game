@@ -10,7 +10,7 @@ import { createTown } from "./town";
 import { validateTown } from "./districts";
 import {
   churnFieldAt,
-  featurePatches,
+  fieldPatches,
   terrainTraversalAt,
   type FieldFeature,
   type ForestFeature,
@@ -46,7 +46,7 @@ describe("terrain features", () => {
       churn: new Uint8Array(8),
       mask: Uint8Array.from([1, 1, 0, 0, 1, 1, 0, 0]),
     };
-    const patches = featurePatches(feature);
+    const patches = fieldPatches(feature);
     expect(patches.some((patch) => groundPatchContains(patch, 0.5, 0.5))).toBe(true);
     expect(patches.some((patch) => groundPatchContains(patch, 3.5, 0.5))).toBe(false);
   });
