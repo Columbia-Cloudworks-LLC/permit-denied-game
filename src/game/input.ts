@@ -1,7 +1,6 @@
 export class Input {
   readonly down = new Set<string>();
   readonly pressed = new Set<string>();
-  muteChord = false;
   private touch = { throttle: 0, steer: 0, blade: false };
 
   setTouch(state: { throttle: number; steer: number; blade: boolean }): void {

@@ -4,6 +4,7 @@ import { getAsset } from "../world/catalog";
 import type { SeasonId } from "../world/season";
 import { drawCar } from "./vehicles";
 import { drawOrientedIsoBox, drawShadow, PAL } from "./drawIso";
+import { shade } from "./palette";
 
 export function drawCatalogProp(g: Graphics, p: Prop, season: SeasonId = "summer"): void {
   const def = getAsset(p.assetId);
@@ -88,11 +89,4 @@ function foliageTint(top: number, left: number, right: number, season: SeasonId,
       return _never;
     }
   }
-}
-
-function shade(color: number, mul: number): number {
-  const r = Math.min(255, Math.round(((color >> 16) & 255) * mul));
-  const g = Math.min(255, Math.round(((color >> 8) & 255) * mul));
-  const b = Math.min(255, Math.round((color & 255) * mul));
-  return (r << 16) | (g << 8) | b;
 }

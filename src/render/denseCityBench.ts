@@ -11,7 +11,7 @@ export const DENSE_CITY_SEED = 19;
 export const DENSE_CITY_LEVEL = "city-downtown" as const;
 
 export const DESKTOP_VIEW = { w: 1440, h: 900 };
-export const MOBILE_VIEW = { w: 390, h: 844 };
+const MOBILE_VIEW = { w: 390, h: 844 };
 
 export interface DenseCityScene {
   id: string;
@@ -73,7 +73,7 @@ export function createDenseCityTown(seed = DENSE_CITY_SEED): Town {
   });
 }
 
-export function smashDenseCity(town: Town, count = 4): void {
+function smashDenseCity(town: Town, count = 4): void {
   const particles = new ParticlePool();
   const targets = [...town.buildings]
     .sort((a, b) => a.x + a.y - (b.x + b.y))

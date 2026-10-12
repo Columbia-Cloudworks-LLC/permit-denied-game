@@ -5,7 +5,6 @@ import { PileField } from '../sim/pile';
 import { rubbleAabb } from '../sim/debris';
 import { invalidateWorldCollision } from '../sim/worldSim';
 import type { ParticlePool } from '../fx/particles';
-import { createRoadVehicle, replaceRoadVehicle } from '../vehicle/roadVehicle';
 import { emptyTerrain, RoadBuilder, linePoints, pt } from './roads';
 import { bayBuildings, bayProps, bayVehicles, discoverYardAssets, yardAssetIssue, yardGridSlots, instantiateBay, layoutYard, overlap, type YardAsset, type YardBay, type YardBox } from './yardCatalog';
 import type { Town } from './town';
@@ -111,7 +110,7 @@ function addBay(town: Town, bay: YardBay): void {
   town.props.push(...bayProps(bay));
   for(const v of bayVehicles(bay)){v.yardOwner=bay.key;town.vehicles.push(v);}
 }
-export function ownerAt(town: Town, x: number, y: number): string | undefined {
+function ownerAt(town: Town, x: number, y: number): string | undefined {
   const moving = town.yard?.bays.find(b => bayProps(b).some(p => x >= p.x - .2 && x <= p.x + p.w + .2 && y >= p.y - .2 && y <= p.y + p.d + .2));
   if (moving) return moving.key;
   return town.yard?.bays.find(b => x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.d)?.key;
@@ -216,7 +215,6 @@ export function restoreBay(town: Town, bay: YardBay, particles?: ParticlePool): 
   town.yard!.bays.push(bay); changed(town);
 }
 function changed(town: Town): void { town.visualRevision++; town.siteRevision++; invalidateWorldCollision(); }
-export function yardRoadVehicle(town: Town): void { replaceRoadVehicle(town, createRoadVehicle(town.roadSpawnX, town.roadSpawnY, 0)); }
 export function yardVehicleRoute(v:VehicleState,delay=0,bay?:YardBay):void {
   const r=7,cx=bay ? bay.x+bay.asset.clearance+bay.asset.w/2 : v.x,cy=(bay ? bay.y+bay.asset.clearance+bay.asset.d/2-6 : v.y)+r;
   const points=Array.from({length:24},(_,i)=>{const angle=-Math.PI/2+(i+1)*Math.PI/12;return {x:cx+Math.cos(angle)*r,y:cy+Math.sin(angle)*r};});

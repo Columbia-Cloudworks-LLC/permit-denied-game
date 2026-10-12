@@ -4,7 +4,7 @@ import { facebookMetadata, facebookPageUrl } from "./scripts/facebook-metadata.m
 import { version } from './package.json';
 
 /** Heavy generation matrices: Linux CI only. */
-export const INTEGRATION_TESTS = [
+const INTEGRATION_TESTS = [
   "src/world/seasonCoverage.test.ts",
   "src/world/district.test.ts",
   "src/world/campaignLayout.test.ts",

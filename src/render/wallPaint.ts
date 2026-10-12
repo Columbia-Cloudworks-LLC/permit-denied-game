@@ -3,7 +3,7 @@ import { getBuildingSurfaces, type WallSpan } from "./buildingSurfaces";
 import { wallSpanFadeRuns, type OccludeDozer } from "./occlusion";
 
 /** One cell per command so a long east/south run cannot sort behind a nearer floor tile. */
-export function splitWallSpan(span: WallSpan): WallSpan[] {
+function splitWallSpan(span: WallSpan): WallSpan[] {
   const count = span.dir === "south" ? span.gx1 - span.gx0 + 1 : span.gy1 - span.gy0 + 1;
   if (count <= 1) return [span];
   return Array.from({ length: count }, (_, i) => ({

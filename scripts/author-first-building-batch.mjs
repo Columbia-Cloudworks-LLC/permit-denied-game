@@ -5,6 +5,7 @@ import { independentDuplex } from './independent-duplex-recipe.mjs';
 // this authoring utility never runs as part of builds or tests.
 import { mkdir, writeFile, access } from 'node:fs/promises';
 import { buildingDetails } from './building-detail-recipes.mjs';
+import { roomDoors as connections } from './authoring-rooms.mjs';
 const fixture = (kind, x, y, w, d, h = .8) => ({ kind, x, y, w, d, h, rotation: 0 });
 const room = (id, kind, x, y, w, d, contents, finish = 'plank') => ({ id, kind, floor: 0, x, y, w, d, finish,
   contents: contents.map((f, i) => ({ id: `${id}-${i}`, ...f })) });
@@ -22,10 +23,6 @@ const office = () => [
   room('workroom', 'production', 0, 0, .75, 1, [table(.15, .15), table(.6, .15), table(.15, .6), table(.6, .6)], 'linoleum'),
   room('records', 'storage', .75, 0, .25, 1, [shelf(.1, .1, .3, .75)], 'linoleum'),
 ];
-const adjacent = (a, b) => a.floor === b.floor && (
-  ((Math.abs(a.x + a.w - b.x) < 1e-6 || Math.abs(b.x + b.w - a.x) < 1e-6) && Math.min(a.y + a.d, b.y + b.d) - Math.max(a.y, b.y) > 1e-6) ||
-  ((Math.abs(a.y + a.d - b.y) < 1e-6 || Math.abs(b.y + b.d - a.y) < 1e-6) && Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x) > 1e-6));
-const connections = rooms => rooms.flatMap((a, i) => rooms.slice(i + 1).filter(b => adjacent(a, b)).map(b => ({ a: a.id, b: b.id, at: .5, width: .35 })));
 const blueprints = [
   { id: 'detached-garage', backlog: 'B01', label: 'DETACHED GARAGE', group: 'residential', kind: 'house', w: 4, d: 4, roof: 'gable', theme: 'ranch', construction: 'timber-house', doors: [[.5, 'loading']], sections: [
     section('garage', 0, 0, 4, 4, 0, 1, [full('workshop', 'storage', [shelf(.08, .08), fixture('table', .4, .08, .45, .15, .65)])]),

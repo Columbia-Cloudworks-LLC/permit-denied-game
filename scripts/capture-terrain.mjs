@@ -1,5 +1,4 @@
-import { mkdir } from "node:fs/promises";
-import { gameUrl, waitForGame, withGameCapture } from "./capture/harness.mjs";
+import { captureShots } from "./capture/harness.mjs";
 
 const OUT = "artifacts/terrain";
 
@@ -13,18 +12,12 @@ const shots = [
   { file: "classic.png", query: "seed=19" },
 ];
 
-await withGameCapture(async ({ openPage, origin }) => {
-  const page = await openPage({ query: shots[0].query });
-  await mkdir(OUT, { recursive: true });
-  for (const shot of shots) {
-    await page.goto(gameUrl(origin, shot.query), { waitUntil: "networkidle" });
-    await waitForGame(page);
-    await page.evaluate(() => {
-      const game = window.__pd;
-      const pose = game.dozerSnapshot();
-      game.lookAtWorld(pose.x, pose.y, pose.heading, 1.15);
-    });
-    await page.waitForTimeout(400);
-    await page.screenshot({ path: `${OUT}/${shot.file}`, type: "png" });
-  }
+await captureShots(OUT, shots, async (page, shot) => {
+  await page.evaluate(() => {
+    const game = window.__pd;
+    const pose = game.dozerSnapshot();
+    game.lookAtWorld(pose.x, pose.y, pose.heading, 1.15);
+  });
+  await page.waitForTimeout(400);
+  await page.screenshot({ path: `${OUT}/${shot.file}`, type: "png" });
 });

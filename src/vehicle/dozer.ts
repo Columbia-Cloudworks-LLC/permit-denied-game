@@ -119,7 +119,7 @@ export function stepDozer(d: Dozer, input: DriveInput, dt: number): void {
   d.lastImpact = Math.max(0, d.lastImpact - dt);
 }
 
-export function applyDozerImpulse(d: Dozer, nx: number, ny: number, depth: number, bounce: number): number {
+function applyDozerImpulse(d: Dozer, nx: number, ny: number, depth: number, bounce: number): number {
   d.x += nx * depth;
   d.y += ny * depth;
   const vn = d.vx * nx + d.vy * ny;

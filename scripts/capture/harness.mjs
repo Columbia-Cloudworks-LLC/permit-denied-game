@@ -1,3 +1,4 @@
+import { mkdir } from "node:fs/promises";
 import { createServer } from "node:net";
 import { chromium } from "playwright";
 import { preview } from "vite";
@@ -110,4 +111,20 @@ export async function withGameCapture(action, options = {}) {
     await browser?.close();
     await closePreview(server);
   }
+}
+
+/**
+ * Visit each shot's query in one page, waiting for the game before `capture`.
+ * Shots need a `query`; `outDir` is created first.
+ */
+export async function captureShots(outDir, shots, capture, options = {}) {
+  await mkdir(outDir, { recursive: true });
+  await withGameCapture(async ({ openPage, origin }) => {
+    const page = await openPage({ query: shots[0]?.query });
+    for (const shot of shots) {
+      await page.goto(gameUrl(origin, shot.query), { waitUntil: "networkidle" });
+      await waitForGame(page);
+      await capture(page, shot);
+    }
+  }, options);
 }

@@ -4,7 +4,7 @@ import { resetVehicleIds } from '../vehicle/runtime';
 import { populateTowerTest } from './towerTest';
 import { populateTestYard, type TestYard } from './testYard';
 import type { TestMapRequest } from './testMapRequest';
-import { CELL, DRESSING } from "../game/constants";
+import { DRESSING } from "../game/constants";
 import { Rng } from "../game/rng";
 import type { CampaignLevelDef, CampaignLevelId } from "../game/campaign";
 import { DEFAULT_DISTRICT_SEEDS, type DistrictId } from "../game/session";
@@ -15,7 +15,7 @@ import type { Building, CollapsedSite, GroundMark, GroundPatch, Lot, Prop, Rubbl
 import { resetPropIds, spawnAsset } from "./catalog";
 import type { DistrictReport } from "./districts";
 import { generateDistrictLayout } from "./districts";
-import { buildingOccupy, dressLot, pickTemplate } from "./dressing";
+import { buildingOccupy, dressLots, pickTemplate } from "./dressing";
 import { CLASSIC_PLACEMENTS } from "./families";
 import { completeLot, type NhoodDebug } from "./parcels";
 import { identityFromBuilding } from "./lotUse";
@@ -231,12 +231,9 @@ function createClassicTown(seed: number, showcase = false, season: SeasonId = "s
   const ground: GroundPatch[] = [
     { x: 12.2, y: 20.4, w: 4.2, d: 2.4, heading: 0, cover: "dirt", seed: seed ^ 5, z: 0.01 },
   ];
-  for (let i = 0; i < lots.length; i++) {
-    const dressed = dressLot(lots[i]!, buildings[i], rng, { boxes: occBoxes }, showcase ? 0 : 4);
-    props.push(...dressed.props);
-    ground.push(...dressed.patches);
-    for (const p of dressed.props) occBoxes.push({ x: p.x, y: p.y, w: p.w, d: p.d });
-  }
+  const dressed = dressLots(lots, buildings, rng, occBoxes, showcase ? 0 : 4);
+  props.push(...dressed.props);
+  ground.push(...dressed.patches);
 
   const biome = defaultBiome();
   const surface = generateSurfaceGrid({
@@ -316,14 +313,4 @@ function createClassicTown(seed: number, showcase = false, season: SeasonId = "s
     features,
     featureRevision: 0,
   };
-}
-
-export function townExtent(town?: Town): { w: number; d: number } {
-  if (!town) return { w: 40 * CELL, d: 36 * CELL };
-  return { w: (town.maxX - town.minX + 2) * CELL, d: (town.maxY - town.minY + 2) * CELL };
-}
-
-export function propById(town: Town, id: number): Prop | undefined {
-  for (const p of town.props) if (p.id === id) return p;
-  return undefined;
 }

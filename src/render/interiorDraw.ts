@@ -13,9 +13,9 @@ import type { Building, Cell, InteriorFixture, RoofSection } from "../structure/
 import { cellPresent, cellWorldBox } from "../structure/types";
 import { depthKey, roofPainterDepth } from "../world/iso";
 import { maxTopFloorWallFaceDepth } from "./buildingSurfaces";
-import { drawFaceWindow, drawIsoBox, drawOrientedIsoBox, drawSlopedQuad, drawTopCap, shade } from "./drawIso";
+import { drawFaceWindow, drawIsoBox, drawOrientedIsoBox, drawSlopedQuad, drawTopCap } from "./drawIso";
 import { brokenEdgeColor, floorFinishColor, topFaceColor, wallFaceColor } from "./lighting";
-import { PAL, matColors } from "./palette";
+import { PAL, matColors, shade } from "./palette";
 
 const WALL_THICK = 0.16;
 const FLOOR_H = 0.18;

@@ -1,27 +1,4 @@
-import type { BuildingKind, Material, RoofStyle } from "../structure/types";
-import { ARCHETYPES, type ArchetypeId } from "./archetypes";
-
-export interface BuildingFamily {
-  kind: BuildingKind;
-  label: string;
-  w: number;
-  d: number;
-  floors: number;
-  material: Material;
-  roof: RoofStyle;
-  archetypeId: ArchetypeId;
-}
-
-export const BUILDING_FAMILIES: readonly BuildingFamily[] = ARCHETYPES.map((a) => ({
-  kind: a.kind,
-  label: a.label,
-  w: a.w,
-  d: a.d,
-  floors: a.floors,
-  material: a.construction.structure,
-  roof: a.roof,
-  archetypeId: a.id,
-}));
+import type { ArchetypeId } from "./archetypes";
 
 export const CLASSIC_PLACEMENTS: readonly {
   archetypeId: ArchetypeId;

@@ -2,7 +2,7 @@ export interface Card { id: string; name: string; category: string; variants: nu
 export interface Tree { file: string; count: number; min?: string; max?: string }
 interface RecordItem { key: string; card: Card }
 interface Node { items?: RecordItem[]; children?: Tree[] }
-export const normalize = (text: string) => text.normalize('NFKD').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+const normalize = (text: string) => text.normalize('NFKD').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
 export async function searchPage(root: Tree, load: (key: string) => Promise<Node>, query = '', after = '', limit = 24) {
   const prefix = normalize(query), lower = after || prefix, upper = prefix ? `${prefix}\uffff` : '\uffff';

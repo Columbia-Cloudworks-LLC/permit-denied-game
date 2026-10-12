@@ -31,9 +31,9 @@ export const BIOME_IDS: readonly BiomeId[] = [
   "agricultural-plain",
 ];
 
-export const BIOME_SALT = 0xb10be;
+const BIOME_SALT = 0xb10be;
 /** Campaign region roll. Separate from per-level layout and season streams. */
-export const CAMPAIGN_BIOME_SALT = 0xc0a91b;
+const CAMPAIGN_BIOME_SALT = 0xc0a91b;
 
 export function selectCampaignBiome(campaignSeed: number): BiomeProfile {
   const rng = new Rng((campaignSeed ^ CAMPAIGN_BIOME_SALT) >>> 0);
@@ -93,10 +93,6 @@ export const BIOME_PROFILES: Record<BiomeId, BiomeProfile> = {
 };
 
 const SPECIES = new Set(["oak", "pine", "oak-sapling", "pine-sapling", "oak-shrub", "pine-shrub"]);
-
-export function biomeCompatibleSpecies(): readonly string[] {
-  return [...SPECIES];
-}
 
 export function speciesCompatible(biome: BiomeProfile, assetId: string): boolean {
   if (!SPECIES.has(assetId)) return true;

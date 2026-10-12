@@ -48,7 +48,7 @@ function modal(title: string, content: string): { dialog: HTMLDialogElement; clo
   dialog.showModal();
   return { dialog, close: () => { dialog.close(); dialog.remove(); active = undefined; previous?.focus(); } };
 }
-export function openPrivacySettings(): void {
+function openPrivacySettings(): void {
   if (active?.open) return;
   const { dialog, close } = modal('Your privacy choices', `<p>Optional analytics helps us understand visits and improve the game. It includes basic traffic information and game starts, active play, results, retries, and catalog asset views. No advertising or personal profiles.</p><p>You can play without analytics. Players under 18 must decline.</p><p>Current choice: <strong>${choice === 'adult-allowed' ? 'Allowed' : choice === 'declined' ? 'Declined' : 'Not chosen — off'}</strong></p><label class="privacy-check"><input type="checkbox" id="analytics-adult"> I am 18 or older</label><div class="privacy-actions"><button id="analytics-allow" disabled>Allow analytics</button><button id="analytics-decline">Decline</button></div><p><a href="/privacy" target="_blank" rel="noopener noreferrer">Read the Privacy Policy</a> · <button class="privacy-link" id="privacy-close">Close</button></p><p class="privacy-small">Your choice is remembered in this browser when storage is available. You can withdraw permission here at any time.</p>`);
   const adult = dialog.querySelector<HTMLInputElement>('#analytics-adult')!, allow = dialog.querySelector<HTMLButtonElement>('#analytics-allow')!;

@@ -17,7 +17,7 @@ export interface IsolateLot {
   pad: number;
 }
 
-export function yardAssetFromDefinition(definition: Archetype): YardAsset {
+function yardAssetFromDefinition(definition: Archetype): YardAsset {
   return {
     id: `building:${definition.id}`,
     name: definition.label,

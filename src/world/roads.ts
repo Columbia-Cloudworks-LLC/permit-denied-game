@@ -1,4 +1,4 @@
-import { aabbOverlap, clamp, len, lerp, wrapAngle } from "../game/math";
+import { aabbOverlap, clamp, len, lerp, pointBounds, wrapAngle } from "../game/math";
 import { SpatialHash } from "../sim/spatial";
 import type { JunctionType, RoadClass, RoadSurfaceKind } from "../structure/types";
 import { drivewayPavementColor } from "./drivewayStyle";
@@ -92,24 +92,10 @@ export interface RoadNetwork {
   mesh: RoadMeshQuad[];
 }
 
-export const EMPTY_NETWORK: RoadNetwork = {
-  nodes: [],
-  segments: [],
-  lanes: [],
-  accesses: [],
-  mesh: [],
-};
-
 export function emptyTerrain(ox: number, oy: number, w: number, d: number, cell = 2.4): TerrainField {
   const cols = Math.max(2, Math.ceil(w / cell) + 1);
   const rows = Math.max(2, Math.ceil(d / cell) + 1);
   return { ox, oy, cell, cols, rows, height: new Float32Array(cols * rows) };
-}
-
-export function setTerrainHeight(field: TerrainField, x: number, y: number, z: number): void {
-  const ix = clamp(Math.round((x - field.ox) / field.cell), 0, field.cols - 1);
-  const iy = clamp(Math.round((y - field.oy) / field.cell), 0, field.rows - 1);
-  field.height[iy * field.cols + ix] = z;
 }
 
 export function terrainHeightAt(field: TerrainField, x: number, y: number): number {
@@ -135,11 +121,7 @@ export function projectPointToPolyline(
 ): { x: number; y: number; elev: number; t: number; dist: number; heading: number; index: number } {
   let best = { x: points[0]!.x, y: points[0]!.y, elev: points[0]!.elev, t: 0, dist: Infinity, heading: 0, index: 0 };
   let walked = 0;
-  let total = 0;
-  for (let i = 0; i < points.length - 1; i++) {
-    total += len(points[i + 1]!.x - points[i]!.x, points[i + 1]!.y - points[i]!.y);
-  }
-  const span = Math.max(1e-6, total);
+  const span = Math.max(1e-6, polylineLength(points));
   for (let i = 0; i < points.length - 1; i++) {
     const a = points[i]!;
     const b = points[i + 1]!;
@@ -168,10 +150,7 @@ export function projectPointToPolyline(
 
 export function samplePolyline(points: readonly RoadPoint[], t: number): RoadPoint & { heading: number } {
   const u = clamp(t, 0, 1);
-  let total = 0;
-  for (let i = 0; i < points.length - 1; i++) {
-    total += len(points[i + 1]!.x - points[i]!.x, points[i + 1]!.y - points[i]!.y);
-  }
+  const total = polylineLength(points);
   let remain = u * total;
   for (let i = 0; i < points.length - 1; i++) {
     const a = points[i]!;
@@ -203,6 +182,17 @@ export function polylineLength(points: readonly RoadPoint[]): number {
     total += len(points[i + 1]!.x - points[i]!.x, points[i + 1]!.y - points[i]!.y);
   }
   return total;
+}
+
+/** Consecutive point pairs of a polyline with their heading and length. */
+function polylineEdges(points: readonly RoadPoint[]): { i: number; a: RoadPoint; b: RoadPoint; heading: number; length: number }[] {
+  const edges = [];
+  for (let i = 0; i < points.length - 1; i++) {
+    const a = points[i]!;
+    const b = points[i + 1]!;
+    edges.push({ i, a, b, heading: Math.atan2(b.y - a.y, b.x - a.x), length: len(b.x - a.x, b.y - a.y) });
+  }
+  return edges;
 }
 
 function splitPolyline(
@@ -301,18 +291,9 @@ function polylineIntersect(
   return null;
 }
 
-export function segmentAabb(seg: RoadSegment): { x: number; y: number; w: number; d: number } {
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
+function segmentAabb(seg: RoadSegment): { x: number; y: number; w: number; d: number } {
   const pad = seg.width * 0.5 + seg.shoulder + 0.4;
-  for (const p of seg.points) {
-    if (p.x < minX) minX = p.x;
-    if (p.y < minY) minY = p.y;
-    if (p.x > maxX) maxX = p.x;
-    if (p.y > maxY) maxY = p.y;
-  }
+  const { minX, minY, maxX, maxY } = pointBounds(seg.points);
   return { x: minX - pad, y: minY - pad, w: maxX - minX + pad * 2, d: maxY - minY + pad * 2 };
 }
 
@@ -325,10 +306,6 @@ export interface RoadIndex {
 }
 
 const indexCache = new WeakMap<RoadNetwork, RoadIndex>();
-
-export function invalidateNetworkIndex(network: RoadNetwork): void {
-  indexCache.delete(network);
-}
 
 export function indexNetwork(network: RoadNetwork): RoadIndex {
   const cached = indexCache.get(network);
@@ -362,8 +339,7 @@ export function roadSurfaceAt(
   const idx = indexNetwork(network);
   idx.hash.query(x - 1.2, y - 1.2, 2.4, 2.4, nearbySegs);
   let best: RoadSurfaceHit = { on: false, elev: 0, layer: currentLayer ?? 0, segmentId: null, heading: 0, t: 0, dist: Infinity };
-  for (const seg of nearbySegs) {
-    if (currentLayer !== undefined && seg.layer !== currentLayer) continue;
+  const consider = (seg: RoadSegment): void => {
     const hit = projectPointToPolyline(seg.points, x, y);
     const half = seg.width * 0.5 + seg.shoulder;
     if (hit.dist <= half && hit.dist < best.dist) {
@@ -377,23 +353,12 @@ export function roadSurfaceAt(
         dist: hit.dist,
       };
     }
+  };
+  for (const seg of nearbySegs) {
+    if (currentLayer === undefined || seg.layer === currentLayer) consider(seg);
   }
   if (best.on || currentLayer !== undefined) return best;
-  for (const seg of nearbySegs) {
-    const hit = projectPointToPolyline(seg.points, x, y);
-    const half = seg.width * 0.5 + seg.shoulder;
-    if (hit.dist <= half && hit.dist < best.dist) {
-      best = {
-        on: true,
-        elev: hit.elev,
-        layer: seg.layer,
-        segmentId: seg.id,
-        heading: hit.heading,
-        t: hit.t,
-        dist: hit.dist,
-      };
-    }
-  }
+  for (const seg of nearbySegs) consider(seg);
   return best;
 }
 
@@ -424,20 +389,7 @@ export function projectPointToRoad(
   return best;
 }
 
-export function nearestRoadAccess(network: RoadNetwork, x: number, y: number): RoadAccess | null {
-  let best: RoadAccess | null = null;
-  let bestD = Infinity;
-  for (const a of network.accesses) {
-    const d = len(a.x - x, a.y - y);
-    if (d < bestD) {
-      bestD = d;
-      best = a;
-    }
-  }
-  return best;
-}
-
-export function connectedLanes(network: RoadNetwork, laneId: string): Lane[] {
+function connectedLanes(network: RoadNetwork, laneId: string): Lane[] {
   const idx = indexNetwork(network);
   const lane = idx.laneById.get(laneId);
   if (!lane) return [];
@@ -647,13 +599,11 @@ export function aabbOverlapsRoad(
 export function derivedRoadBoxes(network: RoadNetwork): { x: number; y: number; w: number; d: number }[] {
   const boxes: { x: number; y: number; w: number; d: number }[] = [];
   for (const seg of network.segments) {
-    for (let i = 0; i < seg.points.length - 1; i++) {
-      const a = seg.points[i]!;
-      const b = seg.points[i + 1]!;
-      const heading = Math.atan2(b.y - a.y, b.x - a.x);
+    for (const edge of polylineEdges(seg.points)) {
+      const { a, b, heading } = edge;
       const midX = (a.x + b.x) * 0.5;
       const midY = (a.y + b.y) * 0.5;
-      const length = len(b.x - a.x, b.y - a.y) + 0.2;
+      const length = edge.length + 0.2;
       const width = seg.width + seg.shoulder * 2;
       const hx = Math.abs(Math.cos(heading)) * length * 0.5 + Math.abs(Math.sin(heading)) * width * 0.5;
       const hy = Math.abs(Math.sin(heading)) * length * 0.5 + Math.abs(Math.cos(heading)) * width * 0.5;
@@ -915,23 +865,60 @@ function segsAt(
   return out;
 }
 
-function outgoingHeading(seg: RoadSegment, node: RoadNode): number {
-  if (seg.startId === node.id) {
-    const a = seg.points[0]!;
-    const b = seg.points[1] ?? a;
-    return Math.atan2(b.y - a.y, b.x - a.x);
+/** Ids of the given segments meeting at each node. */
+function segmentsByNode(segs: readonly RoadSegment[]): Map<string, string[]> {
+  const nodeToSegs = new Map<string, string[]>();
+  for (const s of segs) {
+    for (const nid of [s.startId, s.endId]) {
+      const list = nodeToSegs.get(nid) ?? [];
+      list.push(s.id);
+      nodeToSegs.set(nid, list);
+    }
   }
+  return nodeToSegs;
+}
+
+/** Segment ids sharing either end node with `seg` (including `seg` itself). */
+function segmentNeighbors(seg: RoadSegment, nodeToSegs: ReadonlyMap<string, string[]>): string[] {
+  return [...(nodeToSegs.get(seg.startId) ?? []), ...(nodeToSegs.get(seg.endId) ?? [])];
+}
+
+/** Segment ids reachable from `startId` through shared nodes without leaving `allowed`. */
+function floodSegments(
+  startId: string,
+  byId: ReadonlyMap<string, RoadSegment>,
+  nodeToSegs: ReadonlyMap<string, string[]>,
+  allowed: ReadonlySet<string>,
+): Set<string> {
+  const seen = new Set<string>([startId]);
+  const stack = [startId];
+  while (stack.length) {
+    const seg = byId.get(stack.pop()!);
+    if (!seg) continue;
+    for (const sid of segmentNeighbors(seg, nodeToSegs)) {
+      if (!allowed.has(sid) || seen.has(sid)) continue;
+      seen.add(sid);
+      stack.push(sid);
+    }
+  }
+  return seen;
+}
+
+function startHeading(seg: RoadSegment): number {
+  const a = seg.points[0]!;
+  const b = seg.points[1] ?? a;
+  return Math.atan2(b.y - a.y, b.x - a.x);
+}
+
+function outgoingHeading(seg: RoadSegment, node: RoadNode): number {
+  if (seg.startId === node.id) return startHeading(seg);
   const a = seg.points[seg.points.length - 1]!;
   const b = seg.points[seg.points.length - 2] ?? a;
   return Math.atan2(b.y - a.y, b.x - a.x);
 }
 
 function alongHeading(seg: RoadSegment, fromStart: boolean): number {
-  if (fromStart) {
-    const a = seg.points[0]!;
-    const b = seg.points[1] ?? a;
-    return Math.atan2(b.y - a.y, b.x - a.x);
-  }
+  if (fromStart) return startHeading(seg);
   const a = seg.points[seg.points.length - 2] ?? seg.points[0]!;
   const b = seg.points[seg.points.length - 1]!;
   return Math.atan2(b.y - a.y, b.x - a.x);
@@ -1067,7 +1054,7 @@ function emitRibbon(
   mesh.push(quad);
 }
 
-export function buildRoadMesh(network: RoadNetwork): RoadMeshQuad[] {
+function buildRoadMesh(network: RoadNetwork): RoadMeshQuad[] {
   const mesh: RoadMeshQuad[] = [];
   const nodeById = new Map(network.nodes.map((n) => [n.id, n]));
 
@@ -1122,12 +1109,8 @@ export function buildRoadMesh(network: RoadNetwork): RoadMeshQuad[] {
     const totalLen = polylineLength(seg.points);
     const drivePlanes = [...drivewayKeepPlanes(network, seg, start), ...drivewayKeepPlanes(network, seg, end)];
     let walked = 0;
-    for (let i = 0; i < seg.points.length - 1; i++) {
-      const a = seg.points[i]!;
-      const b = seg.points[i + 1]!;
-      const heading = Math.atan2(b.y - a.y, b.x - a.x);
+    for (const { i, a, b, heading, length: edgeLen } of polylineEdges(seg.points)) {
       const z = (a.elev + b.elev) * 0.5;
-      const edgeLen = len(b.x - a.x, b.y - a.y);
       const cutA = remainCut(head.pavement, walked);
       const cutB = remainCut(tail.pavement, totalLen - walked - edgeLen);
       if (seg.shoulder > 0.05 && seg.roadClass !== "driveway") {
@@ -1349,32 +1332,9 @@ export class RoadBuilder {
   private connectKeptPublic(keep: Set<string>): void {
     const publicSegs = this.segments.filter((s) => s.roadClass !== "driveway" && s.roadClass !== "ramp");
     const byId = new Map(publicSegs.map((s) => [s.id, s]));
-    const nodeToSegs = new Map<string, string[]>();
-    for (const s of publicSegs) {
-      for (const nid of [s.startId, s.endId]) {
-        const list = nodeToSegs.get(nid) ?? [];
-        list.push(s.id);
-        nodeToSegs.set(nid, list);
-      }
-    }
-    const flood = (startId: string, allowed: Set<string>): Set<string> => {
-      const seen = new Set<string>();
-      const stack = [startId];
-      seen.add(startId);
-      while (stack.length) {
-        const id = stack.pop()!;
-        const seg = byId.get(id);
-        if (!seg) continue;
-        for (const nid of [seg.startId, seg.endId]) {
-          for (const sid of nodeToSegs.get(nid) ?? []) {
-            if (!allowed.has(sid) || seen.has(sid)) continue;
-            seen.add(sid);
-            stack.push(sid);
-          }
-        }
-      }
-      return seen;
-    };
+    const nodeToSegs = segmentsByNode(publicSegs);
+    const flood = (startId: string, allowed: ReadonlySet<string>): Set<string> =>
+      floodSegments(startId, byId, nodeToSegs, allowed);
     const remaining = new Set(publicSegs.filter((s) => keep.has(s.id)).map((s) => s.id));
     if (remaining.size <= 1) return;
     const roots: string[] = [];
@@ -1398,17 +1358,14 @@ export class RoadBuilder {
         const id = q.shift()!;
         const seg = byId.get(id);
         if (!seg) continue;
-        for (const nid of [seg.startId, seg.endId]) {
-          for (const sid of nodeToSegs.get(nid) ?? []) {
-            if (!allPublic.has(sid) || prev.has(sid)) continue;
-            prev.set(sid, id);
-            if (target.has(sid)) {
-              hit = sid;
-              break;
-            }
-            q.push(sid);
+        for (const sid of segmentNeighbors(seg, nodeToSegs)) {
+          if (!allPublic.has(sid) || prev.has(sid)) continue;
+          prev.set(sid, id);
+          if (target.has(sid)) {
+            hit = sid;
+            break;
           }
-          if (hit) break;
+          q.push(sid);
         }
       }
       if (!hit) continue;
@@ -1477,29 +1434,8 @@ export class RoadBuilder {
     );
     if (publicSegs.length <= 1) return publicSegs.length === 1;
     const allowed = new Set(publicSegs.map((s) => s.id));
-    const nodeToSegs = new Map<string, string[]>();
-    for (const s of publicSegs) {
-      for (const nid of [s.startId, s.endId]) {
-        const list = nodeToSegs.get(nid) ?? [];
-        list.push(s.id);
-        nodeToSegs.set(nid, list);
-      }
-    }
-    const seen = new Set<string>();
-    const stack = [publicSegs[0]!.id];
-    seen.add(publicSegs[0]!.id);
-    while (stack.length) {
-      const id = stack.pop()!;
-      const seg = publicSegs.find((s) => s.id === id);
-      if (!seg) continue;
-      for (const nid of [seg.startId, seg.endId]) {
-        for (const sid of nodeToSegs.get(nid) ?? []) {
-          if (!allowed.has(sid) || seen.has(sid)) continue;
-          seen.add(sid);
-          stack.push(sid);
-        }
-      }
-    }
+    const byId = new Map(publicSegs.map((s) => [s.id, s]));
+    const seen = floodSegments(publicSegs[0]!.id, byId, segmentsByNode(publicSegs), allowed);
     return seen.size === publicSegs.length;
   }
 
@@ -1877,10 +1813,6 @@ function junctionOf(n: number): JunctionType {
 
 export function pointOnRoad(network: RoadNetwork, x: number, y: number, layer?: number): boolean {
   return roadSurfaceAt(network, x, y, layer).on;
-}
-
-export function headingToward(fromX: number, fromY: number, toX: number, toY: number): number {
-  return wrapAngle(Math.atan2(toY - fromY, toX - fromX));
 }
 
 export function makeRaisedRoadFixture(): { network: RoadNetwork; terrain: TerrainField } {

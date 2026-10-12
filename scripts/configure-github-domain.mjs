@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { GITHUB_VANITY_HOST } from './github-redirect.mjs';
+import { vercelApi } from './vercel-api.mjs';
 
 export async function ensureGithubVanityDomain({
   token = process.env.VERCEL_TOKEN,
@@ -9,21 +10,8 @@ export async function ensureGithubVanityDomain({
   request = fetch,
 } = {}) {
   if (!token || !teamId || !projectId) throw new Error('Missing or invalid deployment configuration');
-  const team = teamId;
-  async function api(endpoint, method = 'GET', body) {
-    const url = new URL(`https://api.vercel.com${endpoint}`);
-    url.searchParams.set('teamId', team);
-    const response = await request(url, {
-      method, signal: AbortSignal.timeout(60000),
-      headers: { Authorization: `Bearer ${token}`, ...(body ? { 'Content-Type': 'application/json' } : {}) },
-      body: body ? JSON.stringify(body) : undefined,
-    });
-    const data = await response.json();
-    if (!response.ok && !(method === 'GET' && response.status === 404)) {
-      throw new Error(`Vercel HTTP ${response.status}: ${data.error?.code || 'unknown'}: ${data.error?.message || 'Request failed'}`);
-    }
-    return { ok: response.ok, data };
-  }
+  const vercel = vercelApi({ token, teamId, request });
+  const api = (endpoint, method = 'GET', body) => vercel(endpoint, { method, body, allowMissing: method === 'GET' });
   const existing = await api(`/v9/projects/${projectId}/domains/${encodeURIComponent(GITHUB_VANITY_HOST)}`);
   if (existing.ok) {
     if (existing.data.redirect) {

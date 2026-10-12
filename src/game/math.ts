@@ -28,10 +28,6 @@ export function norm(x: number, y: number): [number, number] {
   return [x / l, y / l];
 }
 
-export function dot(ax: number, ay: number, bx: number, by: number): number {
-  return ax * bx + ay * by;
-}
-
 export function aabbOverlap(
   ax: number,
   ay: number,
@@ -108,4 +104,38 @@ export function distToSegment(
   const aby = by - ay;
   const t = clamp(((px - ax) * abx + (py - ay) * aby) / (abx * abx + aby * aby + 1e-8), 0, 1);
   return len(px - (ax + abx * t), py - (ay + aby * t));
+}
+
+/** Corners of a `length` x `width` rectangle centred on (cx, cy), long axis along `heading`. */
+export function orientedRect(
+  cx: number,
+  cy: number,
+  heading: number,
+  length: number,
+  width: number,
+): { x: number; y: number }[] {
+  const fx = Math.cos(heading);
+  const fy = Math.sin(heading);
+  const hl = length * 0.5;
+  const hw = width * 0.5;
+  return [
+    { x: cx + fx * hl - fy * hw, y: cy + fy * hl + fx * hw },
+    { x: cx + fx * hl + fy * hw, y: cy + fy * hl - fx * hw },
+    { x: cx - fx * hl + fy * hw, y: cy - fy * hl - fx * hw },
+    { x: cx - fx * hl - fy * hw, y: cy - fy * hl + fx * hw },
+  ];
+}
+
+export function pointBounds(points: readonly { x: number; y: number }[]): { minX: number; minY: number; maxX: number; maxY: number } {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const p of points) {
+    if (p.x < minX) minX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y > maxY) maxY = p.y;
+  }
+  return { minX, minY, maxX, maxY };
 }

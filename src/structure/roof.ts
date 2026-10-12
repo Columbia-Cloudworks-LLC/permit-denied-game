@@ -1,4 +1,5 @@
 import { FLOOR_Z } from "../game/constants";
+import { pointBounds } from "../game/math";
 import type { ParticlePool } from "../fx/particles";
 import { debrisKind } from "../fx/particles";
 import type { Building, Material, RoofAxis, RoofSection, RoofStyle, WorldEvent } from "./types";
@@ -103,6 +104,25 @@ function supportOf(
   pred: (c: { gx: number; gy: number }) => boolean,
 ): { gx: number; gy: number }[] {
   return cells.filter(pred);
+}
+
+/** Occupied grid columns of a roof footprint with their world x span; end columns carry the overhang. */
+function roofColumns(
+  building: Building,
+  cells: { gx: number; gy: number }[],
+  b: { minX: number; maxX: number },
+  oh: number,
+): { gx: number; col: { gx: number; gy: number }[]; x0: number; x1: number }[] {
+  const cs = building.cellSize;
+  const columns = [];
+  for (let gx = b.minX; gx <= b.maxX; gx++) {
+    const col = cells.filter((c) => c.gx === gx);
+    if (col.length === 0) continue;
+    const x0 = building.x + gx * cs - (gx === b.minX ? oh : 0);
+    const x1 = building.x + (gx + 1) * cs + (gx === b.maxX ? oh : 0);
+    columns.push({ gx, col, x0, x1 });
+  }
+  return columns;
 }
 
 function makeSection(
@@ -247,14 +267,9 @@ function gableBays(
   const ridgeY = (full.y0 + full.y1) * 0.5;
   const midGy = (b.minY + b.maxY) * 0.5;
   const mat = roofMaterial(building);
-  const cs = building.cellSize;
   const sections: RoofSection[] = [];
   let id = id0;
-  for (let gx = b.minX; gx <= b.maxX; gx++) {
-    const col = cells.filter((c) => c.gx === gx);
-    if (col.length === 0) continue;
-    const x0 = building.x + gx * cs - (gx === b.minX ? oh : 0);
-    const x1 = building.x + (gx + 1) * cs + (gx === b.maxX ? oh : 0);
+  for (const { col, x0, x1 } of roofColumns(building, cells, b, oh)) {
     const ridge = { ax: x0, ay: ridgeY, az: ridgeZ, bx: x1, by: ridgeY, bz: ridgeZ };
     const north = supportOf(col, (c) => c.gy <= midGy);
     const south = supportOf(col, (c) => c.gy >= midGy);
@@ -445,12 +460,8 @@ function stripFallback(
     by: building.y + (b.maxY + 1) * cs + oh,
     bz: ridgeZ,
   };
-  for (let gx = b.minX; gx <= b.maxX; gx++) {
-    const col = cells.filter((c) => c.gx === gx);
-    if (col.length === 0) continue;
+  for (const { gx, col, x0, x1 } of roofColumns(building, cells, b, oh)) {
     const cb = bbox(col);
-    const x0 = building.x + gx * cs - (gx === b.minX ? oh : 0);
-    const x1 = building.x + (gx + 1) * cs + (gx === b.maxX ? oh : 0);
     const t0 = (gx - b.minX) / Math.max(1, b.maxX - b.minX + 1);
     const t1 = (gx + 1 - b.minX) / Math.max(1, b.maxX - b.minX + 1);
     const mid = 0.5;
@@ -966,14 +977,8 @@ export function applyBrokenRoofEdge(
 ): { x: number; y: number; z: number }[] {
   const edges = exposedRoofEdges(building, roof);
   if (edges.length === 0) return verts;
-  const xs = verts.map((v) => v.x);
-  const ys = verts.map((v) => v.y);
-  const zs = verts.map((v) => v.z);
-  const minX = Math.min(...xs);
-  const maxX = Math.max(...xs);
-  const minY = Math.min(...ys);
-  const maxY = Math.max(...ys);
-  const minZ = Math.min(...zs);
+  const { minX, minY, maxX, maxY } = pointBounds(verts);
+  const minZ = Math.min(...verts.map((v) => v.z));
   const pad = 0.1;
   return verts.map((v, i) => {
     let { x, y, z } = v;
@@ -1495,10 +1500,6 @@ export function stepRoofs(
     }
   }
   building.roofDirty = roofsNeedStep(building);
-}
-
-export function roofsSettled(building: Building): boolean {
-  return building.roofs.every((r) => r.state === "gone" || (r.state === "intact" && r.sag <= 1e-4));
 }
 
 export function liveRoofCount(building: Building): number {

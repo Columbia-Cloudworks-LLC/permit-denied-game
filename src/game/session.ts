@@ -16,7 +16,7 @@ export type SessionKind = "challenge" | "sandbox";
  * Old size links open a named campaign level instead of a parallel map catalog.
  * d10 and classic → County, d30 → Suburb, d100 → City Downtown.
  */
-export const LEGACY_SANDBOX_LEVEL: Record<DistrictId, CampaignLevelId> = {
+const LEGACY_SANDBOX_LEVEL: Record<DistrictId, CampaignLevelId> = {
   classic: "county",
   d10: "county",
   d30: "suburb",

@@ -1,6 +1,6 @@
 import { DOZER, FLOOR_Z } from "../game/constants";
 import type { Building } from "../structure/types";
-import { depthKey, type ScreenAabb, worldBoundsToScreen, worldToScreen } from "../world/iso";
+import { depthKey, type ScreenAabb, screenBoundsOf, worldBoundsToScreen, worldToScreen } from "../world/iso";
 import type { WallSpan } from "./buildingSurfaces";
 
 export const WALL_OCCLUDE_ALPHA = 0.38;
@@ -39,7 +39,7 @@ export function pieceHidesDozer(d: OccludeDozer, x: number, y: number, w: number
   return aabbOverlap(worldBoundsToScreen(x, y, w, h, z, top), dozerScreenAabb(d), 12);
 }
 
-export function standingHeight(b: Building): number {
+function standingHeight(b: Building): number {
   let top = 0;
   for (const cell of b.cells) {
     if (cell.state === "gone" || cell.state === "falling") continue;
@@ -106,7 +106,7 @@ function aabbOverlap(a: ScreenAabb, b: ScreenAabb, pad: number): boolean {
   return a.minX <= b.maxX + pad && a.maxX >= b.minX - pad && a.minY <= b.maxY + pad && a.maxY >= b.minY - pad;
 }
 
-export function dozerScreenAabb(d: OccludeDozer): ScreenAabb {
+function dozerScreenAabb(d: OccludeDozer): ScreenAabb {
   const fx = Math.cos(d.heading);
   const fy = Math.sin(d.heading);
   const hl = DOZER.length * 0.5;
@@ -123,18 +123,7 @@ export function dozerScreenAabb(d: OccludeDozer): ScreenAabb {
     pts.push([d.x + fx * reach - fy * across, d.y + fy * reach + fx * across, 0]);
     pts.push([d.x + fx * reach - fy * across, d.y + fy * reach + fx * across, 0.7]);
   }
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-  for (const [x, y, z] of pts) {
-    const s = worldToScreen(x, y, z);
-    if (s.x < minX) minX = s.x;
-    if (s.y < minY) minY = s.y;
-    if (s.x > maxX) maxX = s.x;
-    if (s.y > maxY) maxY = s.y;
-  }
-  return { minX, minY, maxX, maxY };
+  return screenBoundsOf(pts);
 }
 
 /** Fade a single south/east cell face if it sits in front of the dozer and covers it. */

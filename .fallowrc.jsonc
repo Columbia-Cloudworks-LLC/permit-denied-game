@@ -1,0 +1,23 @@
+{
+  "$schema": "https://fallow.tools/schema.json",
+  // Operational scripts and Claude hooks run directly with `node <file>`,
+  // from docs, CI, or verify-release.mjs, so each one is its own entry.
+  "entry": [
+    "scripts/*.mjs",
+    ".claude/hooks/*.mjs"
+  ],
+  // Hidden directories are skipped by default; the hooks are repo code.
+  // .claude/skills bundles are self-contained and stay out of the graph.
+  "ignorePatterns": [
+    "!.claude/hooks/**"
+  ],
+  // cloudflare-status.mjs spawns node_modules/wrangler/bin/wrangler.js by path.
+  "ignoreDependencies": [
+    "wrangler"
+  ],
+  "rules": {
+    // The game ships as a static Vite bundle and CI always runs `npm ci`,
+    // so there is no production-only install for this split to protect.
+    "dev-dependency-in-production": "off"
+  }
+}

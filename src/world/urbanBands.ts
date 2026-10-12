@@ -17,7 +17,7 @@ export function isUrbanBand(value: string): value is UrbanBand {
 }
 
 /** Map-position roles. Derived from world-space geometry, not placement-loop index. */
-export const DISTRICT_ROLES = [
+const DISTRICT_ROLES = [
   'rural',
   'scattered',
   'village-main-street',
@@ -43,11 +43,7 @@ export const DISTRICT_ROLES = [
 
 export type DistrictRole = (typeof DISTRICT_ROLES)[number];
 
-export function isDistrictRole(value: string): value is DistrictRole {
-  return (DISTRICT_ROLES as readonly string[]).includes(value);
-}
-
-export const STREET_ROLES = ['standard', 'corner', 'run'] as const;
+const STREET_ROLES = ['standard', 'corner', 'run'] as const;
 export type StreetRole = (typeof STREET_ROLES)[number];
 
 export function isStreetRole(value: string): value is StreetRole {
@@ -79,6 +75,5 @@ export const ROLE_BANDS: Record<DistrictRole, readonly UrbanBand[]> = {
 };
 
 export const CITY_DENSE_BANDS: readonly UrbanBand[] = ['downtown-core', 'downtown-transition', 'borough-mixed'];
-export const CITY_SERVICE_BANDS: readonly UrbanBand[] = ['service-industrial'];
 export const LOW_RISE_PROHIBITED_BANDS: readonly UrbanBand[] = ['downtown-core'];
 export const RURAL_SUBURBAN_BANDS: readonly UrbanBand[] = ['rural', 'village-main-street', 'suburban'];

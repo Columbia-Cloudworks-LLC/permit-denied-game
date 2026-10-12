@@ -4,7 +4,8 @@ import type { DebugView } from '../debug/view';
 import { cellPresent, cellWorldBox, type Building } from '../structure/types';
 import { tankLegs, tankPose } from '../structure/elevatedTank';
 import { depthKey } from '../world/iso';
-import { drawIsoBox, drawWorldPoly, shade } from './drawIso';
+import { drawIsoBox, drawWorldPoly } from './drawIso';
+import { shade } from './palette';
 import { drawFallingCell } from './facadeDraw';
 
 type Point = { x:number;y:number;z:number };

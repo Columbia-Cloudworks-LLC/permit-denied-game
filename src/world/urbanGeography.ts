@@ -95,11 +95,11 @@ const OPEN_SPACE_NAMES: Record<UrbanOpenSpace['kind'], readonly string[]> = {
   'civic-square': ['Civic Square', 'Hall Square', 'Courthouse Square'],
 };
 
-export function lotCenter(lot: Pick<Lot, 'x' | 'y' | 'w' | 'd'>): { x: number; y: number } {
+function lotCenter(lot: Pick<Lot, 'x' | 'y' | 'w' | 'd'>): { x: number; y: number } {
   return { x: lot.x + lot.w * 0.5, y: lot.y + lot.d * 0.5 };
 }
 
-export function clusterCenter(lots: readonly Pick<Lot, 'x' | 'y' | 'w' | 'd'>[]): { x: number; y: number } {
+function clusterCenter(lots: readonly Pick<Lot, 'x' | 'y' | 'w' | 'd'>[]): { x: number; y: number } {
   if (!lots.length) return { x: 0, y: 0 };
   let x = 0;
   let y = 0;
@@ -111,7 +111,7 @@ export function clusterCenter(lots: readonly Pick<Lot, 'x' | 'y' | 'w' | 'd'>[])
   return { x: x / lots.length, y: y / lots.length };
 }
 
-export function isCornerFrontage(
+function isCornerFrontage(
   lot: Pick<Lot, 'frontage'>,
   nodes: readonly RoadNode[],
   segments: readonly RoadSegment[],
@@ -320,7 +320,7 @@ export function applyUrbanTags(lots: readonly Lot[], report: UrbanGeographyRepor
   applyLotTags(lots, report);
 }
 
-export function frontageFillRatio(
+function frontageFillRatio(
   lots: readonly Lot[],
   segments: readonly RoadSegment[],
   nodes: readonly RoadNode[],
@@ -345,7 +345,7 @@ export function frontageFillRatio(
   return usable > 0 ? Math.min(1, filled / usable) : 1;
 }
 
-export function lotCoverageRatio(buildings: readonly Building[], lots: readonly Lot[]): number {
+function lotCoverageRatio(buildings: readonly Building[], lots: readonly Lot[]): number {
   const developed = lots.filter(lot => !lot.openSpaceName);
   const area = developed.reduce((sum, lot) => sum + lot.w * lot.d, 0);
   if (area <= 0) return 0;

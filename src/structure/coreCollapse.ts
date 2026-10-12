@@ -3,7 +3,8 @@ import type { ParticlePool } from '../fx/particles';
 import { FLOOR_Z } from '../game/constants';
 import { MATERIALS } from './materials';
 import { cellPresent, type Building, type Material, type WorldEvent } from './types';
-import { cashFor, type StructureStepResult } from './building';
+import type { StructureStepResult } from './building';
+import { cashFor } from './cellCash';
 
 function siloFootprint(b: Building, x: number, y: number): boolean {
   return !!siloAt((b.silos ?? []).map(s => s.definition), x, y);

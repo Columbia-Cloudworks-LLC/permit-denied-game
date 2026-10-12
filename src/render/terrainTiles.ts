@@ -11,30 +11,7 @@ import {
 import type { GroundCondition } from "../world/groundCondition";
 import type { SeasonId } from "../world/season";
 import { ICE_COLOR, ICE_CRACK } from "../world/season";
-
-function validBlobMask(mask: number): boolean {
-  const n = (mask & 1) !== 0;
-  const ne = (mask & 2) !== 0;
-  const e = (mask & 4) !== 0;
-  const se = (mask & 8) !== 0;
-  const s = (mask & 16) !== 0;
-  const sw = (mask & 32) !== 0;
-  const w = (mask & 64) !== 0;
-  const nw = (mask & 128) !== 0;
-  if (ne && !(n && e)) return false;
-  if (se && !(s && e)) return false;
-  if (sw && !(s && w)) return false;
-  if (nw && !(n && w)) return false;
-  return true;
-}
-
-const BLOB47_MASKS: number[] = (() => {
-  const masks: number[] = [];
-  for (let mask = 0; mask < 256; mask++) {
-    if (validBlobMask(mask)) masks.push(mask);
-  }
-  return masks;
-})();
+import { BLOB47_MASKS } from "./blobMask";
 
 const BLOB47_INDEX = (() => {
   const table = new Int16Array(256);
@@ -67,7 +44,7 @@ export function blobIndex47(
   return blobIndexFromBits(n, ne, e, se, s, sw, w, nw);
 }
 
-export function blobIndexFromBits(
+function blobIndexFromBits(
   n: boolean,
   ne: boolean,
   e: boolean,

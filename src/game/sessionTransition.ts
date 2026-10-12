@@ -1,4 +1,4 @@
-import { campaignLevelById, type CampaignLevelDef, type CampaignLevelId } from "./campaign";
+import { campaignLevelById, type CampaignLevelDef } from "./campaign";
 import { currentLevel, type CampaignRun } from "./campaignRun";
 import type { SessionRules } from "./session";
 import type { TestMapRequest } from "../world/testMapRequest";
@@ -22,8 +22,4 @@ export function generationLevel(rules: SessionRules, campaign: CampaignRun | nul
   if (campaign && rules.kind === "challenge") return currentLevel(campaign);
   if (rules.level) return campaignLevelById(rules.level);
   return undefined;
-}
-
-export function levelIndex(id: CampaignLevelId): number {
-  return campaignLevelById(id).index - 1;
 }

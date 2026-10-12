@@ -2,6 +2,7 @@ import { readdir, readFile, appendFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { githubVanityRedirectRoute } from './github-redirect.mjs';
+import { vercelApi } from './vercel-api.mjs';
 
 // Upload only compiled files in Build Output API format. Let Vercel process
 // that output normally so project integrations, including analytics, get routes.
@@ -46,23 +47,12 @@ export async function staticDeploymentFiles(directory) {
 export async function deploy() {
   const { VERCEL_TOKEN: token, VERCEL_ORG_ID: teamId, VERCEL_PROJECT_ID: projectId, DEPLOY_TARGET: target } = process.env;
   if (!token || !teamId || !projectId || !target || !['production', 'preview'].includes(target)) throw new Error('Missing or invalid deployment configuration');
-  const team = teamId;
   const pointer = JSON.parse(await readFile('dist/catalog/release.json', 'utf8'));
   if (!/^https:\/\/assets\.permitdenied\.app\/releases\/[a-f0-9]{64}\.json$/.test(pointer.url) || !/^[a-f0-9]{40}$/.test(process.env.DEPLOY_SHA || '') || pointer.commit !== process.env.DEPLOY_SHA) {
     throw new Error('Deployment requires a verified R2 catalog release for this commit');
   }
-  async function api(endpoint, body) {
-    const url = new URL(`https://api.vercel.com${endpoint}`);
-    url.searchParams.set('teamId', team);
-    const response = await fetch(url, {
-      method: body ? 'POST' : 'GET', signal: AbortSignal.timeout(60000),
-      headers: { Authorization: `Bearer ${token}`, ...(body ? { 'Content-Type': 'application/json' } : {}) },
-      body: body ? JSON.stringify(body) : undefined,
-    });
-    const data = await response.json();
-    if (!response.ok) throw new Error(`Vercel HTTP ${response.status}: ${data.error?.code || 'unknown'}: ${data.error?.message || 'Request failed'}`);
-    return data;
-  }
+  const vercel = vercelApi({ token, teamId });
+  const api = async (endpoint, body) => (await vercel(endpoint, { method: body ? 'POST' : 'GET', body })).data;
   const project = await api(`/v9/projects/${projectId}`);
   const files = await staticDeploymentFiles('dist');
   const deployment = await api('/v13/deployments', {

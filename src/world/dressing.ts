@@ -154,7 +154,7 @@ export const DRESS_TEMPLATES: readonly DressTemplate[] = [
 
 export type DressEligible = (assetId: string) => boolean;
 
-export function templatesFor(identity: LotIdentity): DressTemplate[] {
+function templatesFor(identity: LotIdentity): DressTemplate[] {
   return DRESS_TEMPLATES.filter((t) => t.identities.includes(identity));
 }
 
@@ -184,17 +184,19 @@ export function lotAxisSizes(lot: Lot): { along: number; across: number } {
   return { along: c * lot.w + s * lot.d, across: s * lot.w + c * lot.d };
 }
 
+/** Lot frontage axis (fx, fy), depth axis (rx, ry), and centre. */
+function lotFrame(lot: Lot): { fx: number; fy: number; rx: number; ry: number; cx: number; cy: number } {
+  const fx = Math.cos(lot.heading);
+  const fy = Math.sin(lot.heading);
+  return { fx, fy, rx: -fy, ry: fx, cx: lot.x + lot.w * 0.5, cy: lot.y + lot.d * 0.5 };
+}
+
 export function lotLocalToWorld(
   lot: Lot,
   along: number,
   across: number,
 ): { x: number; y: number } {
-  const fx = Math.cos(lot.heading);
-  const fy = Math.sin(lot.heading);
-  const rx = -fy;
-  const ry = fx;
-  const cx = lot.x + lot.w * 0.5;
-  const cy = lot.y + lot.d * 0.5;
+  const { fx, fy, rx, ry, cx, cy } = lotFrame(lot);
   const size = lotAxisSizes(lot);
   const ox = (along - 0.5) * size.along;
   const oy = across * size.across * 0.38;
@@ -224,7 +226,7 @@ function placeSlot(
     const y = p.y - d * 0.5;
     if (!insideLotYard(lot, x, y, w, d)) continue;
     if (blocked(x, y, w, d, occ, extras)) continue;
-    if (corridors.some((poly) => yardPointInPoly(x + w * 0.5, y + d * 0.5, narrowCorridor(poly, 0.28)))) continue;
+    if (corridors.some((poly) => pointInPoly(x + w * 0.5, y + d * 0.5, narrowCorridor(poly, 0.28)))) continue;
     if (building && sealsAccess(lot, building, [...extras, { x, y, w, d }], driveW)) continue;
     return { x, y };
   }
@@ -233,32 +235,16 @@ function placeSlot(
 
 function insideLotYard(lot: Lot, x: number, y: number, w: number, d: number): boolean {
   if (lot.boundary && lot.boundary.length >= 3) {
-    if (yardPointInPoly(x + w * 0.5, y + d * 0.5, lot.boundary)) return true;
+    if (pointInPoly(x + w * 0.5, y + d * 0.5, lot.boundary)) return true;
   }
   const size = lotAxisSizes(lot);
-  const fx = Math.cos(lot.heading);
-  const fy = Math.sin(lot.heading);
-  const rx = -fy;
-  const ry = fx;
-  const cx = lot.x + lot.w * 0.5;
-  const cy = lot.y + lot.d * 0.5;
+  const { fx, fy, rx, ry, cx, cy } = lotFrame(lot);
   const px = x + w * 0.5 - cx;
   const py = y + d * 0.5 - cy;
   const along = px * fx + py * fy;
   const across = px * rx + py * ry;
   const pad = 0.28;
   return Math.abs(along) <= size.along * 0.5 - pad && Math.abs(across) <= size.across * 0.5 - pad;
-}
-
-function yardPointInPoly(x: number, y: number, poly: readonly { x: number; y: number }[]): boolean {
-  let inside = false;
-  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-    const a = poly[i]!;
-    const b = poly[j]!;
-    const hit = a.y > y !== b.y > y && x < ((b.x - a.x) * (y - a.y)) / (b.y - a.y + 1e-9) + a.x;
-    if (hit) inside = !inside;
-  }
-  return inside;
 }
 
 function blocked(
@@ -276,6 +262,27 @@ function blocked(
     if (aabbOverlap(x, y, w, d, b.x, b.y, b.w, b.d)) return true;
   }
   return false;
+}
+
+/** Dress lots in order; each lot's props become occupied space for the lots after it. */
+export function dressLots(
+  lots: readonly Lot[],
+  buildings: readonly (Building | undefined)[],
+  rng: Rng,
+  occBoxes: { x: number; y: number; w: number; d: number }[],
+  budget: number,
+  corridors?: readonly { x: number; y: number }[][],
+  eligible?: DressEligible,
+): { props: Prop[]; patches: GroundPatch[] } {
+  const props: Prop[] = [];
+  const patches: GroundPatch[] = [];
+  for (let i = 0; i < lots.length; i++) {
+    const dressed = dressLot(lots[i]!, buildings[i], rng, { boxes: occBoxes }, budget, corridors, eligible);
+    props.push(...dressed.props);
+    patches.push(...dressed.patches);
+    for (const p of dressed.props) occBoxes.push({ x: p.x, y: p.y, w: p.w, d: p.d });
+  }
+  return { props, patches };
 }
 
 export function dressLot(
