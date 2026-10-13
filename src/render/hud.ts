@@ -171,7 +171,7 @@ export class Hud {
       <div class="instrument-deck">
         ${gauge('heat', 'ENGINE HEAT')}
         ${gauge('track', 'TRACK STRESS')}
-        <div class="upgrade-bank" role="group" aria-label="Dozer Upgrades">${(['blade', 'engine', 'push'] as const).map(key => `<div class="upgrade-instrument"><span class="upgrade-label">${MENU_ICONS[key]}${L[key]}</span><span class="upgrade-value" data-modifier="${key}Mul" data-description="${key === 'push' ? 'Push duration' : key === 'blade' ? 'Blade damage' : 'Engine performance'}" aria-label="${L[key]} ${key === 'push' ? 'push duration' : key === 'blade' ? 'blade damage' : 'engine performance'}: 1.00 times">1.00<span class="multiplier-symbol">×</span></span></div>`).join('')}</div>
+        <div class="upgrade-bank" role="group" aria-label="Dozer Upgrades">${(['blade', 'engine', 'push'] as const).map(upgradeInstrument).join('')}</div>
         <div class="blade-module"><div class="blade" id="hud-blade"></div><p id="hud-advisory" role="status"></p></div>
       </div>
       <div class="overlay" id="hud-overlay" role="dialog" aria-modal="true" aria-labelledby="result-heading"><div class="panel" id="hud-panel" tabindex="-1"></div></div>
@@ -213,16 +213,8 @@ export class Hud {
     onPwaUpdate(pending => this.menu.setUpdateAvailable(pending));
     root.querySelector('#debug-session')!.append(root.querySelector('#hud-session')!);
     this.overlay.addEventListener('keydown', e => {
-      if (this.lastOverlay === 'upgrade' && ['1', '2', '3'].includes(e.key) && !e.repeat) {
-        e.preventDefault();
-        this.onChoice?.((['blade', 'engine', 'push'] as const)[Number(e.key) - 1]);
-      }
-      if (this.lastOverlay === 'results' && e.key.toLowerCase() === 'r' && !e.repeat) this.onRestart?.();
-      if (e.key !== 'Tab') return;
-      const buttons = [...this.panel.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')];
-      const first = buttons[0], last = buttons.at(-1);
-      if (e.shiftKey && (document.activeElement === first || document.activeElement === this.panel)) { e.preventDefault(); last?.focus(); }
-      else if (!e.shiftKey && (document.activeElement === last || document.activeElement === this.panel)) { e.preventDefault(); first?.focus(); }
+      this.overlayShortcut(e);
+      if (e.key === 'Tab') this.trapPanelFocus(e);
     });
     this.bindSessionBar();
     this.bindDebugMenu();
@@ -233,6 +225,27 @@ export class Hud {
     }).observe(top);
     new ResizeObserver(() => this.layoutInstruments()).observe(root);
     for (const id of ["#hud-cash", "#hud-time", ".cash-stat", "#hud-campaign", ".clock-stat"]) new ResizeObserver(() => this.layoutInstruments()).observe(root.querySelector(id)!);
+  }
+
+  /** Number keys pick an upgrade; R restarts from the results card. */
+  private overlayShortcut(e: KeyboardEvent): void {
+    if (e.repeat) return;
+    if (this.lastOverlay === 'upgrade' && ['1', '2', '3'].includes(e.key)) {
+      e.preventDefault();
+      this.onChoice?.((['blade', 'engine', 'push'] as const)[Number(e.key) - 1]);
+    }
+    if (this.lastOverlay === 'results' && e.key.toLowerCase() === 'r') this.onRestart?.();
+  }
+
+  /** Tab wraps between the first and last enabled panel buttons. */
+  private trapPanelFocus(e: KeyboardEvent): void {
+    const buttons = [...this.panel.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')];
+    const first = buttons[0], last = buttons.at(-1);
+    const from = document.activeElement;
+    const edge = e.shiftKey ? first : last;
+    if (from !== edge && from !== this.panel) return;
+    e.preventDefault();
+    (e.shiftKey ? last : first)?.focus();
   }
 
   private layoutInstruments(): void {
@@ -252,42 +265,34 @@ export class Hud {
   }
 
   private renderMobile(s: HudState, elapsedClock: boolean, advisory: string): void {
-    const text = (selector: string, value: string) => {
-      const el = this.root.querySelector<HTMLElement>(selector);
-      if (el && el.textContent !== value) el.textContent = value;
-    };
     const cash = '$' + Math.max(0, Math.floor(s.cash)).toLocaleString('en-US');
-    text('#mobile-cash', cash);
+    this.setText('#mobile-cash', cash);
     this.root.querySelector('#mobile-cash')!.classList.toggle('long-value', cash.length > 10);
-    text('#mobile-target', s.campaign
-      ? `${s.campaign.levelIndex}/7 ${s.campaign.dollarsReady ? 'CASH DONE' : `of $${s.campaign.dollarTarget.toLocaleString('en-US')}`}`
-      : elapsedClock ? 'Cash' : `of $${CASH_TARGET.toLocaleString('en-US')}`);
+    this.setText('#mobile-target', mobileTarget(s, elapsedClock));
     const time = clockValue(elapsedClock ? s.elapsed : s.timeLeft, elapsedClock);
-    text('#mobile-clock', time.display);
+    this.setText('#mobile-clock', time.display);
     this.root.querySelector('#mobile-clock')!.setAttribute('aria-label', time.accessible);
-    text('#mobile-clock-label', elapsedClock ? 'Elapsed' : 'Remaining');
-    for (const [id, value] of [['heat', s.heat], ['track', s.track]] as const) {
-      const meter = this.root.querySelector<HTMLElement>('#mobile-' + id)!;
-      const percent = Math.round(Math.max(0, Math.min(100, value)));
-      meter.style.setProperty('--level', percent + '%');
-      meter.setAttribute('aria-valuenow', String(percent));
-      meter.classList.toggle('warning', value > 65);
-      text(`#mobile-${id} output`, percent + '%');
-    }
-    text('#mobile-warning', advisory);
-    this.root.querySelector<HTMLElement>('#mobile-warning')!.hidden = !advisory;
-    const mobileJob = s.campaign
-      ? `${s.campaign.landmarkName} ${Math.floor(s.campaign.landmarkProgress * 100)}%${s.campaign.landmarkReady ? ' DOWN' : ''}`
-      : s.job ? s.job.paid ? `Demolition complete · +$${s.job.payout}` : `Demolition · ${Math.floor(s.job.progress * 100)}% / 90%` : '';
-    text('#mobile-job', mobileJob);
-    this.root.querySelector<HTMLElement>('#mobile-job')!.hidden = !mobileJob;
+    this.setText('#mobile-clock-label', elapsedClock ? 'Elapsed' : 'Remaining');
+    this.renderMobileMeter('heat', s.heat);
+    this.renderMobileMeter('track', s.track);
+    this.setNotice('#mobile-warning', advisory);
+    this.setNotice('#mobile-job', mobileJob(s));
     const blade = this.root.querySelector<HTMLButtonElement>('.touch-blade');
     if (blade) {
       blade.classList.toggle('engaged', s.bladeDown);
       blade.setAttribute('aria-label', s.bladeDown ? 'Powered blade engaged; release to finish push' : 'Hold powered blade');
-      text('.touch-blade', s.bladeDown ? 'BLADE DOWN' : 'POWER BLADE');
+      this.setText('.touch-blade', s.bladeDown ? 'BLADE DOWN' : 'POWER BLADE');
     }
-    text('.equipment-details', `Blade ${s.upgradeModifiers.bladeMul.toFixed(2)}× · Engine ${s.upgradeModifiers.engineMul.toFixed(2)}× · Push ${s.upgradeModifiers.pushMul.toFixed(2)}×\n\n${s.job ? s.job.instruction + '\nRemove 90% of the structure.' : s.campaign ? `${s.campaign.levelName}: demolish ${s.campaign.landmarkName} and earn $${s.campaign.dollarTarget.toLocaleString('en-US')}.` : s.session === 'challenge' ? `Earn $${CASH_TARGET.toLocaleString('en-US')} before the county clock expires.` : 'Sandbox · demolish freely.'}`);
+    this.setText('.equipment-details', equipmentDetails(s));
+  }
+
+  private renderMobileMeter(id: 'heat' | 'track', value: number): void {
+    const meter = this.root.querySelector<HTMLElement>('#mobile-' + id)!;
+    const percent = Math.round(Math.max(0, Math.min(100, value)));
+    meter.style.setProperty('--level', percent + '%');
+    meter.setAttribute('aria-valuenow', String(percent));
+    meter.classList.toggle('warning', value > 65);
+    this.setText(`#mobile-${id} output`, percent + '%');
   }
 
   private bindDebugMenu(): void {
@@ -321,12 +326,9 @@ export class Hud {
     tabs.forEach((button, index) => {
       button.addEventListener('click', () => this.selectDebugTab(button.dataset.debugTab as BinderTab));
       button.addEventListener('keydown', e => {
-        let next = index;
-        if (e.key === 'ArrowRight') next = (index + 1) % tabs.length;
-        else if (e.key === 'ArrowLeft') next = (index + tabs.length - 1) % tabs.length;
-        else if (e.key === 'Home') next = 0;
-        else if (e.key === 'End') next = tabs.length - 1;
-        else return;
+        const step = TAB_KEYS[e.key];
+        if (!step) return;
+        const next = step(index, tabs.length);
         e.preventDefault(); e.stopPropagation();
         this.selectDebugTab(tabs[next].dataset.debugTab as BinderTab);
         tabs[next].focus();
@@ -385,15 +387,22 @@ export class Hud {
     panel.hidden = !this.binder.open || this.binderBlocked;
     panel.classList.toggle('binder-collapsed', this.binder.collapsed);
     for (const id of ['#debug-toggle', '#mobile-debug']) this.root.querySelector(id)!.setAttribute('aria-expanded', String(!panel.hidden));
-    const collapse = this.root.querySelector<HTMLButtonElement>('#debug-collapse')!;
-    collapse.textContent = this.binder.collapsed ? 'Unfold' : 'Fold';
-    collapse.setAttribute('aria-label', this.binder.collapsed ? 'Expand binder' : 'Collapse binder');
-    collapse.setAttribute('aria-expanded', String(!this.binder.collapsed));
-    if (!panel.hidden && !this.binder.collapsed && (!this.binderVisible || this.binderWasCollapsed)) {
+    this.syncCollapseButton();
+    // Restore the tab's scroll when the binder opens or unfolds onto it.
+    const opening = !this.binderVisible || this.binderWasCollapsed;
+    if (!panel.hidden && !this.binder.collapsed && opening) {
       this.binderScroller.scrollTop = this.binder.scroll[this.binder.tab];
     }
     this.binderVisible = !panel.hidden;
     this.binderWasCollapsed = this.binder.collapsed;
+  }
+
+  private syncCollapseButton(): void {
+    const collapsed = this.binder.collapsed;
+    const collapse = this.root.querySelector<HTMLButtonElement>('#debug-collapse')!;
+    collapse.textContent = collapsed ? 'Unfold' : 'Fold';
+    collapse.setAttribute('aria-label', collapsed ? 'Expand binder' : 'Collapse binder');
+    collapse.setAttribute('aria-expanded', String(!collapsed));
   }
 
   private get binderScroller(): HTMLElement {
@@ -450,28 +459,59 @@ export class Hud {
       <button type="button" data-up="engine">${L.engine} ${upgradePercent('engine')}</button>
       <button type="button" data-up="push">${L.push} ${upgradePercent('push')}</button>
     `;
-    bar.querySelectorAll("button").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const session = (btn as HTMLButtonElement).dataset.session as SessionKind | undefined;
-        const level = (btn as HTMLButtonElement).dataset.level as CampaignLevelId | undefined;
-        const act = (btn as HTMLButtonElement).dataset.act;
-        const up = (btn as HTMLButtonElement).dataset.up as "blade" | "engine" | "push" | undefined;
-        if (session) this.onSession?.(session);
-        if (level) this.onCampaignLevel?.(level);
-        if (act === "newseed") this.onNewSeed?.();
-        if (act === "restart") this.onRestart?.();
-        if (act === "job") this.onJob?.();
-        if (up) this.onChoice?.(up);
-      });
-    });
+    bar.querySelectorAll("button").forEach((btn) => btn.addEventListener("click", () => this.onSessionButton(btn)));
   }
+
+  private onSessionButton(btn: HTMLButtonElement): void {
+    const { session, level, act, up } = btn.dataset;
+    if (session) this.onSession?.(session as SessionKind);
+    if (level) this.onCampaignLevel?.(level as CampaignLevelId);
+    if (act) this.sessionActs[act]?.();
+    if (up) this.onChoice?.(up as "blade" | "engine" | "push");
+  }
+
+  private readonly sessionActs: Record<string, () => void> = {
+    newseed: () => this.onNewSeed?.(),
+    restart: () => this.onRestart?.(),
+    job: () => this.onJob?.(),
+  };
 
   resetCash(): void { this.cashCounter.reset(); }
 
   render(s: HudState): void {
+    this.renderModifiers(s.upgradeModifiers);
+    const permitInMenu = !!this.permitLogo.root.closest('.menu-permit-host');
+    this.permitLogo.render(s.resubmitted, s.cash, s.overlay !== 'none' && !(s.overlay === 'pause' && permitInMenu));
+    this.renderJob(s.job);
+    this.root.querySelectorAll<HTMLElement>("#hud-session [data-up], .sandbox-upgrades").forEach(el => {
+      el.hidden = s.session !== "sandbox";
+    });
+    const elapsedClock = s.session === 'sandbox' || !!s.job;
+    this.renderCash(s, elapsedClock);
+    this.clock.update(elapsedClock ? s.elapsed : s.timeLeft, elapsedClock);
+    this.paintSessionBar(s);
+    this.bladeEl.textContent = s.bladeDown ? COPY.bladeDown : COPY.bladeUp;
+    this.bladeEl.classList.toggle('engaged', s.bladeDown);
+    this.renderGauge('heat', s.heat);
+    this.renderGauge('track', s.track);
+    const advisory = hudAdvisory(s);
+    this.setNotice('#hud-advisory', advisory);
+    this.root.querySelector('#hud-clock-label')!.textContent = elapsedClock ? 'Elapsed' : 'County Clock';
+    const modal = s.overlay !== 'none';
+    this.binderBlocked = modal; this.syncBinder();
+    this.renderTestControls(s);
+    this.setModal(modal);
+    this.menu.show(s.overlay === 'title' || s.overlay === 'pause' ? s.overlay : null, s.session, s.district, s.developmentScenario, s.campaign?.levelId ?? s.levelId, s.season, s.weatherDetail);
+    this.menu.syncMuted(s.muted);
+    this.renderMobile(s, elapsedClock, advisory);
+    this.renderOverlay(s);
+  }
+
+  /** Upgrade multipliers repaint only on change, and glow briefly when one rises. */
+  private renderModifiers(modifiers: UpgradeModifiers): void {
     for (const element of this.modifierElements) {
       const key = element.dataset.modifier as keyof UpgradeModifiers;
-      const value = s.upgradeModifiers[key];
+      const value = modifiers[key];
       const previous = this.modifierValues.get(key);
       if (previous === value) continue;
       element.innerHTML = `${value.toFixed(2)}<span class="multiplier-symbol">×</span>`;
@@ -482,162 +522,138 @@ export class Hud {
       }
       this.modifierValues.set(key, value);
     }
-    const permitInMenu = !!this.permitLogo.root.closest('.menu-permit-host');
-    this.permitLogo.render(s.resubmitted, s.cash, s.overlay !== 'none' && !(s.overlay === 'pause' && permitInMenu));
-    const job = this.root.querySelector<HTMLElement>("#hud-job")!;
-    job.hidden = !s.job;
-    if (s.job) job.textContent = s.job.paid
-      ? `Demolition Complete · +$${s.job.payout}`
-      : `${L.brick} · ${Math.floor(s.job.progress * 100)}%\n${s.job.instruction}\nRemove 90% of the structure.`;
-    this.root.querySelectorAll<HTMLElement>("#hud-session [data-up], .sandbox-upgrades").forEach(el => {
-      el.hidden = s.session !== "sandbox";
-    });
-    const elapsedClock = s.session === 'sandbox' || !!s.job;
-    this.cashCounter.update(s.campaign ? Math.floor(s.campaign.levelEarned) : s.cash);
-    this.cashTarget.hidden = elapsedClock && !s.campaign;
-    const campaignEl = this.root.querySelector<HTMLElement>('#hud-campaign')!;
-    campaignEl.hidden = !s.campaign;
-    if (s.campaign) {
-      this.cashTarget.textContent = `of $${s.campaign.dollarTarget.toLocaleString('en-US')} ${s.campaign.dollarsReady ? 'DONE' : ''}`;
-      const season = s.season ? ` · ${s.season[0]!.toUpperCase()}${s.season.slice(1)}` : '';
-      this.root.querySelector('#hud-level-name')!.textContent = `${s.campaign.levelIndex}/7 ${s.campaign.levelName}${season}`;
-      this.root.querySelector('#hud-campaign-dollars')!.textContent = `$${Math.floor(s.campaign.levelEarned).toLocaleString('en-US')}`;
-      this.root.querySelector('#hud-landmark')!.textContent =
-        `${s.campaign.landmarkName} ${Math.floor(s.campaign.landmarkProgress * 100)}%${s.campaign.landmarkReady ? ' DOWN' : ''}`;
-    } else if (!elapsedClock) {
-      this.cashTarget.textContent = `Target $${CASH_TARGET.toLocaleString('en-US')}`;
-    }
-    this.clock.update(elapsedClock ? s.elapsed : s.timeLeft, elapsedClock);
-    this.paintSessionBar(s);
-    this.bladeEl.textContent = s.bladeDown ? COPY.bladeDown : COPY.bladeUp;
-    this.bladeEl.classList.toggle('engaged', s.bladeDown);
-    for (const [id, value] of [['heat', s.heat], ['track', s.track]] as const) {
-      const el = this.root.querySelector<HTMLElement>('#gauge-' + id)!;
-      const clamped = Math.max(0, Math.min(100, value));
-      el.style.setProperty('--needle', (clamped * 2.4 - 120) + 'deg');
-      el.classList.toggle('warning', value > 65);
-      el.setAttribute('aria-valuenow', String(Math.round(clamped)));
-      el.querySelector('output')!.textContent = Math.round(clamped) + '%';
-    }
-    const advisory = s.heat > 65 ? 'HIGH HEAT · RELEASE BLADE' : s.track > 65 ? 'TRACK STRESS · BACK OFF' : (s.pileResistance ?? 0) > .4 ? 'DENSE RUBBLE · CLEAR A PATH' : (s.fieldNotice ?? '');
-    const advisoryEl = this.root.querySelector('#hud-advisory')!;
-    if (advisoryEl.textContent !== advisory) advisoryEl.textContent = advisory;
-    (advisoryEl as HTMLElement).hidden = !advisory;
-    this.root.querySelector('#hud-clock-label')!.textContent = s.session === 'sandbox' || s.job ? 'Elapsed' : 'County Clock';
-    const modal = s.overlay !== 'none';
-    this.binderBlocked = modal; this.syncBinder();
-    const card = s.levelCard;
+  }
+
+  private renderJob(job: HudState['job']): void {
+    const el = this.root.querySelector<HTMLElement>("#hud-job")!;
+    el.hidden = !job;
+    if (job) el.textContent = job.paid
+      ? `Demolition Complete · +$${job.payout}`
+      : `${L.brick} · ${Math.floor(job.progress * 100)}%\n${job.instruction}\nRemove 90% of the structure.`;
+  }
+
+  private renderCash(s: HudState, elapsedClock: boolean): void {
+    const campaign = s.campaign;
+    this.cashCounter.update(campaign ? Math.floor(campaign.levelEarned) : s.cash);
+    this.cashTarget.hidden = elapsedClock && !campaign;
+    this.root.querySelector<HTMLElement>('#hud-campaign')!.hidden = !campaign;
+    if (campaign) this.renderCampaign(campaign, s.season);
+    else if (!elapsedClock) this.cashTarget.textContent = `Target $${CASH_TARGET.toLocaleString('en-US')}`;
+  }
+
+  private renderCampaign(campaign: CampaignHud, season: SeasonId | undefined): void {
+    this.cashTarget.textContent = `of $${campaign.dollarTarget.toLocaleString('en-US')} ${campaign.dollarsReady ? 'DONE' : ''}`;
+    const seasonName = season ? ` · ${season[0]!.toUpperCase()}${season.slice(1)}` : '';
+    this.root.querySelector('#hud-level-name')!.textContent = `${campaign.levelIndex}/7 ${campaign.levelName}${seasonName}`;
+    this.root.querySelector('#hud-campaign-dollars')!.textContent = `$${Math.floor(campaign.levelEarned).toLocaleString('en-US')}`;
+    this.root.querySelector('#hud-landmark')!.textContent = landmarkText(campaign);
+  }
+
+  private renderGauge(id: 'heat' | 'track', value: number): void {
+    const el = this.root.querySelector<HTMLElement>('#gauge-' + id)!;
+    const clamped = Math.max(0, Math.min(100, value));
+    el.style.setProperty('--needle', (clamped * 2.4 - 120) + 'deg');
+    el.classList.toggle('warning', value > 65);
+    el.setAttribute('aria-valuenow', String(Math.round(clamped)));
+    el.querySelector('output')!.textContent = Math.round(clamped) + '%';
+  }
+
+  /** Map name and the test-yard reset controls in the debug binder and session bar. */
+  private renderTestControls(s: HudState): void {
     const mapName = debugMapLabel({
       testMapName: s.testMapName,
       job: !!s.job,
       session: s.session,
       district: s.district,
-      levelId: s.campaign?.levelId ?? card?.levelId ?? s.levelId,
-      levelIndex: s.campaign?.levelIndex ?? card?.levelIndex,
-      levelName: s.campaign?.levelName ?? card?.levelName,
+      levelId: levelField(s, 'levelId') ?? s.levelId,
+      levelIndex: levelField(s, 'levelIndex'),
+      levelName: levelField(s, 'levelName'),
     });
-    const mapLabel = this.root.querySelector<HTMLElement>('#debug-map-name')!;
-    if (mapLabel.textContent !== mapName) mapLabel.textContent = mapName;
+    this.setText('#debug-map-name', mapName);
     const resetTest = this.root.querySelector<HTMLButtonElement>('#debug-reset-test')!;
     resetTest.hidden = !s.hasYard;
     resetTest.textContent = s.focusedTest ? 'Reset Test' : 'Reset Entire Yard';
     this.root.querySelector<HTMLButtonElement>('[data-act="restart"]')!.textContent = s.hasYard ? resetTest.textContent : L.restart;
     this.root.querySelector<HTMLElement>('[data-act="newseed"]')!.hidden = s.hasYard || !!s.campaign;
+  }
+
+  /** A modal overlay makes the play surface and the instruments inert. */
+  private setModal(modal: boolean): void {
     this.root.classList.toggle('modal-open', modal);
     document.querySelector<HTMLElement>('#game-root')!.inert = modal;
     for (const selector of ['.top', '.mobile-hud', '.instrument-deck', '#touch-controls', '#simulation-frozen']) {
       const el = this.root.querySelector<HTMLElement>(selector);
       if (el) el.inert = modal;
     }
-    this.menu.show(s.overlay === 'title' || s.overlay === 'pause' ? s.overlay : null, s.session, s.district, s.developmentScenario, s.campaign?.levelId ?? s.levelId, s.season, s.weatherDetail);
-    this.menu.syncMuted(s.muted);
-    this.renderMobile(s, elapsedClock, advisory);
+  }
 
+  private setText(selector: string, value: string): void {
+    const el = this.root.querySelector<HTMLElement>(selector);
+    if (el && el.textContent !== value) el.textContent = value;
+  }
+
+  /** A status line that hides while it has nothing to say. */
+  private setNotice(selector: string, value: string): void {
+    this.setText(selector, value);
+    this.root.querySelector<HTMLElement>(selector)!.hidden = !value;
+  }
+
+  private renderOverlay(s: HudState): void {
     if (s.overlay === "none" || s.overlay === "pause" || s.overlay === "title") {
-      this.overlay.classList.remove("show");
-      if (s.overlay === 'none' && (this.lastOverlay === 'upgrade' || this.lastOverlay === 'results')) {
-        document.querySelector<HTMLCanvasElement>('#game-root canvas')?.focus();
-      }
-      this.lastOverlay = "none";
+      this.hideOverlay(s.overlay);
       return;
     }
     this.overlay.classList.add("show");
-    if (
-      s.overlay === this.lastOverlay &&
-      s.death === this.lastDeath &&
-      s.won === this.lastWon &&
-      this.panel.querySelector("button")
-    ) {
-      return;
-    }
+    const unchanged = s.overlay === this.lastOverlay && s.death === this.lastDeath && s.won === this.lastWon;
+    if (unchanged && this.panel.querySelector("button")) return;
     this.lastOverlay = s.overlay;
     this.lastDeath = s.death;
     this.lastWon = s.won;
-    if (s.overlay === "upgrade") {
-      this.panel.innerHTML = `
-        <h2 id="result-heading">${s.job ? "Demolition Complete" : "Upgrade"}</h2>
-        <p>${s.job ? `+${s.job.payout}. Choose an upgrade.` : "Choose an upgrade."}</p>
-        <div class="choices">
-          <button type="button" data-up="blade" aria-label="1, ${L.blade}, blade damage ${upgradePercent('blade')}">${MENU_ICONS.blade}<span>1 · ${L.blade} ${upgradePercent('blade')}</span></button>
-          <button type="button" data-up="engine" aria-label="2, ${L.engine}, engine performance ${upgradePercent('engine')}">${MENU_ICONS.engine}<span>2 · ${L.engine} ${upgradePercent('engine')}</span></button>
-          <button type="button" data-up="push" aria-label="3, ${L.push}, push duration ${upgradePercent('push')}">${MENU_ICONS.push}<span>3 · ${L.push} ${upgradePercent('push')}</span></button>
-        </div>`;
-    } else if (s.overlay === "briefing" && s.campaign) {
-      this.panel.innerHTML = `
-        <h2 id="result-heading">${s.campaign.levelName}</h2>
-        <p class="campaign-briefing">${s.campaign.briefing.replaceAll('\n', '<br>')}</p>
-        <div class="choices">
-          <button class="primary" type="button" data-act="begin">${L.beginLevel}</button>
-        </div>`;
-    } else {
-      const campaign = s.campaign;
-      const headline = campaign?.victory ? "COUNTY CLOSED" : s.won ? "LEVEL CLEARED" : (s.death ?? "COUNTY CLOCK");
-      const body = campaign
-        ? `${campaign.levelName} · $${Math.floor(campaign.levelEarned).toLocaleString('en-US')} / $${campaign.dollarTarget.toLocaleString('en-US')}<br>${campaign.landmarkName} ${campaign.landmarkReady ? 'DOWN' : `${Math.floor(campaign.landmarkProgress * 100)}%`}${campaign.victory ? `<br>Campaign total $${Math.floor(campaign.campaignEarned).toLocaleString('en-US')}` : ''}`
-        : `CASH $${Math.floor(s.cash)} &nbsp; TIME ${formatTime(MATCH_SECONDS - s.timeLeft)}`;
-      const actions = campaign?.victory
-        ? `<button class="primary" type="button" data-act="new-campaign">${L.newCampaign}</button><button type="button" data-act="title">${L.mainMenu}</button>`
-        : campaign && s.won
-          ? `<button class="primary" type="button" data-act="next">${L.nextLevel}</button><button type="button" data-act="title">${L.mainMenu}</button>`
-          : campaign
-            ? `<button class="primary" type="button" data-act="retry">${L.retryLevel}</button><button type="button" data-act="title">${L.mainMenu}</button>`
-            : `<button class="primary" type="button" data-act="restart">${L.restart}</button><button type="button" data-act="title">${L.mainMenu}</button>`;
-      this.panel.innerHTML = `
-        <h2 id="result-heading">${headline}</h2>
-        <p>${body}</p>
-        <div class="choices">${actions}</div>`;
-    }
+    this.panel.innerHTML = overlayPanelHtml(s);
     this.panel.focus();
     this.panel.querySelectorAll("button").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const up = (btn as HTMLButtonElement).dataset.up as "blade" | "engine" | "push" | undefined;
-        const act = (btn as HTMLButtonElement).dataset.act;
-        if (up) this.onChoice?.(up);
-        this.onClick?.();
-        if (act === "title") this.onTitle?.();
-        if (act === "resume") this.onResume?.();
-        if (act === "restart") this.onRestart?.();
-        if (act === "newseed") this.onNewSeed?.();
-        if (act === "begin") this.onBeginLevel?.();
-        if (act === "next") this.onNextLevel?.();
-        if (act === "retry") this.onRetryLevel?.();
-        if (act === "new-campaign") this.onNewCampaign?.();
-      });
+      btn.addEventListener("click", () => this.onPanelButton(btn));
     });
   }
+
+  private hideOverlay(overlay: OverlayMode): void {
+    this.overlay.classList.remove("show");
+    if (overlay === 'none' && (this.lastOverlay === 'upgrade' || this.lastOverlay === 'results')) {
+      document.querySelector<HTMLCanvasElement>('#game-root canvas')?.focus();
+    }
+    this.lastOverlay = "none";
+  }
+
+  private onPanelButton(btn: HTMLButtonElement): void {
+    const up = btn.dataset.up as "blade" | "engine" | "push" | undefined;
+    if (up) this.onChoice?.(up);
+    this.onClick?.();
+    const act = btn.dataset.act;
+    if (act) this.panelActs[act]?.();
+  }
+
+  private readonly panelActs: Record<string, () => void> = {
+    title: () => this.onTitle?.(),
+    resume: () => this.onResume?.(),
+    restart: () => this.onRestart?.(),
+    newseed: () => this.onNewSeed?.(),
+    begin: () => this.onBeginLevel?.(),
+    next: () => this.onNextLevel?.(),
+    retry: () => this.onRetryLevel?.(),
+    "new-campaign": () => this.onNewCampaign?.(),
+  };
 
   private paintSessionBar(s: HudState): void {
     const bar = this.root.querySelector("#hud-session");
     if (!bar) return;
-    const card = s.levelCard;
-    const levelId = s.campaign?.levelId ?? card?.levelId ?? s.levelId;
+    const levelId = levelField(s, 'levelId') ?? s.levelId;
     const panels = debugSessionPanels({
       testMapName: s.testMapName,
       job: !!s.job,
       session: s.session,
       district: s.district,
       levelId,
-      levelName: s.campaign?.levelName ?? card?.levelName,
+      levelName: levelField(s, 'levelName'),
     });
     bar.querySelector<HTMLElement>('[data-panel="levels"]')!.hidden = !panels.levels;
     bar.querySelector<HTMLElement>('[data-panel="job"]')!.hidden = !panels.job;
@@ -647,23 +663,112 @@ export class Hud {
         testMapName: s.testMapName,
         session: s.session,
         district: s.district,
-        levelName: s.campaign?.levelName ?? card?.levelName,
-        levelIndex: s.campaign?.levelIndex ?? card?.levelIndex,
+        levelName: levelField(s, 'levelName'),
+        levelIndex: levelField(s, 'levelIndex'),
         seed: s.seed,
-        buildingCount: s.campaign?.buildingCount ?? card?.buildingCount,
-        landmarkName: s.campaign?.landmarkName ?? card?.landmarkName,
-        dollarTarget: s.campaign?.dollarTarget ?? card?.dollarTarget,
-        timeLimit: s.campaign?.timeLimit ?? card?.timeLimit,
+        buildingCount: levelField(s, 'buildingCount'),
+        landmarkName: levelField(s, 'landmarkName'),
+        dollarTarget: levelField(s, 'dollarTarget'),
+        timeLimit: levelField(s, 'timeLimit'),
       });
       if (facts.textContent !== text) facts.textContent = text;
     }
-    bar.querySelectorAll("button").forEach((btn) => {
-      const el = btn as HTMLButtonElement;
-      const pressed = el.dataset.session === s.session || (!!levelId && el.dataset.level === levelId);
-      el.classList.toggle("on", pressed);
-      if (el.dataset.session || el.dataset.level) el.setAttribute("aria-pressed", String(pressed));
-    });
+    bar.querySelectorAll("button").forEach((btn) => markSessionButton(btn, s.session, levelId));
   }
+}
+
+type LevelFacts = NonNullable<HudState['levelCard']>;
+
+/** A level fact from the running campaign, else from the level card the menu previews. */
+function levelField<K extends keyof LevelFacts>(s: HudState, key: K): LevelFacts[K] | undefined {
+  return (s.campaign?.[key] ?? s.levelCard?.[key]) as LevelFacts[K] | undefined;
+}
+
+function markSessionButton(el: HTMLButtonElement, session: SessionKind, levelId: CampaignLevelId | undefined): void {
+  const pressed = el.dataset.session === session || (!!levelId && el.dataset.level === levelId);
+  el.classList.toggle("on", pressed);
+  if (el.dataset.session || el.dataset.level) el.setAttribute("aria-pressed", String(pressed));
+}
+
+function landmarkText(campaign: CampaignHud): string {
+  return `${campaign.landmarkName} ${Math.floor(campaign.landmarkProgress * 100)}%${campaign.landmarkReady ? ' DOWN' : ''}`;
+}
+
+/** The most urgent operating warning, else any field notice. */
+function hudAdvisory(s: HudState): string {
+  if (s.heat > 65) return 'HIGH HEAT · RELEASE BLADE';
+  if (s.track > 65) return 'TRACK STRESS · BACK OFF';
+  if ((s.pileResistance ?? 0) > .4) return 'DENSE RUBBLE · CLEAR A PATH';
+  return s.fieldNotice ?? '';
+}
+
+function mobileTarget(s: HudState, elapsedClock: boolean): string {
+  const campaign = s.campaign;
+  if (campaign) return `${campaign.levelIndex}/7 ${campaign.dollarsReady ? 'CASH DONE' : `of $${campaign.dollarTarget.toLocaleString('en-US')}`}`;
+  return elapsedClock ? 'Cash' : `of $${CASH_TARGET.toLocaleString('en-US')}`;
+}
+
+function mobileJob(s: HudState): string {
+  if (s.campaign) return landmarkText(s.campaign);
+  if (!s.job) return '';
+  return s.job.paid ? `Demolition complete · +$${s.job.payout}` : `Demolition · ${Math.floor(s.job.progress * 100)}% / 90%`;
+}
+
+function objectiveText(s: HudState): string {
+  if (s.job) return s.job.instruction + '\nRemove 90% of the structure.';
+  if (s.campaign) return `${s.campaign.levelName}: demolish ${s.campaign.landmarkName} and earn $${s.campaign.dollarTarget.toLocaleString('en-US')}.`;
+  return s.session === 'challenge' ? `Earn $${CASH_TARGET.toLocaleString('en-US')} before the county clock expires.` : 'Sandbox · demolish freely.';
+}
+
+function equipmentDetails(s: HudState): string {
+  const m = s.upgradeModifiers;
+  return `Blade ${m.bladeMul.toFixed(2)}× · Engine ${m.engineMul.toFixed(2)}× · Push ${m.pushMul.toFixed(2)}×\n\n${objectiveText(s)}`;
+}
+
+function overlayPanelHtml(s: HudState): string {
+  if (s.overlay === "upgrade") return upgradePanelHtml(s.job);
+  if (s.overlay === "briefing" && s.campaign) return `
+        <h2 id="result-heading">${s.campaign.levelName}</h2>
+        <p class="campaign-briefing">${s.campaign.briefing.replaceAll('\n', '<br>')}</p>
+        <div class="choices">
+          <button class="primary" type="button" data-act="begin">${L.beginLevel}</button>
+        </div>`;
+  return `
+        <h2 id="result-heading">${resultHeadline(s)}</h2>
+        <p>${resultBody(s)}</p>
+        <div class="choices">${resultActions(s)}</div>`;
+}
+
+function upgradePanelHtml(job: HudState['job']): string {
+  return `
+        <h2 id="result-heading">${job ? "Demolition Complete" : "Upgrade"}</h2>
+        <p>${job ? `+${job.payout}. Choose an upgrade.` : "Choose an upgrade."}</p>
+        <div class="choices">
+          <button type="button" data-up="blade" aria-label="1, ${L.blade}, blade damage ${upgradePercent('blade')}">${MENU_ICONS.blade}<span>1 · ${L.blade} ${upgradePercent('blade')}</span></button>
+          <button type="button" data-up="engine" aria-label="2, ${L.engine}, engine performance ${upgradePercent('engine')}">${MENU_ICONS.engine}<span>2 · ${L.engine} ${upgradePercent('engine')}</span></button>
+          <button type="button" data-up="push" aria-label="3, ${L.push}, push duration ${upgradePercent('push')}">${MENU_ICONS.push}<span>3 · ${L.push} ${upgradePercent('push')}</span></button>
+        </div>`;
+}
+
+function resultHeadline(s: HudState): string {
+  if (s.campaign?.victory) return "COUNTY CLOSED";
+  return s.won ? "LEVEL CLEARED" : (s.death ?? "COUNTY CLOCK");
+}
+
+function resultBody(s: HudState): string {
+  const campaign = s.campaign;
+  if (!campaign) return `CASH $${Math.floor(s.cash)} &nbsp; TIME ${formatTime(MATCH_SECONDS - s.timeLeft)}`;
+  return `${campaign.levelName} · $${Math.floor(campaign.levelEarned).toLocaleString('en-US')} / $${campaign.dollarTarget.toLocaleString('en-US')}<br>${campaign.landmarkName} ${campaign.landmarkReady ? 'DOWN' : `${Math.floor(campaign.landmarkProgress * 100)}%`}${campaign.victory ? `<br>Campaign total $${Math.floor(campaign.campaignEarned).toLocaleString('en-US')}` : ''}`;
+}
+
+/** The results card's primary action, beside the main-menu button. */
+function resultActions(s: HudState): string {
+  const campaign = s.campaign;
+  const [act, label] = campaign?.victory ? ['new-campaign', L.newCampaign]
+    : campaign && s.won ? ['next', L.nextLevel]
+      : campaign ? ['retry', L.retryLevel]
+        : ['restart', L.restart];
+  return `<button class="primary" type="button" data-act="${act}">${label}</button><button type="button" data-act="title">${L.mainMenu}</button>`;
 }
 
 function formatTime(used: number): string {
@@ -672,6 +777,21 @@ function formatTime(used: number): string {
     .toString()
     .padStart(2, "0")}`;
 }
+
+const UPGRADE_DESCRIPTIONS = { blade: 'Blade damage', engine: 'Engine performance', push: 'Push duration' } as const;
+
+function upgradeInstrument(key: keyof typeof UPGRADE_DESCRIPTIONS): string {
+  const description = UPGRADE_DESCRIPTIONS[key];
+  return `<div class="upgrade-instrument"><span class="upgrade-label">${MENU_ICONS[key]}${L[key]}</span><span class="upgrade-value" data-modifier="${key}Mul" data-description="${description}" aria-label="${L[key]} ${description.toLowerCase()}: 1.00 times">1.00<span class="multiplier-symbol">×</span></span></div>`;
+}
+
+/** Binder tab keys, as the tab index each one moves focus to. */
+const TAB_KEYS: Partial<Record<string, (index: number, count: number) => number>> = {
+  ArrowRight: (index, count) => (index + 1) % count,
+  ArrowLeft: (index, count) => (index + count - 1) % count,
+  Home: () => 0,
+  End: (_index, count) => count - 1,
+};
 
 function gauge(id: string, label: string): string {
   return `<div class="gauge-module"><div class="gauge" id="gauge-${id}" role="meter" aria-label="${label}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="gauge-ticks"></div><span class="gauge-min">0</span><span class="gauge-max">100</span><span class="gauge-needle"></span><span class="gauge-pin"></span><output>0%</output></div><span class="instrument-label">${label}</span></div>`;

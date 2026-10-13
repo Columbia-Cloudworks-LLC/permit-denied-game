@@ -4,6 +4,7 @@ import type { Town } from '../world/town';
 import { discoverYardAssets, type YardAsset, type YardBay } from '../world/yardCatalog';
 import type { ParticlePool } from '../fx/particles';
 import type { DebugBinderState } from '../debug/binderState';
+import type { TestMapRequest } from '../world/testMapRequest';
 
 export interface YardControls {
   town: () => Town; particles: ParticlePool; dozer: () => { x: number; y: number };
@@ -72,11 +73,7 @@ export class YardPanel {
     });
     this.el('[data-variant]').addEventListener('input', () => { state.variant = this.number('variant'); this.cancel(); });
     this.el('[data-instances]').addEventListener('change', () => { state.instanceKey = this.el<HTMLSelectElement>('[data-instances]').value; this.inspect(); });
-    this.action('test', () => {
-      const asset = this.assets.find(a => a.id === state.assetId);
-      if (!asset || !Number.isInteger(state.variant) || state.variant < 0 || state.variant >= asset.variants) throw new Error(`Choose an asset and a variant from 0 to ${asset ? asset.variants - 1 : 0}.`);
-      controls.testAsset(asset.id, state.variant);
-    });
+    this.action('test', () => this.testSelected());
     this.action('instance-jump', () => this.jump());
     this.action('frame', () => { if (this.selected) controls.frame(this.selected); });
     this.action('area', () => { const y = controls.town().yard!.baselineEnd; this.setNumber('x', 8); this.setNumber('y', y + 6); controls.jump(4, y + 3); });
@@ -99,15 +96,27 @@ export class YardPanel {
     this.action('follow', () => { if (this.selected?.vehicle) controls.followVehicle(this.selected); });
     this.action('fleet', () => runYardFleet(controls.town()));
     this.action('regions', () => { if (this.selected?.vehicle) this.selected.vehicle.debugParts = !this.selected.vehicle.debugParts; });
-    for (const kind of ['front', 'side', 'rear', 'overhead'] as const) this.action(kind, () => {
+    for (const kind of ['front', 'side', 'rear'] as const) this.action(kind, () => {
       const vehicle = this.selected?.vehicle;
-      if (!vehicle) return;
-      if (kind === 'overhead') {
-        const yard = controls.town().yard!; yard.loads ??= [];
-        if (!yard.loads.some(l => l.vehicle === vehicle)) yard.loads.push({ vehicle, z: 4, vz: 0 });
-      } else testVehicleImpact(vehicle, kind);
+      if (vehicle) testVehicleImpact(vehicle, kind);
     });
+    this.action('overhead', () => this.dropOverheadLoad());
     for (const field of ['x', 'y', 'quantity', 'expand']) this.el(`[data-${field}]`).addEventListener('input', () => this.cancel());
+  }
+  private testSelected(): void {
+    const { assetId, variant } = this.state;
+    const asset = this.assets.find(a => a.id === assetId);
+    if (!asset || !Number.isInteger(variant) || variant < 0 || variant >= asset.variants) {
+      throw new Error(`Choose an asset and a variant from 0 to ${asset ? asset.variants - 1 : 0}.`);
+    }
+    this.controls.testAsset(asset.id, variant);
+  }
+  /** Hang one test load over the selected vehicle; a vehicle carries at most one. */
+  private dropOverheadLoad(): void {
+    const vehicle = this.selected?.vehicle;
+    if (!vehicle) return;
+    const yard = this.controls.town().yard!; yard.loads ??= [];
+    if (!yard.loads.some(l => l.vehicle === vehicle)) yard.loads.push({ vehicle, z: 4, vz: 0 });
   }
   private el<T extends HTMLElement = HTMLElement>(s: string): T { return this.root.querySelector(s)! as T; }
   private status(message: string): void { this.el('[data-status]').textContent = message; }
@@ -119,26 +128,32 @@ export class YardPanel {
   reset(): void {
     const yard = this.controls.town().yard; this.cancel();
     this.assets = yard?.assets ?? discoverYardAssets();
-    if (!this.state.assetId) {
-      const request = yard?.request;
-      this.state.assetId = request?.kind === 'asset' ? request.assetId : this.assets[0]?.id ?? '';
-      this.state.variant = request?.kind === 'asset' ? request.variant : 0;
-    }
+    if (!this.state.assetId) this.adoptRequest(yard?.request);
     this.el<HTMLInputElement>('[data-search]').value = this.state.search;
-    for (const [field, key] of [['category', 'category'], ['material', 'material'], ['profile', 'destruction']] as const) {
+    for (const [field, key] of FILTER_FIELDS) {
       const select = this.el<HTMLSelectElement>(`[data-${field}]`);
       this.options(select, [['', 'All'], ...[...new Set(this.assets.map(a => a[key]))].map(v => [v, v] as [string, string])]);
       select.value = this.state[field];
     }
     this.root.querySelectorAll<HTMLElement>('[data-yard-only]').forEach(el => { el.hidden = yard?.request.kind !== 'yard'; });
-    if (!this.el<HTMLInputElement>('[data-x]').value) this.setNumber('x', 8);
-    if (!this.el<HTMLInputElement>('[data-y]').value || this.number('y') > this.controls.town().maxY) this.setNumber('y', (yard?.baselineEnd ?? 0) + 6);
+    this.placeExperimentArea(yard?.baselineEnd ?? 0);
     this.filter(); this.status(yard?.issues.join('\n') ?? 'Choose an asset to open a focused test map.');
+  }
+  /** A focused asset map selects its asset; otherwise start on the first catalog entry. */
+  private adoptRequest(request: TestMapRequest | undefined): void {
+    const focused = request?.kind === 'asset' ? request : undefined;
+    this.state.assetId = focused ? focused.assetId : this.assets[0]?.id ?? '';
+    this.state.variant = focused ? focused.variant : 0;
+  }
+  /** Batch placement defaults below the baseline rows, and moves back on-map after a smaller town loads. */
+  private placeExperimentArea(baselineEnd: number): void {
+    if (!this.el<HTMLInputElement>('[data-x]').value) this.setNumber('x', 8);
+    if (!this.el<HTMLInputElement>('[data-y]').value || this.number('y') > this.controls.town().maxY) this.setNumber('y', baselineEnd + 6);
   }
   private filter(fromInput = false): void {
     const q = this.state.search.toLowerCase();
-    this.filtered = this.assets.filter(a => `${a.name} ${a.id} ${Object.values(a.archetype?.traits ?? {}).flat().join(' ')}`.toLowerCase().includes(q) &&
-      (['category', 'material', 'profile'] as const).every(f => !this.state[f] || a[f === 'profile' ? 'destruction' : f] === this.state[f]));
+    this.filtered = this.assets.filter(a => assetSearchText(a).includes(q) &&
+      FILTER_FIELDS.every(([field, key]) => !this.state[field] || a[key] === this.state[field]));
     if (fromInput && !this.filtered.some(a => a.id === this.state.assetId)) {
       this.state.assetId = this.filtered[0]?.id ?? ''; this.state.variant = 0; this.state.instanceKey = undefined;
     }
@@ -167,12 +182,7 @@ export class YardPanel {
     const b = this.selected;
     this.el('[data-loaded]').hidden = !b;
     this.el('[data-section="vehicle"]').hidden = !b?.vehicle;
-    const health = b?.vehicle ? `${b.vehicle.status} · ${b.vehicle.routeStatus} · ${b.vehicle.parts.filter(p => p.detached).length} detached assemblies`
-      : b?.site ? b.site.buildings.map(member => `${member.name.split(' / ').at(-1)}: ${member.cells.filter(c => c.hp > 0).length}/${member.cells.length} cells`).join(' · ')
-      : b?.prop ? `${b.prop.hp.toFixed(0)}/${b.prop.maxHp} HP`
-      : b?.building ? (b.asset.fixture ? b.building.fixtures.map(f => `${f.hp.toFixed(0)}/${f.maxHp} HP`).join(' · ')
-        : `${b.building.cells.filter(c => c.state !== 'gone').length}/${b.building.cells.length} cells`) : '';
-    const text = b ? `${b.asset.name} · variant ${b.variant}\n${b.asset.material} · ${b.asset.destruction}\n${health}` : '';
+    const text = b ? `${b.asset.name} · variant ${b.variant}\n${b.asset.material} · ${b.asset.destruction}\n${bayHealth(b)}` : '';
     if (this.el('[data-inspect]').textContent !== text) this.el('[data-inspect]').textContent = text;
     this.el<HTMLButtonElement>('[data-remove]').disabled = !b || b.baseline;
   }
@@ -186,4 +196,21 @@ export class YardPanel {
     if (this.plan[0] && !error) this.controls.jump(this.plan[0].x - 2, this.plan[0].y - 2);
   }
   private cancel(): void { this.plan = []; this.controls.preview([], true); this.el<HTMLButtonElement>('[data-place]').disabled = true; }
+}
+
+/** Filter selects, and the asset field each one matches. */
+const FILTER_FIELDS = [['category', 'category'], ['material', 'material'], ['profile', 'destruction']] as const;
+
+function assetSearchText(a: YardAsset): string {
+  return `${a.name} ${a.id} ${Object.values(a.archetype?.traits ?? {}).flat().join(' ')}`.toLowerCase();
+}
+
+/** Condition of whatever the bay holds: a vehicle, site, prop, fixture set, or building. */
+function bayHealth(b: YardBay): string {
+  if (b.vehicle) return `${b.vehicle.status} · ${b.vehicle.routeStatus} · ${b.vehicle.parts.filter(p => p.detached).length} detached assemblies`;
+  if (b.site) return b.site.buildings.map(member => `${member.name.split(' / ').at(-1)}: ${member.cells.filter(c => c.hp > 0).length}/${member.cells.length} cells`).join(' · ');
+  if (b.prop) return `${b.prop.hp.toFixed(0)}/${b.prop.maxHp} HP`;
+  if (!b.building) return '';
+  if (b.asset.fixture) return b.building.fixtures.map(f => `${f.hp.toFixed(0)}/${f.maxHp} HP`).join(' · ');
+  return `${b.building.cells.filter(c => c.state !== 'gone').length}/${b.building.cells.length} cells`;
 }

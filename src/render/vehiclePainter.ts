@@ -43,48 +43,50 @@ export function faceVisible(points: Vertex[]): boolean {
     const plane = planeOf(points);
     return !!plane && dot(plane.normal, VIEW) > EPSILON;
 }
+/** Insert a face into a BSP node: coplanar faces join it, a face spanning its plane is split in two. */
+function insert(node: Node | undefined, face: VehicleFace): Node | undefined {
+    if (!node) {
+        const plane = planeOf(face.points);
+        return plane ? { plane, faces: [face] } : undefined;
+    }
+    const distances = face.points.map(p => dot(node.plane.normal, p) - node.plane.offset);
+    const front = distances.some(d => d > EPSILON), back = distances.some(d => d < -EPSILON);
+    if (!front && !back)
+        node.faces.push(face);
+    else if (!back)
+        node.front = insert(node.front, face);
+    else if (!front)
+        node.back = insert(node.back, face);
+    else {
+        const halves = splitFace(face.points, distances);
+        node.front = insert(node.front, { ...face, points: halves.front });
+        node.back = insert(node.back, { ...face, points: halves.back });
+    }
+    return node;
+}
+/** Points on each side of a plane, with each edge crossing added to both. */
+function splitFace(points: Vertex[], distances: number[]): { front: Vertex[]; back: Vertex[] } {
+    const front: Vertex[] = [], back: Vertex[] = [];
+    for (let i = 0; i < points.length; i++) {
+        const a = points[i]!, b = points[(i + 1) % points.length]!;
+        const da = distances[i]!, db = distances[(i + 1) % points.length]!;
+        if (da >= -EPSILON)
+            front.push(a);
+        if (da <= EPSILON)
+            back.push(a);
+        if ((da > EPSILON && db < -EPSILON) || (da < -EPSILON && db > EPSILON)) {
+            const t = da / (da - db), p = { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, z: a.z + (b.z - a.z) * t };
+            front.push(p);
+            back.push(p);
+        }
+    }
+    return { front, back };
+}
 /** Order a small cached assembly by surfaces, not whole parts. Splitting intersecting
  * faces lets a cab hide the far wheel while the near wheel covers the cab's base.
  * Coplanar trim retains insertion order. This has no effect on physics. */
 export function orderVehicleFaces(faces: VehicleFace[]): VehicleFace[] {
     let tree: Node | undefined;
-    const insert = (node: Node | undefined, face: VehicleFace): Node | undefined => {
-        if (!node) {
-            const plane = planeOf(face.points);
-            return plane ? { plane, faces: [face] } : undefined;
-        }
-        const distances = face.points.map(p => dot(node.plane.normal, p) - node.plane.offset);
-        const front = distances.some(d => d > EPSILON), back = distances.some(d => d < -EPSILON);
-        if (!front && !back) {
-            node.faces.push(face);
-            return node;
-        }
-        if (!back) {
-            node.front = insert(node.front, face);
-            return node;
-        }
-        if (!front) {
-            node.back = insert(node.back, face);
-            return node;
-        }
-        const frontPoints: Vertex[] = [], backPoints: Vertex[] = [];
-        for (let i = 0; i < face.points.length; i++) {
-            const a = face.points[i]!, b = face.points[(i + 1) % face.points.length]!;
-            const da = distances[i]!, db = distances[(i + 1) % face.points.length]!;
-            if (da >= -EPSILON)
-                frontPoints.push(a);
-            if (da <= EPSILON)
-                backPoints.push(a);
-            if ((da > EPSILON && db < -EPSILON) || (da < -EPSILON && db > EPSILON)) {
-                const t = da / (da - db), p = { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, z: a.z + (b.z - a.z) * t };
-                frontPoints.push(p);
-                backPoints.push(p);
-            }
-        }
-        node.front = insert(node.front, { ...face, points: frontPoints });
-        node.back = insert(node.back, { ...face, points: backPoints });
-        return node;
-    };
     // Large body planes partition first. Starting with tire facets would slice the
     // entire cab into tiny fragments along every tread and create raster seams.
     const area = (face: VehicleFace) => {

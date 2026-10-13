@@ -301,81 +301,107 @@ export function drawRoofFrame(g: Graphics, b: Building, roof: RoofSection, alpha
 }
 
 type InteriorDrawKind = "floor" | "stub" | "fixture" | "partition";
+type InteriorCmd = { floor:number; depth: number; kind: InteriorDrawKind; run: (g: Graphics) => void };
+type LocalFade = (key: string, x: number, y: number, w: number, d: number, z: number, top: number) => number;
+
+/** One building's interior pass: where commands go, how pieces fade, and how high to draw. */
+interface InteriorPass {
+  b: Building;
+  cmds: InteriorCmd[];
+  fade: number;
+  localFade: LocalFade;
+  maxFloor: number;
+  reveal?: boolean;
+  coverage: ReturnType<typeof interiorFloorCoverage>;
+}
 
 export function interiorCmds(
   b: Building,
   fade: number,
   options: { reveal?: boolean; maxFloor?: number;
-    fadeBox?: (key: string, x: number, y: number, w: number, d: number, z: number, top: number) => number } = {},
-): { floor:number; depth: number; kind: InteriorDrawKind; run: (g: Graphics) => void }[] {
-  const cmds: { floor:number; depth: number; kind: InteriorDrawKind; run: (g: Graphics) => void }[] = [];
-  const interiorFade = fade;
-  const localFade = (key: string, x: number, y: number, w: number, d: number, z: number, top: number) =>
-    interiorFade * (options.fadeBox?.(key, x, y, w, d, z, top) ?? 1);
-  const maxFloor = options.maxFloor ?? Infinity;
-  const coverage = interiorFloorCoverage(b, options.reveal);
-  {
-    for (const tile of b.floorTiles) {
-      if (tile.state !== "falling" || tile.floor > maxFloor || !paintsFloorSlab(tile.floor)) continue;
-      const cs = b.cellSize, x = b.x + tile.gx * cs, y = b.y + tile.gy * cs;
-      const z = tile.floor * FLOOR_Z * (1 - tile.fallT);
-      const mat = b.construction.floor;
-      cmds.push({ floor:tile.floor, kind: "floor", depth: depthKey(x + cs / 2, y + cs / 2, z), run: g =>
-        drawIsoBox(g, x, y, cs, cs, z, FLOOR_H, topFaceColor(mat), wallFaceColor(mat, "south"), wallFaceColor(mat, "east"), fade) });
-    }
-    for (const cell of b.cells) {
-      if (b.canopy || b.openDecks) continue; // Open-frame columns use their actual collision boxes.
-      if (!cellPresent(cell) || cell.floor > maxFloor) continue;
-      if (cell.cladding?.hp === 0) {
-        const box = cellWorldBox(b, cell);
-        const alpha = localFade(`column:${cell.floor}:${cell.gx}:${cell.gy}`, box.x, box.y, box.w, box.d,
-          cell.floor * FLOOR_Z, (cell.floor + 1) * FLOOR_Z);
-        cmds.push({ floor:cell.floor, kind: "stub", depth: depthKey(box.x + box.w / 2, box.y + box.d / 2, cell.floor * FLOOR_Z), run: g =>
-          drawIsoBox(g, box.x, box.y, box.w, box.d, cell.floor * FLOOR_Z, FLOOR_Z, PAL.metalTop, PAL.metalDark, PAL.metal, alpha) });
-        continue;
-      }
-      if (!cell.exterior.north && !cell.exterior.west) continue;
-      const cs = b.cellSize, x = b.x + cell.gx * cs, y = b.y + cell.gy * cs;
-      const alpha = localFade(`stub:${cell.floor}:${cell.gx}:${cell.gy}`, x, y,
-        cell.exterior.north ? cs : WALL_THICK, cell.exterior.north ? WALL_THICK : cs,
-        cell.floor * FLOOR_Z, (cell.floor + 1) * FLOOR_Z);
-      cmds.push({ floor:cell.floor, kind: "stub", depth: depthKey(x + (cell.exterior.north ? cs / 2 : WALL_THICK / 2),
-        y + (cell.exterior.north ? WALL_THICK / 2 : cs / 2), cell.floor * FLOOR_Z), run: g => {
-        const north = cell.exterior.north;
-        const mat = cell.material;
-        drawIsoBox(g, x, y, north ? cs : WALL_THICK, north ? WALL_THICK : cs, cell.floor * FLOOR_Z, FLOOR_Z,
-          topFaceColor(mat), wallFaceColor(mat, "south"), wallFaceColor(mat, "east"), mat === 'glass' ? alpha * .28 : alpha);
-      }});
-    }
-  }
-  // Upper floors must sort locally: a room-sized polygon sorts behind near ground objects.
-  const spans = coverage.spans.flatMap(span => span.floor === 0 ? [span] :
+    fadeBox?: LocalFade } = {},
+): InteriorCmd[] {
+  const pass: InteriorPass = {
+    b, fade, cmds: [], reveal: options.reveal,
+    localFade: (key, x, y, w, d, z, top) => fade * (options.fadeBox?.(key, x, y, w, d, z, top) ?? 1),
+    maxFloor: options.maxFloor ?? Infinity,
+    coverage: interiorFloorCoverage(b, options.reveal),
+  };
+  for (const tile of b.floorTiles) pushFallingTile(pass, tile);
+  // Open-frame columns use their actual collision boxes.
+  if (!b.canopy && !b.openDecks) for (const cell of b.cells) pushCellStub(pass, cell);
+  for (const span of floorSpans(pass.coverage.spans)) pushFloorSpan(pass, span);
+  for (const fixture of b.fixtures) pushFixture(pass, fixture);
+  return pass.cmds;
+}
+
+function pushFallingTile({ b, cmds, fade, maxFloor }: InteriorPass, tile: Building["floorTiles"][number]): void {
+  if (tile.state !== "falling" || tile.floor > maxFloor || !paintsFloorSlab(tile.floor)) return;
+  const cs = b.cellSize, x = b.x + tile.gx * cs, y = b.y + tile.gy * cs;
+  const z = tile.floor * FLOOR_Z * (1 - tile.fallT);
+  const mat = b.construction.floor;
+  cmds.push({ floor:tile.floor, kind: "floor", depth: depthKey(x + cs / 2, y + cs / 2, z), run: g =>
+    drawIsoBox(g, x, y, cs, cs, z, FLOOR_H, topFaceColor(mat), wallFaceColor(mat, "south"), wallFaceColor(mat, "east"), fade) });
+}
+
+/** A stripped steel column, or the cut end of an exterior wall seen through an open cell. */
+function pushCellStub(pass: InteriorPass, cell: Cell): void {
+  if (!cellPresent(cell) || cell.floor > pass.maxFloor) return;
+  if (cell.cladding?.hp === 0) pushBareColumn(pass, cell);
+  else if (cell.exterior.north || cell.exterior.west) pushWallStub(pass, cell);
+}
+
+function pushBareColumn({ b, cmds, localFade }: InteriorPass, cell: Cell): void {
+  const box = cellWorldBox(b, cell);
+  const alpha = localFade(`column:${cell.floor}:${cell.gx}:${cell.gy}`, box.x, box.y, box.w, box.d,
+    cell.floor * FLOOR_Z, (cell.floor + 1) * FLOOR_Z);
+  cmds.push({ floor:cell.floor, kind: "stub", depth: depthKey(box.x + box.w / 2, box.y + box.d / 2, cell.floor * FLOOR_Z), run: g =>
+    drawIsoBox(g, box.x, box.y, box.w, box.d, cell.floor * FLOOR_Z, FLOOR_Z, PAL.metalTop, PAL.metalDark, PAL.metal, alpha) });
+}
+
+function pushWallStub({ b, cmds, localFade }: InteriorPass, cell: Cell): void {
+  const cs = b.cellSize, x = b.x + cell.gx * cs, y = b.y + cell.gy * cs;
+  const north = cell.exterior.north;
+  const w = north ? cs : WALL_THICK, d = north ? WALL_THICK : cs;
+  const alpha = localFade(`stub:${cell.floor}:${cell.gx}:${cell.gy}`, x, y, w, d,
+    cell.floor * FLOOR_Z, (cell.floor + 1) * FLOOR_Z);
+  const mat = cell.material;
+  cmds.push({ floor:cell.floor, kind: "stub", depth: depthKey(x + w / 2, y + d / 2, cell.floor * FLOOR_Z), run: g =>
+    drawIsoBox(g, x, y, w, d, cell.floor * FLOOR_Z, FLOOR_Z,
+      topFaceColor(mat), wallFaceColor(mat, "south"), wallFaceColor(mat, "east"), mat === 'glass' ? alpha * .28 : alpha) });
+}
+
+/** Upper floors must sort locally: a room-sized polygon sorts behind near ground objects. */
+function floorSpans<S extends { floor: number; gx0: number; gx1: number; gy0: number; gy1: number }>(spans: S[]): S[] {
+  return spans.flatMap(span => span.floor === 0 ? [span] :
     Array.from({ length: span.gy1 - span.gy0 + 1 }, (_, iy) =>
       Array.from({ length: span.gx1 - span.gx0 + 1 }, (_, ix) => ({ ...span,
         gx0: span.gx0 + ix, gx1: span.gx0 + ix, gy0: span.gy0 + iy, gy1: span.gy0 + iy }))).flat());
-  for (const span of spans) {
-    if (span.floor > maxFloor || !paintsFloorSlab(span.floor)) continue;
-    const cs = b.cellSize;
-    const alpha = localFade(`floor:${span.floor}:${span.gx0}:${span.gy0}`, b.x + span.gx0 * cs,
-      b.y + span.gy0 * cs, (span.gx1 - span.gx0 + 1) * cs, (span.gy1 - span.gy0 + 1) * cs,
-      span.floor * FLOOR_Z, span.floor * FLOOR_Z + FLOOR_H);
-    cmds.push({
-      floor:span.floor, kind: "floor",
-      depth: interiorFloorPainterDepth(b, span),
-      run: (g) => { drawInteriorFloorSpan(g, b, span, alpha, coverage.hasFloor); drawBowlingLanes(g, b, span, alpha); },
-    });
-  }
-  for (const fixture of b.fixtures) {
-    if (fixture.broken || fixture.floor > maxFloor) continue;
-    const exposed = fixture.support.some(s => coverage.hasFloor(s.gx, s.gy, fixture.floor));
-    if (!options.reveal && !exposed) continue;
-    const alpha = localFade(`fixture:${fixture.id}`, fixture.x, fixture.y, fixture.w, fixture.d,
-      fixture.floor * FLOOR_Z, fixture.floor * FLOOR_Z + fixture.h);
-    cmds.push({
-      floor:fixture.floor, kind: fixture.kind === "partition" ? "partition" : "fixture",
-      depth: fixtureDepth(fixture),
-      run: (g) => drawInteriorFixture(g, b, fixture, alpha, true),
-    });
-  }
-  return cmds;
+}
+
+function pushFloorSpan({ b, cmds, localFade, maxFloor, coverage }: InteriorPass, span: ReturnType<typeof interiorFloorCoverage>["spans"][number]): void {
+  if (span.floor > maxFloor || !paintsFloorSlab(span.floor)) return;
+  const cs = b.cellSize;
+  const alpha = localFade(`floor:${span.floor}:${span.gx0}:${span.gy0}`, b.x + span.gx0 * cs,
+    b.y + span.gy0 * cs, (span.gx1 - span.gx0 + 1) * cs, (span.gy1 - span.gy0 + 1) * cs,
+    span.floor * FLOOR_Z, span.floor * FLOOR_Z + FLOOR_H);
+  cmds.push({
+    floor:span.floor, kind: "floor",
+    depth: interiorFloorPainterDepth(b, span),
+    run: (g) => { drawInteriorFloorSpan(g, b, span, alpha, coverage.hasFloor); drawBowlingLanes(g, b, span, alpha); },
+  });
+}
+
+/** Fixtures show on an exposed floor, or anywhere when the interior is revealed. */
+function pushFixture({ b, cmds, localFade, maxFloor, coverage, reveal }: InteriorPass, fixture: Building["fixtures"][number]): void {
+  if (fixture.broken || fixture.floor > maxFloor) return;
+  const exposed = fixture.support.some(s => coverage.hasFloor(s.gx, s.gy, fixture.floor));
+  if (!reveal && !exposed) return;
+  const alpha = localFade(`fixture:${fixture.id}`, fixture.x, fixture.y, fixture.w, fixture.d,
+    fixture.floor * FLOOR_Z, fixture.floor * FLOOR_Z + fixture.h);
+  cmds.push({
+    floor:fixture.floor, kind: fixture.kind === "partition" ? "partition" : "fixture",
+    depth: fixtureDepth(fixture),
+    run: (g) => drawInteriorFixture(g, b, fixture, alpha, true),
+  });
 }

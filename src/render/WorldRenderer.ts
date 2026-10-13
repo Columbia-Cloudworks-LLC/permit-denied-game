@@ -9,35 +9,27 @@ import type { YardBay } from '../world/yardCatalog';
 import { defaultDebugView } from "../debug/view";
 import { drawDebugOverlay } from "./debugOverlay";
 import { Container, Graphics, Text } from "pixi.js";
-import { emptyGrassGrid, groundPatchContains, TERRAIN_GEN_VERSION } from "../world/terrain";
+import { emptyGrassGrid, TERRAIN_GEN_VERSION } from "../world/terrain";
 import { drawForestGarnish, drawForestMass, planForestGarnish, planForestMasses, type ForestGarnish, type ForestMass } from "./forestCanopy";
 import { buildTerrainChunks, chunkCount, ensureTerrainAtlas, terrainAtlasRevision } from "./terrainTiles";
-import { DOZER, FLOOR_Z, ISO_W, ISO_Z } from "../game/constants";
-import { Rng } from "../game/rng";
+import { DOZER, FLOOR_Z, ISO_Z } from "../game/constants";
 import { depthKey, screenAabbVisible, worldBoundsToScreen, worldToScreen } from "../world/iso";
 import type { ParticlePool } from "../fx/particles";
-import { applyBrokenRoofEdge, displacedRoofVerts, roofHeightAt, sectionOwnsRidge, sawtoothClosures } from "../structure/roof";
-import type { Bird, Building, CollapsedSite, CoverKind, GroundMark, GroundPatch, Particle, RoofSection, Rubble } from "../structure/types";
-import type { FieldFeature, TerrainFeature } from "../world/terrainFeatures";
-import { CHURN_SWATH, CHURN_TRACK, fieldRunCenter, forEachFieldRun } from "../world/fields";
+import { displacedRoofVerts } from "../structure/roof";
+import type { Bird, Building, CoverKind, GroundPatch, Particle, RoofSection, Rubble } from "../structure/types";
 import type { Dozer } from "../vehicle/dozer";
 import type { Town } from "../world/town";
-import { getBuildingSurfaces, releaseBuildingSurfaces } from "./buildingSurfaces";
+import { getBuildingSurfaces, releaseBuildingSurfaces, type WallSpan } from "./buildingSurfaces";
 import { wallPaintSpans } from "./wallPaint";
 import { drawCatalogProp } from "./assets";
-import { drawRoofFrame, interiorCmds, roofCommandDepth, roofShowsFrame } from "./interiorDraw";
-import { coverColor, coverDark } from "./coverPalette";
-import { cellColors, drawGroundPoly, drawIsoBox, drawOrientedGround, drawOrientedIsoBox, drawShadow, drawSlopedQuad, drawWorldPoly, PAL } from "./drawIso";
-import { shade } from "./palette";
-import type { GroundCondition } from "../world/groundCondition";
-import { seasonTrackColor, type SeasonId } from "../world/season";
-import { presentationTint, SeasonWeather, type WeatherFlake } from "../fx/seasonWeather";
+import { interiorCmds, roofCommandDepth } from "./interiorDraw";
+import { drawGroundPoly, drawIsoBox, drawOrientedGround, drawOrientedIsoBox, drawShadow, drawWorldPoly, PAL } from "./drawIso";
+import { presentationTint, SeasonWeather } from "../fx/seasonWeather";
 import {
   drawBuildingFootprintShadow,
   drawFallingCell,
   drawWallSpan,
 } from "./facadeDraw";
-import { roofSlopeLight } from "./lighting";
 import { drawDozer } from "./vehicles";
 import { facadeDetailCommand } from './facadeDetails';
 import { elevatedTankCommands } from './elevatedTank';
@@ -53,8 +45,21 @@ import {
   ChunkSplitMemory,
   coalesceStaticChunks,
   debugViewSignature,
+  type BuildingLod,
 } from "./buildingLod";
 import type { RenderFrame } from "./renderFrame";
+import { drawCollapsedSite, drawCover, drawGroundMark, drawTerrainFeatures } from "./groundDraw";
+import { chimneyWorld, drawChimney, drawRoofBay } from "./roofDraw";
+import {
+  debrisVersion,
+  drawBird,
+  drawDebris,
+  drawParticle,
+  drawParticleSpeck,
+  drawWeatherFlake,
+  particleBelowSpeck,
+  settledParticleVersion,
+} from "./effectsDraw";
 
 interface CullBox {
   x: number;
@@ -303,48 +308,39 @@ export class WorldRenderer {
   /** Lot covers, terrain features, and road mesh on the ground layer. */
   private passGround(frame: RenderFrame): void {
     const { town, view } = frame;
-    const gKey = `${view.terrain}:${view.roads}:${town.district}:${town.seed}:${town.lots.length}:${town.network.mesh.length}:${town.ground.length}:${town.features?.length ?? 0}:${town.featureRevision ?? 0}:${frame.condition}:${town.season}`;
-    if (gKey !== this.groundKey) {
-      this.ground.clear();
-      frame.groundRebuilds++;
-      const covers = town.ground.length
-        ? town.ground
-        : town.lots.map((lot) => ({
-            x: lot.x,
-            y: lot.y,
-            w: lot.w,
-            d: lot.d,
-            heading: 0,
-            cover: "lot" as CoverKind,
-            seed: town.seed,
-            z: 0,
-          }));
-      for (const patch of view.terrain ? covers.filter((p) => p.w !== 6.2 && p.z !== -0.02) : []) {
-        drawCover(this.ground, patch, frame.condition, town.season);
+    const gKey = groundKey(frame);
+    if (gKey === this.groundKey) return;
+    this.ground.clear();
+    frame.groundRebuilds++;
+    if (view.terrain) {
+      for (const patch of groundCovers(town)) {
+        if (patch.w !== 6.2 && patch.z !== -0.02) drawCover(this.ground, patch, frame.condition, town.season);
       }
-      if (view.terrain) drawTerrainFeatures(this.ground, town.features ?? [], frame.condition, town.season);
-      const mesh = town.network.mesh;
-      if (view.roads && mesh.length) {
-        // RoadMeshQuad x/y are world centers; drawOrientedGround uses the same convention.
-        for (const q of mesh) {
-          const alpha = q.kind === "mark" ? 0.72 : 1;
-          if (q.poly && q.poly.length >= 3) {
-            drawWorldPoly(
-              this.ground,
-              q.poly.map((p) => ({ x: p.x, y: p.y, z: q.z })),
-              q.color,
-              alpha,
-            );
-          } else {
-            drawOrientedGround(this.ground, q.x, q.y, q.heading, q.w, q.d, q.color, alpha, q.z);
-          }
-        }
-      } else if (view.roads) {
-        for (const road of town.roads) {
-          drawGroundPoly(this.ground, road.x, road.y, road.w, road.d, PAL.asphalt);
-        }
+      drawTerrainFeatures(this.ground, town.features ?? [], frame.condition, town.season);
+    }
+    if (view.roads) this.drawRoads(town);
+    this.groundKey = gKey;
+  }
+
+  private drawRoads(town: Town): void {
+    const mesh = town.network.mesh;
+    if (!mesh.length) {
+      for (const road of town.roads) drawGroundPoly(this.ground, road.x, road.y, road.w, road.d, PAL.asphalt);
+      return;
+    }
+    // RoadMeshQuad x/y are world centers; drawOrientedGround uses the same convention.
+    for (const q of mesh) {
+      const alpha = q.kind === "mark" ? 0.72 : 1;
+      if (q.poly && q.poly.length >= 3) {
+        drawWorldPoly(
+          this.ground,
+          q.poly.map((p) => ({ x: p.x, y: p.y, z: q.z })),
+          q.color,
+          alpha,
+        );
+      } else {
+        drawOrientedGround(this.ground, q.x, q.y, q.heading, q.w, q.d, q.color, alpha, q.z);
       }
-      this.groundKey = gKey;
     }
   }
 
@@ -386,282 +382,359 @@ export class WorldRenderer {
 
   /** Building shells, interiors, roofs, and static command cache. */
   private passBuildings(frame: RenderFrame): void {
-    const { town, dozer, dt, view } = frame;
-    for (const b of town.buildings) {
-      if (b.retired) { releaseBuildingSurfaces(b); continue; }
-      const commandStart = this.cmds.length;
-      const fadeValues: number[] = [];
-      const bw = b.w * b.cellSize;
-      const bd = b.d * b.cellSize;
-      const z1 = b.floors * FLOOR_Z + (b.elevatedTank ? b.elevatedTank.definition.height + .5 : .8);
-      const fall = 1.4;
-      frame.total += b.cells.length;
-      if (!this.visibleBox(b.x - fall, b.y - fall, bw + fall * 2, bd + fall * 2, -0.4, z1)) continue;
-      if (buildingHidesDozer(dozer, b)) frame.occluded = true;
-      if(b.elevatedTank) {
-        const commands=elevatedTankCommands(b,view);frame.visible+=commands.length;this.cmds.push(...commands);continue;
-      }
-      if(b.silos){const commands=siloCommands(b,view);frame.visible+=commands.length;this.cmds.push(...commands);}
-      // The aggregate mound owns the finished visual; a ground slab must not paint over it.
-      if (b.coreCollapse?.phase === 'settled') continue;
-      if (b.coreCollapse?.phase === 'falling') {
-        const { drop } = b.coreCollapse;
-        const burial = Math.min(3.5, town.pile.sample(b.x + bw / 2, b.y + bd / 2).height);
-        for (const rect of b.coreCollapse.floors) {
-          const z = rect.floor * FLOOR_Z - drop;
-          if (z + FLOOR_Z <= 0) continue;
-          frame.visible++;
-          const depth = depthKey(b.x + (rect.x + rect.w / 2) * b.cellSize, b.y + (rect.y + rect.d / 2) * b.cellSize, Math.max(0, z));
-          const key = `core:${b.id}:${rect.floor}:${rect.x}:${rect.y}`;
-          // Above the pile a shell keeps its standing geometry and slides down the screen;
-          // only floors the pile is swallowing repaint each tick.
-          this.cmds.push(coreFloorClear(b, rect, burial)
-            ? { depth, key, version: 'shell', mobile: true, offsetY: drop * ISO_Z, run: g => drawCoreFloor(g, b, rect, -Infinity, 0) }
-            : { depth, key, version: b.visualRevision, mobile: true, run: g => drawCoreFloor(g, b, rect, burial) });
-        }
-        continue;
-      }
-      const near = dozer.x > b.x - 6 && dozer.x < b.x + bw + 6 && dozer.y > b.y - 6 && dozer.y < b.y + bd + 6;
-      const lod = buildingLod(near, view.overview, this.zoom);
-      const animating = buildingAnimating(b);
-      // A damaged shell holding still between revisions stays on the static cache.
-      const live = buildingIsLive(lod, animating);
-      const needsInterior = buildingNeedsInterior(b, view, lod);
-      const needsDetails = buildingNeedsDetails(view, lod);
-      const surfaces = getBuildingSurfaces(b);
-      frame.surfaceGeometry += surfaces.geometryCount;
-      if (this.jobTarget === b) {
-        const inset = .3;
-        for (const [x, y, w, d] of [[b.x - inset, b.y - inset, bw + inset * 2, .07],
-          [b.x - inset, b.y + bd + inset, bw + inset * 2, .07],
-          [b.x - inset, b.y - inset, .07, bd + inset * 2], [b.x + bw + inset, b.y - inset, .07, bd + inset * 2]]) {
-          drawGroundPoly(this.groundOverlays, x!, y!, w!, d!, 0xd5b568, .65);
-        }
-      }
-      const hasSolid = b.cells.some((c) => c.state !== "gone" && c.state !== "falling");
-      if (hasSolid && view.walls) {
-        frame.visible++;
-        // Ground layer only: a depth-sorted footprint shadow paints over far gable bays.
-        drawBuildingFootprintShadow(this.groundOverlays, surfaces.footprint, 1);
-      }
-      const visBefore = frame.visible;
-      const buildKey = `${b.visualRevision}:${frame.viewSig}:${needsInterior ? 1 : 0}:${needsDetails ? 1 : 0}:${town.season}`;
-      const cacheKey = live ? "" : buildKey;
-      if (cacheKey) {
-        const hit = this.staticBuildingCmds.get(b);
-        if (hit && hit.key === cacheKey) {
-          const shown = this.takeStaticBuildingCmds(hit.cmds, !!b.openDecks);
-          frame.visible = visBefore + shown.length;
-          this.cmds.push(...shown);
-          continue;
-        }
-      }
-      // A near building fades around the dozer and culls live against the camera, so its
-      // build holds only for one dozer pose and camera, and only once every fade has landed.
-      // The camera only culls, so whole pixels are enough while follow easing creeps in.
-      const nearKey = live && !animating
-        ? [buildKey, dozer.x.toFixed(2), dozer.y.toFixed(2), dozer.heading.toFixed(2),
-          Math.round(this.camX), Math.round(this.camY), this.zoom.toFixed(3), this.viewW, this.viewH].join(":")
-        : "";
-      if (nearKey) {
-        const hit = this.nearBuildingCmds.get(b);
-        if (hit && hit.key === nearKey) {
-          this.fades.keep(hit.fades);
-          if (hit.occluded) frame.occluded = true;
-          frame.visible = visBefore + hit.visible;
-          this.cmds.push(...hit.cmds);
-          continue;
-        }
-      }
-      const occludedBefore = frame.occluded;
-      frame.occluded = false;
-      const sampledFades: string[] = [];
-      let fadesSettled = true;
-      const fade = (key: string, target: number) => {
-        const fadeKey = `${b.id}:${key}`;
-        const alpha = this.fades.sample(fadeKey, target, dt);
-        sampledFades.push(fadeKey);
-        if (alpha !== target) fadesSettled = false;
-        fadeValues.push(Math.round(alpha * 1000));
-        return alpha;
-      };
-      for (const c of b.cells) if (c.coreSupport && cellPresent(c) && view.walls) {
-        const box = cellWorldBox(b, c);
-        const alpha = !live || view.reveal || view.maxFloor === 0 ? 1 : objectOcclusionFade(dozer, box.x, box.y, box.w, box.d, 0, FLOOR_Z);
-        this.cmds.push({
-          depth: depthKey(box.x + .3, box.y + .3, .1),
-          cull: { x: box.x, y: box.y, w: box.w, d: box.d, z0: 0, z1: FLOOR_Z },
-          run: g => drawIsoBox(g, box.x, box.y, box.w, box.d, 0, FLOOR_Z, 0xb6a784, 0x827754, 0x9c8d68, alpha),
-        });
-      }
-      const fadeBox = (key: string, x: number, y: number, w: number, d: number, z: number, top: number) => {
+    for (const b of frame.town.buildings) {
+      if (b.retired) releaseBuildingSurfaces(b);
+      else this.drawBuilding(frame, b);
+    }
+  }
+
+  private drawBuilding(frame: RenderFrame, b: Building): void {
+    const { dozer, view } = frame;
+    const commandStart = this.cmds.length;
+    const bw = b.w * b.cellSize;
+    const bd = b.d * b.cellSize;
+    const z1 = b.floors * FLOOR_Z + (b.elevatedTank ? b.elevatedTank.definition.height + .5 : .8);
+    const fall = 1.4;
+    frame.total += b.cells.length;
+    if (!this.visibleBox(b.x - fall, b.y - fall, bw + fall * 2, bd + fall * 2, -0.4, z1)) return;
+    if (buildingHidesDozer(dozer, b)) frame.occluded = true;
+    if (b.elevatedTank) {
+      this.pushShown(frame, elevatedTankCommands(b, view));
+      return;
+    }
+    if (b.silos) this.pushShown(frame, siloCommands(b, view));
+    // The aggregate mound owns the finished visual; a ground slab must not paint over it.
+    if (b.coreCollapse?.phase === 'settled') return;
+    if (b.coreCollapse?.phase === 'falling') this.pushCoreCollapse(frame, b, bw, bd);
+    else this.drawStandingBuilding(frame, b, bw, bd, commandStart);
+  }
+
+  private pushShown(frame: RenderFrame, commands: Cmd[]): void {
+    frame.visible += commands.length;
+    this.cmds.push(...commands);
+  }
+
+  private pushCoreCollapse(frame: RenderFrame, b: Building, bw: number, bd: number): void {
+    const core = b.coreCollapse!;
+    const { drop } = core;
+    const burial = Math.min(3.5, frame.town.pile.sample(b.x + bw / 2, b.y + bd / 2).height);
+    for (const rect of core.floors) {
+      const z = rect.floor * FLOOR_Z - drop;
+      if (z + FLOOR_Z <= 0) continue;
+      frame.visible++;
+      const depth = depthKey(b.x + (rect.x + rect.w / 2) * b.cellSize, b.y + (rect.y + rect.d / 2) * b.cellSize, Math.max(0, z));
+      const key = `core:${b.id}:${rect.floor}:${rect.x}:${rect.y}`;
+      // Above the pile a shell keeps its standing geometry and slides down the screen;
+      // only floors the pile is swallowing repaint each tick.
+      this.cmds.push(coreFloorClear(b, rect, burial)
+        ? { depth, key, version: 'shell', mobile: true, offsetY: drop * ISO_Z, run: g => drawCoreFloor(g, b, rect, -Infinity, 0) }
+        : { depth, key, version: b.visualRevision, mobile: true, run: g => drawCoreFloor(g, b, rect, burial) });
+    }
+  }
+
+  private drawStandingBuilding(frame: RenderFrame, b: Building, bw: number, bd: number, commandStart: number): void {
+    const { town, dozer } = frame;
+    const plan = this.planStandingBuilding(frame, b, bw, bd);
+    const visBefore = frame.visible;
+    const buildKey = `${b.visualRevision}:${frame.viewSig}:${plan.needsInterior ? 1 : 0}:${plan.needsDetails ? 1 : 0}:${town.season}`;
+    const cacheKey = plan.live ? "" : buildKey;
+    if (cacheKey && this.reuseStaticBuilding(frame, b, cacheKey, visBefore)) return;
+    const nearKey = plan.live && !plan.animating ? this.nearBuildingKey(dozer, buildKey) : "";
+    if (nearKey && this.reuseNearBuilding(frame, b, nearKey, visBefore)) return;
+    const occludedBefore = frame.occluded;
+    frame.occluded = false;
+    const visit = this.buildingVisit(frame, b, bw, bd, plan);
+    this.pushBuildingPieces(visit);
+    // Live decks still bake painter order here. Static decks keep per-piece commands
+    // so submit-time culling can reveal floors without waiting on a cache rebuild.
+    if (b.openDecks && plan.live) this.bakeLiveDecks(commandStart);
+    this.stampBuildingCmds(b, commandStart, plan.live
+      ? [b.visualRevision, dozer.x.toFixed(2), dozer.y.toFixed(2), visit.fades.values.join(","), frame.viewSig].join(":")
+      : [b.visualRevision, frame.viewSig].join(":"));
+    const occluded = frame.occluded;
+    frame.occluded = occludedBefore || occluded;
+    if (nearKey) this.storeNearBuilding(b, nearKey, visit.fades, commandStart, occluded, frame.visible - visBefore);
+    if (cacheKey) this.storeStaticBuilding(frame, b, cacheKey, commandStart, visBefore);
+  }
+
+  /** Level of detail for one building, plus its ground-layer outline and footprint shadow. */
+  private planStandingBuilding(frame: RenderFrame, b: Building, bw: number, bd: number): BuildingPlan {
+    const { dozer, view } = frame;
+    const near = dozer.x > b.x - 6 && dozer.x < b.x + bw + 6 && dozer.y > b.y - 6 && dozer.y < b.y + bd + 6;
+    const lod = buildingLod(near, view.overview, this.zoom);
+    const animating = buildingAnimating(b);
+    // A damaged shell holding still between revisions stays on the static cache.
+    const live = buildingIsLive(lod, animating);
+    const plan = { lod, animating, live, needsInterior: buildingNeedsInterior(b, view, lod), needsDetails: buildingNeedsDetails(view, lod) };
+    const surfaces = getBuildingSurfaces(b);
+    frame.surfaceGeometry += surfaces.geometryCount;
+    if (this.jobTarget === b) this.drawJobOutline(b, bw, bd);
+    if (view.walls && b.cells.some((c) => c.state !== "gone" && c.state !== "falling")) {
+      frame.visible++;
+      // Ground layer only: a depth-sorted footprint shadow paints over far gable bays.
+      drawBuildingFootprintShadow(this.groundOverlays, surfaces.footprint, 1);
+    }
+    return plan;
+  }
+
+  private buildingVisit(frame: RenderFrame, b: Building, bw: number, bd: number, plan: BuildingPlan): BuildingVisit {
+    const { dozer } = frame;
+    const { live } = plan;
+    const fades = new BuildingFades(this.fades, b.id, frame.dt);
+    return {
+      ...plan, frame, b, bw, bd, fades,
+      fadeBox: (key, x, y, w, d, z, top) => {
         if (!live) return 1;
-        const alpha = fade(key, objectOcclusionFade(dozer, x, y, w, d, z, top));
+        const alpha = fades.sample(key, objectOcclusionFade(dozer, x, y, w, d, z, top));
         if (alpha < .6 || pieceHidesDozer(dozer, x, y, w, d, z, top)) frame.occluded = true;
         return alpha;
+      },
+    };
+  }
+
+  /** Every piece of a standing building, in the order the painter sort ties expect. */
+  private pushBuildingPieces(visit: BuildingVisit): void {
+    const { b, frame: { view } } = visit;
+    this.pushCoreSupports(visit);
+    this.pushFacadeDetails(visit);
+    // Split long facades only when interior slabs can cover them in painter order.
+    const walls = wallPaintSpans(b, visit.needsInterior);
+    this.pushDeckSlabs(visit);
+    this.pushDeckTiles(visit);
+    if (view.walls && !b.canopy && !b.openDecks) for (const span of walls) this.pushWallSpan(visit, span);
+    if (visit.needsInterior) this.pushInteriors(visit);
+    if (view.walls) this.pushFallingCells(visit);
+    this.pushRoofs(visit);
+  }
+
+  private storeNearBuilding(b: Building, nearKey: string, fades: BuildingFades, commandStart: number, occluded: boolean, visible: number): void {
+    if (fades.settled) {
+      this.nearBuildingCmds.set(b, { key: nearKey, cmds: this.cmds.slice(commandStart), fades: fades.keys, occluded, visible });
+    } else this.nearBuildingCmds.delete(b);
+  }
+
+  private drawJobOutline(b: Building, bw: number, bd: number): void {
+    const inset = .3;
+    for (const [x, y, w, d] of [[b.x - inset, b.y - inset, bw + inset * 2, .07],
+      [b.x - inset, b.y + bd + inset, bw + inset * 2, .07],
+      [b.x - inset, b.y - inset, .07, bd + inset * 2], [b.x + bw + inset, b.y - inset, .07, bd + inset * 2]]) {
+      drawGroundPoly(this.groundOverlays, x!, y!, w!, d!, 0xd5b568, .65);
+    }
+  }
+
+  private reuseStaticBuilding(frame: RenderFrame, b: Building, cacheKey: string, visBefore: number): boolean {
+    const hit = this.staticBuildingCmds.get(b);
+    if (!hit || hit.key !== cacheKey) return false;
+    const shown = this.takeStaticBuildingCmds(hit.cmds, !!b.openDecks);
+    frame.visible = visBefore + shown.length;
+    this.cmds.push(...shown);
+    return true;
+  }
+
+  private storeStaticBuilding(frame: RenderFrame, b: Building, cacheKey: string, commandStart: number, visBefore: number): void {
+    const built = this.cmds.slice(commandStart);
+    this.staticBuildingCmds.set(b, { key: cacheKey, cmds: built });
+    const shown = this.takeStaticBuildingCmds(built, !!b.openDecks);
+    this.cmds.length = commandStart;
+    this.cmds.push(...shown);
+    frame.visible = visBefore + shown.length;
+  }
+
+  /**
+   * A near building fades around the dozer and culls live against the camera, so its
+   * build holds only for one dozer pose and camera, and only once every fade has landed.
+   * The camera only culls, so whole pixels are enough while follow easing creeps in.
+   */
+  private nearBuildingKey(dozer: Dozer, buildKey: string): string {
+    return [buildKey, dozer.x.toFixed(2), dozer.y.toFixed(2), dozer.heading.toFixed(2),
+      Math.round(this.camX), Math.round(this.camY), this.zoom.toFixed(3), this.viewW, this.viewH].join(":");
+  }
+
+  private reuseNearBuilding(frame: RenderFrame, b: Building, nearKey: string, visBefore: number): boolean {
+    const hit = this.nearBuildingCmds.get(b);
+    if (!hit || hit.key !== nearKey) return false;
+    this.fades.keep(hit.fades);
+    if (hit.occluded) frame.occluded = true;
+    frame.visible = visBefore + hit.visible;
+    this.cmds.push(...hit.cmds);
+    return true;
+  }
+
+  private pushCoreSupports({ frame, b, live }: BuildingVisit): void {
+    const { dozer, view } = frame;
+    if (!view.walls) return;
+    for (const c of b.cells) if (c.coreSupport && cellPresent(c)) {
+      const box = cellWorldBox(b, c);
+      const alpha = !live || view.reveal || view.maxFloor === 0 ? 1 : objectOcclusionFade(dozer, box.x, box.y, box.w, box.d, 0, FLOOR_Z);
+      this.cmds.push({
+        depth: depthKey(box.x + .3, box.y + .3, .1),
+        cull: { x: box.x, y: box.y, w: box.w, d: box.d, z0: 0, z1: FLOOR_Z },
+        run: g => drawIsoBox(g, box.x, box.y, box.w, box.d, 0, FLOOR_Z, 0xb6a784, 0x827754, 0x9c8d68, alpha),
+      });
+    }
+  }
+
+  private pushFacadeDetails({ frame, b, live, needsDetails, fadeBox }: BuildingVisit): void {
+    for (const detail of needsDetails ? b.facadeDetails : []) {
+      if (detail.floor > frame.view.maxFloor) continue;
+      const z0 = detail.floor * FLOOR_Z;
+      const detailBox = {
+        x: b.x + detail.gx * b.cellSize,
+        y: b.y + detail.gy * b.cellSize,
+        w: (detail.side === "south" ? detail.width : 1) * b.cellSize,
+        d: (detail.side === "east" ? detail.width : 1) * b.cellSize,
+        z0,
+        z1: z0 + FLOOR_Z,
       };
-      for (const detail of needsDetails ? b.facadeDetails : []) {
-        if (detail.floor > view.maxFloor) continue;
-        const z0 = detail.floor * FLOOR_Z;
-        const detailBox = {
-          x: b.x + detail.gx * b.cellSize,
-          y: b.y + detail.gy * b.cellSize,
-          w: (detail.side === "south" ? detail.width : 1) * b.cellSize,
-          d: (detail.side === "east" ? detail.width : 1) * b.cellSize,
-          z0,
-          z1: z0 + FLOOR_Z,
-        };
-        if (live && !this.visibleBox(detailBox.x, detailBox.y, detailBox.w, detailBox.d, detailBox.z0, detailBox.z1)) continue;
-        const command = facadeDetailCommand(b, detail, fadeBox(`detail:${detail.id}`,
-          detailBox.x, detailBox.y, detailBox.w, detailBox.d, detailBox.z0, detailBox.z1));
-        if (command) { frame.visible++; this.cmds.push({ ...command, cull: detailBox }); }
-      }
-      // Split long facades only when interior slabs can cover them in painter order.
-      const walls = wallPaintSpans(b, needsInterior);
-      if ((b.canopy || b.openDecks) && view.walls) for (const c of b.cells) {
-        if (c.state === 'gone' || c.state === 'falling' || c.floor > view.maxFloor) continue;
-        const deckBox = { x: b.x, y: b.y, w: bw, d: bd, z0: c.floor * FLOOR_Z, z1: (c.floor + 1) * FLOOR_Z };
-        if (live && !this.visibleBox(deckBox.x, deckBox.y, deckBox.w, deckBox.d, deckBox.z0, deckBox.z1)) continue;
-        const box = cellWorldBox(b, c);
-        this.cmds.push({ floor:c.floor, depth: depthKey(box.x + box.w / 2, box.y + box.d / 2, c.floor * FLOOR_Z),
-          cull: deckBox,
-          run: g => drawIsoBox(g, box.x, box.y, box.w, box.d, c.floor * FLOOR_Z, FLOOR_Z, 0xb7bab0, 0x697a70, 0x8d9c91) });
-      }
-      if (b.openDecks) for (const tile of b.floorTiles) {
-        if (tile.void || tile.state === 'gone' || tile.floor > view.maxFloor || !paintsFloorSlab(tile.floor)) continue;
-        const cs=b.cellSize, x=b.x+tile.gx*cs, y=b.y+tile.gy*cs;
-        const z=tile.floor*FLOOR_Z*(1-tile.fallT)+.18;
-        const tileBox = { x, y, w: cs, d: cs, z0: z, z1: z + .45 };
-        // Low barriers belong to their deck tile and descend with it.
-        if (view.walls && tile.floor>0) for (const [bx,by,bw,bd] of [
-          ...(tile.gx===0 ? [[x,y,.12,cs]] : []), ...(tile.gx===b.w-1 ? [[x+cs-.12,y,.12,cs]] : []),
-          ...(tile.gy===0 ? [[x,y,cs,.12]] : []), ...(tile.gy===b.d-1 ? [[x,y+cs-.12,cs,.12]] : []),
-        ]) this.cmds.push({floor:tile.floor,depth:depthKey(bx!+bw!/2,by!+bd!/2,z),cull:tileBox,run:g=>drawIsoBox(g,bx!,by!,bw!,bd!,z,.45*(1-tile.fallT),0xb9b7a8,0x777f75,0x929b8e)});
-        // Short end-of-deck parking bays stay clear of the alternating ramp lanes.
-        if(needsDetails && tile.gx>=b.w-3 && tile.gx<b.w-1 && [2,5,8].includes(tile.gy))
-          this.cmds.push({floor:tile.floor,depth:depthKey(x+cs/2,y+.02,z+.01),cull:tileBox,run:g=>drawIsoBox(g,x,y,cs,.055,z,.012,0xe0dfc7,0xe0dfc7,0xe0dfc7)});
-      }
-      for (const span of view.walls && !b.canopy && !b.openDecks ? walls : []) {
-        if (span.floor > view.maxFloor) continue;
-        const cs = b.cellSize;
-        const wallX = b.x + (span.dir === "east" ? span.gx0 + 1 : span.gx0) * cs;
-        const wallY = b.y + (span.dir === "south" ? span.gy0 + 1 : span.gy0) * cs;
-        const wallW = span.dir === "east" ? .08 : (span.gx1 - span.gx0 + 1) * cs;
-        const wallD = span.dir === "south" ? .08 : (span.gy1 - span.gy0 + 1) * cs;
-        const wallZ = span.floor * FLOOR_Z;
-        const wallTop = (span.floor + 1) * FLOOR_Z;
-        if (live && !this.visibleBox(wallX, wallY, wallW, wallD, wallZ, wallTop)) continue;
-        const runs = live ? wallSpanFadeRuns(b, span, dozer) : [{ span, fade: 1 }];
-        for (const run of runs) {
-          const s = run.span;
-          const runX = b.x + (s.dir === "east" ? s.gx0 + 1 : s.gx0) * cs;
-          const runY = b.y + (s.dir === "south" ? s.gy0 + 1 : s.gy0) * cs;
-          const runW = s.dir === "east" ? .08 : (s.gx1 - s.gx0 + 1) * cs;
-          const runD = s.dir === "south" ? .08 : (s.gy1 - s.gy0 + 1) * cs;
-          const alpha = live
-            ? fade(`wall:${s.dir}:${s.floor}:${s.gx0}:${s.gy0}`,
-              Math.min(run.fade, objectOcclusionFade(dozer, runX, runY, runW, runD, wallZ, wallTop)))
-            : 1;
-          if (live) {
-            if (alpha < .6 || pieceHidesDozer(dozer, runX, runY, runW, runD, wallZ, wallTop)) frame.occluded = true;
-          }
-          frame.visible++;
-          this.cmds.push({
-            key: `building:${b.id}:wall:${s.dir}:${s.floor}:${s.gx0}:${s.gy0}`,
-            depth: run.span.depth,
-            cull: { x: runX, y: runY, w: runW, d: runD, z0: wallZ, z1: wallTop },
-            run: (g) => drawWallSpan(g, b, run.span, alpha),
-          });
-        }
-      }
-      if (needsInterior) {
-        const interiors = interiorCmds(b, 1, { fadeBox, reveal: view.reveal || b.openDecks || b.construction.skin === 'glass' || !view.roofs || !view.walls || view.maxFloor < b.floors - 1, maxFloor: view.maxFloor })
-          .filter(c => c.kind === "floor" ? view.floors : c.kind === "fixture" ? view.contents : view.walls);
-        frame.visible += interiors.length;
-        this.cmds.push(...interiors);
-      }
-      for (const cell of b.cells) {
-        if (!view.walls || cell.floor > view.maxFloor || cell.state !== "falling") continue;
-        const cx = b.x + cell.gx * b.cellSize + cell.fallDx * cell.fallT * 0.85;
-        const cy = b.y + cell.gy * b.cellSize + cell.fallDy * cell.fallT * 0.85;
-        frame.visible++;
-        this.cmds.push({
-          depth: depthKey(
-            b.x + (cell.gx + 0.5) * b.cellSize + cell.fallDx * cell.fallT,
-            b.y + (cell.gy + 0.5) * b.cellSize + cell.fallDy * cell.fallT,
-            cell.floor * FLOOR_Z,
-          ),
-          run: (g) => {
-            drawShadow(g, cx, cy, b.cellSize, b.cellSize, 0.18);
-            drawFallingCell(g, b, cell, 1);
-          },
-        });
-      }
-      const liveRoofs = b.roofs.filter((roof) => roof.state !== "gone" && roof.floor <= view.maxFloor);
-      if (view.roofs && liveRoofs.length) {
-        frame.total += liveRoofs.length;
-        {
-          for (const roof of liveRoofs) {
-            const moved = roofVerts(roof);
-            const xs = moved.map(v => v.x), ys = moved.map(v => v.y), zs = moved.map(v => v.z);
-            const rx = Math.min(...xs), ry = Math.min(...ys), rw = Math.max(...xs) - rx, rd = Math.max(...ys) - ry;
-            const rz0 = Math.min(...zs), rz1 = Math.max(...zs) + .2;
-            if (live && !this.visibleBox(rx, ry, rw, rd, rz0, rz1)) continue;
-            const alpha = fadeBox(`roof:${roof.id}`, rx, ry, rw, rd, rz0, rz1);
-            frame.visible++;
-            this.cmds.push({
-              key: `building:${b.id}:roof:${roof.id}`,
-              depth: roofCommandDepth(b, roof, moved),
-              cull: { x: rx, y: ry, w: rw, d: rd, z0: rz0, z1: rz1 },
-              run: (g) => drawRoofBay(g, b, roof, alpha, town.season),
-            });
-          }
-          if (b.features.chimney && lod !== "overview") {
-            const ch = chimneyWorld(b);
-            if (ch) {
-              frame.visible++;
-              this.cmds.push({
-                depth: depthKey(ch.x, ch.y, ch.z + 0.4),
-                cull: { x: ch.x, y: ch.y, w: 0.32, d: 0.32, z0: ch.z, z1: ch.z + 0.85 },
-                run: (g) => drawChimney(g, ch, 1),
-              });
-            }
-          }
-        }
-      }
-      // Live decks still bake painter order here. Static decks keep per-piece commands
-      // so submit-time culling can reveal floors without waiting on a cache rebuild.
-      if (b.openDecks && live) {
-        const decks = this.cmds.splice(commandStart).sort((a,c)=>(a.floor??-1)-(c.floor??-1)||a.depth-c.depth);
-        if(decks.length) this.cmds.push({depth:Math.max(...decks.map(c=>c.depth)),run:g=>{for(const c of decks)c.run(g);}});
-      }
-      const version = live
-        ? [b.visualRevision, dozer.x.toFixed(2), dozer.y.toFixed(2), fadeValues.join(","), frame.viewSig].join(":")
-        : [b.visualRevision, frame.viewSig].join(":");
-      // Every piece shares the building version, so adjacent pieces can share one Graphics
-      // after the painter sort whether the building is live or cached.
-      const chunk = `b${b.id}`;
-      for (let j = commandStart; j < this.cmds.length; j++) {
-        const cmd = this.cmds[j]!;
-        if (!cmd.key) cmd.key = "building:" + b.id + ":" + (j - commandStart);
-        cmd.version = version;
-        cmd.chunk = chunk;
-      }
-      const occluded = frame.occluded;
-      frame.occluded = occludedBefore || occluded;
-      if (nearKey) {
-        if (fadesSettled) {
-          this.nearBuildingCmds.set(b, { key: nearKey, cmds: this.cmds.slice(commandStart), fades: sampledFades, occluded, visible: frame.visible - visBefore });
-        } else this.nearBuildingCmds.delete(b);
-      }
-      if (cacheKey) {
-        const built = this.cmds.slice(commandStart);
-        this.staticBuildingCmds.set(b, { key: cacheKey, cmds: built });
-        const shown = this.takeStaticBuildingCmds(built, !!b.openDecks);
-        this.cmds.length = commandStart;
-        this.cmds.push(...shown);
-        frame.visible = visBefore + shown.length;
-      }
+      if (live && !this.cullBoxVisible(detailBox)) continue;
+      const command = facadeDetailCommand(b, detail, fadeBox(`detail:${detail.id}`,
+        detailBox.x, detailBox.y, detailBox.w, detailBox.d, detailBox.z0, detailBox.z1));
+      if (command) { frame.visible++; this.cmds.push({ ...command, cull: detailBox }); }
+    }
+  }
+
+  private cullBoxVisible(box: CullBox): boolean {
+    return this.visibleBox(box.x, box.y, box.w, box.d, box.z0, box.z1);
+  }
+
+  /** Canopy and parking-deck slabs, one per standing cell. */
+  private pushDeckSlabs({ frame, b, bw, bd, live }: BuildingVisit): void {
+    const { view } = frame;
+    if (!(b.canopy || b.openDecks) || !view.walls) return;
+    for (const c of b.cells) {
+      if (c.state === 'gone' || c.state === 'falling' || c.floor > view.maxFloor) continue;
+      const deckBox = { x: b.x, y: b.y, w: bw, d: bd, z0: c.floor * FLOOR_Z, z1: (c.floor + 1) * FLOOR_Z };
+      if (live && !this.cullBoxVisible(deckBox)) continue;
+      const box = cellWorldBox(b, c);
+      this.cmds.push({ floor:c.floor, depth: depthKey(box.x + box.w / 2, box.y + box.d / 2, c.floor * FLOOR_Z),
+        cull: deckBox,
+        run: g => drawIsoBox(g, box.x, box.y, box.w, box.d, c.floor * FLOOR_Z, FLOOR_Z, 0xb7bab0, 0x697a70, 0x8d9c91) });
+    }
+  }
+
+  private pushDeckTiles({ frame, b, needsDetails }: BuildingVisit): void {
+    const { view } = frame;
+    if (!b.openDecks) return;
+    for (const tile of b.floorTiles) {
+      if (tile.void || tile.state === 'gone' || tile.floor > view.maxFloor || !paintsFloorSlab(tile.floor)) continue;
+      const cs=b.cellSize, x=b.x+tile.gx*cs, y=b.y+tile.gy*cs;
+      const z=tile.floor*FLOOR_Z*(1-tile.fallT)+.18;
+      const tileBox = { x, y, w: cs, d: cs, z0: z, z1: z + .45 };
+      // Low barriers belong to their deck tile and descend with it.
+      if (view.walls && tile.floor>0) for (const [bx,by,bw,bd] of deckBarriers(b, tile.gx, tile.gy, x, y))
+        this.cmds.push({floor:tile.floor,depth:depthKey(bx!+bw!/2,by!+bd!/2,z),cull:tileBox,run:g=>drawIsoBox(g,bx!,by!,bw!,bd!,z,.45*(1-tile.fallT),0xb9b7a8,0x777f75,0x929b8e)});
+      // Short end-of-deck parking bays stay clear of the alternating ramp lanes.
+      if(needsDetails && tile.gx>=b.w-3 && tile.gx<b.w-1 && [2,5,8].includes(tile.gy))
+        this.cmds.push({floor:tile.floor,depth:depthKey(x+cs/2,y+.02,z+.01),cull:tileBox,run:g=>drawIsoBox(g,x,y,cs,.055,z,.012,0xe0dfc7,0xe0dfc7,0xe0dfc7)});
+    }
+  }
+
+  private pushWallSpan({ frame, b, live, fades }: BuildingVisit, span: WallSpan): void {
+    const { dozer, view } = frame;
+    if (span.floor > view.maxFloor) return;
+    const wallZ = span.floor * FLOOR_Z;
+    const wallTop = (span.floor + 1) * FLOOR_Z;
+    if (live && !this.cullBoxVisible(wallSpanBox(b, span, wallZ, wallTop))) return;
+    const runs = live ? wallSpanFadeRuns(b, span, dozer) : [{ span, fade: 1 }];
+    for (const run of runs) {
+      const s = run.span;
+      const box = wallSpanBox(b, s, wallZ, wallTop);
+      const alpha = live
+        ? fades.sample(`wall:${s.dir}:${s.floor}:${s.gx0}:${s.gy0}`,
+          Math.min(run.fade, objectOcclusionFade(dozer, box.x, box.y, box.w, box.d, wallZ, wallTop)))
+        : 1;
+      if (live && (alpha < .6 || pieceHidesDozer(dozer, box.x, box.y, box.w, box.d, wallZ, wallTop))) frame.occluded = true;
+      frame.visible++;
+      this.cmds.push({
+        key: `building:${b.id}:wall:${s.dir}:${s.floor}:${s.gx0}:${s.gy0}`,
+        depth: run.span.depth,
+        cull: box,
+        run: (g) => drawWallSpan(g, b, run.span, alpha),
+      });
+    }
+  }
+
+  private pushInteriors({ frame, b, fadeBox }: BuildingVisit): void {
+    const { view } = frame;
+    const reveal = view.reveal || b.openDecks || b.construction.skin === 'glass' || !view.roofs || !view.walls || view.maxFloor < b.floors - 1;
+    const interiors = interiorCmds(b, 1, { fadeBox, reveal, maxFloor: view.maxFloor })
+      .filter(c => c.kind === "floor" ? view.floors : c.kind === "fixture" ? view.contents : view.walls);
+    this.pushShown(frame, interiors);
+  }
+
+  private pushFallingCells({ frame, b }: BuildingVisit): void {
+    for (const cell of b.cells) {
+      if (cell.floor > frame.view.maxFloor || cell.state !== "falling") continue;
+      const cx = b.x + cell.gx * b.cellSize + cell.fallDx * cell.fallT * 0.85;
+      const cy = b.y + cell.gy * b.cellSize + cell.fallDy * cell.fallT * 0.85;
+      frame.visible++;
+      this.cmds.push({
+        depth: depthKey(
+          b.x + (cell.gx + 0.5) * b.cellSize + cell.fallDx * cell.fallT,
+          b.y + (cell.gy + 0.5) * b.cellSize + cell.fallDy * cell.fallT,
+          cell.floor * FLOOR_Z,
+        ),
+        run: (g) => {
+          drawShadow(g, cx, cy, b.cellSize, b.cellSize, 0.18);
+          drawFallingCell(g, b, cell, 1);
+        },
+      });
+    }
+  }
+
+  private pushRoofs(visit: BuildingVisit): void {
+    const { frame, b, lod } = visit;
+    const { view } = frame;
+    const liveRoofs = b.roofs.filter((roof) => roof.state !== "gone" && roof.floor <= view.maxFloor);
+    if (!view.roofs || !liveRoofs.length) return;
+    frame.total += liveRoofs.length;
+    for (const roof of liveRoofs) this.pushRoof(visit, roof);
+    if (b.features.chimney && lod !== "overview") this.pushChimney(frame, b);
+  }
+
+  private pushRoof({ frame, b, live, fadeBox }: BuildingVisit, roof: RoofSection): void {
+    const moved = displacedRoofVerts(roof);
+    const xs = moved.map(v => v.x), ys = moved.map(v => v.y), zs = moved.map(v => v.z);
+    const rx = Math.min(...xs), ry = Math.min(...ys), rw = Math.max(...xs) - rx, rd = Math.max(...ys) - ry;
+    const rz0 = Math.min(...zs), rz1 = Math.max(...zs) + .2;
+    if (live && !this.visibleBox(rx, ry, rw, rd, rz0, rz1)) return;
+    const alpha = fadeBox(`roof:${roof.id}`, rx, ry, rw, rd, rz0, rz1);
+    frame.visible++;
+    this.cmds.push({
+      key: `building:${b.id}:roof:${roof.id}`,
+      depth: roofCommandDepth(b, roof, moved),
+      cull: { x: rx, y: ry, w: rw, d: rd, z0: rz0, z1: rz1 },
+      run: (g) => drawRoofBay(g, b, roof, alpha, frame.town.season),
+    });
+  }
+
+  private pushChimney(frame: RenderFrame, b: Building): void {
+    const ch = chimneyWorld(b);
+    if (!ch) return;
+    frame.visible++;
+    this.cmds.push({
+      depth: depthKey(ch.x, ch.y, ch.z + 0.4),
+      cull: { x: ch.x, y: ch.y, w: 0.32, d: 0.32, z0: ch.z, z1: ch.z + 0.85 },
+      run: (g) => drawChimney(g, ch, 1),
+    });
+  }
+
+  private bakeLiveDecks(commandStart: number): void {
+    const decks = this.cmds.splice(commandStart).sort((a,c)=>(a.floor??-1)-(c.floor??-1)||a.depth-c.depth);
+    if(decks.length) this.cmds.push({depth:Math.max(...decks.map(c=>c.depth)),run:g=>{for(const c of decks)c.run(g);}});
+  }
+
+  /**
+   * Every piece shares the building version, so adjacent pieces can share one Graphics
+   * after the painter sort whether the building is live or cached.
+   */
+  private stampBuildingCmds(b: Building, commandStart: number, version: string): void {
+    const chunk = `b${b.id}`;
+    for (let j = commandStart; j < this.cmds.length; j++) {
+      const cmd = this.cmds[j]!;
+      if (!cmd.key) cmd.key = "building:" + b.id + ":" + (j - commandStart);
+      cmd.version = version;
+      cmd.chunk = chunk;
     }
   }
 
@@ -684,56 +757,46 @@ export class WorldRenderer {
 
   /** Forest canopy garnish. */
   private passGarnish(frame: RenderFrame): void {
-    const { dozer, view } = frame;
-    if (view.terrain && frame.hideDressing) {
-      for (const mass of this.forestMasses) {
-        frame.total++;
-        if (!this.visibleBox(mass.x, mass.y, mass.w, mass.d, 0, 2.2)) continue;
-        frame.visible++;
-        this.cmds.push({
-          key: `canopy:${mass.x}:${mass.y}:${mass.w}:${mass.d}`,
-          version: `${frame.town.season}:${mass.species}`,
-          depth: depthKey(mass.x + mass.w * 0.5, mass.y + mass.d * 0.5, 1.2),
-          run: (g) => drawForestMass(g, mass, frame.town.season),
-        });
-      }
-    }
-    for (const tree of view.terrain ? this.garnish : []) {
+    const { view } = frame;
+    if (!view.terrain) return;
+    if (frame.hideDressing) for (const mass of this.forestMasses) this.pushForestMass(frame, mass);
+    for (const tree of this.garnish) {
       if (frame.hideDressing && tree.form !== "edge") continue;
-      frame.total++;
-      if (!this.visibleBox(tree.x - 1.1, tree.y - 1.1, 2.2, 2.2, 0, 3.6)) continue;
-      frame.visible++;
-      const treeTop = tree.form === "understory" ? 0.58 : 2.6;
-      const alpha = objectOcclusionFade(dozer, tree.x - 0.75, tree.y - 0.75, 1.5, 1.5, 0, treeTop);
-      this.cmds.push({
-        key: `garnish:${tree.seed}`,
-        version: `${tree.x}:${tree.y}:${tree.heading}:${tree.species}:${tree.form}:${tree.scale}:${tree.tint}:${tree.phenology}:${alpha.toFixed(2)}`,
-        depth: depthKey(tree.x, tree.y, tree.form === "understory" ? 0.5 : 1.35),
-        run: (g) => drawForestGarnish(g, tree, alpha),
-      });
+      this.pushGarnishTree(frame, tree);
     }
+  }
+
+  private pushForestMass(frame: RenderFrame, mass: ForestMass): void {
+    frame.total++;
+    if (!this.visibleBox(mass.x, mass.y, mass.w, mass.d, 0, 2.2)) return;
+    frame.visible++;
+    this.cmds.push({
+      key: `canopy:${mass.x}:${mass.y}:${mass.w}:${mass.d}`,
+      version: `${frame.town.season}:${mass.species}`,
+      depth: depthKey(mass.x + mass.w * 0.5, mass.y + mass.d * 0.5, 1.2),
+      run: (g) => drawForestMass(g, mass, frame.town.season),
+    });
+  }
+
+  private pushGarnishTree(frame: RenderFrame, tree: ForestGarnish): void {
+    frame.total++;
+    if (!this.visibleBox(tree.x - 1.1, tree.y - 1.1, 2.2, 2.2, 0, 3.6)) return;
+    frame.visible++;
+    const understory = tree.form === "understory";
+    const alpha = objectOcclusionFade(frame.dozer, tree.x - 0.75, tree.y - 0.75, 1.5, 1.5, 0, understory ? 0.58 : 2.6);
+    this.cmds.push({
+      key: `garnish:${tree.seed}`,
+      version: `${tree.x}:${tree.y}:${tree.heading}:${tree.species}:${tree.form}:${tree.scale}:${tree.tint}:${tree.phenology}:${alpha.toFixed(2)}`,
+      depth: depthKey(tree.x, tree.y, understory ? 0.5 : 1.35),
+      run: (g) => drawForestGarnish(g, tree, alpha),
+    });
   }
 
   /** Debris, yard loads, traffic, and the player dozer. */
   private passDynamics(frame: RenderFrame): void {
-    const { town, dozer, showPlayer, view } = frame;
+    const { town, view } = frame;
     const debrisPoses = new Map<number, string>();
-    for (const r of view.debris ? town.rubble : []) {
-      frame.total++;
-      if (!this.visibleBox(r.x - r.w, r.y - r.d, r.w * 2, r.d * 2, r.elev, r.elev + r.thickness + 0.25)) continue;
-      frame.visible++;
-      // A fragment that moved since last frame repaints anyway, so it rides in the
-      // airborne fx batch instead of splitting it; at rest it keeps its own geometry.
-      const version = debrisVersion(r);
-      const moved = this.debrisPoses.get(r.id) !== version;
-      debrisPoses.set(r.id, version);
-      this.cmds.push({
-        ...(moved ? { chunk: FX_CHUNK } : { key: 'debris:' + r.id, version }),
-        mobile: true,
-        depth: depthKey(r.x, r.y, r.elev + r.thickness * 0.5),
-        run: (g) => drawDebris(g, r),
-      });
-    }
+    for (const r of view.debris ? town.rubble : []) this.pushDebris(frame, r, debrisPoses);
     this.debrisPoses = debrisPoses;
 
     for(const load of town.yard?.loads??[]){const v=load.vehicle;this.cmds.push({key:'yard-load:'+v.id,mobile:true,version:[v.x,v.y,v.heading,load.z].join(':'),depth:depthKey(v.x,v.y,load.z)+3000,run:g=>drawOrientedIsoBox(g,v.x,v.y,v.heading,3.5,2.2,load.z,.25,0x9da5a0,0x565d5a,0x7c8580)});}
@@ -743,19 +806,38 @@ export class WorldRenderer {
       frame.visible++;
       this.cmds.push({key:'vehicle:'+v.id+':'+group.roots.join(','),mobile:true,version:[v.revision,v.x,v.y,v.heading,v.elev,v.pitch,v.roll,v.steer,v.debugParts].join(':'),depth:group.depth,run:g=>drawVehicleAssembly(g,v,group.roots)});
     }
+    if (view.vehicles && frame.showPlayer) this.pushPlayer(frame);
+  }
 
-    if (view.vehicles && showPlayer) {
-      frame.total++;
-      frame.visible++;
-      const emphasis = frame.hideDressing || this.zoom < 0.7;
-      this.cmds.push({
-        key: "dozer",
-        mobile: true,
-        version: [dozer.x, dozer.y, dozer.heading, dozer.bladeDown, dozer.odo, emphasis].join(":"),
-        depth: depthKey(dozer.x, dozer.y, 0.4),
-        run: (g) => drawDozer(g, dozer, emphasis),
-      });
-    }
+  private pushDebris(frame: RenderFrame, r: Rubble, debrisPoses: Map<number, string>): void {
+    frame.total++;
+    if (!this.visibleBox(r.x - r.w, r.y - r.d, r.w * 2, r.d * 2, r.elev, r.elev + r.thickness + 0.25)) return;
+    frame.visible++;
+    // A fragment that moved since last frame repaints anyway, so it rides in the
+    // airborne fx batch instead of splitting it; at rest it keeps its own geometry.
+    const version = debrisVersion(r);
+    const moved = this.debrisPoses.get(r.id) !== version;
+    debrisPoses.set(r.id, version);
+    this.cmds.push({
+      ...(moved ? { chunk: FX_CHUNK } : { key: 'debris:' + r.id, version }),
+      mobile: true,
+      depth: depthKey(r.x, r.y, r.elev + r.thickness * 0.5),
+      run: (g) => drawDebris(g, r),
+    });
+  }
+
+  private pushPlayer(frame: RenderFrame): void {
+    const { dozer } = frame;
+    frame.total++;
+    frame.visible++;
+    const emphasis = frame.hideDressing || this.zoom < 0.7;
+    this.cmds.push({
+      key: "dozer",
+      mobile: true,
+      version: [dozer.x, dozer.y, dozer.heading, dozer.bladeDown, dozer.odo, emphasis].join(":"),
+      depth: depthKey(dozer.x, dozer.y, 0.4),
+      run: (g) => drawDozer(g, dozer, emphasis),
+    });
   }
 
   /** Particles and birds. */
@@ -770,46 +852,39 @@ export class WorldRenderer {
       seed: town.seed,
     });
     for (const flake of this.weather.flakes) {
-      frame.total++;
-      if (!this.visibleBox(flake.x - 0.2, flake.y - 0.2, 0.4, 0.4, 0, flake.z + 0.2)) continue;
-      frame.visible++;
-      this.cmds.push({
-        chunk: FX_CHUNK,
-        mobile: true,
-        depth: depthKey(flake.x, flake.y, flake.z),
-        run: (g) => drawWeatherFlake(g, flake),
-      });
+      this.pushFx(frame, flake.x - 0.2, flake.y - 0.2, 0.4, 0.4, 0, flake.z + 0.2, depthKey(flake.x, flake.y, flake.z), (g) => drawWeatherFlake(g, flake));
     }
-    // Airborne effects move every frame, so painter-adjacent runs share one Graphics.
-    // Settled chips only fade, and keep their own geometry between alpha steps.
-    const speck = frame.hideDressing;
     const items = view.effects ? particles.items : [];
-    for (let i = 0; i < items.length; i++) {
-      const p = items[i]!;
-      if (!p.alive) continue;
-      frame.total++;
-      if (speck && particleBelowSpeck(p)) continue;
-      if (!this.visibleBox(p.x - 0.3, p.y - 0.3, 0.6, 0.6, 0, p.z + 0.2)) continue;
-      frame.visible++;
-      this.cmds.push({
-        ...(p.settled ? { key: `particle:${i}`, version: `${settledParticleVersion(p)}:${speck ? 1 : 0}` } : { chunk: FX_CHUNK }),
-        mobile: true,
-        depth: depthKey(p.x, p.y, p.z),
-        run: speck ? (g) => drawParticleSpeck(g, p) : (g) => drawParticle(g, p),
-      });
-    }
-
+    for (let i = 0; i < items.length; i++) if (items[i]!.alive) this.pushParticle(frame, items[i]!, i);
     for (const bird of view.effects ? birds : []) {
-      frame.total++;
-      if (!this.visibleBox(bird.x - 0.4, bird.y - 0.4, 0.8, 0.8, bird.z, bird.z + 0.2)) continue;
-      frame.visible++;
-      this.cmds.push({
-        chunk: FX_CHUNK,
-        mobile: true,
-        depth: depthKey(bird.x, bird.y, bird.z),
-        run: (g) => drawBird(g, bird),
-      });
+      this.pushFx(frame, bird.x - 0.4, bird.y - 0.4, 0.8, 0.8, bird.z, bird.z + 0.2, depthKey(bird.x, bird.y, bird.z), (g) => drawBird(g, bird));
     }
+  }
+
+  /** One airborne effect in the shared fx batch, culled against its box. */
+  private pushFx(frame: RenderFrame, x: number, y: number, w: number, d: number, z0: number, z1: number, depth: number, run: (g: Graphics) => void): void {
+    frame.total++;
+    if (!this.visibleBox(x, y, w, d, z0, z1)) return;
+    frame.visible++;
+    this.cmds.push({ chunk: FX_CHUNK, mobile: true, depth, run });
+  }
+
+  /**
+   * Airborne effects move every frame, so painter-adjacent runs share one Graphics.
+   * Settled chips only fade, and keep their own geometry between alpha steps.
+   */
+  private pushParticle(frame: RenderFrame, p: Particle, i: number): void {
+    const speck = frame.hideDressing;
+    frame.total++;
+    if (speck && particleBelowSpeck(p)) return;
+    if (!this.visibleBox(p.x - 0.3, p.y - 0.3, 0.6, 0.6, 0, p.z + 0.2)) return;
+    frame.visible++;
+    this.cmds.push({
+      ...(p.settled ? { key: `particle:${i}`, version: `${settledParticleVersion(p)}:${speck ? 1 : 0}` } : { chunk: FX_CHUNK }),
+      mobile: true,
+      depth: depthKey(p.x, p.y, p.z),
+      run: speck ? (g) => drawParticleSpeck(g, p) : (g) => drawParticle(g, p),
+    });
   }
 
   /** Depth-sort, submit, occlusion chevron, debug overlay, and stats. */
@@ -877,646 +952,80 @@ export class WorldRenderer {
   }
 }
 
-function roofVerts(roof: RoofSection): { x: number; y: number; z: number }[] {
-  return displacedRoofVerts(roof);
+/** Fades one building samples while it builds, for its near-build reuse and its version. */
+class BuildingFades {
+  readonly keys: string[] = [];
+  readonly values: number[] = [];
+  settled = true;
+  constructor(private readonly fades: VisibilityFades, private readonly id: number, private readonly dt: number) {}
+
+  sample(key: string, target: number): number {
+    const fadeKey = `${this.id}:${key}`;
+    const alpha = this.fades.sample(fadeKey, target, this.dt);
+    this.keys.push(fadeKey);
+    if (alpha !== target) this.settled = false;
+    this.values.push(Math.round(alpha * 1000));
+    return alpha;
+  }
 }
 
-function chimneyWorld(b: Building): { x: number; y: number; z: number } | null {
-  const live = b.roofs.some((r) => r.state === "intact" || r.state === "sagging");
-  if (!live) return null;
+type FadeBox = (key: string, x: number, y: number, w: number, d: number, z: number, top: number) => number;
+
+interface BuildingPlan {
+  lod: BuildingLod;
+  animating: boolean;
+  live: boolean;
+  needsInterior: boolean;
+  needsDetails: boolean;
+}
+
+/** One standing building's draw state, shared by the piece builders. */
+interface BuildingVisit extends BuildingPlan {
+  frame: RenderFrame;
+  b: Building;
+  bw: number;
+  bd: number;
+  fades: BuildingFades;
+  /** Occlusion fade for a piece's box; a live piece that hides the dozer marks the frame occluded. */
+  fadeBox: FadeBox;
+}
+
+function wallSpanBox(b: Building, s: WallSpan, z0: number, z1: number): CullBox {
   const cs = b.cellSize;
-  const w = 0.32;
-  const d = 0.32;
-  const x = b.x + (b.w - 0.55) * cs;
-  const y = b.y + 0.12;
-  const samples = [
-    roofHeightAt(b, x, y),
-    roofHeightAt(b, x + w, y),
-    roofHeightAt(b, x + w, y + d),
-    roofHeightAt(b, x, y + d),
-  ].filter((z): z is number => z != null);
-  if (samples.length === 0) return null;
-  return { x, y, z: Math.min(...samples) - 0.03 };
+  return {
+    x: b.x + (s.dir === "east" ? s.gx0 + 1 : s.gx0) * cs,
+    y: b.y + (s.dir === "south" ? s.gy0 + 1 : s.gy0) * cs,
+    w: s.dir === "east" ? .08 : (s.gx1 - s.gx0 + 1) * cs,
+    d: s.dir === "south" ? .08 : (s.gy1 - s.gy0 + 1) * cs,
+    z0,
+    z1,
+  };
 }
 
-function drawChimney(g: Graphics, ch: { x: number; y: number; z: number }, alpha: number): void {
-  drawIsoBox(g, ch.x, ch.y, 0.32, 0.32, ch.z, 0.85, PAL.brick, PAL.brickDark, PAL.brick, alpha);
-}
-
-function roofColors(b: Building, roof: RoofSection, verts: { x: number; y: number; z: number }[], season: SeasonId = "summer"): { top: number; edge: number } {
-  if (roof.material === 'glass') return { top: PAL.glassLit, edge: PAL.glass };
-  if (season === "winter" && roof.material !== "metal" && b.roof !== "shed") {
-    return b.roof === "flat"
-      ? { top: 0xc5ced6, edge: 0x8e989e }
-      : { top: 0xd5e0e8, edge: 0x9aa6b0 };
-  }
-  if (roof.material === "metal" || b.roof === "shed") return { top: PAL.roofMetal, edge: PAL.metalDark };
-  if (b.roof === "flat") return { top: PAL.roofFelt, edge: PAL.metalDark };
-  const lit = roofSlopeLight(verts);
-  const top = lit >= 0 ? PAL.roofShingle : shade(PAL.roofShingle, 0.78);
-  return { top, edge: PAL.roofShingleDark };
-}
-
-function ridgeKey(ridge: NonNullable<RoofSection["ridge"]>): string {
-  return `${ridge.ax}:${ridge.ay}:${ridge.az}:${ridge.bx}:${ridge.by}:${ridge.bz}`;
-}
-
-function drawRoofBay(g: Graphics, b: Building, roof: RoofSection, alpha: number, season: SeasonId = "summer"): void {
-  const drawn = new Set<string>();
-  drawRoofSection(g, b, roof, alpha, drawn, season, () => {
-    if (roof.material === 'glass' || roofShowsFrame(b, roof)) {
-      drawRoofFrame(g, b, roof, alpha * 0.92);
-    }
-  });
-}
-
-function drawRoofSection(
-  g: Graphics,
-  b: Building,
-  roof: RoofSection,
-  alpha: number,
-  drawnRidges: Set<string>,
-  season: SeasonId = "summer",
-  beforeCover?: () => void,
-): void {
-  const raw = roofVerts(roof);
-  const verts = applyBrokenRoofEdge(b, roof, raw);
-  const cols = roofColors(b, roof, verts, season);
-  const faded = (roof.state === "falling" ? alpha * 0.9 : alpha) * (roof.material === 'glass' ? .28 : 1);
-  const thick = 0.14;
-  for (const closure of sawtoothClosures(roof)) {
-    drawWorldPoly(g, closure.verts, closure.glass ? PAL.glassLit : cols.edge, faded);
-    if (closure.glass) {
-      const [a, b0, c, d] = closure.verts;
-      for (const t of [.25, .5, .75]) {
-        const p = worldToScreen(a!.x + (b0!.x - a!.x) * t, a!.y + (b0!.y - a!.y) * t, a!.z + (b0!.z - a!.z) * t);
-        const q = worldToScreen(d!.x + (c!.x - d!.x) * t, d!.y + (c!.y - d!.y) * t, d!.z + (c!.z - d!.z) * t);
-        g.moveTo(p.x, p.y).lineTo(q.x, q.y).stroke({ color: PAL.frame, width: 1, alpha: faded });
-      }
-    }
-  }
-  if (!roof.bay) {
-    const under = verts.map((v) => ({ x: v.x, y: v.y, z: v.z - thick }));
-    drawSlopedQuad(g, under.slice().reverse(), cols.edge, cols.edge, faded * 0.95);
-    for (let i = 0; i < verts.length; i++) {
-      const n = (i + 1) % verts.length;
-      drawSlopedQuad(
-        g,
-        [verts[i]!, verts[n]!, under[n]!, under[i]!],
-        cols.edge,
-        cols.edge,
-        faded,
-      );
-    }
-  }
-  if (!roof.bay) beforeCover?.();
-  if (roof.bay && verts.length === 4) {
-    // Shrinking the torn covering slightly reveals the short steel members underneath.
-    const cx = verts.reduce((s, v) => s + v.x, 0) / 4;
-    const cy = verts.reduce((s, v) => s + v.y, 0) / 4;
-    const exposed = roofShowsFrame(b, roof);
-    const inset = exposed ? .055 * (1 - roof.fallT) : 0;
-    const cover = verts.map(v => ({ ...v, x: v.x + (cx - v.x) * inset, y: v.y + (cy - v.y) * inset }));
-    const [a, b0, c, d] = cover as [typeof verts[number], typeof verts[number], typeof verts[number], typeof verts[number]];
-    const buckle = (roof.sag * .22 + Math.sin(roof.fallT * Math.PI) * .18) * (1 - roof.fallT);
-    const mid = (p: typeof a, q: typeof a) => ({ x: (p.x + q.x) / 2, y: (p.y + q.y) / 2, z: Math.max(.16, (p.z + q.z) / 2 - buckle) });
-    const ab = mid(a, b0), dc = mid(d, c);
-    // Give each folded half its own underside, rather than a rigid slab across the crease.
-    for (const face of [[a, ab, dc, d], [ab, b0, c, dc]]) {
-      const under = face.map(v => ({ ...v, z: v.z - thick }));
-      drawSlopedQuad(g, under.slice().reverse(), cols.edge, cols.edge, faded);
-      for (let i = 0; i < face.length; i++) {
-        const n = (i + 1) % face.length;
-        drawSlopedQuad(g, [face[i]!, face[n]!, under[n]!, under[i]!], cols.edge, cols.edge, faded);
-      }
-    }
-    beforeCover?.();
-    drawSlopedQuad(g, [a, ab, dc, d], cols.top, cols.top, faded);
-    drawSlopedQuad(g, [ab, b0, c, dc], shade(cols.top, 1 - buckle * .2), cols.top, faded);
-    const p = worldToScreen(ab.x, ab.y, ab.z), q = worldToScreen(dc.x, dc.y, dc.z);
-    g.moveTo(p.x, p.y).lineTo(q.x, q.y).stroke({ color: cols.edge, width: .6, alpha: faded * .25 });
-  } else drawSlopedQuad(g, verts, cols.top, cols.edge, faded);
-  if (roof.ridge && roof.state !== "falling" && sectionOwnsRidge(b, roof)) {
-    const key = ridgeKey(roof.ridge);
-    if (!drawnRidges.has(key)) {
-      drawnRidges.add(key);
-      const r = roof.ridge;
-      const sag = roof.sag * 0.35;
-      drawSlopedQuad(
-        g,
-        [
-          { x: r.ax, y: r.ay, z: r.az + 0.05 - sag },
-          { x: r.bx, y: r.by, z: r.bz + 0.05 - sag },
-          { x: r.bx, y: r.by, z: r.bz - 0.02 - sag },
-          { x: r.ax, y: r.ay, z: r.az - 0.02 - sag },
-        ],
-        cols.edge,
-        cols.edge,
-        faded,
-      );
-    }
-  }
-  if (b.features.parapet && roof.style === "flat" && roof.state === "intact") {
-    const z = verts[0]!.z;
-    const xs = verts.map((v) => v.x);
-    const ys = verts.map((v) => v.y);
-    const x0 = Math.min(...xs);
-    const x1 = Math.max(...xs);
-    const y0 = Math.min(...ys);
-    const y1 = Math.max(...ys);
-    drawIsoBox(g, x0, y0, x1 - x0, 0.08, z, 0.22, PAL.concrete, PAL.concreteDark, PAL.concrete, faded);
-    drawIsoBox(g, x0, y1 - 0.08, x1 - x0, 0.08, z, 0.22, PAL.concrete, PAL.concreteDark, PAL.concrete, faded);
-  }
-}
-
-function drawCollapsedSite(g: Graphics, site: CollapsedSite): void {
-  const rng = new Rng(site.seed);
-  drawGroundPoly(g, site.x + 0.04, site.y + 0.04, site.w - 0.08, site.d - 0.08, PAL.lotDark, 0.28);
-  for (const mark of site.marks) {
-    const color =
-      mark.kind === "dirt"
-        ? PAL.lotDark
-        : mark.kind === "slab"
-          ? PAL.concrete
-          : mark.kind === "crack"
-            ? PAL.crack
-            : mark.kind === "outline"
-              ? PAL.foundation
-              : mark.kind === "ridge"
-                ? PAL.concreteDark
-                : PAL.brickDark;
-    const alpha =
-      mark.kind === "crack" ? 0.55 : mark.kind === "dirt" ? 0.4 : mark.kind === "outline" ? 0.7 : 0.62;
-    if (mark.kind === "ridge" || mark.kind === "remnant") {
-      drawIsoBox(g, mark.x, mark.y, mark.w, mark.d, 0, mark.z, color, PAL.concreteDark, color, alpha);
-    } else {
-      drawGroundPoly(g, mark.x, mark.y, mark.w, mark.d, color, alpha);
-    }
-  }
-  void rng;
-}
-
-function drawCover(g: Graphics, patch: GroundPatch, condition: GroundCondition, season: SeasonId = "summer"): void {
-  const color = coverColor(patch.cover, condition, season);
-  if (patch.poly && patch.poly.length >= 3) {
-    drawWorldPoly(g, patch.poly.map((p) => ({ x: p.x, y: p.y, z: patch.z })), color, 1);
-  } else if (Math.abs(patch.heading) > 0.05) {
-    drawOrientedGround(g, patch.x + patch.w * 0.5, patch.y + patch.d * 0.5, patch.heading, patch.w, patch.d, color, 1, patch.z);
-  } else {
-    drawGroundPoly(g, patch.x, patch.y, patch.w, patch.d, color, 1, patch.z);
-  }
-  if (patch.cover === "water" || patch.cover === "forest-floor" || patch.cover.startsWith("field-")) {
-    if (patch.cover.startsWith("field-")) drawFieldRows(g, patch, condition, season);
-    if (patch.cover === "water" && (condition === "snow" || season === "winter")) drawIceCracks(g, patch);
-    return;
-  }
-  const speckle = patch.z < 0 ? 1 : Math.min(40, Math.max(4, Math.floor((patch.w * patch.d) / 18)));
-  const dark = coverDark(patch.cover, condition, season);
-  for (let i = 0; i < speckle; i++) {
-    const gx = patch.x + ((i * 17 + (patch.seed % 13)) % 97) * 0.12 * (patch.w / 8);
-    const gy = patch.y + ((i * 29 + (patch.seed % 17)) % 89) * 0.1 * (patch.d / 8);
-    if (gx > patch.x + patch.w || gy > patch.y + patch.d) continue;
-    if (!groundPatchContains(patch, gx + 0.16, gy + 0.13)) continue;
-    drawGroundPoly(g, gx, gy, 0.32, 0.26, dark, 0.2, patch.z);
-  }
-}
-
-function drawIceCracks(g: Graphics, patch: GroundPatch): void {
-  const cracks = 3 + (patch.seed % 3);
-  for (let i = 0; i < cracks; i++) {
-    const ox = ((patch.seed * (i + 3)) % 97) / 97;
-    const oy = ((patch.seed * (i + 5)) % 89) / 89;
-    drawGroundPoly(g, patch.x + ox * patch.w * 0.7, patch.y + oy * patch.d * 0.7, patch.w * 0.28, 0.06, 0x4a6274, 0.45, patch.z + 0.01);
-  }
-}
-
-function drawFieldRows(g: Graphics, patch: GroundPatch, condition: GroundCondition, season: SeasonId): void {
-  if (patch.poly && patch.poly.length >= 3) return;
-  const gap = patch.cover === "field-mature" ? 1.35 : 1.05;
-  const rows = Math.min(7, Math.max(3, Math.floor(patch.d / gap)));
-  const color = coverDark(patch.cover, condition, season);
-  const thick = patch.cover === "field-tilled" ? 0.1 : patch.cover === "field-stubble" ? 0.08 : patch.cover === "field-mature" ? 0.12 : 0.1;
-  const z = patch.z + 0.006;
-  for (let i = 0; i < rows; i++) {
-    const t = (i + 0.5) / rows - 0.5;
-    const fx = Math.cos(patch.heading);
-    const fy = Math.sin(patch.heading);
-    const cx = patch.x + patch.w * 0.5 - fy * t * patch.d;
-    const cy = patch.y + patch.d * 0.5 + fx * t * patch.d;
-    drawOrientedGround(g, cx, cy, patch.heading, patch.w * 0.9, thick, color, patch.cover === "field-tilled" ? 0.28 : 0.36, z);
-  }
-}
-
-function drawTerrainFeatures(g: Graphics, features: readonly TerrainFeature[], condition: GroundCondition, season: SeasonId): void {
-  for (const feature of features) {
-    switch (feature.kind) {
-      case "forest":
-        break;
-      case "field":
-        drawFieldCrops(g, feature, condition, season);
-        drawFieldChurn(g, feature);
-        break;
-      case "pond":
-      case "lake":
-      case "river":
-        break;
-      default: {
-        const _never: never = feature;
-        return _never;
-      }
-    }
-  }
-}
-
-function cropRowStyle(feature: FieldFeature, condition: GroundCondition, season: SeasonId): { top: number; left: number; right: number; h: number; thick: number } {
-  if (condition === "snow" || season === "winter") {
-    const dormant = feature.state === "mature" || feature.state === "stubble";
-    return {
-      top: 0xd0d8de,
-      left: 0x8a9094,
-      right: 0xa0a8ac,
-      h: dormant ? 0.12 : feature.state === "short" ? 0.08 : 0.04,
-      thick: 0.2,
-    };
-  }
-  const mature = feature.state === "mature";
-  const short = feature.state === "short";
-  const harvest = season === "autumn" && mature;
-  switch (feature.crop) {
-    case "corn":
-      return {
-        top: harvest ? 0xc4a024 : mature ? 0x6f9a38 : short ? 0x5a8a34 : 0x6a5a30,
-        left: mature ? 0x4a5a1c : 0x2e3c16,
-        right: mature ? 0x627428 : 0x3e4c1c,
-        h: harvest ? 0.36 : mature ? 0.28 : short ? 0.12 : 0.04,
-        thick: mature ? 0.18 : 0.14,
-      };
-    case "wheat":
-      return {
-        top: harvest ? 0xe2c56a : mature ? 0xa89448 : short ? 0x6e8a38 : 0x7a6840,
-        left: mature ? 0x6a5420 : 0x3a3a18,
-        right: mature ? 0x8a7030 : 0x4a4a1e,
-        h: harvest ? 0.26 : mature ? 0.2 : short ? 0.1 : 0.04,
-        thick: mature ? 0.16 : 0.14,
-      };
-    case "soy":
-      return {
-        top: harvest ? 0xc6a04a : mature ? 0x3e7432 : short ? 0x4a8240 : 0x6a5030,
-        left: mature ? 0x1e401c : 0x303016,
-        right: mature ? 0x2e5a28 : 0x3e3c1c,
-        h: harvest ? 0.24 : mature ? 0.18 : short ? 0.1 : 0.04,
-        thick: mature ? 0.18 : 0.14,
-      };
-    default: {
-      const _never: never = feature.crop;
-      return _never;
-    }
-  }
-}
-
-function drawFieldCrops(g: Graphics, feature: FieldFeature, condition: GroundCondition, season: SeasonId): void {
-  if (feature.state === "tilled") return;
-  const style = cropRowStyle(feature, condition, season);
-  const gap = Math.max(0.9, Math.min(1.2, feature.cell * 1.4));
-  const stride = feature.rows > 7 ? 2 : 1;
-  const live = (i: number): boolean => (!feature.mask || !!feature.mask[i]) && !feature.churn[i];
-  forEachFieldRun(feature, stride, live, (_run, _row, span, center) => {
-    drawOrientedIsoBox(
-      g,
-      center.x,
-      center.y,
-      feature.heading,
-      span,
-      Math.min(style.thick, gap * 0.72),
-      0.012,
-      style.h,
-      style.top,
-      style.left,
-      style.right,
-      feature.state === "stubble" ? 0.7 : 1,
-    );
-  });
-}
-
-function drawFieldChurn(g: Graphics, feature: FieldFeature): void {
-  for (let row = 0; row < feature.rows; row++) {
-    let run = -1;
-    let mark = 0;
-    for (let col = 0; col <= feature.cols; col++) {
-      const next = col < feature.cols ? feature.churn[row * feature.cols + col]! : 0;
-      const valid = col < feature.cols && (!feature.mask || feature.mask[row * feature.cols + col]);
-      const cur = valid ? next : 0;
-      if (cur && run < 0) {
-        run = col;
-        mark = cur;
-        continue;
-      }
-      if (cur === mark && run >= 0) continue;
-      if (run < 0) continue;
-      const end = col - 1;
-      const span = (end - run + 1) * feature.cell;
-      const { x: cx, y: cy } = fieldRunCenter(feature, run, end, row);
-      const width = mark === CHURN_SWATH ? feature.cell * 1.02 : feature.cell * 0.62;
-      drawOrientedGround(
-        g,
-        cx,
-        cy,
-        feature.heading,
-        span + feature.cell * 0.08,
-        width,
-        mark === CHURN_TRACK ? 0x8a6a38 : PAL.fieldStubble,
-        0.92,
-        0.016,
-      );
-      run = cur ? col : -1;
-      mark = cur;
-    }
-  }
-}
-
-/** Centimetre pose steps stay under a pixel at street zoom, even on 2x displays. */
-const poseStep = (v: number) => Math.round(v * 100);
-
-function debrisVersion(r: Rubble): string {
-  return `${poseStep(r.x)}:${poseStep(r.y)}:${poseStep(r.elev)}:${poseStep(r.heading)}:${r.w}:${r.d}:${r.thickness}:${r.damage}`;
-}
-
-function settledParticleVersion(p: Particle): string {
-  const fade = Math.min(1, p.life / p.maxLife);
-  return `${p.kind}:${poseStep(p.x)}:${poseStep(p.y)}:${poseStep(p.z)}:${poseStep(p.rot)}:${p.size}:${p.tint}:${Math.round(fade * 32)}`;
-}
-
-function drawWeatherFlake(g: Graphics, flake: WeatherFlake): void {
-  const color = flake.kind === "rain" ? 0x9eb4c4 : flake.kind === "leaves" ? 0xc47a32 : 0xf4f7fb;
-  const w = flake.kind === "rain" ? 0.05 : 0.12;
-  const d = flake.kind === "rain" ? 0.16 : 0.08;
-  drawOrientedIsoBox(g, flake.x, flake.y, 0.4, w, d, flake.z, 0.04, color, color, color, 0.7);
-}
-
-/** Dust this faded is under a tenth of opacity, which overview zoom shrinks to a couple of pixels. */
-const SPECK_DUST_FADE = 0.2;
-
-function particleBelowSpeck(p: Particle): boolean {
-  return p.kind === "dust" && p.life / p.maxLife < SPECK_DUST_FADE;
-}
-
-/**
- * Overview LOD: the contact shadow is under a pixel and a chip is a speck, so each
- * particle is one fill in its lit face colour at the same screen spot.
- */
-function drawParticleSpeck(g: Graphics, p: Particle): void {
-  const fade = Math.min(1, p.life / p.maxLife);
-  if (p.kind === "dust") {
-    drawDustSpeck(g, p, fade);
-    return;
-  }
-  const c = worldToScreen(p.x, p.y, p.z);
-  const { color, len, wid } = particleChip(p);
-  const s = (len + wid) * ISO_W * 0.5;
-  g.rect(c.x - s / 2, c.y - s / 4, s, s / 2);
-  g.fill({ color, alpha: (p.kind === "crop" ? 0.88 : 0.92) * fade });
-}
-
-function drawDustSpeck(g: Graphics, p: Particle, fade: number): void {
-  const c = worldToScreen(p.x, p.y, p.z);
-  const r = 5 + p.size * 10;
-  g.rect(c.x - r / 2, c.y - r / 2, r, r);
-  g.fill({ color: PAL.dust, alpha: 0.32 * fade });
-}
-
-function particleChip(p: Particle): { color: number; dark: number; len: number; wid: number } {
-  if (p.kind === "crop") {
-    const color = p.tint ?? 0xd4c44a;
-    return { color, dark: shade(color, 0.65), len: 0.09 + p.size * 0.18, wid: 0.04 + p.size * 0.06 };
-  }
-  const color =
-    p.kind === "wood"
-      ? PAL.wood
-      : p.kind === "brick"
-        ? PAL.brick
-        : p.kind === "metal"
-          ? PAL.metal
-          : p.kind === "glass"
-            ? 0xa8c4d0
-            : PAL.concrete;
-  const dark =
-    p.kind === "wood"
-      ? PAL.woodDark
-      : p.kind === "brick"
-        ? PAL.brickDark
-        : p.kind === "metal"
-          ? PAL.metalDark
-          : PAL.concreteDark;
-  const len = p.kind === "wood" ? 0.18 + p.size * 0.35 : 0.1 + p.size * 0.22;
-  const wid = p.kind === "wood" ? 0.05 + p.size * 0.08 : 0.07 + p.size * 0.12;
-  return { color, dark, len, wid };
-}
-
-function drawParticle(g: Graphics, p: Particle): void {
-  const fade = Math.min(1, p.life / p.maxLife);
-  const s = worldToScreen(p.x, p.y, 0);
-  g.ellipse(s.x, s.y, 3.2, 1.6);
-  g.fill({ color: PAL.shadow, alpha: 0.2 * fade });
-  if (p.kind === "dust") {
-    drawDustSpeck(g, p, fade);
-    return;
-  }
-  const { color, dark, len, wid } = particleChip(p);
-  if (p.kind === "crop") {
-    drawOrientedIsoBox(g, p.x, p.y, p.rot, len, wid, p.z, Math.max(0.03, p.size * 0.12), color, dark, shade(color, 0.8), 0.88 * fade);
-    return;
-  }
-  drawOrientedIsoBox(g, p.x, p.y, p.rot, len, wid, p.z, Math.max(0.04, p.size * 0.2), color, dark, color, 0.92 * fade);
-}
-
-function markColor(mark: GroundMark, season: SeasonId = "summer"): number {
-  switch (mark.kind) {
-    case "scrape":
-      return 0x2a2418;
-    case "tire":
-      return 0x2c281c;
-    case "season-track":
-      return seasonTrackColor(season);
-    case "oil":
-      return 0x1a1814;
-    case "crack":
-      return PAL.crack;
-    case "dust":
-      return PAL.lotDark;
-    case "glass":
-      return 0x8aa4b0;
-    case "chip":
-    case "splinter":
-      return mark.material === "wood"
-        ? PAL.woodDark
-        : mark.material === "brick"
-          ? PAL.brickDark
-          : mark.material === "metal"
-            ? PAL.metalDark
-            : PAL.concreteDark;
-    default: {
-      const _never: never = mark.kind;
-      return _never;
-    }
-  }
-}
-
-function drawGroundMark(g: Graphics, mark: GroundMark, season: SeasonId = "summer"): void {
-  const color = markColor(mark, season);
-  const fx = Math.cos(mark.heading);
-  const fy = Math.sin(mark.heading);
-  const hx = mark.w * 0.5;
-  const hy = mark.d * 0.5;
-  const pts = [
-    { x: mark.x + fx * hx - fy * hy, y: mark.y + fy * hx + fx * hy },
-    { x: mark.x + fx * hx + fy * hy, y: mark.y + fy * hx - fx * hy },
-    { x: mark.x - fx * hx + fy * hy, y: mark.y - fy * hx - fx * hy },
-    { x: mark.x - fx * hx - fy * hy, y: mark.y - fy * hx + fx * hy },
+/** Low barrier boxes along the outer edges a deck tile sits on. */
+function deckBarriers(b: Building, gx: number, gy: number, x: number, y: number): number[][] {
+  const cs = b.cellSize;
+  return [
+    ...(gx === 0 ? [[x, y, .12, cs]] : []), ...(gx === b.w - 1 ? [[x + cs - .12, y, .12, cs]] : []),
+    ...(gy === 0 ? [[x, y, cs, .12]] : []), ...(gy === b.d - 1 ? [[x, y + cs - .12, cs, .12]] : []),
   ];
-  const q = pts.flatMap((p) => {
-    const s = worldToScreen(p.x, p.y, 0);
-    return [s.x, s.y];
-  });
-  g.poly(q);
-  g.fill({ color, alpha: mark.alpha });
 }
 
-function drawDebris(g: Graphics, r: Rubble): void {
-  const rng = new Rng(r.seed);
-  const cols = cellColors(r.material, true);
-  const z0 = r.elev;
-  const h = Math.max(0.05, r.thickness);
-  drawOrientedIsoBox(g, r.x, r.y, r.heading, r.w * 1.08, r.d * 1.08, 0, 0.02, PAL.shadow, PAL.shadow, PAL.shadow, 0.26);
-
-  if (r.skin === "roofing") {
-    const metal = r.material === "metal";
-    const top = metal ? PAL.roofMetal : PAL.roofShingle;
-    const edge = metal ? PAL.metalDark : PAL.roofShingleDark;
-    const under = metal ? PAL.metalDark : PAL.wood;
-    const underDark = metal ? PAL.metal : PAL.woodDark;
-    drawOrientedIsoBox(g, r.x, r.y, r.heading, r.w, r.d, z0, Math.max(0.04, h * 0.45), under, underDark, under, 0.95);
-    drawOrientedIsoBox(
-      g,
-      r.x,
-      r.y,
-      r.heading,
-      r.w * 0.9,
-      r.d * 0.86,
-      z0 + h * 0.28,
-      Math.max(0.05, h * 0.72),
-      top,
-      edge,
-      edge,
-      1,
-    );
-    if (!metal && rng.next() > 0.55) {
-      const fold = rng.range(-0.18, 0.18);
-      drawOrientedIsoBox(
-        g,
-        r.x + Math.cos(r.heading) * r.w * 0.28,
-        r.y + Math.sin(r.heading) * r.w * 0.28,
-        r.heading + fold,
-        r.w * 0.26,
-        r.d * 0.2,
-        z0 + h * 0.55,
-        h * 0.28,
-        PAL.roofShingleDark,
-        PAL.woodDark,
-        PAL.roofShingle,
-        1,
-      );
-    }
-    return;
-  }
-
-  if (r.shape === "beam") {
-    drawOrientedIsoBox(g, r.x, r.y, r.heading, r.w, r.d, z0, h, cols.top, cols.left, cols.right, 1);
-    if (rng.next() > 0.4) {
-      const t = rng.range(-0.22, 0.22);
-      const fx = Math.cos(r.heading);
-      const fy = Math.sin(r.heading);
-      drawOrientedIsoBox(
-        g,
-        r.x + fx * t * r.w,
-        r.y + fy * t * r.w,
-        r.heading + rng.range(-0.25, 0.25),
-        r.w * 0.35,
-        r.d * 0.7,
-        z0 + h * 0.15,
-        h * 0.45,
-        cols.top,
-        cols.left,
-        cols.right,
-        1,
-      );
-    }
-    return;
-  }
-
-  if (r.shape === "panel") {
-    const fold = rng.range(-0.45, 0.45);
-    const fx = Math.cos(r.heading);
-    const fy = Math.sin(r.heading);
-    const rx = -fy;
-    const ry = fx;
-    drawOrientedIsoBox(g, r.x + rx * r.d * 0.18, r.y + ry * r.d * 0.18, r.heading + fold, r.w * 0.62, r.d * 0.58, z0, h, cols.top, cols.left, cols.right, 1);
-    drawOrientedIsoBox(g, r.x - rx * r.d * 0.16, r.y - ry * r.d * 0.16, r.heading - fold * 0.8, r.w * 0.48, r.d * 0.42, z0 + h * 0.2, h * 0.7, cols.top, cols.left, cols.right, 0.95);
-    drawOrientedIsoBox(
-      g,
-      r.x + fx * r.w * 0.22,
-      r.y + fy * r.w * 0.22,
-      r.heading + fold * 1.2,
-      r.w * 0.32,
-      r.d * 0.28,
-      z0 + h * 0.12,
-      h * 0.5,
-      cols.top,
-      cols.left,
-      cols.right,
-      0.92,
-    );
-    return;
-  }
-
-  drawOrientedIsoBox(g, r.x, r.y, r.heading, r.w * rng.range(0.82, 1.05), r.d * rng.range(0.7, 1.02), z0, h, cols.top, cols.left, cols.right, 1);
-  if (r.layer === "remnant" && rng.next() > 0.28) {
-    const ox = rng.range(-0.22, 0.22);
-    const oy = rng.range(-0.22, 0.22);
-    drawOrientedIsoBox(
-      g,
-      r.x + ox,
-      r.y + oy,
-      r.heading + rng.range(-0.55, 0.55),
-      r.w * rng.range(0.32, 0.62),
-      r.d * rng.range(0.28, 0.55),
-      z0 + h * 0.25,
-      h * rng.range(0.28, 0.7),
-      cols.top,
-      cols.left,
-      cols.right,
-      1,
-    );
-  }
-  if (rng.next() > 0.45) {
-    drawOrientedIsoBox(
-      g,
-      r.x + rng.range(-0.16, 0.16),
-      r.y + rng.range(-0.16, 0.16),
-      r.heading + rng.range(-0.8, 0.8),
-      r.w * rng.range(0.18, 0.4),
-      r.d * rng.range(0.12, 0.3),
-      z0 + h * 0.08,
-      h * 0.35,
-      cols.top,
-      cols.left,
-      cols.right,
-      0.9,
-    );
-  }
+function groundKey({ town, view, condition }: RenderFrame): string {
+  return `${view.terrain}:${view.roads}:${town.district}:${town.seed}:${town.lots.length}:${town.network.mesh.length}:${town.ground.length}:${town.features?.length ?? 0}:${town.featureRevision ?? 0}:${condition}:${town.season}`;
 }
 
-function drawBird(g: Graphics, bird: Bird): void {
-  const c = worldToScreen(bird.x, bird.y, bird.z);
-  g.poly([c.x, c.y, c.x + 6, c.y - 2, c.x + 2, c.y + 1]);
-  g.fill({ color: PAL.bird, alpha: Math.min(1, bird.life) });
+/** Authored ground patches, or a plain lot cover per lot when a town has none. */
+function groundCovers(town: Town): GroundPatch[] {
+  if (town.ground.length) return town.ground;
+  return town.lots.map((lot) => ({
+    x: lot.x,
+    y: lot.y,
+    w: lot.w,
+    d: lot.d,
+    heading: 0,
+    cover: "lot" as CoverKind,
+    seed: town.seed,
+    z: 0,
+  }));
 }

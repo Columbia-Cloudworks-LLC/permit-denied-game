@@ -92,8 +92,11 @@ function patchPasses(renderer: WorldRenderer, sink: Record<string, number>) {
   drawing.draw = (c) => { const t = performance.now(); try { draw(c); } finally { sink.drawCacheSubmit = (sink.drawCacheSubmit ?? 0) + performance.now() - t; } };
 }
 
-/** `near` parks the street-camera dozer against an intact tower, whose occlusion fades keep it live. */
-async function runScenario(camera: "street" | "overview" | "near", counts: ReturnType<typeof patchCounts>) {
+type Camera = "street" | "overview" | "near";
+type Dozer = ReturnType<typeof createDozer>;
+
+/** Three core towers dropped at once, four per-cell wrecks, and a debris burst in front of the first tower. */
+function stageScenario(camera: Camera) {
   const town = createDenseCityTown();
   const particles = new ParticlePool();
   const towers = towersWithCores(town, 3);
@@ -106,14 +109,7 @@ async function runScenario(camera: "street" | "overview" | "near", counts: Retur
   }
   const focus = towers[0]!;
   const fx = focus.x + (focus.w * focus.cellSize) / 2, fy = focus.y + focus.d * focus.cellSize + 2.5;
-  for (let i = 0; i < INJECT; i++) {
-    const a = i * 2.399, rad = 1.5 + Math.sqrt(i) * 0.45;
-    addDebrisBody(town, {
-      x: fx + Math.cos(a) * rad, y: fy + Math.sin(a) * rad, w: 0.32 + (i % 5) * 0.06, d: 0.24 + (i % 3) * 0.05,
-      material: i % 3 ? "concrete" : "brick", layer: i % 4 ? "fragment" : "remnant", mass: 0.6 + (i % 7) * 0.15,
-      vx: Math.cos(a) * 2.2, vy: Math.sin(a) * 2.2,
-    });
-  }
+  injectDebris(town, fx, fy);
   const host = town.buildings.filter((b) => !towers.includes(b) && !wrecks.includes(b)).sort((a, b) => b.floors - a.floors)[0]!;
   const dozer = camera === "near"
     ? createDozer(host.x + (host.w * host.cellSize) / 2, host.y + host.d * host.cellSize + 1.5, -Math.PI / 2)
@@ -125,6 +121,77 @@ async function runScenario(camera: "street" | "overview" | "near", counts: Retur
     const cam = frameDenseCityOverview(town, DESKTOP_VIEW.w, DESKTOP_VIEW.h);
     Object.assign(renderer, { zoom: cam.zoom, camX: cam.camX, camY: cam.camY });
   }
+  return { town, particles, towers, dozer, renderer };
+}
+
+/** A golden-angle spiral of mixed fragments flung outward. */
+function injectDebris(town: Town, fx: number, fy: number): void {
+  for (let i = 0; i < INJECT; i++) {
+    const a = i * 2.399, rad = 1.5 + Math.sqrt(i) * 0.45;
+    addDebrisBody(town, {
+      x: fx + Math.cos(a) * rad, y: fy + Math.sin(a) * rad, w: 0.32 + (i % 5) * 0.06, d: 0.24 + (i % 3) * 0.05,
+      material: i % 3 ? "concrete" : "brick", layer: i % 4 ? "fragment" : "remnant", mass: 0.6 + (i % 7) * 0.15,
+      vx: Math.cos(a) * 2.2, vy: Math.sin(a) * 2.2,
+    });
+  }
+}
+
+const overlayKey = (renderer: WorldRenderer) => (renderer as unknown as { overlayKey: string }).overlayKey;
+
+interface TickContext {
+  town: Town; dozer: Dozer; particles: ParticlePool; renderer: WorldRenderer; camera: Camera;
+  counts: ReturnType<typeof patchCounts>; passes: Record<string, number>; heap: { prev: number; peak: number };
+}
+
+/** One sim step and one draw, each timed, with the counters each one moved. */
+function benchTick({ town, dozer, particles, renderer, camera, counts, passes, heap }: TickContext): Tick {
+  for (const k of Object.keys(phase) as (keyof typeof phase)[]) phase[k] = 0;
+  for (const k of Object.keys(passes)) passes[k] = 0;
+  for (const k of Object.keys(pileBumps)) delete pileBumps[k];
+  const s0 = performance.now();
+  stepWorld(town, dozer, particles, BENCH_UPGRADES, SIM_DT);
+  const simMs = performance.now() - s0;
+  const sim = { ...phase };
+  const bumps = { ...pileBumps };
+  const ds = lastDebrisStats();
+  if (camera !== "overview") {
+    const f = cameraFocus(dozer.x, dozer.y, 0.4, renderer.zoom);
+    renderer.camX = f.x; renderer.camY = f.y;
+  }
+  renderer.layout(DESKTOP_VIEW.w, DESKTOP_VIEW.h, 0, 0);
+  counts.fill = counts.poly = counts.stroke = 0;
+  for (const k of Object.keys(pileBumps)) delete pileBumps[k];
+  addChildMs.v = 0;
+  const overlayBefore = overlayKey(renderer);
+  const r0 = performance.now();
+  renderer.draw(town, dozer, particles, [], SIM_DT);
+  const renderMs = performance.now() - r0;
+  let pileCells = 0;
+  for (const h of town.pile.height) if (h >= 0.05) pileCells++;
+  const now = process.memoryUsage().heapUsed;
+  heap.peak = Math.max(heap.peak, now);
+  const heapDelta = now - heap.prev;
+  heap.prev = now;
+  return {
+    simMs, debrisMs: sim.debris, structuresMs: sim.structures, spatialMs: sim.spatialQuery + sim.spatialInsert,
+    renderMs, passes: { ...passes }, corePilesMs: phase.corePiles,
+    active: ds.active, sleeping: ds.sleeping, pileCells, contactPairs: ds.contactPairs,
+    commands: renderer.stats.commands, rebuilt: renderer.stats.rebuilt,
+    fills: counts.fill, polys: counts.poly, strokes: counts.stroke, heapDelta,
+    overlayRebuilt: overlayKey(renderer) !== overlayBefore ? 1 : 0,
+    addChildMs: addChildMs.v, pileBumps: bumps,
+  };
+}
+
+function keyHistogram(renderer: WorldRenderer): Record<string, number> {
+  const hist: Record<string, number> = {};
+  for (const k of renderer.submittedKeys()) { const kind = k.split(":")[0]!; hist[kind] = (hist[kind] ?? 0) + 1; }
+  return hist;
+}
+
+/** `near` parks the street-camera dozer against an intact tower, whose occlusion fades keep it live. */
+async function runScenario(camera: Camera, counts: ReturnType<typeof patchCounts>) {
+  const { town, particles, towers, dozer, renderer } = stageScenario(camera);
   const passes: Record<string, number> = {};
   patchPasses(renderer, passes);
   const gcPauses: number[] = [];
@@ -134,50 +201,13 @@ async function runScenario(camera: "street" | "overview" | "near", counts: Retur
   const kinds: Record<number, Record<string, number>> = {};
   const keyDiffs: string[] = [];
   const heap0 = process.memoryUsage().heapUsed;
-  let heapPrev = heap0, heapPeak = heap0;
+  const heap = { prev: heap0, peak: heap0 };
+  const context: TickContext = { town, dozer, particles, renderer, camera, counts, passes, heap };
   for (let i = 0; i < STEPS; i++) {
-    for (const k of Object.keys(phase) as (keyof typeof phase)[]) phase[k] = 0;
-    for (const k of Object.keys(passes)) passes[k] = 0;
-    for (const k of Object.keys(pileBumps)) delete pileBumps[k];
-    const s0 = performance.now();
-    stepWorld(town, dozer, particles, BENCH_UPGRADES, SIM_DT);
-    const simMs = performance.now() - s0;
-    const sim = { ...phase };
-    const pileBumpsSim = { ...pileBumps };
-    const ds = lastDebrisStats();
-    if (camera !== "overview") {
-      const f = cameraFocus(dozer.x, dozer.y, 0.4, renderer.zoom);
-      renderer.camX = f.x; renderer.camY = f.y;
-    }
-    renderer.layout(DESKTOP_VIEW.w, DESKTOP_VIEW.h, 0, 0);
-    counts.fill = counts.poly = counts.stroke = 0;
-    for (const k of Object.keys(pileBumps)) delete pileBumps[k];
-    const bumps = { ...pileBumpsSim };
-    addChildMs.v = 0;
-    const overlayBefore = (renderer as unknown as { overlayKey: string }).overlayKey;
-    const r0 = performance.now();
-    renderer.draw(town, dozer, particles, [], SIM_DT);
-    const renderMs = performance.now() - r0;
-    let pileCells = 0;
-    for (const h of town.pile.height) if (h >= 0.05) pileCells++;
-    const heap = process.memoryUsage().heapUsed;
-    heapPeak = Math.max(heapPeak, heap);
-    ticks.push({
-      simMs, debrisMs: sim.debris, structuresMs: sim.structures, spatialMs: sim.spatialQuery + sim.spatialInsert,
-      renderMs, passes: { ...passes }, corePilesMs: phase.corePiles,
-      active: ds.active, sleeping: ds.sleeping, pileCells, contactPairs: ds.contactPairs,
-      commands: renderer.stats.commands, rebuilt: renderer.stats.rebuilt,
-      fills: counts.fill, polys: counts.poly, strokes: counts.stroke, heapDelta: heap - heapPrev,
-      overlayRebuilt: (renderer as unknown as { overlayKey: string }).overlayKey !== overlayBefore ? 1 : 0,
-      addChildMs: addChildMs.v, pileBumps: bumps,
-    });
-    heapPrev = heap;
-    if (i === 5 || i === 40 || i === 400) {
-      const hist: Record<string, number> = {};
-      for (const k of renderer.submittedKeys()) { const kind = k.split(":")[0]!; hist[kind] = (hist[kind] ?? 0) + 1; }
-      kinds[i] = hist;
-    }
-    const overlayAfter = (renderer as unknown as { overlayKey: string }).overlayKey;
+    const overlayBefore = overlayKey(renderer);
+    ticks.push(benchTick(context));
+    if (i === 5 || i === 40 || i === 400) kinds[i] = keyHistogram(renderer);
+    const overlayAfter = overlayKey(renderer);
     if (i >= 600 && overlayAfter !== overlayBefore && keyDiffs.length < 6) keyDiffs.push(`${overlayBefore} -> ${overlayAfter}`);
     if (i % 60 === 59) await new Promise((r) => setTimeout(r, 0));
   }
@@ -185,7 +215,7 @@ async function runScenario(camera: "street" | "overview" | "near", counts: Retur
   obs.disconnect();
   renderer.invalidate();
   renderer.root.destroy({ children: true });
-  return { camera, keyDiffs, kinds, ticks, gcPauses, heap: { start: heap0, end: process.memoryUsage().heapUsed, peak: heapPeak }, towers: towers.map((t) => `${t.archetypeId}:${t.floors}f`) };
+  return { camera, keyDiffs, kinds, ticks, gcPauses, heap: { start: heap0, end: process.memoryUsage().heapUsed, peak: heap.peak }, towers: towers.map((t) => `${t.archetypeId}:${t.floors}f`) };
 }
 
 const stat = (xs: number[]) => {

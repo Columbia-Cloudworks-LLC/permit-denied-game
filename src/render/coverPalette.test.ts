@@ -65,4 +65,23 @@ describe("cover palettes", () => {
     expect(coverColor("driveway", "snow")).not.toBe(coverColor("parking", "snow"));
     expect(coverColor("tracks", "snow")).not.toBe(snowGrass);
   });
+
+  it("greens growing covers in spring and browns them in autumn, leaving paving alone", () => {
+    for (const cover of ["grass", "scrub", "planted", "lot"] as const) {
+      const summer = coverColor(cover, "clear", "summer");
+      const spring = channels(coverColor(cover, "clear", "spring"));
+      const autumn = channels(coverColor(cover, "clear", "autumn"));
+      expect(coverColor(cover, "clear", "spring")).not.toBe(summer);
+      expect(spring.g - spring.r, `${cover} spring`).toBeGreaterThan(autumn.g - autumn.r);
+      expect(autumn.r, `${cover} autumn`).toBeGreaterThan(autumn.b);
+      expect(luminance(coverDark(cover, "clear", "autumn"))).toBeLessThan(luminance(coverColor(cover, "clear", "autumn")));
+    }
+    expect(coverColor("forest-floor", "clear", "autumn")).not.toBe(coverColor("forest-floor", "clear", "summer"));
+    expect(coverColor("dirt", "clear", "spring")).not.toBe(coverColor("dirt", "clear", "autumn"));
+    for (const cover of HARD_LOT_COVERS) {
+      expect(coverColor(cover, "clear", "spring")).toBe(coverColor(cover, "clear", "summer"));
+      expect(coverColor(cover, "clear", "autumn")).toBe(coverColor(cover, "clear", "summer"));
+      expect(coverDark(cover, "clear", "autumn")).toBe(coverDark(cover, "clear", "summer"));
+    }
+  });
 });

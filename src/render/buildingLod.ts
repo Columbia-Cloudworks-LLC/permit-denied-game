@@ -96,9 +96,30 @@ export class ChunkSplitMemory {
  * and reuse the same Graphics frame to frame.
  */
 export function coalesceStaticChunks<T extends ChunkCommand>(cmds: readonly T[], memory?: ChunkSplitMemory): T[] {
+  const { runOf, runs } = versionedRuns(cmds);
+  const out: T[] = [];
+  const ordinals = new Map<string, number>();
+  let i = 0;
+  while (i < cmds.length) {
+    const head = cmds[i]!;
+    const r = runOf[i];
+    if (r !== undefined) i = emitVersionedRun(cmds, i, runs[r]!, out, memory);
+    else if (!head.chunk || head.version !== undefined) out.push(cmds[i++]!);
+    else i = emitUnversionedRun(cmds, i, out, ordinals);
+  }
+  return out;
+}
+
+interface ChunkRun { first: number; last: number; count: number }
+
+/**
+ * Runs of one versioned chunk among the stationary commands, each capped at CHUNK_SEGMENT
+ * members, and the run each stationary command belongs to.
+ */
+function versionedRuns(cmds: readonly ChunkCommand[]): { runOf: number[]; runs: ChunkRun[] } {
   const members = new Map<string, number>();
   const runOf: number[] = [];
-  const runs: { first: number; last: number; count: number }[] = [];
+  const runs: ChunkRun[] = [];
   let open = -1, openChunk: string | undefined;
   for (let i = 0; i < cmds.length; i++) {
     const cmd = cmds[i]!;
@@ -115,44 +136,41 @@ export function coalesceStaticChunks<T extends ChunkCommand>(cmds: readonly T[],
     }
     runOf[i] = open;
   }
-  const out: T[] = [];
-  const ordinals = new Map<string, number>();
-  const merge = (run: readonly T[]) => run.length === 1 ? run[0]!.run : (g: Graphics) => {
+  return { runOf, runs };
+}
+
+function mergeRuns(run: readonly ChunkCommand[]): (g: Graphics) => void {
+  return run.length === 1 ? run[0]!.run : (g: Graphics) => {
     for (const cmd of run) cmd.run(g);
   };
-  let i = 0;
-  while (i < cmds.length) {
-    const head = cmds[i]!;
-    const r = runOf[i];
-    if (r !== undefined) {
-      const span = runs[r]!;
-      if (span.count > 1 && span.first === i) {
-        const last = cmds[span.last]!;
-        const key = `chunk:${head.chunk}:${head.key ?? head.depth}:${last.key ?? last.depth}:${span.count}`;
-        const crossed = span.last - span.first + 1 !== span.count;
-        if (crossed) memory?.lastSplit.set(key, memory.frame);
-        const held = memory ? memory.frame - (memory.lastSplit.get(key) ?? -Infinity) < SPLIT_HOLD_FRAMES : crossed;
-        if (!held) {
-          out.push({ ...head, key, run: merge(cmds.slice(i, span.last + 1)) });
-          i = span.last + 1;
-          continue;
-        }
-      }
-      out.push(head);
-      i++;
-      continue;
+}
+
+/** At a run's first member, emit the whole run as one command unless a mover holds it split. */
+function emitVersionedRun<T extends ChunkCommand>(cmds: readonly T[], i: number, span: ChunkRun, out: T[], memory?: ChunkSplitMemory): number {
+  const head = cmds[i]!;
+  if (span.count > 1 && span.first === i) {
+    const last = cmds[span.last]!;
+    const key = `chunk:${head.chunk}:${head.key ?? head.depth}:${last.key ?? last.depth}:${span.count}`;
+    const crossed = span.last - span.first + 1 !== span.count;
+    if (crossed) memory?.lastSplit.set(key, memory.frame);
+    const held = memory ? memory.frame - (memory.lastSplit.get(key) ?? -Infinity) < SPLIT_HOLD_FRAMES : crossed;
+    if (!held) {
+      out.push({ ...head, key, run: mergeRuns(cmds.slice(i, span.last + 1)) });
+      return span.last + 1;
     }
-    if (!head.chunk || head.version !== undefined) {
-      out.push(head);
-      i++;
-      continue;
-    }
-    let j = i + 1;
-    while (j < cmds.length && cmds[j]!.chunk === head.chunk && cmds[j]!.version === undefined) j++;
-    const n = ordinals.get(head.chunk) ?? 0;
-    ordinals.set(head.chunk, n + 1);
-    out.push({ ...head, key: `${head.chunk}:${n}`, run: merge(cmds.slice(i, j)) });
-    i = j;
   }
-  return out;
+  out.push(head);
+  return i + 1;
+}
+
+/** Adjacent unversioned commands of one chunk share a Graphics keyed by their ordinal. */
+function emitUnversionedRun<T extends ChunkCommand>(cmds: readonly T[], i: number, out: T[], ordinals: Map<string, number>): number {
+  const head = cmds[i]!;
+  const chunk = head.chunk!;
+  let j = i + 1;
+  while (j < cmds.length && cmds[j]!.chunk === chunk && cmds[j]!.version === undefined) j++;
+  const n = ordinals.get(chunk) ?? 0;
+  ordinals.set(chunk, n + 1);
+  out.push({ ...head, key: `${chunk}:${n}`, run: mergeRuns(cmds.slice(i, j)) });
+  return j;
 }

@@ -168,7 +168,7 @@ function insetAabb(
   };
 }
 
-function aabbCorners(box: { x: number; y: number; w: number; d: number }): { x: number; y: number }[] {
+export function aabbCorners(box: { x: number; y: number; w: number; d: number }): { x: number; y: number }[] {
   return [
     { x: box.x, y: box.y },
     { x: box.x + box.w, y: box.y },
