@@ -248,6 +248,19 @@ function addMark(
   addSurfaceMark(town, x, y, kind, material, heading, owner);
 }
 
+/** One collapse's spawn, its seeded stream and the mass still to place. */
+interface CollapseBurst {
+  town: Town;
+  spawn: CollapseSpawn;
+  rng: Rng;
+  dx: number;
+  dy: number;
+  heap: number;
+  roofing: boolean;
+  created: Rubble[];
+  remaining: number;
+}
+
 export function spawnCollapseDebris(town: Town, spawn: CollapseSpawn, bodyLimit = Infinity): Rubble[] {
   const rng = new Rng(
     (Math.floor(spawn.x * 1009) ^ Math.floor(spawn.y * 917) ^ (spawn.floor * 131) ^ materialSeed(spawn.material)) >>> 0,
@@ -265,79 +278,113 @@ export function spawnCollapseDebris(town: Town, spawn: CollapseSpawn, bodyLimit 
   const dx = spawn.dx / dirL;
   const dy = spawn.dy / dirL;
   const heap = town.pile.heightAt(spawn.x, spawn.y);
-  const created: Rubble[] = [];
 
   const fines = spawn.material === "glass" ? budget * 0.72 : budget * 0.12;
   town.pile.addMass(spawn.x, spawn.y, fines, spawn.material);
-  let remaining = budget - fines;
+  const burst: CollapseBurst = { town, spawn, rng, dx, dy, heap, roofing: spawn.source === "roof", created: [], remaining: budget - fines };
 
-  const remnantPlans = spawn.source === "roof" ? roofRemnantPlan(spawn.material, rng, spawn) : remnantPlan(spawn.material, rng);
-  const roofing = spawn.source === "roof";
+  spawnRemnants(burst);
+  spawnFragments(burst);
+  if (burst.remaining > 0.02) {
+    town.pile.addMass(spawn.x + dx * 0.15, spawn.y + dy * 0.15, burst.remaining, spawn.material);
+    burst.remaining = 0;
+  }
+  spawnCollapseMarks(burst);
+  return burst.created;
+}
+
+/** Large pieces (wall sections or roof panels) take most of the mass, slid along the collapse direction. */
+function spawnRemnants(burst: CollapseBurst): void {
+  const { spawn, rng, dx, dy } = burst;
+  const remnantPlans = burst.roofing ? roofRemnantPlan(spawn.material, rng, spawn) : remnantPlan(spawn.material, rng);
   const baseHeading = spawn.heading ?? Math.atan2(dy, dx);
-  const startElev = spawn.elev ?? heap + rng.range(0, 0.08 + spawn.floor * 0.06);
+  const startElev = spawn.elev ?? burst.heap + rng.range(0, 0.08 + spawn.floor * 0.06);
   for (const plan of remnantPlans) {
-    if (remaining < 0.08) break;
-    const mass = Math.min(remaining * plan.massShare, remaining);
-    remaining -= mass;
-    const exactPanel = spawn.preservePanelPose && plan.shape === "panel";
-    const jitter = exactPanel ? 0 : roofing ? 0.08 : 0.28;
-    const ox = (rng.range(-jitter, jitter) + plan.along * dx) * (roofing ? 0.55 : spawn.cellSize);
-    const oy = (rng.range(-jitter, jitter) + plan.along * dy) * (roofing ? 0.55 : spawn.cellSize);
-    const body = addDebrisBody(town, {
-      x: spawn.x + ox,
-      y: spawn.y + oy,
-      w: plan.w,
-      d: plan.d,
-      material: spawn.material,
-      layer: "remnant",
-      shape: plan.shape,
-      skin: plan.skin,
-      heading: exactPanel ? baseHeading : baseHeading + rng.range(roofing ? -0.28 : -0.9, roofing ? 0.28 : 0.9),
-      elev: Math.max(heap, startElev + (roofing ? plan.along * 0.04 : rng.range(0, 0.08))),
-      thickness: plan.thickness,
-      mass,
-      vx: dx * rng.range(roofing ? 0.15 : 0.4, roofing ? 0.7 : 1.8) + rng.range(-0.28, 0.28),
-      vy: dy * rng.range(roofing ? 0.15 : 0.4, roofing ? 0.7 : 1.8) + rng.range(-0.28, 0.28),
-      omega: exactPanel ? 0 : rng.range(roofing ? -1.6 : -4, roofing ? 1.6 : 4),
-      seed: rng.int(1, 0x7fffffff),
-    });
-    created.push(body);
+    if (burst.remaining < 0.08) break;
+    const mass = Math.min(burst.remaining * plan.massShare, burst.remaining);
+    burst.remaining -= mass;
+    burst.created.push(addDebrisBody(burst.town, remnantBody(burst, plan, baseHeading, startElev, mass)));
   }
+}
 
-  const fragCount = spawn.material === "glass" ? rng.int(1, 3) : roofing ? rng.int(0, 1) : rng.int(1, 3);
-  for (let i = 0; i < fragCount && remaining > 0.04; i++) {
-    const mass = Math.min(remaining / Math.max(1, fragCount - i), remaining * 0.55);
-    remaining -= mass;
-    const ang = rng.range(0, Math.PI * 2);
-    const rad = rng.range(0.12, 0.55) * spawn.cellSize;
-    const fw = spawn.material === "wood" ? rng.range(0.28, 0.55) : rng.range(0.12, 0.32);
-    const fd = spawn.material === "wood" ? rng.range(0.06, 0.12) : rng.range(0.08, 0.2);
-    created.push(
-      addDebrisBody(town, {
-        x: spawn.x + Math.cos(ang) * rad + dx * 0.12,
-        y: spawn.y + Math.sin(ang) * rad + dy * 0.12,
-        w: fw,
-        d: fd,
-        material: spawn.material,
-        layer: "fragment",
-        shape: spawn.material === "wood" || spawn.material === "metal" ? "beam" : "chunk",
-        heading: ang + rng.range(-0.4, 0.4),
-        elev: heap + rng.range(0.02, 0.16 + spawn.floor * 0.05),
-        mass,
-        vx: dx * rng.range(0.8, 2.6) + Math.cos(ang) * rng.range(0.4, 1.8),
-        vy: dy * rng.range(0.8, 2.6) + Math.sin(ang) * rng.range(0.4, 1.8),
-        omega: rng.range(-8, 8),
-        seed: rng.int(1, 0x7fffffff),
-      }),
-    );
+/** Roof panels slide off gently; wall sections are thrown and spun harder. */
+const ROOF_REMNANT = { jitter: 0.08, turn: 0.28, minSpeed: 0.15, maxSpeed: 0.7, spin: 1.6 } as const;
+const WALL_REMNANT = { jitter: 0.28, turn: 0.9, minSpeed: 0.4, maxSpeed: 1.8, spin: 4 } as const;
+
+function remnantBody(
+  burst: CollapseBurst,
+  plan: ReturnType<typeof remnantPlan>[number],
+  baseHeading: number,
+  startElev: number,
+  mass: number,
+): Parameters<typeof makeRubble>[0] {
+  const { spawn, rng, dx, dy, roofing } = burst;
+  const tune = roofing ? ROOF_REMNANT : WALL_REMNANT;
+  const exactPanel = spawn.preservePanelPose && plan.shape === "panel";
+  const jitter = exactPanel ? 0 : tune.jitter;
+  const scale = roofing ? 0.55 : spawn.cellSize;
+  const ox = (rng.range(-jitter, jitter) + plan.along * dx) * scale;
+  const oy = (rng.range(-jitter, jitter) + plan.along * dy) * scale;
+  return {
+    x: spawn.x + ox,
+    y: spawn.y + oy,
+    w: plan.w,
+    d: plan.d,
+    material: spawn.material,
+    layer: "remnant",
+    shape: plan.shape,
+    skin: plan.skin,
+    heading: exactPanel ? baseHeading : baseHeading + rng.range(-tune.turn, tune.turn),
+    elev: Math.max(burst.heap, startElev + (roofing ? plan.along * 0.04 : rng.range(0, 0.08))),
+    thickness: plan.thickness,
+    mass,
+    vx: dx * rng.range(tune.minSpeed, tune.maxSpeed) + rng.range(-0.28, 0.28),
+    vy: dy * rng.range(tune.minSpeed, tune.maxSpeed) + rng.range(-0.28, 0.28),
+    omega: exactPanel ? 0 : rng.range(-tune.spin, tune.spin),
+    seed: rng.int(1, 0x7fffffff),
+  };
+}
+
+/** A few small flying fragments thrown outward. */
+function spawnFragments(burst: CollapseBurst): void {
+  const { spawn, rng } = burst;
+  const fragCount = spawn.material === "glass" ? rng.int(1, 3) : burst.roofing ? rng.int(0, 1) : rng.int(1, 3);
+  for (let i = 0; i < fragCount && burst.remaining > 0.04; i++) {
+    const mass = Math.min(burst.remaining / Math.max(1, fragCount - i), burst.remaining * 0.55);
+    burst.remaining -= mass;
+    burst.created.push(addDebrisBody(burst.town, fragmentBody(burst, mass)));
   }
+}
 
-  if (remaining > 0.02) {
-    town.pile.addMass(spawn.x + dx * 0.15, spawn.y + dy * 0.15, remaining, spawn.material);
-    remaining = 0;
-  }
+function fragmentBody(burst: CollapseBurst, mass: number): Parameters<typeof makeRubble>[0] {
+  const { spawn, rng, dx, dy } = burst;
+  const wood = spawn.material === "wood";
+  const ang = rng.range(0, Math.PI * 2);
+  const rad = rng.range(0.12, 0.55) * spawn.cellSize;
+  const fw = wood ? rng.range(0.28, 0.55) : rng.range(0.12, 0.32);
+  const fd = wood ? rng.range(0.06, 0.12) : rng.range(0.08, 0.2);
+  return {
+    x: spawn.x + Math.cos(ang) * rad + dx * 0.12,
+    y: spawn.y + Math.sin(ang) * rad + dy * 0.12,
+    w: fw,
+    d: fd,
+    material: spawn.material,
+    layer: "fragment",
+    shape: wood || spawn.material === "metal" ? "beam" : "chunk",
+    heading: ang + rng.range(-0.4, 0.4),
+    elev: burst.heap + rng.range(0.02, 0.16 + spawn.floor * 0.05),
+    mass,
+    vx: dx * rng.range(0.8, 2.6) + Math.cos(ang) * rng.range(0.4, 1.8),
+    vy: dy * rng.range(0.8, 2.6) + Math.sin(ang) * rng.range(0.4, 1.8),
+    omega: rng.range(-8, 8),
+    seed: rng.int(1, 0x7fffffff),
+  };
+}
 
-  const cosmeticN = spawn.material === "glass" ? 10 : roofing ? 2 : 3;
+/** Ground marks: glass shards, wood splinters, or a dust patch and chips. */
+function spawnCollapseMarks(burst: CollapseBurst): void {
+  const { town, spawn, rng, dx, dy } = burst;
+  const cosmeticN = spawn.material === "glass" ? 10 : burst.roofing ? 2 : 3;
   for (let i = 0; i < cosmeticN; i++) {
     const kind: GroundKind =
       spawn.material === "glass" ? "glass" : spawn.material === "wood" ? "splinter" : i === 0 ? "dust" : "chip";
@@ -350,8 +397,6 @@ export function spawnCollapseDebris(town: Town, spawn: CollapseSpawn, bodyLimit 
       rng.range(0, Math.PI * 2),
     );
   }
-
-  return created;
 }
 
 function roofRemnantPlan(
@@ -509,21 +554,34 @@ function collectCleanupCandidates(
 
 let unattendedSince = new WeakMap<Rubble, number>();
 
+const CLEANUP_LAYERS = ["remnant", "fragment"] as const;
+
 export function enforceDistanceCleanup(
   town: Town,
   dozerX: number,
   dozerY: number,
   touching: ReadonlySet<number> = contacted,
 ): { distance: number; emergency: number } {
+  const result = { distance: retireUnattended(town, dozerX, dozerY, touching), emergency: 0 };
+  for (const layer of CLEANUP_LAYERS) trimLayer(town, layer, dozerX, dozerY, touching, result);
+  stepStats.distanceCleanups += result.distance;
+  stepStats.emergencyCleanups += result.emergency;
+  return result;
+}
+
+/** Near the dozer, freshly touched, or near a moving or autonomous vehicle. */
+function debrisProtected(town: Town, r: Rubble, dozerX: number, dozerY: number, touching: ReadonlySet<number>): boolean {
+  return touchingDozer(r, dozerX, dozerY, touching)
+    || Math.hypot(r.x - dozerX, r.y - dozerY) <= DEBRIS.retireRadius
+    || town.vehicles.some(car=>car.alive&&(car.autonomous||Math.hypot(car.vx,car.vy)>.05)&&Math.hypot(r.x-car.x,r.y-car.y)<=DEBRIS.protectRadius);
+}
+
+/** Unattended destruction becomes the editable pile after a bounded grace; returns bodies absorbed. */
+function retireUnattended(town: Town, dozerX: number, dozerY: number, touching: ReadonlySet<number>): number {
   let distance = 0;
-  let emergency = 0;
-  // Unattended destruction becomes the editable pile after a bounded grace.
   // Contact jitter must not keep distant bodies in the solver indefinitely.
   for (const r of [...town.rubble]) {
-    const protectedNow = touchingDozer(r, dozerX, dozerY, touching)
-      || Math.hypot(r.x - dozerX, r.y - dozerY) <= DEBRIS.retireRadius
-      || town.vehicles.some(car=>car.alive&&(car.autonomous||Math.hypot(car.vx,car.vy)>.05)&&Math.hypot(r.x-car.x,r.y-car.y)<=DEBRIS.protectRadius);
-    if (protectedNow) { unattendedSince.delete(r); continue; }
+    if (debrisProtected(town, r, dozerX, dozerY, touching)) { unattendedSince.delete(r); continue; }
     const since = unattendedSince.get(r);
     if (since === undefined) { unattendedSince.set(r, debrisClock); continue; }
     if (debrisClock - since < DEBRIS.retireDelay || debrisClock - r.touchedAt < DEBRIS.retireDelay) continue;
@@ -531,36 +589,41 @@ export function enforceDistanceCleanup(
     unattendedSince.delete(r);
     distance++;
   }
-  for (const layer of ["remnant", "fragment"] as const) {
-    const layerBodies = town.rubble.filter((r) => r.layer === layer);
-    const cap = layerCap(layer);
-    if (layerBodies.length <= cap) continue;
-    const hardCap = cap + DEBRIS.hardOverflow;
-    const candidates = collectCleanupCandidates(layerBodies, dozerX, dozerY, touching);
-    const absorbed = new Set<number>();
-    let count = layerBodies.length;
-    for (const c of candidates) {
-      if (count <= cap) break;
-      if (!c.sleeping || c.nearby || c.recent) continue;
-      absorbBody(town, c.body);
-      absorbed.add(c.body.id);
-      count--;
-      distance++;
-    }
-    if (count > hardCap) {
-      for (const c of candidates) {
-        if (count <= hardCap) break;
-        if (absorbed.has(c.body.id)) continue;
-        absorbBody(town, c.body);
-        absorbed.add(c.body.id);
-        count--;
-        emergency++;
-      }
-    }
+  return distance;
+}
+
+/** Over a layer's cap, absorb quiet distant sleepers first, then anything past the hard cap. */
+function trimLayer(
+  town: Town,
+  layer: (typeof CLEANUP_LAYERS)[number],
+  dozerX: number,
+  dozerY: number,
+  touching: ReadonlySet<number>,
+  result: { distance: number; emergency: number },
+): void {
+  const layerBodies = town.rubble.filter((r) => r.layer === layer);
+  const cap = layerCap(layer);
+  if (layerBodies.length <= cap) return;
+  const candidates = collectCleanupCandidates(layerBodies, dozerX, dozerY, touching);
+  const absorbed = new Set<number>();
+  let count = layerBodies.length;
+  for (const c of candidates) {
+    if (count <= cap) break;
+    if (!c.sleeping || c.nearby || c.recent) continue;
+    absorbBody(town, c.body);
+    absorbed.add(c.body.id);
+    count--;
+    result.distance++;
   }
-  stepStats.distanceCleanups += distance;
-  stepStats.emergencyCleanups += emergency;
-  return { distance, emergency };
+  const hardCap = cap + DEBRIS.hardOverflow;
+  for (const c of candidates) {
+    if (count <= hardCap) break;
+    if (absorbed.has(c.body.id)) continue;
+    absorbBody(town, c.body);
+    absorbed.add(c.body.id);
+    count--;
+    result.emergency++;
+  }
 }
 
 export function crushBody(town: Town, r: Rubble, particles: ParticlePool): void {
@@ -894,17 +957,28 @@ let townScratch: Town;
 
 function integrateBody(town: Town, r: Rubble, dt: number): void {
   const support = supportHeight(town, r);
-  if (r.sleeping) {
-    if (r.elev > support + 0.035) wake(r);
-    else {
-      r.sleepT += dt;
-      r.vx = 0;
-      r.vy = 0;
-      r.omega = 0;
-      r.vz = 0;
-      return;
-    }
+  if (r.sleeping && staysAsleep(r, support, dt)) return;
+  settleVertically(r, support, dt);
+  slideBody(town, r, dt);
+  updateSleep(r, support, dt);
+}
+
+/** A sleeper wakes once lifted off its support; otherwise it stays frozen. */
+function staysAsleep(r: Rubble, support: number, dt: number): boolean {
+  if (r.elev > support + 0.035) {
+    wake(r);
+    return false;
   }
+  r.sleepT += dt;
+  r.vx = 0;
+  r.vy = 0;
+  r.omega = 0;
+  r.vz = 0;
+  return true;
+}
+
+/** Fall under gravity onto the support, or ride it within a small clearance. */
+function settleVertically(r: Rubble, support: number, dt: number): void {
   const maxRide = r.layer === "fragment" ? 0.4 : 0.12;
   if (r.elev > 0.9) {
     r.elev = Math.min(r.elev, 0.9);
@@ -918,12 +992,15 @@ function integrateBody(town: Town, r: Rubble, dt: number): void {
       r.vz *= -0.08;
       if (Math.abs(r.vz) < 0.6) r.vz = 0;
     }
-  } else {
-    r.vz *= Math.max(0, 1 - 8 * dt);
-    if (r.elev < support) r.elev = approachElev(r.elev, support, 2.8 * dt);
-    if (r.elev > support + maxRide) r.elev = support + maxRide;
+    return;
   }
+  r.vz *= Math.max(0, 1 - 8 * dt);
+  if (r.elev < support) r.elev = approachElev(r.elev, support, 2.8 * dt);
+  if (r.elev > support + maxRide) r.elev = support + maxRide;
+}
 
+/** Loose fragments slide down soft pile slopes; drag, spin decay and movement inside the town. */
+function slideBody(town: Town, r: Rubble, dt: number): void {
   const slope = town.pile.slope(r.x, r.y);
   const compact = town.pile.sample(r.x, r.y).compact;
   if (r.layer === "fragment" && compact < 0.72) {
@@ -940,19 +1017,22 @@ function integrateBody(town: Town, r: Rubble, dt: number): void {
   r.heading += r.omega * dt;
   r.x = clamp(r.x, town.minX + 0.2, town.maxX - 0.2);
   r.y = clamp(r.y, town.minY + 0.2, town.maxY - 0.2);
+}
 
+/** Bodies resting slowly on their support long enough fall asleep. */
+function updateSleep(r: Rubble, support: number, dt: number): void {
   const speed = Math.hypot(r.vx, r.vy);
-  if (speed < DEBRIS.sleepSpeed && Math.abs(r.omega) < DEBRIS.sleepOmega && Math.abs(r.vz) < 0.15 && Math.abs(r.elev - support) < 0.04) {
-    r.sleepT += dt;
-    if (r.sleepT > DEBRIS.sleepTime) {
-      r.sleeping = true;
-      r.vx = 0;
-      r.vy = 0;
-      r.omega = 0;
-      r.vz = 0;
-    }
-  } else {
+  if (!(speed < DEBRIS.sleepSpeed && Math.abs(r.omega) < DEBRIS.sleepOmega && Math.abs(r.vz) < 0.15 && Math.abs(r.elev - support) < 0.04)) {
     r.sleepT = 0;
+    return;
+  }
+  r.sleepT += dt;
+  if (r.sleepT > DEBRIS.sleepTime) {
+    r.sleeping = true;
+    r.vx = 0;
+    r.vy = 0;
+    r.omega = 0;
+    r.vz = 0;
   }
 }
 
@@ -1065,45 +1145,54 @@ function interactWithPile(
   particles: ParticlePool,
   dt: number,
 ): number {
-  const fx = Math.cos(v.heading);
-  const fy = Math.sin(v.heading);
-  const px = bladeDown && v.blade ? v.blade.cx : v.x;
-  const py = bladeDown && v.blade ? v.blade.cy : v.y;
+  const scooping = bladeDown && !!v.blade;
+  const px = scooping ? v.blade!.cx : v.x;
+  const py = scooping ? v.blade!.cy : v.y;
   const sample = town.pile.sample(px, py);
   const under = town.pile.sample(v.x, v.y);
   const use = sample.mass + sample.height >= under.mass + under.height ? sample : under;
   if (use.height < 0.035 && use.mass < 0.06) return 0;
   let load = pileResistance(use.height, use.compact, use.mass) * 0.3 * v.profile.resistanceMul;
-  if (bladeDown && v.blade && (use.mass > 0.08 || use.height > 0.05)) {
-    const take = Math.min(use.mass, (0.62 + v.profile.pushForce * 0.035) * dt * 7.2);
-    if (take > 0.012) {
-      const extracted = town.pile.extractDisk(px, py, 0.78, take);
-      if (extracted.mass > 0.012) {
-        const pushed = extracted.mass * 0.52;
-        const spawned = extracted.mass - pushed;
-        if (pushed > 0.008) {
-          town.pile.addMass(px + fx * 0.9, py + fy * 0.9, pushed, extracted.material, extracted.owners);
-        }
-        let owned = 0;
-        for (const [owner, fraction] of Object.entries(extracted.owners ?? {})) {
-          owned += fraction;
-          reactivatePileMass(town, px + fx * .32, py + fy * .32, spawned * fraction, extracted.material, v.heading, v.vx, v.vy, owner);
-        }
-        if (owned < 1 - 1e-6) reactivatePileMass(town, px + fx * .32, py + fy * .32, spawned * (1 - owned), extracted.material, v.heading, v.vx, v.vy);
-        town.pile.compactPoint(px, py, 0.28 * dt);
-        if (playRng.chance(0.14)) {
-          particles.spawn("dust", px, py, 0.1, 2, 0.8, 0.4);
-          events.push({ kind: "scrape", x: px, y: py, z: 0.08, mag: 0.35, material: extracted.material });
-        }
-        load += extracted.mass * 1.05 * v.profile.resistanceMul;
-      }
-    }
+  if (scooping && (use.mass > 0.08 || use.height > 0.05)) {
+    load += bladeScoop(town, v, px, py, use.mass, events, particles, dt);
   } else {
     town.pile.compactPoint(v.x, v.y, 0.18 * dt);
   }
   const site = siteContaining(town, v.x, v.y);
   if (site) load += siteFeel(site, v.x, v.y) * 0.35 * v.profile.resistanceMul;
   return load;
+}
+
+/** The blade lifts pile mass: about half is pushed ahead, the rest becomes live debris. Returns the added load. */
+function bladeScoop(town: Town, v: VehicleContact, px: number, py: number, available: number, events: WorldEvent[], particles: ParticlePool, dt: number): number {
+  const take = Math.min(available, (0.62 + v.profile.pushForce * 0.035) * dt * 7.2);
+  if (take <= 0.012) return 0;
+  const extracted = town.pile.extractDisk(px, py, 0.78, take);
+  if (extracted.mass <= 0.012) return 0;
+  const fx = Math.cos(v.heading);
+  const fy = Math.sin(v.heading);
+  const pushed = extracted.mass * 0.52;
+  const spawned = extracted.mass - pushed;
+  if (pushed > 0.008) {
+    town.pile.addMass(px + fx * 0.9, py + fy * 0.9, pushed, extracted.material, extracted.owners);
+  }
+  reactivateScooped(town, v, px + fx * .32, py + fy * .32, spawned, extracted);
+  town.pile.compactPoint(px, py, 0.28 * dt);
+  if (playRng.chance(0.14)) {
+    particles.spawn("dust", px, py, 0.1, 2, 0.8, 0.4);
+    events.push({ kind: "scrape", x: px, y: py, z: 0.08, mag: 0.35, material: extracted.material });
+  }
+  return extracted.mass * 1.05 * v.profile.resistanceMul;
+}
+
+/** Scooped mass returns as bodies, split by its yard owners and any unowned share. */
+function reactivateScooped(town: Town, v: VehicleContact, x: number, y: number, spawned: number, extracted: ReturnType<Town['pile']['extractDisk']>): void {
+  let owned = 0;
+  for (const [owner, fraction] of Object.entries(extracted.owners ?? {})) {
+    owned += fraction;
+    reactivatePileMass(town, x, y, spawned * fraction, extracted.material, v.heading, v.vx, v.vy, owner);
+  }
+  if (owned < 1 - 1e-6) reactivatePileMass(town, x, y, spawned * (1 - owned), extracted.material, v.heading, v.vx, v.vy);
 }
 
 function trimActive(town: Town, focusX: number, focusY: number): void {
@@ -1154,27 +1243,8 @@ export function stepDebris(
   stepStats = emptyDebrisStats();
   debrisClock += dt;
   rebuildBodyHash(town);
-  let load = 0;
-  let contactPairs = 0;
   contacted.clear();
-
-  for (let iter = 0; iter < DEBRIS.solverIters; iter++) {
-    // Query from moving pieces; sleeping pieces remain in the hash as targets.
-    // Snapshot membership so a newly woken piece cannot duplicate a pair.
-    const active = town.rubble.filter(r => !r.sleeping);
-    if (!active.length) break;
-    const activeIds = new Set(active.map(r => r.id));
-    if (iter > 0) rebuildBodyHash(town);
-    for (const r of active) {
-      const box = rubbleAabb(r);
-      bodyHash.query(box.x - 0.05, box.y - 0.05, box.w + 0.1, box.d + 0.1, nearbyBodies);
-      for (const other of nearbyBodies) {
-        if (other.id === r.id || (activeIds.has(other.id) && other.id < r.id)) continue;
-        contactPairs++;
-        resolveBodies(r, other);
-      }
-    }
-  }
+  const contactPairs = solveBodyContacts(town);
 
   const profile = dozerProfile(dozer, engineMul);
   const v: VehicleContact = {
@@ -1188,6 +1258,51 @@ export function stepDebris(
     blade: bladeOf(dozer),
   };
 
+  let load = dozerBodyLoad(town, dozer, v, events, particles, dt);
+  load += interactWithPile(town, v, dozer.bladeDown, events, particles, dt);
+  applyVehicleResistance(dozer, dozer.heading, load, profile);
+  if (load > 0.35) dozer.lastImpact = Math.max(dozer.lastImpact, 0.05);
+  rebuildBodyHash(town);
+
+  for (const car of town.vehicles.filter(v=>v.alive&&(v.autonomous||Math.hypot(v.vx,v.vy)>.01))) carDebrisContact(town, car, events, particles, dt);
+
+  for (const r of town.rubble) integrateBody(town, r, dt);
+  enforceDistanceCleanup(town, dozer.x, dozer.y, contacted);
+  trimActive(town, dozer.x, dozer.y);
+  recordDebrisStats(town, contactPairs);
+  return { load };
+}
+
+/** Pairwise body contacts over a few solver passes; returns pairs resolved. */
+function solveBodyContacts(town: Town): number {
+  let contactPairs = 0;
+  for (let iter = 0; iter < DEBRIS.solverIters; iter++) {
+    // Query from moving pieces; sleeping pieces remain in the hash as targets.
+    // Snapshot membership so a newly woken piece cannot duplicate a pair.
+    const active = town.rubble.filter(r => !r.sleeping);
+    if (!active.length) break;
+    const activeIds = new Set(active.map(r => r.id));
+    if (iter > 0) rebuildBodyHash(town);
+    for (const r of active) contactPairs += resolveAgainstNearby(r, activeIds);
+  }
+  return contactPairs;
+}
+
+function resolveAgainstNearby(r: Rubble, activeIds: ReadonlySet<number>): number {
+  let pairs = 0;
+  const box = rubbleAabb(r);
+  bodyHash.query(box.x - 0.05, box.y - 0.05, box.w + 0.1, box.d + 0.1, nearbyBodies);
+  for (const other of nearbyBodies) {
+    if (other.id === r.id || (activeIds.has(other.id) && other.id < r.id)) continue;
+    pairs++;
+    resolveBodies(r, other);
+  }
+  return pairs;
+}
+
+/** Blade, then hull contact with nearby bodies, plus crushing small pieces under the tracks. */
+function dozerBodyLoad(town: Town, dozer: Dozer, v: VehicleContact, events: WorldEvent[], particles: ParticlePool, dt: number): number {
+  let load = 0;
   bodyHash.query(dozer.x - 3.2, dozer.y - 3.2, 6.4, 6.4, nearbyBodies);
   for (const r of nearbyBodies) {
     let j = 0;
@@ -1199,48 +1314,45 @@ export function stepDebris(
       j += resolveVehicleBody(v, r, false, events, particles);
     }
     load += j;
-
-    const dist = Math.hypot(r.x - dozer.x, r.y - dozer.y);
-    if (dist < DOZER.radius * 0.78 && r.elev + r.thickness * 0.5 < 0.4) {
-      r.damage += r.crushability * (0.55 + dozerSpeed(dozer) * 0.12) * dt;
-      town.pile.compactPoint(r.x, r.y, 0.7 * dt);
-      if (r.damage >= 1 && r.crushability > 0.2) {
-        events.push({ kind: "crush", x: r.x, y: r.y, z: r.elev, mag: 0.55 + r.mass * 0.2, material: r.material });
-        crushBody(town, r, particles);
-      }
-    }
+    crushUnderTracks(town, dozer, r, events, particles, dt);
   }
+  return load;
+}
 
-  load += interactWithPile(town, v, dozer.bladeDown, events, particles, dt);
-  applyVehicleResistance(dozer, dozer.heading, load, profile);
-  if (load > 0.35) dozer.lastImpact = Math.max(dozer.lastImpact, 0.05);
-  rebuildBodyHash(town);
-
-  for (const car of town.vehicles.filter(v=>v.alive&&(v.autonomous||Math.hypot(v.vx,v.vy)>.01))) {
-    const def=vehicleDefinition(car.definitionId);
-    const rp: VehicleProfile = {mass:def.mass,radius:def.width*.5,pushForce:def.drive.push,traction:def.drive.traction,clearance:def.drive.clearance,resistanceMul:2.55};
-    const cv: VehicleContact = {
-      x: car.x,
-      y: car.y,
-      vx: car.vx,
-      vy: car.vy,
-      heading: car.heading,
-      radius: rp.radius,
-      profile: rp,
-    };
-    let carLoad = 0;
-    bodyHash.query(car.x - 2.4, car.y - 2.4, 4.8, 4.8, nearbyBodies);
-    for (const r of nearbyBodies) {
-      carLoad += resolveVehicleBody(cv, r, false, events, particles);
-    }
-    carLoad += interactWithPile(town, cv, false, events, particles, dt);
-    applyVehicleResistance(car, car.heading, carLoad, rp);
+function crushUnderTracks(town: Town, dozer: Dozer, r: Rubble, events: WorldEvent[], particles: ParticlePool, dt: number): void {
+  const dist = Math.hypot(r.x - dozer.x, r.y - dozer.y);
+  if (!(dist < DOZER.radius * 0.78 && r.elev + r.thickness * 0.5 < 0.4)) return;
+  r.damage += r.crushability * (0.55 + dozerSpeed(dozer) * 0.12) * dt;
+  town.pile.compactPoint(r.x, r.y, 0.7 * dt);
+  if (r.damage >= 1 && r.crushability > 0.2) {
+    events.push({ kind: "crush", x: r.x, y: r.y, z: r.elev, mag: 0.55 + r.mass * 0.2, material: r.material });
+    crushBody(town, r, particles);
   }
+}
 
-  for (const r of town.rubble) integrateBody(town, r, dt);
-  enforceDistanceCleanup(town, dozer.x, dozer.y, contacted);
-  trimActive(town, dozer.x, dozer.y);
+/** A moving road vehicle shoves bodies and drags through pile like a heavy, low-power pusher. */
+function carDebrisContact(town: Town, car: Town['vehicles'][number], events: WorldEvent[], particles: ParticlePool, dt: number): void {
+  const def=vehicleDefinition(car.definitionId);
+  const rp: VehicleProfile = {mass:def.mass,radius:def.width*.5,pushForce:def.drive.push,traction:def.drive.traction,clearance:def.drive.clearance,resistanceMul:2.55};
+  const cv: VehicleContact = {
+    x: car.x,
+    y: car.y,
+    vx: car.vx,
+    vy: car.vy,
+    heading: car.heading,
+    radius: rp.radius,
+    profile: rp,
+  };
+  let carLoad = 0;
+  bodyHash.query(car.x - 2.4, car.y - 2.4, 4.8, 4.8, nearbyBodies);
+  for (const r of nearbyBodies) {
+    carLoad += resolveVehicleBody(cv, r, false, events, particles);
+  }
+  carLoad += interactWithPile(town, cv, false, events, particles, dt);
+  applyVehicleResistance(car, car.heading, carLoad, rp);
+}
 
+function recordDebrisStats(town: Town, contactPairs: number): void {
   let active = 0;
   let bodyMass = 0;
   for (const r of town.rubble) {
@@ -1258,8 +1370,6 @@ export function stepDebris(
     bodyMass,
     pileMass: town.pile.totalMass(),
   };
-
-  return { load };
 }
 
 export function depositSettledParticles(town: Town, particles: ParticlePool): void {

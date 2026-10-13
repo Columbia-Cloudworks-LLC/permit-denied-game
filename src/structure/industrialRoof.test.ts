@@ -22,6 +22,24 @@ function removeSupports(b: Building, roof: RoofSection, frontOnly = false): void
   b.structureDirty = true; b.roofDirty = true;
 }
 
+const vertBox = (r: RoofSection) => ({ x0: Math.min(...r.verts.map(v => v.x)), x1: Math.max(...r.verts.map(v => v.x)),
+  y0: Math.min(...r.verts.map(v => v.y)), y1: Math.max(...r.verts.map(v => v.y)) });
+/** Linked panels point back at each other and meet edge to edge at matching heights. */
+function expectNeighbourSeam(b: Building, roof: RoofSection, index: number): void {
+  const other = b.roofs[index]!;
+  expect(other.floor).toBe(roof.floor);
+  expect(Object.values(other.neighbors!).flat()).toContain(b.roofs.indexOf(roof));
+  // T junctions may have different overhang lengths, but must meet without a gap or overlap.
+  const a = vertBox(roof), n = vertBox(other);
+  if (roof.neighbors!.minX?.includes(index)) expect(a.x0).toBeCloseTo(n.x1, 8);
+  if (roof.neighbors!.maxX?.includes(index)) expect(a.x1).toBeCloseTo(n.x0, 8);
+  if (roof.neighbors!.minY?.includes(index)) expect(a.y0).toBeCloseTo(n.y1, 8);
+  if (roof.neighbors!.maxY?.includes(index)) expect(a.y1).toBeCloseTo(n.y0, 8);
+  for (const p of roof.verts) for (const v of other.verts) {
+    if (Math.hypot(p.x - v.x, p.y - v.y) < 1e-6) expect(p.z).toBeCloseTo(v.z, 8);
+  }
+}
+
 describe("industrial roof panels", () => {
   it.each(["logistics-hub", "data-hall", "steel-warehouse"])("covers %s once with small, supported panels and continuous pitch", id => {
     const b = make(id), keys = new Set<string>();
@@ -36,22 +54,7 @@ describe("industrial roof panels", () => {
         const key = `${roof.floor}:${c.gx}:${c.gy}`;
         expect(keys.has(key)).toBe(false); keys.add(key);
       }
-      for (const index of Object.values(roof.neighbors!).flat()) {
-        const other = b.roofs[index]!;
-        expect(other.floor).toBe(roof.floor);
-        expect(Object.values(other.neighbors!).flat()).toContain(b.roofs.indexOf(roof));
-        // T junctions may have different overhang lengths, but must meet without a gap or overlap.
-        const box = (r: RoofSection) => ({ x0: Math.min(...r.verts.map(v => v.x)), x1: Math.max(...r.verts.map(v => v.x)),
-          y0: Math.min(...r.verts.map(v => v.y)), y1: Math.max(...r.verts.map(v => v.y)) });
-        const a = box(roof), n = box(other);
-        if (roof.neighbors!.minX?.includes(index)) expect(a.x0).toBeCloseTo(n.x1, 8);
-        if (roof.neighbors!.maxX?.includes(index)) expect(a.x1).toBeCloseTo(n.x0, 8);
-        if (roof.neighbors!.minY?.includes(index)) expect(a.y0).toBeCloseTo(n.y1, 8);
-        if (roof.neighbors!.maxY?.includes(index)) expect(a.y1).toBeCloseTo(n.y0, 8);
-        for (const a of roof.verts) for (const v of other.verts) {
-          if (Math.hypot(a.x - v.x, a.y - v.y) < 1e-6) expect(a.z).toBeCloseTo(v.z, 8);
-        }
-      }
+      for (const index of Object.values(roof.neighbors!).flat()) expectNeighbourSeam(b, roof, index);
     }
     const exposed = b.floorTiles.filter(t => !b.floorTiles.some(u => u.floor === t.floor + 1 && u.gx === t.gx && u.gy === t.gy));
     expect(keys.size).toBe(exposed.length);

@@ -86,38 +86,13 @@ const inside = (x: number, y: number, w: number, d: number) =>
 const overlaps = (a: { x: number; y: number; w: number; d: number }, b: typeof a) =>
   a.x < b.x + b.w - 1e-6 && a.x + a.w > b.x + 1e-6 && a.y < b.y + b.d - 1e-6 && a.y + a.d > b.y + 1e-6;
 
+type RoomDef = LayoutDef['rooms'][number];
+type Rect = { x: number; y: number; w: number; d: number };
+
 /** Validate the composed plan, including footprint holes, before allocating runtime state. */
 export function validateLayout(layout: LayoutDef, w: number, d: number, floors: number, mask: boolean[][][], openings?: readonly OpeningDef[]): string[] {
   const issues: string[] = [], ids = new Set<string>();
-  for (const room of layout.rooms) {
-    if (!room.id || ids.has(room.id)) issues.push(`Duplicate or missing room id ${room.id}`);
-    ids.add(room.id);
-    if (!kinds.includes(room.kind) || !finishes.includes(room.finish)) issues.push(`Unknown room kind or finish in ${room.id}`);
-    if (!Number.isInteger(room.floor) || room.floor < 0 || room.floor >= floors || !inside(room.x, room.y, room.w, room.d)) {
-      issues.push(`Invalid ${room.kind} room bounds`); continue;
-    }
-    for (let gx = 0; gx < w; gx++) for (let gy = 0; gy < d; gy++) {
-      if (overlaps(room, { x: gx / w, y: gy / d, w: 1 / w, d: 1 / d }) && !mask[room.floor]?.[gx]?.[gy]) issues.push(`Room ${room.id} crosses unoccupied footprint at ${gx},${gy}`);
-    }
-    const slots = new Set<string>();
-    const designs = new Set<string>();
-    for (const design of room.floorDesigns ?? []) {
-      if (!design.id || designs.has(design.id) || design.kind !== 'bowling-lane' || !inside(design.x, design.y, design.w, design.d)) issues.push('Invalid floor design in ' + room.id);
-      designs.add(design.id);
-    }
-    for (const slot of room.contents) {
-      if (!slot.id || slots.has(slot.id)) issues.push(`Duplicate or missing object id in ${room.id}`);
-      slots.add(slot.id);
-      if (!inside(slot.x, slot.y, slot.w, slot.d) || !Number.isFinite(slot.h) || slot.h <= 0 || ![0, 90, 180, 270].includes(slot.rotation)) issues.push(`Invalid ${slot.kind} slot in ${room.kind}`);
-      try {
-        const object = getAsset(`interior-${slot.kind}`);
-        if (!['brittle', 'crush', 'panel-collapse'].includes(object.destruction)) issues.push(`Object ${slot.kind} requires unsupported room behavior ${object.destruction}`);
-      } catch { issues.push(`Unknown object ${slot.kind} in ${room.id}`); }
-    }
-    for (let i = 0; i < room.contents.length; i++) for (let j = i + 1; j < room.contents.length; j++) {
-      if (overlaps(room.contents[i]!, room.contents[j]!)) issues.push(`Overlapping objects in ${room.id}`);
-    }
-  }
+  for (const room of layout.rooms) roomIssues(room, ids, w, d, floors, mask, issues);
   for (let i = 0; i < layout.rooms.length; i++) for (let j = i + 1; j < layout.rooms.length; j++) {
     const a = layout.rooms[i]!, b = layout.rooms[j]!;
     if (a.floor === b.floor && overlaps(a, b)) issues.push(`Overlapping ${a.kind}/${b.kind} rooms`);
@@ -127,6 +102,68 @@ export function validateLayout(layout: LayoutDef, w: number, d: number, floors: 
     const occupied = mask[floor]?.flat().filter(Boolean).length ?? 0;
     if (Math.abs(area - occupied / (w * d)) > 1e-6) issues.push(`Floor ${floor} must have complete room coverage`);
   }
+  connectionIssues(layout, issues);
+  stairIssues(layout, issues);
+  accessIssues(layout, w, d, floors, mask, openings, issues);
+  return issues;
+}
+
+/** With stairs, every room must be reachable from a ground entrance; partitioned plans check each floor's doors. */
+function accessIssues(layout: LayoutDef, w: number, d: number, floors: number, mask: boolean[][][], openings: readonly OpeningDef[] | undefined, issues: string[]): void {
+  if (layout.stairs !== undefined && openings !== undefined) {
+    const reached = new Set(entranceRoomIds(openings, w, d, mask, layout.rooms.filter(r => r.floor === 0)));
+    floodLinks(reached, [...layout.connections ?? [], ...layout.stairs], layout.rooms.length);
+    if (layout.rooms.some(r => !reached.has(r.id))) issues.push('Rooms without exterior and stair access');
+    return;
+  }
+  if (!layout.partitions) return;
+  for (let floor = 0; floor < floors; floor++) floorAccessIssues(layout, floor, w, d, mask, openings, issues);
+}
+
+function roomIssues(room: RoomDef, ids: Set<string>, w: number, d: number, floors: number, mask: boolean[][][], issues: string[]): void {
+  if (!room.id || ids.has(room.id)) issues.push(`Duplicate or missing room id ${room.id}`);
+  ids.add(room.id);
+  if (!kinds.includes(room.kind) || !finishes.includes(room.finish)) issues.push(`Unknown room kind or finish in ${room.id}`);
+  if (!Number.isInteger(room.floor) || room.floor < 0 || room.floor >= floors || !inside(room.x, room.y, room.w, room.d)) {
+    issues.push(`Invalid ${room.kind} room bounds`);
+    return;
+  }
+  roomFootprintIssues(room, w, d, mask, issues);
+  furnishingIssues(room, issues);
+}
+
+/** Floor designs and contents: unique ids, valid kinds and bounds, and no overlapping objects. */
+function furnishingIssues(room: RoomDef, issues: string[]): void {
+  const designs = new Set<string>();
+  for (const design of room.floorDesigns ?? []) {
+    if (!design.id || designs.has(design.id) || design.kind !== 'bowling-lane' || !inside(design.x, design.y, design.w, design.d)) issues.push('Invalid floor design in ' + room.id);
+    designs.add(design.id);
+  }
+  const slots = new Set<string>();
+  for (const slot of room.contents) slotIssues(room, slot, slots, issues);
+  for (let i = 0; i < room.contents.length; i++) for (let j = i + 1; j < room.contents.length; j++) {
+    if (overlaps(room.contents[i]!, room.contents[j]!)) issues.push(`Overlapping objects in ${room.id}`);
+  }
+}
+
+/** A room may not cover a grid cell the building's footprint leaves empty. */
+function roomFootprintIssues(room: RoomDef, w: number, d: number, mask: boolean[][][], issues: string[]): void {
+  for (let gx = 0; gx < w; gx++) for (let gy = 0; gy < d; gy++) {
+    if (overlaps(room, { x: gx / w, y: gy / d, w: 1 / w, d: 1 / d }) && !mask[room.floor]?.[gx]?.[gy]) issues.push(`Room ${room.id} crosses unoccupied footprint at ${gx},${gy}`);
+  }
+}
+
+function slotIssues(room: RoomDef, slot: RoomDef['contents'][number], slots: Set<string>, issues: string[]): void {
+  if (!slot.id || slots.has(slot.id)) issues.push(`Duplicate or missing object id in ${room.id}`);
+  slots.add(slot.id);
+  if (!inside(slot.x, slot.y, slot.w, slot.d) || !Number.isFinite(slot.h) || slot.h <= 0 || ![0, 90, 180, 270].includes(slot.rotation)) issues.push(`Invalid ${slot.kind} slot in ${room.kind}`);
+  try {
+    const object = getAsset(`interior-${slot.kind}`);
+    if (!['brittle', 'crush', 'panel-collapse'].includes(object.destruction)) issues.push(`Object ${slot.kind} requires unsupported room behavior ${object.destruction}`);
+  } catch { issues.push(`Unknown object ${slot.kind} in ${room.id}`); }
+}
+
+function connectionIssues(layout: LayoutDef, issues: string[]): void {
   const pairs = new Set<string>();
   for (const door of layout.connections ?? []) {
     const a = layout.rooms.find(r => r.id === door.a), b = layout.rooms.find(r => r.id === door.b);
@@ -137,48 +174,58 @@ export function validateLayout(layout: LayoutDef, w: number, d: number, floors: 
     // Width and position are fractions of the shared wall, so resizing preserves the door.
     if (![door.at, door.width].every(Number.isFinite) || door.width <= 0 || door.at - door.width / 2 < 0 || door.at + door.width / 2 > 1) issues.push(`Invalid door bounds ${pair}`);
   }
+}
+
+type StairDef = NonNullable<LayoutDef['stairs']>[number];
+
+function stairIssues(layout: LayoutDef, issues: string[]): void {
   const stairPairs = new Set<string>();
   for (const stair of layout.stairs ?? []) {
     const a = layout.rooms.find(r => r.id === stair.a), b = layout.rooms.find(r => r.id === stair.b);
     const pair = `${stair.a}:${stair.b}`;
-    if (!a || !b || b.floor !== a.floor + 1 || (stair.kind !== undefined && stair.kind !== 'ramp') || (stair.rotation!==undefined && stair.rotation!==90) || stairPairs.has(pair) || !inside(stair.x, stair.y, stair.w, stair.d) ||
-      [a,b].some(r => stair.x < r.x || stair.y < r.y || stair.x + stair.w > r.x + r.w + 1e-6 || stair.y + stair.d > r.y + r.d + 1e-6)) {
+    if (!a || !b || stairPairs.has(pair) || !stairFits(stair, a, b)) {
       issues.push('Invalid stair connection ' + pair); continue;
     }
     stairPairs.add(pair);
     for (const r of [a,b]) for (const slot of r.contents) if (overlaps(stair, { x:r.x+slot.x*r.w, y:r.y+slot.y*r.d, w:slot.w*r.w, d:slot.d*r.d }))
       issues.push('Stair overlaps furnishings in ' + r.id);
   }
-  if (layout.stairs !== undefined && openings !== undefined) {
-    const reached = new Set<string>();
-    for (const opening of openings.filter(o => o.floor === 0)) {
-      const cell = openingCell(opening, w, d, mask);
-      if (!cell) continue;
-      const x=(cell.gx+.5)/w, y=(cell.gy+.5)/d;
-      for (const r of layout.rooms) if (r.floor===0 && x>=r.x && x<r.x+r.w && y>=r.y && y<r.y+r.d) reached.add(r.id);
-    }
-    for (let pass=0;pass<layout.rooms.length;pass++) for (const link of [...layout.connections??[], ...layout.stairs]) {
-      if(reached.has(link.a)) reached.add(link.b);
-      if(reached.has(link.b)) reached.add(link.a);
-    }
-    if(layout.rooms.some(r=>!reached.has(r.id))) issues.push('Rooms without exterior and stair access');
-  } else if (layout.partitions) for (let floor = 0; floor < floors; floor++) {
-    const floorRooms = layout.rooms.filter(r => r.floor === floor);
-    // Ground-floor units can be independently reached from real exterior doors.
-    // Templates have no building frontage; upper floors retain their existing
-    // connected-floor contract until vertical circulation is explicitly authored.
-    const entrances = floor === 0 && openings !== undefined ? openings.filter(o => o.floor === 0).flatMap(o => {
-      const cell = openingCell(o, w, d, mask);
-      if (!cell) return [];
-      const x = (cell.gx + .5) / w, y = (cell.gy + .5) / d;
-      return floorRooms.filter(r => x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.d).map(r => r.id);
-    }) : floorRooms.slice(0, 1).map(r => r.id);
-    const reached = new Set(entrances);
-    for (let pass = 0; pass < floorRooms.length; pass++) for (const door of layout.connections ?? []) {
-      if (reached.has(door.a)) reached.add(door.b);
-      if (reached.has(door.b)) reached.add(door.a);
-    }
-    if (floorRooms.some(r => !reached.has(r.id))) issues.push(`Floor ${floor} contains rooms without a connected doorway`);
+}
+
+/** A plain or ramp stair, unrotated or turned 90°, rising one floor inside both rooms it joins. */
+function stairFits(stair: StairDef, a: RoomDef, b: RoomDef): boolean {
+  if (b.floor !== a.floor + 1 || (stair.kind !== undefined && stair.kind !== 'ramp') || (stair.rotation !== undefined && stair.rotation !== 90)) return false;
+  return inside(stair.x, stair.y, stair.w, stair.d) && [a, b].every(r => withinRoom(stair, r));
+}
+
+const withinRoom = (box: Rect, r: Rect): boolean =>
+  !(box.x < r.x || box.y < r.y || box.x + box.w > r.x + r.w + 1e-6 || box.y + box.d > r.y + r.d + 1e-6);
+
+/** Ids of the given rooms that contain a ground-floor entrance cell. */
+function entranceRoomIds(openings: readonly OpeningDef[], w: number, d: number, mask: boolean[][][], rooms: readonly RoomDef[]): string[] {
+  return openings.filter(o => o.floor === 0).flatMap(o => {
+    const cell = openingCell(o, w, d, mask);
+    if (!cell) return [];
+    const x = (cell.gx + .5) / w, y = (cell.gy + .5) / d;
+    return rooms.filter(r => x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.d).map(r => r.id);
+  });
+}
+
+/** Spread reachability across links in both directions, `passes` times over. */
+function floodLinks(reached: Set<string>, links: readonly { a: string; b: string }[], passes: number): void {
+  for (let pass = 0; pass < passes; pass++) for (const link of links) {
+    if (reached.has(link.a)) reached.add(link.b);
+    if (reached.has(link.b)) reached.add(link.a);
   }
-  return issues;
+}
+
+function floorAccessIssues(layout: LayoutDef, floor: number, w: number, d: number, mask: boolean[][][], openings: readonly OpeningDef[] | undefined, issues: string[]): void {
+  const floorRooms = layout.rooms.filter(r => r.floor === floor);
+  // Ground-floor units can be independently reached from real exterior doors.
+  // Templates have no building frontage; upper floors retain their existing
+  // connected-floor contract until vertical circulation is explicitly authored.
+  const entrances = floor === 0 && openings !== undefined ? entranceRoomIds(openings, w, d, mask, floorRooms) : floorRooms.slice(0, 1).map(r => r.id);
+  const reached = new Set(entrances);
+  floodLinks(reached, layout.connections ?? [], floorRooms.length);
+  if (floorRooms.some(r => !reached.has(r.id))) issues.push(`Floor ${floor} contains rooms without a connected doorway`);
 }

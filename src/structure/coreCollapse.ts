@@ -2,7 +2,7 @@ import { siloAt } from './silos';
 import type { ParticlePool } from '../fx/particles';
 import { FLOOR_Z } from '../game/constants';
 import { MATERIALS } from './materials';
-import { cellPresent, type Building, type Material, type WorldEvent } from './types';
+import { cellPresent, type Building, type Cell, type Material, type WorldEvent } from './types';
 import type { StructureStepResult } from './building';
 import { cashFor } from './cellCash';
 
@@ -71,47 +71,73 @@ export function initializeCore(b: Building, definition: CoreCollapseDef): void {
 export function stepCoreCollapse(b: Building, dt: number, result: StructureStepResult, particles: ParticlePool, events: WorldEvent[]): void {
   const s = b.coreCollapse!, def = s.definition;
   // Local damage does not sever the load path of the entire facade above it.
-  for (const c of b.cells) if (c.state === 'breached') {
-    result.cash += cashFor(c, 'collapse');
-    c.state = 'gone'; b.visualRevision++; b.collisionDirty = true;
-    result.rubbleSpawns.push({ x: b.x + (c.gx + .5) * b.cellSize, y: b.y + (c.gy + .5) * b.cellSize,
-      aggregate: true, dx: c.lastHitNx, dy: c.lastHitNy, material: c.material, floor: c.floor, cellSize: b.cellSize });
-  }
+  for (const c of b.cells) if (c.state === 'breached') dropBreachedCell(b, c, result);
   if (s.phase === 'settled') { b.structureDirty = false; return; }
-  const capacity = def.supports.reduce((n, p) => n + (cellPresent(b.grid[0]![p.x]![p.y]!) ? p.weight : 0), 0);
-  s.capacity = capacity / def.supports.reduce((n, p) => n + p.weight, 0);
-  if (s.phase === 'standing' && s.capacity < def.capacityThreshold) {
-    s.phase = 'warning'; s.elapsed = 0;
-    const x = b.x + b.w * b.cellSize / 2, y = b.y + b.d * b.cellSize / 2;
-    particles.radialDust(x, y, b.w * b.cellSize * .35, 16);
-    events.push({ kind: 'snap', x, y, z: 1, mag: 1.2, material: b.construction.structure });
-  }
+  updateCoreCapacity(b, s, particles, events);
   if (s.phase === 'standing' || s.phase === 'warning') {
     b.structureDirty = false; b.roofDirty = false;
     if (s.phase === 'standing') return;
     s.elapsed += dt;
     if (s.elapsed < def.warningDuration) return;
-    s.phase = 'falling'; s.elapsed = 0;
-    const add = (m: Material, amount: number) => { s.mass[m] = (s.mass[m] ?? 0) + amount; };
-    for (const c of b.cells) if (c.state !== 'gone' && !c.silo) {
-      result.cash += cashFor(c, 'collapse');
-      add(c.material, b.cellSize ** 2 * 1.85 * MATERIALS[c.material].density);
-      c.state = 'gone'; c.hp = 0;
-    }
-    for (const t of b.floorTiles) if (t.floor > 0 && t.state !== 'gone') {
-      if (!t.void) add('concrete', b.cellSize ** 2 * 1.85 * MATERIALS.concrete.density); t.state = 'gone';
-    }
-    for (const f of b.fixtures) if (!f.broken) {
-      add(f.material, f.w * f.d * f.h * MATERIALS[f.material].density); f.broken = true; f.hp = 0;
-    }
-    for (const roof of b.roofs) if (roof.state !== 'gone') {
-      add(roof.material, (roof.coverage?.length ?? roof.support.length) * b.cellSize ** 2 * .3 * MATERIALS[roof.material].density);
-      roof.state = 'gone';
-    }
-    b.collisionDirty = true;
+    beginCoreFall(b, s, result);
   }
+  advanceCoreFall(b, s, dt, result);
+}
+
+/** A breached facade cell drops straight into aggregate rubble at its base. */
+function dropBreachedCell(b: Building, c: Cell, result: StructureStepResult): void {
+  result.cash += cashFor(c, 'collapse');
+  c.state = 'gone'; b.visualRevision++; b.collisionDirty = true;
+  result.rubbleSpawns.push({ x: b.x + (c.gx + .5) * b.cellSize, y: b.y + (c.gy + .5) * b.cellSize,
+    aggregate: true, dx: c.lastHitNx, dy: c.lastHitNy, material: c.material, floor: c.floor, cellSize: b.cellSize });
+}
+
+/** Share of support weight still standing; dropping under the threshold starts the warning. */
+function updateCoreCapacity(b: Building, s: CoreCollapseState, particles: ParticlePool, events: WorldEvent[]): void {
+  const def = s.definition;
+  const capacity = def.supports.reduce((n, p) => n + (cellPresent(b.grid[0]![p.x]![p.y]!) ? p.weight : 0), 0);
+  s.capacity = capacity / def.supports.reduce((n, p) => n + p.weight, 0);
+  if (s.phase !== 'standing' || s.capacity >= def.capacityThreshold) return;
+  s.phase = 'warning'; s.elapsed = 0;
+  const x = b.x + b.w * b.cellSize / 2, y = b.y + b.d * b.cellSize / 2;
+  particles.radialDust(x, y, b.w * b.cellSize * .35, 16);
+  events.push({ kind: 'snap', x, y, z: 1, mag: 1.2, material: b.construction.structure });
+}
+
+function addCoreMass(s: CoreCollapseState, m: Material, amount: number): void {
+  s.mass[m] = (s.mass[m] ?? 0) + amount;
+}
+
+/** Everything above ground becomes falling mass: walls, slabs, fixtures and roofs. */
+function beginCoreFall(b: Building, s: CoreCollapseState, result: StructureStepResult): void {
+  s.phase = 'falling'; s.elapsed = 0;
+  for (const c of b.cells) if (c.state !== 'gone' && !c.silo) {
+    result.cash += cashFor(c, 'collapse');
+    addCoreMass(s, c.material, b.cellSize ** 2 * 1.85 * MATERIALS[c.material].density);
+    c.state = 'gone'; c.hp = 0;
+  }
+  collapseInterior(b, s);
+  b.collisionDirty = true;
+}
+
+/** Upper slabs, fixtures and roofs join the falling mass. */
+function collapseInterior(b: Building, s: CoreCollapseState): void {
+  for (const t of b.floorTiles) if (t.floor > 0 && t.state !== 'gone') {
+    if (!t.void) addCoreMass(s, 'concrete', b.cellSize ** 2 * 1.85 * MATERIALS.concrete.density); t.state = 'gone';
+  }
+  for (const f of b.fixtures) if (!f.broken) {
+    addCoreMass(s, f.material, f.w * f.d * f.h * MATERIALS[f.material].density); f.broken = true; f.hp = 0;
+  }
+  for (const roof of b.roofs) if (roof.state !== 'gone') {
+    addCoreMass(s, roof.material, (roof.coverage?.length ?? roof.support.length) * b.cellSize ** 2 * .3 * MATERIALS[roof.material].density);
+    roof.state = 'gone';
+  }
+}
+
+/** Drop the stack floor by floor, emitting one impact pulse per storey passed. */
+function advanceCoreFall(b: Building, s: CoreCollapseState, dt: number, result: StructureStepResult): void {
   s.elapsed += dt;
-  const progress = Math.min(1, s.elapsed / def.duration);
+  const progress = Math.min(1, s.elapsed / s.definition.duration);
   s.drop = b.floors * FLOOR_Z * progress ** 1.55;
   const pulses = Math.min(b.floors, 1 + Math.floor(s.drop / FLOOR_Z));
   while (s.pulses < pulses) {

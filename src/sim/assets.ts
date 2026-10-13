@@ -64,36 +64,53 @@ function applyExplosion(
   events: WorldEvent[],
   generation: number,
 ): number {
-  const radius = source.explodeRadius || EXPLODE.radius;
-  const damage = source.explodeDamage || EXPLODE.damage;
-  const impulse = source.explodeImpulse || EXPLODE.impulse;
+  const blast: Blast = {
+    x, y, generation,
+    radius: source.explodeRadius || EXPLODE.radius,
+    damage: source.explodeDamage || EXPLODE.damage,
+    impulse: source.explodeImpulse || EXPLODE.impulse,
+  };
   particles.burst("dust", x, y, 0.6, 1.4);
   particles.burst("metal", x, y, 0.8, 1.1);
+  blastVehicles(town, blast);
   let cash = 0;
+  for (const other of town.props) cash += blastProp(town, other, blast, particles, events);
+  blastRubble(town, blast);
+  return cash;
+}
+
+interface Blast { x: number; y: number; radius: number; damage: number; impulse: number; generation: number }
+
+function blastVehicles(town: Town, { x, y, radius, impulse }: Blast): void {
   for(const v of town.vehicles){const dx=v.x-x,dy=v.y-y,dist=Math.hypot(dx,dy);if(dist<radius)hitVehicle(v,[{x:v.x,y:v.y,z:v.elev+.7,nx:dx/(dist||1),ny:dy/(dist||1),nz:0,impulse:impulse*(1-dist/radius),source:'explosion'}]);}
-  for (const other of town.props) {
-    if (other.broken) continue;
-    const ox = other.x + other.w * 0.5;
-    const oy = other.y + other.d * 0.5;
-    const dist = len(ox - x, oy - y);
-    if (dist > radius || dist < 1e-4) continue;
-    const falloff = 1 - dist / radius;
-    other.hp -= damage * falloff;
-    other.vx += ((ox - x) / dist) * impulse * falloff;
-    other.vy += ((oy - y) / dist) * impulse * falloff;
-    if (other.hp <= 0) {
-      const def = getAsset(other.assetId);
-      if (def.destruction === "explosive" && generation >= EXPLODE.maxGeneration) {
-        other.broken = true;
-        other.hp = 0;
-        cash += def.cash * 0.5;
-        spawnFromRecipe(town, other, def, (ox - x) / dist, (oy - y) / dist);
-        events.push({ kind: "snap", x: ox, y: oy, z: 0.7, mag: 0.4, cash: def.cash * 0.5 });
-      } else {
-        cash += destroyProp(town, other, particles, events, x, y, generation + 1);
-      }
-    }
+}
+
+/** Damages and shoves one prop in the blast; a prop it breaks pays out and may chain. */
+function blastProp(town: Town, other: Prop, blast: Blast, particles: ParticlePool, events: WorldEvent[]): number {
+  const { x, y, radius, damage, impulse, generation } = blast;
+  if (other.broken) return 0;
+  const ox = other.x + other.w * 0.5;
+  const oy = other.y + other.d * 0.5;
+  const dist = len(ox - x, oy - y);
+  if (dist > radius || dist < 1e-4) return 0;
+  const falloff = 1 - dist / radius;
+  other.hp -= damage * falloff;
+  other.vx += ((ox - x) / dist) * impulse * falloff;
+  other.vy += ((oy - y) / dist) * impulse * falloff;
+  if (other.hp > 0) return 0;
+  const def = getAsset(other.assetId);
+  if (def.destruction !== "explosive" || generation < EXPLODE.maxGeneration) {
+    return destroyProp(town, other, particles, events, x, y, generation + 1);
   }
+  // The last chain generation breaks without exploding again.
+  other.broken = true;
+  other.hp = 0;
+  spawnFromRecipe(town, other, def, (ox - x) / dist, (oy - y) / dist);
+  events.push({ kind: "snap", x: ox, y: oy, z: 0.7, mag: 0.4, cash: def.cash * 0.5 });
+  return def.cash * 0.5;
+}
+
+function blastRubble(town: Town, { x, y, radius, impulse }: Blast): void {
   for (const r of town.rubble) {
     const dist = len(r.x - x, r.y - y);
     if (dist > radius || dist < 1e-4) continue;
@@ -103,7 +120,6 @@ function applyExplosion(
     r.sleeping = false;
     r.touchedAt = 0;
   }
-  return cash;
 }
 
 export function trackFromAsset(prop: Prop, speed: number): number {

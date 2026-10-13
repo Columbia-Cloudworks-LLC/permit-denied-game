@@ -1,7 +1,7 @@
 import { SIM_DT } from "../game/constants";
 import { ParticlePool } from "../fx/particles";
 import { applyCellDamage, createBuildingFromArchetype, stepStructures } from "../structure/building";
-import { cellPresent, type Building } from "../structure/types";
+import { cellPresent, type Building, type Cell } from "../structure/types";
 import { createDozer, stepDozer } from "../vehicle/dozer";
 import { createTown } from "../world/town";
 import { stepWorld, type Upgrades } from "./worldSim";
@@ -38,22 +38,22 @@ export function presentCells(building: Building): number {
 }
 
 export function floatingPresent(building: Building): boolean {
-  for (const cell of building.cells) {
-    if (!cellPresent(cell)) continue;
-    if (cell.floor === 0) continue;
+  return building.cells.some((cell) => {
+    if (!cellPresent(cell) || cell.floor === 0) return false;
     const under = building.grid[cell.floor - 1]![cell.gx]![cell.gy]!;
-    if (cellPresent(under)) continue;
-    let nearColumn = false;
-    for (let dx = -2; dx <= 2; dx++) {
-      for (let dy = -2; dy <= 2; dy++) {
-        if (Math.abs(dx) + Math.abs(dy) === 0 || Math.abs(dx) + Math.abs(dy) > 2) continue;
-        const nb = building.grid[cell.floor]![cell.gx + dx]?.[cell.gy + dy];
-        if (!nb || !cellPresent(nb)) continue;
-        const underNb = building.grid[cell.floor - 1]![nb.gx]![nb.gy]!;
-        if (cellPresent(underNb)) nearColumn = true;
-      }
+    return !cellPresent(under) && !nearColumn(building, cell);
+  });
+}
+
+/** True when a present cell within two steps on the same floor stands on a present cell. */
+function nearColumn(building: Building, cell: Cell): boolean {
+  for (let dx = -2; dx <= 2; dx++) {
+    for (let dy = -2; dy <= 2; dy++) {
+      const steps = Math.abs(dx) + Math.abs(dy);
+      if (steps === 0 || steps > 2) continue;
+      const nb = building.grid[cell.floor]![cell.gx + dx]?.[cell.gy + dy];
+      if (nb && cellPresent(nb) && cellPresent(building.grid[cell.floor - 1]![nb.gx]![nb.gy]!)) return true;
     }
-    if (!nearColumn) return true;
   }
   return false;
 }

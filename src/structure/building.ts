@@ -99,29 +99,41 @@ function applyFacade(
   gy: number,
   floor: number,
 ): void {
-  const w = spec.w;
-  const d = spec.d;
+  const exposed = exposedSides(spec, occupied, gx, gy, floor);
+  if (!(exposed.north || exposed.south || exposed.west || exposed.east)) return;
+  if (floor > 0 || spec.floors === 1) upperWindows(cell, spec, exposed, gx, gy);
+  if (floor === 0) groundWindows(cell, exposed, gx, gy);
+}
+
+type ExposedSides = { north: boolean; south: boolean; west: boolean; east: boolean };
+
+/** Sides on the building edge or facing an unoccupied cell on the same floor. */
+function exposedSides(spec: BuildingSpec, occupied: boolean[][][], gx: number, gy: number, floor: number): ExposedSides {
+  return {
+    north: gy === 0 || !maskAt(occupied, floor, gx, gy - 1),
+    south: gy === spec.d - 1 || !maskAt(occupied, floor, gx, gy + 1),
+    west: gx === 0 || !maskAt(occupied, floor, gx - 1, gy),
+    east: gx === spec.w - 1 || !maskAt(occupied, floor, gx + 1, gy),
+  };
+}
+
+/** Ground floors add alternating windows on north, east and west walls; the south frontage holds doors. */
+function groundWindows(cell: Cell, exposed: ExposedSides, gx: number, gy: number): void {
+  if (exposed.north && gx % 2 === 1) cell.windowN = true;
+  if (exposed.east && gy % 2 === 0) cell.windowE = true;
+  if (exposed.west && gy % 2 === 0) cell.windowW = true;
+}
+
+/** Upper-floor (or single-storey) windows: grouped themes glaze every exposed bay, others every `stride` cells. */
+function upperWindows(cell: Cell, spec: BuildingSpec, exposed: ExposedSides, gx: number, gy: number): void {
   const stride = spec.windowStride ?? (spec.kind === "house" ? 1 : 2);
-  const occ = (x: number, y: number, f = floor) => occupied[f]?.[x]?.[y] === true;
-  const north = gy === 0 || !occ(gx, gy - 1);
-  const south = gy === d - 1 || !occ(gx, gy + 1);
-  const west = gx === 0 || !occ(gx - 1, gy);
-  const east = gx === w - 1 || !occ(gx + 1, gy);
-  const edge = north || south || west || east;
-  if (!edge) return;
   const grouped = spec.theme === "colonial" || spec.theme === "civic";
   const windowHere = grouped ? gx % 2 === 0 || gx % 2 === 1 : gx % stride === 0 || gy % stride === 0;
-  if (floor > 0 || spec.floors === 1) {
-    if (north && windowHere) cell.windowN = true;
-    if (east && (grouped || gy % stride === 0)) cell.windowE = true;
-    if (south && windowHere) cell.windowS = true;
-    if (west && (grouped || gy % stride === 0)) cell.windowW = true;
-  }
-  if (floor === 0) {
-    if (north && gx % 2 === 1) cell.windowN = true;
-    if (east && gy % 2 === 0) cell.windowE = true;
-    if (west && gy % 2 === 0) cell.windowW = true;
-  }
+  const sideWindow = grouped || gy % stride === 0;
+  if (exposed.north && windowHere) cell.windowN = true;
+  if (exposed.east && sideWindow) cell.windowE = true;
+  if (exposed.south && windowHere) cell.windowS = true;
+  if (exposed.west && sideWindow) cell.windowW = true;
 }
 
 function placeOpenings(spec: BuildingSpec, grid: Cell[][][], occupied: boolean[][][]): void {
@@ -179,123 +191,110 @@ function makeDecor(spec: BuildingSpec, cellSize: number, features: BuildingFeatu
   return boxes;
 }
 
-export function createBuilding(spec: BuildingSpec, definition?: Archetype): Building {
-  const cellSize = spec.cellSize ?? CELL;
+type SiloSpec = NonNullable<Archetype['silos']>[number];
+type SiloMount = ReturnType<typeof siloSupports>[number];
+type ColumnFrame = NonNullable<Archetype['canopy']>;
+/** Everything one grid cell needs to decide its role while the building is assembled. */
+interface CellGridBuild {
+  spec: BuildingSpec;
+  archetype: Archetype | undefined;
+  mask: boolean[][][];
+  frame: ColumnFrame | undefined;
+  cellSize: number;
+}
+
+const maskAt = (mask: boolean[][][], floor: number, gx: number, gy: number): boolean => mask[floor]?.[gx]?.[gy] === true;
+const sameFrame = (spec: BuildingSpec, a: Archetype): boolean => spec.w === a.w && spec.d === a.d && spec.floors === a.floors;
+
+function checkPlacement(spec: BuildingSpec, cellSize: number): void {
   if (![spec.w, spec.d, spec.floors].every(n => Number.isInteger(n) && n > 0 && n <= 64) || ![spec.x, spec.y, cellSize].every(Number.isFinite) || cellSize <= 0) throw new Error('Invalid building dimensions or placement');
   if (spec.w * spec.d * spec.floors > 8192) throw new Error('Building exceeds 8192 grid slots');
-  const archetype = definition ?? (spec.archetypeId ? archetypeById(spec.archetypeId) : undefined);
-  if(archetype?.silos && (spec.w!==archetype.w || spec.d!==archetype.d || spec.floors!==archetype.floors))throw new Error('Silo assemblies require authored dimensions');
-  const frame = archetype?.canopy ?? archetype?.openDecks;
-  if (archetype?.openDecks && (spec.w !== archetype.w || spec.d !== archetype.d || spec.floors !== archetype.floors)) throw new Error('Open decks require their authored frame dimensions');
-  if (archetype?.floorVoids?.length && (spec.w !== archetype.w || spec.d !== archetype.d || spec.floors !== archetype.floors)) throw new Error('Floor openings require authored building dimensions');
-  if (archetype?.canopy && (spec.w !== archetype.w || spec.d !== archetype.d || spec.floors !== 1 || spec.roof !== 'flat')) throw new Error('Canopies require their authored frame dimensions');
-  if (archetype?.coreCollapse && (spec.w !== archetype.w || spec.d !== archetype.d || spec.floors !== archetype.floors || spec.roof !== 'flat')) throw new Error('Core-collapse buildings require their authored dimensions and flat roof; create a variation to move supports');
-  if (archetype?.elevatedTank && (spec.w !== archetype.w || spec.d !== archetype.d || spec.floors !== archetype.floors || spec.roof !== 'flat' || spec.layout.rooms.length || spec.layout.partitions || spec.openings.length)) throw new Error('Elevated tanks require their authored frame dimensions and no enclosed rooms');
-  const construction = spec.construction;
-  {
-    const issues = validateConstruction(construction);
-    if (issues.length) throw new Error(`Invalid construction ${construction.id}: ${issues.join("; ")}`);
-  }
-  const features: BuildingFeatureSpec = {
-    porch: spec.features?.porch ?? archetype?.features.porch ?? false,
-    awning: spec.features?.awning ?? archetype?.features.awning ?? false,
-    parapet: spec.features?.parapet ?? archetype?.features.parapet ?? spec.roof === "flat",
-    chimney: spec.features?.chimney ?? archetype?.features.chimney ?? spec.kind === "house",
-    garage: spec.features?.garage ?? archetype?.features.garage ?? false,
+}
+
+/** Assemblies with authored structure cannot be resized or re-roofed by the placer. */
+function checkAuthoredFrame(spec: BuildingSpec, a: Archetype): void {
+  const authored = sameFrame(spec, a);
+  if (a.silos && !authored) throw new Error('Silo assemblies require authored dimensions');
+  if (a.openDecks && !authored) throw new Error('Open decks require their authored frame dimensions');
+  if (a.floorVoids?.length && !authored) throw new Error('Floor openings require authored building dimensions');
+  checkFlatRoofAssembly(spec, a, authored);
+}
+
+/** Canopies, core-collapse towers and elevated tanks also keep their authored flat roof. */
+function checkFlatRoofAssembly(spec: BuildingSpec, a: Archetype, authored: boolean): void {
+  const flat = spec.roof === 'flat';
+  if (a.canopy && !(spec.w === a.w && spec.d === a.d && spec.floors === 1 && flat)) throw new Error('Canopies require their authored frame dimensions');
+  if (a.coreCollapse && !(authored && flat)) throw new Error('Core-collapse buildings require their authored dimensions and flat roof; create a variation to move supports');
+  if (a.elevatedTank && !(authored && flat && !spec.layout.rooms.length && !spec.layout.partitions && !spec.openings.length)) throw new Error('Elevated tanks require their authored frame dimensions and no enclosed rooms');
+}
+
+function featureFlag(spec: BuildingSpec, archetype: Archetype | undefined, key: keyof BuildingFeatureSpec, fallback: boolean): boolean {
+  return spec.features?.[key] ?? archetype?.features[key] ?? fallback;
+}
+
+function resolveFeatures(spec: BuildingSpec, archetype: Archetype | undefined): BuildingFeatureSpec {
+  return {
+    porch: featureFlag(spec, archetype, 'porch', false),
+    awning: featureFlag(spec, archetype, 'awning', false),
+    parapet: featureFlag(spec, archetype, 'parapet', spec.roof === "flat"),
+    chimney: featureFlag(spec, archetype, 'chimney', spec.kind === "house"),
+    garage: featureFlag(spec, archetype, 'garage', false),
   };
+}
+
+function resolveMask(spec: BuildingSpec, archetype: Archetype | undefined): boolean[][][] {
   const mask = spec.mask ?? (archetype ? occupiedMask(archetype, spec.w, spec.d, spec.floors) : fullMask(spec.floors, spec.w, spec.d));
   if (mask.length !== spec.floors || mask.some(layer => layer.length !== spec.w || layer.some(col => col.length !== spec.d || col.some(v => typeof v !== 'boolean')))) throw new Error('Invalid footprint dimensions');
+  return mask;
+}
+
+function checkOpenings(spec: BuildingSpec): void {
   for (const opening of spec.openings) {
     if (opening.side !== 'south' || !['door', 'loading'].includes(opening.kind) || !Number.isInteger(opening.floor) || opening.floor < 0 || opening.floor >= spec.floors || !Number.isFinite(opening.at) || opening.at < 0 || opening.at > 1) throw new Error('Invalid entrance');
   }
-  const theme = spec.theme ?? archetype?.theme ?? defaultTheme(spec.kind);
-  const roofAxis: RoofAxis = spec.roofAxis ?? archetype?.roofAxis ?? (spec.w >= spec.d ? "x" : "y");
-  const windowStride = spec.windowStride ?? archetype?.windowStride ?? 2;
+}
+
+function resolveStyle(spec: BuildingSpec, archetype: Archetype | undefined): { theme: FacadeTheme; roofAxis: RoofAxis; windowStride: number } {
+  return {
+    theme: spec.theme ?? archetype?.theme ?? defaultTheme(spec.kind),
+    roofAxis: spec.roofAxis ?? archetype?.roofAxis ?? (spec.w >= spec.d ? "x" : "y"),
+    windowStride: spec.windowStride ?? archetype?.windowStride ?? 2,
+  };
+}
+
+export function createBuilding(spec: BuildingSpec, definition?: Archetype): Building {
+  const cellSize = spec.cellSize ?? CELL;
+  checkPlacement(spec, cellSize);
+  const archetype = definition ?? (spec.archetypeId ? archetypeById(spec.archetypeId) : undefined);
+  if (archetype) checkAuthoredFrame(spec, archetype);
+  const construction = spec.construction;
+  const constructionIssues = validateConstruction(construction);
+  if (constructionIssues.length) throw new Error(`Invalid construction ${construction.id}: ${constructionIssues.join("; ")}`);
+  const features = resolveFeatures(spec, archetype);
+  const mask = resolveMask(spec, archetype);
+  checkOpenings(spec);
+  const { theme, roofAxis, windowStride } = resolveStyle(spec, archetype);
   const filled: BuildingSpec = { ...spec, theme, windowStride };
   const layoutIssues = archetype?.elevatedTank ? [] : validateLayout(spec.layout, spec.w, spec.d, spec.floors, mask, spec.openings);
   if (layoutIssues.length) throw new Error(`Invalid layout: ${layoutIssues.join("; ")}`);
-  const grid: Cell[][][] = [];
-  const cells: Cell[] = [];
-
-  for (let floor = 0; floor < spec.floors; floor++) {
-    const layer: Cell[][] = [];
-    for (let gx = 0; gx < spec.w; gx++) {
-      const col: Cell[] = [];
-      for (let gy = 0; gy < spec.d; gy++) {
-        const occupied = mask[floor]?.[gx]?.[gy] === true;
-        const occN = (x: number, y: number) => mask[floor]?.[x]?.[y] === true;
-        const edge = !occN(gx - 1, gy) || !occN(gx + 1, gy) || !occN(gx, gy - 1) || !occN(gx, gy + 1);
-        const coreSupport = floor === 0 && !!archetype?.coreCollapse?.supports.some(p => p.x === gx && p.y === gy);
-        const silo=floor===0?siloAt(archetype?.silos??[],gx,gy):undefined;
-        const siloMount=silo?siloSupports(silo).find(p=>p.gx===gx && p.gy===gy):undefined;
-        const live = occupied && (silo ? !!siloMount : frame ? !(archetype?.openDecks && floor === spec.floors - 1) && frame.columns.some(p => p.x === gx && p.y === gy) : (edge || coreSupport));
-        const mat = construction.structure;
-        const cell = makeCell(gx, gy, floor, mat, live);
-        cell.exterior = { north: !occN(gx, gy - 1), south: !occN(gx, gy + 1), west: !occN(gx - 1, gy), east: !occN(gx + 1, gy) };
-        {
-          cell.role = construction.walls === "frame" && (gy === 0 || gy === spec.d - 1) && gx % 2 === 0 ? "column" : "wall";
-          cell.isSupport = construction.walls !== "frame" || cell.role === "column";
-          cell.facadeMaterial = construction.skin;
-          if (cell.role === "column") cell.cladding = { material: construction.skin, hp: 12, maxHp: 12, shed: false };
-          if (construction.walls === "frame" && cell.role === "wall") {
-            cell.hp = cell.maxHp = materialHp(mat) * .35;
-            if (construction.skin === 'glass') {
-              cell.material = 'glass';
-              cell.hp = cell.maxHp = materialHp('glass');
-            }
-          }
-        }
-        if (archetype?.coreCollapse) { cell.isSupport = coreSupport; cell.coreSupport = coreSupport; if (coreSupport) cell.role = "column"; }
-        if (frame) { cell.role = 'column'; cell.isSupport = true; cell.cladding = undefined; cell.hp = cell.maxHp = materialHp(mat); }
-        if (!live) {
-          cell.state = "gone";
-          cell.hp = 0;
-          col.push(cell);
-          continue;
-        }
-        if (!frame && !silo) applyFacade(cell, filled, mask, gx, gy, floor);
-        if(silo && siloMount) {
-          cell.silo={id:silo.id,cx:(silo.gx+silo.diameter/2)*cellSize,cy:(silo.gy+silo.diameter/2)*cellSize,radius:silo.diameter*cellSize/2,angle:siloMount.angle};
-          cell.exterior={north:false,south:false,east:false,west:false};cell.role='wall';cell.isSupport=true;cell.cladding=undefined;
-          cell.material='metal';cell.hp=cell.maxHp=materialHp('metal');
-        }
-        col.push(cell);
-        cells.push(cell);
-      }
-      layer.push(col);
-    }
-    grid.push(layer);
-  }
+  const { grid, cells } = buildCellGrid({ spec: filled, archetype, mask, frame: archetype?.canopy ?? archetype?.openDecks, cellSize });
   placeOpenings(filled, grid, mask);
 
   // The bearing line depends only on floor and x, not on each individual slab tile.
   const bearing = Array.from({ length: spec.floors }, (_, floor) =>
     Array.from({ length: spec.w }, (_, gx) => cells.filter(c => c.floor === floor && c.isSupport && (archetype?.openDecks || Math.abs(c.gx - gx) <= 1))
       .map(c => ({ gx: c.gx, gy: c.gy }))));
-  if (archetype?.sections) for (const cell of cells) {
-    // Setbacks bear on the lower slab's existing bearing line. Transfer disappears
-    // when that line is lost; this is a controlled collapse model, not engineering FEA.
-    if (cell.floor > 0 && !cellPresent(grid[cell.floor - 1]![cell.gx]![cell.gy]!)) {
-      cell.transferSupport = bearing[cell.floor - 1]![cell.gx];
-    }
-  }
+  if (archetype?.sections) assignTransferSupport(cells, grid, bearing);
 
   const building: Building = {
-    ...(archetype?.silos?{silos:archetype.silos.map(definition=>({definition,phase:'standing' as const,progress:0,dx:0,dy:0}))}:{}),
-    ...(archetype?.canopy ? { canopy: true } : {}),
-    ...(archetype?.openDecks ? { openDecks: true } : {}),
+    ...assemblyFlags(archetype),
     visualRevision: 1,
     retired: false,
     settledAwayTime: 0,
     construction,
     layout: spec.layout,
     lotId: null,
-    floorTiles: Array.from({ length: spec.floors }, (_, floor) =>
-      Array.from({ length: spec.w }, (_, gx) => Array.from({ length: spec.d }, (_, gy) => ({
-        gx, gy, floor, roomId: "", state: "intact" as const, fallT: 0,
-        ...(archetype?.floorVoids?.some(v=>v.floor===floor && gx>=v.x && gx<v.x+v.w && gy>=v.y && gy<v.y+v.d)?{void:true}:{}),
-        support: floor === 0 ? [] : bearing[floor - 1]![gx]!,
-      })).filter(t => mask[floor]?.[gx]?.[t.gy])).flat()).flat(),
+    floorTiles: makeFloorTiles(spec, mask, bearing, archetype),
     id: nextId++,
     kind: spec.kind,
     name: spec.name,
@@ -326,22 +325,126 @@ export function createBuilding(spec: BuildingSpec, definition?: Archetype): Buil
     collisionDirty: true,
     roofDirty: false,
   };
-  if(archetype?.elevatedTank) initializeElevatedTank(building, archetype.elevatedTank);
-  else {
-    for (const tile of building.floorTiles) tile.roomId = roomAt(building, tile.gx, tile.gy, tile.floor)!.id;
-    const allTiles=building.floorTiles;
-    if(archetype?.silos)building.floorTiles=allTiles.filter(t=>!siloAt(archetype.silos!,t.gx,t.gy));
-    building.roofs = archetype?.openDecks ? [] : generateRoofs(building);
-    building.floorTiles=allTiles;
-    if (archetype?.canopy) for (const roof of building.roofs) roof.support = archetype.canopy.columns.map(p => ({ gx: p.x, gy: p.y }));
-    building.fixtures = generateInteriors(building);
-  }
-  if (archetype?.coreCollapse) initializeCore(building, archetype.coreCollapse);
-  else if (building.floors > DETAILED_FLOORS && !building.elevatedTank) initializeCore(building, automaticCore(building));
-  initializeFacadeDetails(building);
+  initializeAssemblies(building, archetype);
   return building;
 }
 
+function buildCellGrid(b: CellGridBuild): { grid: Cell[][][]; cells: Cell[] } {
+  const grid: Cell[][][] = [];
+  const cells: Cell[] = [];
+  for (let floor = 0; floor < b.spec.floors; floor++) {
+    const layer: Cell[][] = [];
+    for (let gx = 0; gx < b.spec.w; gx++) {
+      const col: Cell[] = [];
+      for (let gy = 0; gy < b.spec.d; gy++) {
+        const cell = makeGridCell(b, floor, gx, gy);
+        col.push(cell);
+        if (cell.state !== "gone") cells.push(cell);
+      }
+      layer.push(col);
+    }
+    grid.push(layer);
+  }
+  return { grid, cells };
+}
+
+function makeGridCell(b: CellGridBuild, floor: number, gx: number, gy: number): Cell {
+  const { mask, archetype } = b;
+  const coreSupport = floor === 0 && !!archetype?.coreCollapse?.supports.some(p => p.x === gx && p.y === gy);
+  const silo = floor === 0 ? siloAt(archetype?.silos ?? [], gx, gy) : undefined;
+  const siloMount = silo ? siloSupports(silo).find(p => p.gx === gx && p.gy === gy) : undefined;
+  const live = cellBears(b, floor, gx, gy, coreSupport, silo, siloMount);
+  const cell = makeCell(gx, gy, floor, b.spec.construction.structure, live);
+  cell.exterior = { north: !maskAt(mask, floor, gx, gy - 1), south: !maskAt(mask, floor, gx, gy + 1), west: !maskAt(mask, floor, gx - 1, gy), east: !maskAt(mask, floor, gx + 1, gy) };
+  applyCellRole(cell, b, coreSupport);
+  if (!live) {
+    cell.state = "gone";
+    cell.hp = 0;
+    return cell;
+  }
+  if (!b.frame && !silo) applyFacade(cell, b.spec, mask, gx, gy, floor);
+  if (silo && siloMount) mountSiloCell(cell, silo, siloMount, b.cellSize);
+  return cell;
+}
+
+/** Whether this grid slot holds a standing, load-bearing-capable cell. */
+function cellBears(b: CellGridBuild, floor: number, gx: number, gy: number, coreSupport: boolean, silo: SiloSpec | undefined, siloMount: SiloMount | undefined): boolean {
+  const { mask, frame } = b;
+  if (!maskAt(mask, floor, gx, gy)) return false;
+  if (silo) return !!siloMount;
+  if (frame) return !(b.archetype?.openDecks && floor === b.spec.floors - 1) && frame.columns.some(p => p.x === gx && p.y === gy);
+  const edge = !maskAt(mask, floor, gx - 1, gy) || !maskAt(mask, floor, gx + 1, gy) || !maskAt(mask, floor, gx, gy - 1) || !maskAt(mask, floor, gx, gy + 1);
+  return edge || coreSupport;
+}
+
+function applyCellRole(cell: Cell, b: CellGridBuild, coreSupport: boolean): void {
+  const construction = b.spec.construction, mat = construction.structure;
+  cell.role = construction.walls === "frame" && (cell.gy === 0 || cell.gy === b.spec.d - 1) && cell.gx % 2 === 0 ? "column" : "wall";
+  cell.isSupport = construction.walls !== "frame" || cell.role === "column";
+  cell.facadeMaterial = construction.skin;
+  if (cell.role === "column") cell.cladding = { material: construction.skin, hp: 12, maxHp: 12, shed: false };
+  if (construction.walls === "frame" && cell.role === "wall") {
+    cell.hp = cell.maxHp = materialHp(mat) * .35;
+    if (construction.skin === 'glass') {
+      cell.material = 'glass';
+      cell.hp = cell.maxHp = materialHp('glass');
+    }
+  }
+  if (b.archetype?.coreCollapse) { cell.isSupport = coreSupport; cell.coreSupport = coreSupport; if (coreSupport) cell.role = "column"; }
+  if (b.frame) { cell.role = 'column'; cell.isSupport = true; cell.cladding = undefined; cell.hp = cell.maxHp = materialHp(mat); }
+}
+
+function mountSiloCell(cell: Cell, silo: SiloSpec, siloMount: SiloMount, cellSize: number): void {
+  cell.silo={id:silo.id,cx:(silo.gx+silo.diameter/2)*cellSize,cy:(silo.gy+silo.diameter/2)*cellSize,radius:silo.diameter*cellSize/2,angle:siloMount.angle};
+  cell.exterior={north:false,south:false,east:false,west:false};cell.role='wall';cell.isSupport=true;cell.cladding=undefined;
+  cell.material='metal';cell.hp=cell.maxHp=materialHp('metal');
+}
+
+function assignTransferSupport(cells: Cell[], grid: Cell[][][], bearing: { gx: number; gy: number }[][][]): void {
+  for (const cell of cells) {
+    // Setbacks bear on the lower slab's existing bearing line. Transfer disappears
+    // when that line is lost; this is a controlled collapse model, not engineering FEA.
+    if (cell.floor > 0 && !cellPresent(grid[cell.floor - 1]![cell.gx]![cell.gy]!)) {
+      cell.transferSupport = bearing[cell.floor - 1]![cell.gx];
+    }
+  }
+}
+
+function assemblyFlags(archetype: Archetype | undefined): Pick<Building, 'silos' | 'canopy' | 'openDecks'> {
+  return {
+    ...(archetype?.silos?{silos:archetype.silos.map(definition=>({definition,phase:'standing' as const,progress:0,dx:0,dy:0}))}:{}),
+    ...(archetype?.canopy ? { canopy: true } : {}),
+    ...(archetype?.openDecks ? { openDecks: true } : {}),
+  };
+}
+
+function makeFloorTiles(spec: BuildingSpec, mask: boolean[][][], bearing: { gx: number; gy: number }[][][], archetype: Archetype | undefined): Building['floorTiles'] {
+  return Array.from({ length: spec.floors }, (_, floor) =>
+    Array.from({ length: spec.w }, (_, gx) => Array.from({ length: spec.d }, (_, gy) => ({
+      gx, gy, floor, roomId: "", state: "intact" as const, fallT: 0,
+      ...(archetype?.floorVoids?.some(v=>v.floor===floor && gx>=v.x && gx<v.x+v.w && gy>=v.y && gy<v.y+v.d)?{void:true}:{}),
+      support: floor === 0 ? [] : bearing[floor - 1]![gx]!,
+    })).filter(t => mask[floor]?.[gx]?.[t.gy])).flat()).flat();
+}
+
+function initializeAssemblies(building: Building, archetype: Archetype | undefined): void {
+  if(archetype?.elevatedTank) initializeElevatedTank(building, archetype.elevatedTank);
+  else initializeEnclosure(building, archetype);
+  if (archetype?.coreCollapse) initializeCore(building, archetype.coreCollapse);
+  else if (building.floors > DETAILED_FLOORS && !building.elevatedTank) initializeCore(building, automaticCore(building));
+  initializeFacadeDetails(building);
+}
+
+/** Rooms, roofs and fixtures for every building that is not a bare tank frame. */
+function initializeEnclosure(building: Building, archetype: Archetype | undefined): void {
+  for (const tile of building.floorTiles) tile.roomId = roomAt(building, tile.gx, tile.gy, tile.floor)!.id;
+  const allTiles=building.floorTiles;
+  if(archetype?.silos)building.floorTiles=allTiles.filter(t=>!siloAt(archetype.silos!,t.gx,t.gy));
+  building.roofs = archetype?.openDecks ? [] : generateRoofs(building);
+  building.floorTiles=allTiles;
+  if (archetype?.canopy) for (const roof of building.roofs) roof.support = archetype.canopy.columns.map(p => ({ gx: p.x, gy: p.y }));
+  building.fixtures = generateInteriors(building);
+}
 export function createBuildingFromArchetype(
   archetypeId: ArchetypeId | string,
   name: string,
@@ -414,15 +517,7 @@ export function applyCellDamage(
   if (amount <= 0) return 0;
   if (cell.state === "gone" || cell.state === "falling") return 0;
   if (cell.cladding && cell.cladding.hp > 0) {
-    const beforeSkin = cell.cladding.hp;
-    cell.cladding.hp = Math.max(0, beforeSkin - amount);
-    building.visualRevision++;
-    amount = Math.max(0, amount - beforeSkin);
-    if (cell.cladding.hp === 0) {
-      markBuildingChanged(building);
-      const center = cellCenter(building, cell);
-      particles.burst(debrisKind(cell.cladding.material), center.x, center.y, center.z, .6);
-    }
+    amount = strikeCladding(building, cell, cell.cladding, amount, particles);
     if (amount === 0) return 0;
   }
   const before = cell.hp;
@@ -431,90 +526,129 @@ export function applyCellDamage(
   cell.hp = Math.max(0, cell.hp - amount);
   cell.lastHitNx = nx;
   cell.lastHitNy = ny;
-  let cash = 0;
   const c = cellCenter(building, cell);
-
-  if (was === "intact" && cell.hp <= cell.maxHp * 0.58) {
-    cell.state = "cracked";
-    particles.burst(debrisKind(cell.material), c.x, c.y, c.z, 0.45);
-    cash += cashFor(cell, "chip");
-    events.push({ kind: "chip", x: c.x, y: c.y, z: c.z, mag: 0.4, material: cell.material, cash });
-  }
-
-  if (cell.hp <= 0 && (was === "intact" || was === "cracked" || cell.state === "cracked")) {
-    cell.state = "breached";
-    cell.hp = 0;
-    particles.burst(debrisKind(cell.material), c.x, c.y, c.z, 1.1);
-    particles.burst("glass", c.x, c.y, c.z + 0.4, 0.6);
-    cash += cashFor(cell, "breach");
-    events.push({ kind: "breach", x: c.x, y: c.y, z: c.z, mag: 0.9, material: cell.material, cash: cashFor(cell, "breach") });
-  }
-
-  if (was === "intact" && cell.state === "intact" && before !== cell.hp && amount > 8) {
-    particles.spawn(debrisKind(cell.material), c.x, c.y, c.z, 2, 1.2, 2);
-  }
-
-  if (was !== cell.state || wasSolid !== cellPresent(cell)) {
-    markBuildingChanged(building, wasSolid !== cellPresent(cell) || cell.state === "breached");
-  }
-
+  let cash = was === "intact" && cell.hp <= cell.maxHp * 0.58 ? crackCell(cell, c, particles, events) : 0;
+  if (cell.hp <= 0 && (was === "intact" || was === "cracked" || cell.state === "cracked")) cash += breachCell(cell, c, particles, events);
+  settleHit(building, cell, was, wasSolid, before, amount, c, particles);
   return cash;
 }
 
+/** Chip dust on heavy hits that left a cell intact, and a rebuild when its state or solidity changed. */
+function settleHit(
+  building: Building,
+  cell: Cell,
+  was: Cell["state"],
+  wasSolid: boolean,
+  before: number,
+  amount: number,
+  c: { x: number; y: number; z: number },
+  particles: ParticlePool,
+): void {
+  if (was === "intact" && cell.state === "intact" && before !== cell.hp && amount > 8) {
+    particles.spawn(debrisKind(cell.material), c.x, c.y, c.z, 2, 1.2, 2);
+  }
+  const solid = cellPresent(cell);
+  if (was !== cell.state || wasSolid !== solid) {
+    markBuildingChanged(building, wasSolid !== solid || cell.state === "breached");
+  }
+}
+
+/** Cladding soaks damage first; returns what is left over for the wall behind it. */
+function strikeCladding(building: Building, cell: Cell, cladding: NonNullable<Cell["cladding"]>, amount: number, particles: ParticlePool): number {
+  const beforeSkin = cladding.hp;
+  cladding.hp = Math.max(0, beforeSkin - amount);
+  building.visualRevision++;
+  if (cladding.hp === 0) {
+    markBuildingChanged(building);
+    const center = cellCenter(building, cell);
+    particles.burst(debrisKind(cladding.material), center.x, center.y, center.z, .6);
+  }
+  return Math.max(0, amount - beforeSkin);
+}
+
+function crackCell(cell: Cell, c: { x: number; y: number; z: number }, particles: ParticlePool, events: WorldEvent[]): number {
+  cell.state = "cracked";
+  particles.burst(debrisKind(cell.material), c.x, c.y, c.z, 0.45);
+  const cash = cashFor(cell, "chip");
+  events.push({ kind: "chip", x: c.x, y: c.y, z: c.z, mag: 0.4, material: cell.material, cash });
+  return cash;
+}
+
+function breachCell(cell: Cell, c: { x: number; y: number; z: number }, particles: ParticlePool, events: WorldEvent[]): number {
+  cell.state = "breached";
+  cell.hp = 0;
+  particles.burst(debrisKind(cell.material), c.x, c.y, c.z, 1.1);
+  particles.burst("glass", c.x, c.y, c.z + 0.4, 0.6);
+  const cash = cashFor(cell, "breach");
+  events.push({ kind: "breach", x: c.x, y: c.y, z: c.z, mag: 0.9, material: cell.material, cash: cashFor(cell, "breach") });
+  return cash;
+}
+
+const SPAN_DIRS = [
+  [1, 0],
+  [-1, 0],
+  [0, 1],
+  [0, -1],
+] as const;
+
 function markSupported(building: Building, supported: boolean[]): void {
   const { w, d, floors } = building;
-  const idx = (floor: number, gx: number, gy: number) => floor * w * d + gx * d + gy;
   supported.fill(false);
-  const dirs = [
-    [1, 0],
-    [-1, 0],
-    [0, 1],
-    [0, -1],
-  ] as const;
-
   for (let floor = 0; floor < floors; floor++) {
     const dist = new Array<number>(w * d).fill(99);
     const queue: number[] = [];
-    let qh = 0;
-    for (let gx = 0; gx < w; gx++) {
-      for (let gy = 0; gy < d; gy++) {
-        const cell = building.grid[floor]![gx]![gy]!;
-        if (!cellPresent(cell)) continue;
-        const underOk = floor === 0 || cellPresent(building.grid[floor - 1]![gx]![gy]!) ||
-          !!cell.transferSupport?.some(s => cellPresent(building.grid[floor - 1]![s.gx]![s.gy]!));
-        if (cell.isSupport && !underOk) continue;
-        if (!underOk) continue;
-        const i = gx * d + gy;
-        dist[i] = 0;
-        queue.push(i);
-      }
+    seedBearingCells(building, floor, dist, queue);
+    spreadAlongBeams(building, floor, dist, queue);
+    for (let i = 0; i < w * d; i++) {
+      if (dist[i]! < 99) supported[floor * w * d + i] = true;
     }
-    while (qh < queue.length) {
-      const i = queue[qh++]!;
-      const gx = Math.floor(i / d);
-      const gy = i - gx * d;
+  }
+}
+
+/** The floor below (or a section's transfer line) carries this cell. */
+function restsOnFloorBelow(building: Building, cell: Cell): boolean {
+  if (cell.floor === 0) return true;
+  const below = building.grid[cell.floor - 1]!;
+  return cellPresent(below[cell.gx]![cell.gy]!) || !!cell.transferSupport?.some(s => cellPresent(below[s.gx]![s.gy]!));
+}
+
+/** Every present cell resting on the floor below starts at beam distance 0. */
+function seedBearingCells(building: Building, floor: number, dist: number[], queue: number[]): void {
+  const { w, d } = building;
+  for (let gx = 0; gx < w; gx++) {
+    for (let gy = 0; gy < d; gy++) {
       const cell = building.grid[floor]![gx]![gy]!;
-      const span = beamSpan(cell.material);
-      for (const [dx, dy] of dirs) {
-        const nx = gx + dx;
-        const ny = gy + dy;
-        if (nx < 0 || ny < 0 || nx >= w || ny >= d) continue;
-        const nb = building.grid[floor]![nx]![ny]!;
-        if (!cellPresent(nb)) continue;
-        if (nb.isSupport) continue;
-        const ni = nx * d + ny;
-        const nd = dist[i]! + 1;
-        if (nd < dist[ni]! && nd <= span) {
-          dist[ni] = nd;
-          queue.push(ni);
-        }
-      }
+      if (!cellPresent(cell) || !restsOnFloorBelow(building, cell)) continue;
+      const i = gx * d + gy;
+      dist[i] = 0;
+      queue.push(i);
     }
-    for (let gx = 0; gx < w; gx++) {
-      for (let gy = 0; gy < d; gy++) {
-        if (dist[gx * d + gy]! < 99) supported[idx(floor, gx, gy)] = true;
-      }
-    }
+  }
+}
+
+/** Breadth-first beam spans: a non-support cell is carried while within its neighbour's material span. */
+function spreadAlongBeams(building: Building, floor: number, dist: number[], queue: number[]): void {
+  const { d } = building;
+  let qh = 0;
+  while (qh < queue.length) {
+    const i = queue[qh++]!;
+    const gx = Math.floor(i / d);
+    const gy = i - gx * d;
+    const span = beamSpan(building.grid[floor]![gx]![gy]!.material);
+    for (const [dx, dy] of SPAN_DIRS) relaxBeam(building, floor, dist, queue, i, gx + dx, gy + dy, span);
+  }
+}
+
+function relaxBeam(building: Building, floor: number, dist: number[], queue: number[], from: number, nx: number, ny: number, span: number): void {
+  const { w, d } = building;
+  if (nx < 0 || ny < 0 || nx >= w || ny >= d) return;
+  const nb = building.grid[floor]![nx]![ny]!;
+  if (!cellPresent(nb) || nb.isSupport) return;
+  const ni = nx * d + ny;
+  const nd = dist[from]! + 1;
+  if (nd < dist[ni]! && nd <= span) {
+    dist[ni] = nd;
+    queue.push(ni);
   }
 }
 
@@ -605,107 +739,8 @@ export function stepStructures(
   const roofSpawns: RoofDebrisSpawn[] = [];
 
   for (const building of buildings) {
-    if (building.elevatedTank) stepElevatedTank(building, dt, result, particles, events);
-    if (building.silos) {
-      stepSilos(building, dt, result, particles);
-      if (building.coreCollapse?.phase === 'settled') building.fullyDown = building.silos.every(s => s.phase === 'gone');
-    }
-    if (building.coreCollapse) {
-      if ((building.coreCollapse.phase === 'settled' && !building.structureDirty) || (building.coreCollapse.phase === 'standing' && !building.structureDirty)) { skipped++; continue; }
-      stepCoreCollapse(building, dt, result, particles, events); stepped++; continue;
-    }
-    if (building.fullyDown && !roofsNeedStep(building)) {
-      skipped++;
-      continue;
-    }
-    if (!buildingNeedsStructureStep(building)) {
-      skipped++;
-      continue;
-    }
-    stepped++;
-    building.visualRevision++;
-    scratch.length = building.w * building.d * building.floors;
-    markSupported(building, scratch);
-    const idx = (floor: number, gx: number, gy: number) =>
-      floor * building.w * building.d + gx * building.d + gy;
-
-    for (const cell of building.cells) {
-      if (cell.cladding && cell.cladding.hp === 0 && !cell.cladding.shed) {
-        cell.cladding.shed = true;
-        const c = cellCenter(building, cell);
-        result.rubbleSpawns.push({ x: c.x, y: c.y, dx: 0, dy: 1, material: cell.cladding.material,
-          floor: cell.floor, cellSize: building.cellSize * .4, source: "roof", panelW: building.cellSize, panelD: .5 });
-      }
-      if (cell.state === "gone") continue;
-      if (cell.state === "falling") {
-        cell.fallT += dt / (building.construction.fallDuration);
-        if (cell.fallT >= 1) {
-          cell.state = "gone";
-          cell.fallT = 1;
-          markBuildingChanged(building, true);
-          const c = cellCenter(building, cell);
-          const disp = 0.65 + cell.floor * 0.55;
-          result.rubbleSpawns.push({
-            x: c.x + cell.fallDx * disp,
-            y: c.y + cell.fallDy * disp,
-            dx: cell.fallDx,
-            dy: cell.fallDy,
-            material: cell.material,
-            floor: cell.floor,
-            cellSize: building.cellSize,
-          });
-          result.leans.push({
-            x: c.x,
-            y: c.y,
-            dx: cell.fallDx,
-            dy: cell.fallDy,
-            mag: 18 + cell.floor * 10,
-          });
-        }
-        continue;
-      }
-
-      const supported = scratch[idx(cell.floor, cell.gx, cell.gy)] === true;
-      if (cell.state === "breached") {
-        cell.unsupportedTime += dt;
-        if (cell.unsupportedTime > 0.85) {
-          result.cash += startFall(building, cell, particles, events);
-        }
-        continue;
-      }
-
-      if (!cellPresent(cell)) continue;
-
-      if (supported) {
-        cell.unsupportedTime = Math.max(0, cell.unsupportedTime - dt * 2);
-        cell.sag = Math.max(0, cell.sag - dt * 1.4);
-        continue;
-      }
-
-      cell.unsupportedTime += dt;
-      cell.sag = Math.min(1, cell.unsupportedTime / 0.32);
-      if (cell.unsupportedTime > 0.22 && cell.state === "intact") {
-        cell.state = "cracked";
-      }
-      if (cell.unsupportedTime > 0.38) {
-        result.cash += applyCellDamage(building, cell, 26 * dt, cell.lastHitNx, cell.lastHitNy, particles, events);
-      }
-      if (cell.unsupportedTime > (building.construction.failureDelay)) {
-        result.cash += startFall(building, cell, particles, events);
-      }
-    }
-
-    stepFloorTiles(building, dt, result);
-    stepRoofs(building, dt, particles, events, roofSpawns);
-    const interiors = stepInteriors(building, particles, events);
-    result.cash += interiors.cash;
-    result.fixtureFrags.push(...interiors.frags);
-    const cellsDown = building.cells.every((c) => c.state === "gone");
-    const roofsDown = building.roofs.every((r) => r.state === "gone");
-    const floorsDown = !building.floorTiles.some(t => !t.void && t.floor > 0 && t.state !== "gone");
-    if (cellsDown && roofsDown && floorsDown && (!building.elevatedTank || building.elevatedTank.phase === 'gone') && (!building.silos || building.silos.every(s=>s.phase==='gone'))) building.fullyDown = true;
-    building.structureDirty = buildingStillUnsettled(building);
-    building.roofDirty = roofsNeedStep(building);
+    if (stepBuildingStructure(building, dt, particles, events, result, scratch, roofSpawns)) stepped++;
+    else skipped++;
   }
 
   for (const spawn of roofSpawns) result.rubbleSpawns.push(spawn);
@@ -715,6 +750,135 @@ export function stepStructures(
     stats.skipped = skipped;
   }
   return result;
+}
+
+/** Advance one building; false when it was settled and skipped this step. */
+function stepBuildingStructure(
+  building: Building,
+  dt: number,
+  particles: ParticlePool,
+  events: WorldEvent[],
+  result: StructureStepResult,
+  scratch: boolean[],
+  roofSpawns: RoofDebrisSpawn[],
+): boolean {
+  if (building.elevatedTank) stepElevatedTank(building, dt, result, particles, events);
+  if (building.silos) {
+    stepSilos(building, dt, result, particles);
+    if (building.coreCollapse?.phase === 'settled') building.fullyDown = building.silos.every(s => s.phase === 'gone');
+  }
+  if (building.coreCollapse) {
+    const phase = building.coreCollapse.phase;
+    if (!building.structureDirty && (phase === 'settled' || phase === 'standing')) return false;
+    stepCoreCollapse(building, dt, result, particles, events);
+    return true;
+  }
+  if (building.fullyDown && !roofsNeedStep(building)) return false;
+  if (!buildingNeedsStructureStep(building)) return false;
+  building.visualRevision++;
+  scratch.length = building.w * building.d * building.floors;
+  markSupported(building, scratch);
+  for (const cell of building.cells) stepCell(building, cell, dt, scratch, particles, events, result);
+
+  stepFloorTiles(building, dt, result);
+  stepRoofs(building, dt, particles, events, roofSpawns);
+  const interiors = stepInteriors(building, particles, events);
+  result.cash += interiors.cash;
+  result.fixtureFrags.push(...interiors.frags);
+  if (buildingAllDown(building)) building.fullyDown = true;
+  building.structureDirty = buildingStillUnsettled(building);
+  building.roofDirty = roofsNeedStep(building);
+  return true;
+}
+
+/** Every wall cell, roof, upper slab, tank and silo is gone. */
+function buildingAllDown(building: Building): boolean {
+  if (!building.cells.every((c) => c.state === "gone")) return false;
+  if (!building.roofs.every((r) => r.state === "gone")) return false;
+  if (building.floorTiles.some(t => !t.void && t.floor > 0 && t.state !== "gone")) return false;
+  if (building.elevatedTank && building.elevatedTank.phase !== 'gone') return false;
+  return !building.silos || building.silos.every(s => s.phase === 'gone');
+}
+
+function stepCell(
+  building: Building,
+  cell: Cell,
+  dt: number,
+  scratch: readonly boolean[],
+  particles: ParticlePool,
+  events: WorldEvent[],
+  result: StructureStepResult,
+): void {
+  if (cell.cladding && cell.cladding.hp === 0 && !cell.cladding.shed) shedCladding(building, cell, cell.cladding, result);
+  if (cell.state === "gone") return;
+  if (cell.state === "falling") {
+    stepFallingCell(building, cell, dt, result);
+    return;
+  }
+  const supported = scratch[cell.floor * building.w * building.d + cell.gx * building.d + cell.gy] === true;
+  if (cell.state === "breached") {
+    cell.unsupportedTime += dt;
+    if (cell.unsupportedTime > 0.85) {
+      result.cash += startFall(building, cell, particles, events);
+    }
+    return;
+  }
+  if (!cellPresent(cell)) return;
+  if (supported) {
+    cell.unsupportedTime = Math.max(0, cell.unsupportedTime - dt * 2);
+    cell.sag = Math.max(0, cell.sag - dt * 1.4);
+    return;
+  }
+  stepUnsupportedCell(building, cell, dt, particles, events, result);
+}
+
+/** Cladding at 0 hp peels off once as a thin roof-source panel. */
+function shedCladding(building: Building, cell: Cell, cladding: NonNullable<Cell["cladding"]>, result: StructureStepResult): void {
+  cladding.shed = true;
+  const c = cellCenter(building, cell);
+  result.rubbleSpawns.push({ x: c.x, y: c.y, dx: 0, dy: 1, material: cladding.material,
+    floor: cell.floor, cellSize: building.cellSize * .4, source: "roof", panelW: building.cellSize, panelD: .5 });
+}
+
+function stepFallingCell(building: Building, cell: Cell, dt: number, result: StructureStepResult): void {
+  cell.fallT += dt / (building.construction.fallDuration);
+  if (cell.fallT < 1) return;
+  cell.state = "gone";
+  cell.fallT = 1;
+  markBuildingChanged(building, true);
+  const c = cellCenter(building, cell);
+  const disp = 0.65 + cell.floor * 0.55;
+  result.rubbleSpawns.push({
+    x: c.x + cell.fallDx * disp,
+    y: c.y + cell.fallDy * disp,
+    dx: cell.fallDx,
+    dy: cell.fallDy,
+    material: cell.material,
+    floor: cell.floor,
+    cellSize: building.cellSize,
+  });
+  result.leans.push({
+    x: c.x,
+    y: c.y,
+    dx: cell.fallDx,
+    dy: cell.fallDy,
+    mag: 18 + cell.floor * 10,
+  });
+}
+
+/** Unsupported cells sag, crack, take damage, then fall once past the construction's failure delay. */
+function stepUnsupportedCell(building: Building, cell: Cell, dt: number, particles: ParticlePool, events: WorldEvent[], result: StructureStepResult): void {
+  cell.unsupportedTime += dt;
+  cell.sag = Math.min(1, cell.unsupportedTime / 0.32);
+  if (cell.unsupportedTime > 0.22 && cell.state === "intact") {
+    cell.state = "cracked";
+  }
+  if (cell.unsupportedTime > 0.38) {
+    result.cash += applyCellDamage(building, cell, 26 * dt, cell.lastHitNx, cell.lastHitNy, particles, events);
+  }
+  if (cell.unsupportedTime > (building.construction.failureDelay)) {
+    result.cash += startFall(building, cell, particles, events);
+  }
 }
 
 function buildingStillUnsettled(building: Building): boolean {
