@@ -26,10 +26,18 @@ export async function filesUnder(root, relative = '') {
   }
   return result.sort();
 }
+/** The separate gallery pages stay out of the shared capture fingerprint. */
+const GALLERY_DIRS = ['catalog/', 'designer/', 'site/'];
+
+/** Executable game source under src/: not JSON, not tests, not the gallery. */
+export function isFingerprintSource(file) {
+  return !file.endsWith('.json') && !file.includes('.test.') && !GALLERY_DIRS.some(dir => file.startsWith(dir));
+}
+
 export async function sharedFingerprint(root = '.') {
   // JSON definitions are covered by resolved per-asset inputs. All executable
   // source is conservatively included, except the independent gallery.
-  const source = (await filesUnder(join(root, 'src'))).filter(p => !p.endsWith('.json') && !p.includes('.test.') && !p.startsWith('catalog/') && !p.startsWith('designer/') && !p.startsWith('site/'));
+  const source = (await filesUnder(join(root, 'src'))).filter(isFingerprintSource);
   const names = [...source.map(p => `src/${p}`), 'package-lock.json', 'scripts/capture-assets.mjs',
     'scripts/catalog/core.mjs', 'scripts/catalog/cache.mjs', 'scripts/verify-asset-captures.mjs'];
   return digest(JSON.stringify(await Promise.all(names.sort().map(async p => [p, digest(await readFile(join(root, p)))]))));
@@ -38,21 +46,37 @@ export function safeKey(key) {
   if (typeof key !== 'string' || !/^[a-zA-Z0-9_./-]+$/.test(key) || key.split('/').some(p => p === '..' || p === '.' || !p)) throw new Error('Unsafe object key');
   return key;
 }
+const LAYER_TOGGLES = ['roofs', 'walls', 'floors', 'contents', 'props', 'debris', 'vehicles', 'details', 'effects', 'terrain', 'roads', 'sites'];
+const pad = (n, width) => String(n).padStart(width, '0');
+
+/** Every image a capture run must produce for an asset, in a stable order. */
 export function requiredCaptures(asset, exhaustive = false) {
   const files = ['model.png', ...['cutaway', 'structure', 'collision', 'rooms'].map(v => `layers/${v}.png`)];
-  for (const layer of ['roofs', 'walls', 'floors', 'contents', 'props', 'debris', 'vehicles', 'details', 'effects', 'terrain', 'roads', 'sites'])
-    for (const mode of ['only', 'without']) files.push(`layers/${mode}-${layer}.png`);
-  for (let floor = 0; floor < asset.floors; floor++) for (const view of ['cutaway', 'structure']) files.push(`floors/${String(floor).padStart(2, '0')}-${view}.png`);
-  if (exhaustive) for (let mask = 0; mask < 4096; mask++) files.push(`layers/combination-${String(mask).padStart(4, '0')}.png`);
-  if(asset.category==='vehicle') {
-    for(let heading=0;heading<4;heading++){files.push('vehicle/heading-'+heading+'-intact.png');for(const action of ['front','side','rear','overhead'])for(const frame of [0,15,60])files.push('vehicle/heading-'+heading+'-'+action+'-'+frame+'.png');}
-    for(const frame of [30,90,180])files.push('vehicle/travel-'+frame+'.png');
-    files.push('vehicle/wreck-0.png','vehicle/wreck-180.png','vehicle/wreck-pushed.png');
-  } else if (asset.destruction === 'unsupported') for (const frame of [15, 30, 60, 120, 180]) files.push(`motion/frame-${String(frame).padStart(4, '0')}.png`);
-  else {
-    for (const stage of ['00-intact', '01-damaged', '02-breached', '03-support-loss', '99-cleared-structure']) files.push(`destruction/${stage}.png`);
-    for (const frame of [6, 15, 30, 60, 90, 120, 180, 240, 360, 600, 900]) for (const view of ['', '-cutaway', '-no-effects']) files.push(`destruction/frame-${String(frame).padStart(4, '0')}${view}.png`);
-  }
+  for (const layer of LAYER_TOGGLES) for (const mode of ['only', 'without']) files.push(`layers/${mode}-${layer}.png`);
+  for (let floor = 0; floor < asset.floors; floor++) for (const view of ['cutaway', 'structure']) files.push(`floors/${pad(floor, 2)}-${view}.png`);
+  if (exhaustive) for (let mask = 0; mask < 4096; mask++) files.push(`layers/combination-${pad(mask, 4)}.png`);
+  files.push(...behaviourCaptures(asset));
+  return files;
+}
+
+/** Vehicles crash from each heading; unsupported assets just move; everything else is demolished in stages. */
+function behaviourCaptures(asset) {
+  if (asset.category === 'vehicle') return vehicleCaptures();
+  if (asset.destruction === 'unsupported') return [15, 30, 60, 120, 180].map(frame => `motion/frame-${pad(frame, 4)}.png`);
+  return destructionCaptures();
+}
+
+function vehicleCaptures() {
+  const files = [];
+  for(let heading=0;heading<4;heading++){files.push('vehicle/heading-'+heading+'-intact.png');for(const action of ['front','side','rear','overhead'])for(const frame of [0,15,60])files.push('vehicle/heading-'+heading+'-'+action+'-'+frame+'.png');}
+  for(const frame of [30,90,180])files.push('vehicle/travel-'+frame+'.png');
+  files.push('vehicle/wreck-0.png','vehicle/wreck-180.png','vehicle/wreck-pushed.png');
+  return files;
+}
+
+function destructionCaptures() {
+  const files = ['00-intact', '01-damaged', '02-breached', '03-support-loss', '99-cleared-structure'].map(stage => `destruction/${stage}.png`);
+  for (const frame of [6, 15, 30, 60, 90, 120, 180, 240, 360, 600, 900]) for (const view of ['', '-cutaway', '-no-effects']) files.push(`destruction/frame-${pad(frame, 4)}${view}.png`);
   return files;
 }
 
@@ -118,25 +142,32 @@ export async function buildTree(records, put) {
 }
 
 export async function buildIndexes(cards, put) {
+  const indexes = {};
+  for (const [category, items] of categoryGroups(cards)) {
+    const browse = items.map(card => ({ key: `${normalize(card.name)}\t${card.id}`, card }));
+    const search = items.flatMap(card => [...searchTerms(card)].map(term => ({ key: `${term}\t${card.id}`, card })));
+    indexes[category] = { count: items.length, browse: await buildTree(browse, put), search: await buildTree(search, put) };
+  }
+  return indexes;
+}
+
+/** All cards, then each category's cards, in first-seen category order. */
+function categoryGroups(cards) {
   const groups = new Map([['all', cards]]);
   for (const card of cards) {
     const group = groups.get(card.category) ?? [];
     if (!groups.has(card.category)) groups.set(card.category, group);
     group.push(card);
   }
-  const indexes = {};
-  for (const [category, items] of groups) {
-    const browse = items.map(card => ({ key: `${normalize(card.name)}\t${card.id}`, card }));
-    const search = [];
-    for (const card of items) {
-      const terms = new Set();
-      for (const text of [card.name, card.id]) {
-        const words = normalize(text).split(' ');
-        for (let i = 0; i < words.length; i++) terms.add(words.slice(i).join(' '));
-      }
-      for (const term of terms) search.push({ key: `${term}\t${card.id}`, card });
-    }
-    indexes[category] = { count: items.length, browse: await buildTree(browse, put), search: await buildTree(search, put) };
+  return groups;
+}
+
+/** Every word suffix of the name and id, so a search can start at any word. */
+function searchTerms(card) {
+  const terms = new Set();
+  for (const text of [card.name, card.id]) {
+    const words = normalize(text).split(' ');
+    for (let i = 0; i < words.length; i++) terms.add(words.slice(i).join(' '));
   }
-  return indexes;
+  return terms;
 }

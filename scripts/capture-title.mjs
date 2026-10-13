@@ -1,6 +1,19 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { withGameCapture } from "./capture/harness.mjs";
 
+/** Two identical screenshots in a row, a quarter second apart; undefined if the page never settles. */
+async function stableScreenshot(page) {
+  const options = { type: "jpeg", quality: 90, animations: "disabled", caret: "hide" };
+  let previous;
+  for (let attempt = 0; attempt < 20; attempt++) {
+    await page.waitForTimeout(250);
+    const current = await page.screenshot(options);
+    if (previous?.equals(current)) return current;
+    previous = current;
+  }
+  return undefined;
+}
+
 await withGameCapture(async ({ openPage }) => {
   const page = await openPage({
     viewport: { width: 1199, height: 630 },
@@ -18,18 +31,7 @@ await withGameCapture(async ({ openPage }) => {
     await document.fonts.ready;
     await Promise.all([...document.images].map((image) => image.decode()));
   });
-  const options = { type: "jpeg", quality: 90, animations: "disabled", caret: "hide" };
-  let previous;
-  let capture;
-  for (let attempt = 0; attempt < 20; attempt++) {
-    await page.waitForTimeout(250);
-    const current = await page.screenshot(options);
-    if (previous?.equals(current)) {
-      capture = current;
-      break;
-    }
-    previous = current;
-  }
+  const capture = await stableScreenshot(page);
   if (errors.length) throw new Error(`Browser errors: ${errors.join("\n")}`);
   if (!capture) throw new Error("Title screen did not settle into a stable image");
   await mkdir("public/social", { recursive: true });

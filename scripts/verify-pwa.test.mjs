@@ -88,5 +88,14 @@ test('built PWA check fails when the service worker is missing', async () => {
       await copyFile(path.join('public/pwa', name), path.join(root, 'pwa', name));
     }
     await assert.rejects(() => verifyPwaBuild(root), /ENOENT|no such file|service worker/i);
+
+    await writeFile(path.join(root, 'sw.js'), 'precacheAndRoute([]); const denylist = [/catalog/, /designer/, /privacy/, /terms/];');
+    await verifyPwaBuild(root);
+
+    await writeFile(path.join(root, 'catalog/index.html'), '<script src="/assets/catalog.js"></script>');
+    await writeFile(path.join(root, 'assets/catalog.js'), 'navigator.serviceWorker.register("/sw.js")');
+    await assert.rejects(() => verifyPwaBuild(root), /catalog\/index\.html must not register the game service worker/);
+    await writeFile(path.join(root, 'sw.js'), 'precacheAndRoute([]);');
+    await assert.rejects(() => verifyPwaBuild(root), /keep catalog, designer, privacy, and terms off/);
   } finally { await rm(root, { recursive: true, force: true }); }
 });

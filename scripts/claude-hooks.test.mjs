@@ -3,7 +3,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { inspectShellCommand, toHookOutput } from '../.claude/hooks/shell-guard.mjs';
+import { hookCommand, inspectShellCommand, toHookOutput } from '../.claude/hooks/shell-guard.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -93,4 +93,10 @@ test('shell-guard emits Claude Code PreToolUse output only for deny and ask', ()
   assert.match(denied.hookSpecificOutput.permissionDecisionReason, /binar|dist/i);
   const asked = toHookOutput(inspectShellCommand('git push --force origin topic'));
   assert.equal(asked.hookSpecificOutput.permissionDecision, 'ask');
+});
+
+test('shell-guard reads the command from a PreToolUse payload and ignores other tools', () => {
+  assert.equal(hookCommand({ tool_input: { command: 'git push -f' } }), 'git push -f');
+  assert.equal(hookCommand({ tool_input: { file_path: 'a.ts' } }), '');
+  assert.equal(hookCommand(null), '');
 });

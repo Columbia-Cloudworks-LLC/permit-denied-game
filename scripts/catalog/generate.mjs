@@ -1,7 +1,7 @@
 import sharp from 'sharp';
-import { readFile, readdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { SCHEMA, IMAGE_SETTINGS, digest, objectWriter, buildIndexes, safeKey } from './core.mjs';
+import { SCHEMA, IMAGE_SETTINGS, digest, objectWriter, buildIndexes, buildTree, safeKey } from './core.mjs';
 
 export async function readCaptures(root) {
   const shards = [];
@@ -78,49 +78,68 @@ export async function generateCatalog(root, output, { commit, version, allowLega
   for (const shard of shards) {
     if (!allowLegacy && shard.commit !== commit) throw new Error('Capture commit mismatch');
     for (const asset of shard.assets) {
-      if (!asset.restorationVerified || (!allowLegacy && !asset.fingerprint)) throw new Error('Unverified capture record');
-      const frames = [];
-      for (const capture of asset.captures) {
-        let image = images.get(capture.sha256);
-        if (!image) {
-          const bytes = await readFile(join(root, safeKey(shard.folder), safeKey(asset.folder), safeKey(capture.file)));
-          if (digest(bytes) !== capture.sha256) throw new Error('Image checksum mismatch during conversion');
-          const converted = await sharp(bytes).webp({ lossless: true, effort: IMAGE_SETTINGS.effort }).toBuffer({ resolveWithObject: true });
-          image = { file: await writer.put(converted.data, 'webp'), width: converted.info.width, height: converted.info.height };
-          images.set(capture.sha256, image);
-        }
-        frames.push({ ...image, source: capture.file, label: frameLabel(capture.file), seconds: capture.state?.seconds ?? 0 });
-        screenshotCount++;
-      }
-      const model = asset.captures.find(c => c.file === 'model.png');
-      if (!model) throw new Error('Missing model');
-      const thumbCapture = thumbnailCapture(asset);
-      const thumb = await sharp(await readFile(join(root, safeKey(shard.folder), safeKey(asset.folder), safeKey(thumbCapture.file))))
-        .resize({ width: IMAGE_SETTINGS.thumbnailWidth, withoutEnlargement: true }).webp({ quality: 85 }).toBuffer();
-      const thumbnail = await writer.put(thumb, 'webp');
-      if (!groups.has(asset.id)) groups.set(asset.id, { id: asset.id, name: asset.name || asset.id, category: asset.category,
-        thumbnail, thumbnailSource: thumbCapture.file, variants: [] });
-      groups.get(asset.id).variants.push({ variant: asset.variant, fingerprint: asset.fingerprint || `legacy-${model.sha256}`,
-        destructionUnsupported: asset.destructionUnsupported, series: seriesFor(frames, asset.destructionUnsupported) });
+      screenshotCount += await addAsset(join(root, safeKey(shard.folder)), asset, { groups, images, writer, allowLegacy });
       if (asset.reused) reused++;
     }
   }
+  const cards = await catalogCards(groups, writer);
+  const indexes = await buildIndexes(cards, data => writer.put(data));
+  const byId = await buildTree(cards.map(card => ({ key: card.id, card })), data => writer.put(data));
+  const release = { schema: SCHEMA, commit, version, assetCount: cards.length,
+    variantCount: cards.reduce((n, c) => n + c.variants, 0), screenshotCount, indexes, byId };
+  const bytes = Buffer.from(JSON.stringify(release));
+  const file = `releases/${digest(bytes)}.json`;
+  await mkdir(join(output, 'releases'), { recursive: true });
+  await writeFile(join(output, file), bytes);
+  const result = { file, commit, version, legacy: allowLegacy, ...writer.stats(), assets: cards.length, screenshotCount, reused };
+  await writeFile(join(output, 'publication.json'), JSON.stringify(result, null, 2));
+  return result;
+}
+
+/** Convert one verified capture record into its variant; returns the screenshots it carried. */
+async function addAsset(shardDir, asset, { groups, images, writer, allowLegacy }) {
+  if (!asset.restorationVerified || (!allowLegacy && !asset.fingerprint)) throw new Error('Unverified capture record');
+  const dir = join(shardDir, safeKey(asset.folder));
+  const frames = [];
+  for (const capture of asset.captures) frames.push(await captureFrame(dir, capture, images, writer));
+  await addVariant(groups, asset, frames, dir, writer);
+  return frames.length;
+}
+
+/** A capture as a lossless WebP frame; identical screenshots convert once and share one object. */
+async function captureFrame(dir, capture, images, writer) {
+  let image = images.get(capture.sha256);
+  if (!image) {
+    const bytes = await readFile(join(dir, safeKey(capture.file)));
+    if (digest(bytes) !== capture.sha256) throw new Error('Image checksum mismatch during conversion');
+    const converted = await sharp(bytes).webp({ lossless: true, effort: IMAGE_SETTINGS.effort }).toBuffer({ resolveWithObject: true });
+    image = { file: await writer.put(converted.data, 'webp'), width: converted.info.width, height: converted.info.height };
+    images.set(capture.sha256, image);
+  }
+  return { ...image, source: capture.file, label: frameLabel(capture.file), seconds: capture.state?.seconds ?? 0 };
+}
+
+/** File a captured variant under its asset, creating the asset card with its thumbnail on first sight. */
+async function addVariant(groups, asset, frames, dir, writer) {
+  const model = asset.captures.find(c => c.file === 'model.png');
+  if (!model) throw new Error('Missing model');
+  const thumbCapture = thumbnailCapture(asset);
+  const thumb = await sharp(await readFile(join(dir, safeKey(thumbCapture.file))))
+    .resize({ width: IMAGE_SETTINGS.thumbnailWidth, withoutEnlargement: true }).webp({ quality: 85 }).toBuffer();
+  const thumbnail = await writer.put(thumb, 'webp');
+  if (!groups.has(asset.id)) groups.set(asset.id, { id: asset.id, name: asset.name || asset.id, category: asset.category,
+    thumbnail, thumbnailSource: thumbCapture.file, variants: [] });
+  groups.get(asset.id).variants.push({ variant: asset.variant, fingerprint: asset.fingerprint || `legacy-${model.sha256}`,
+    destructionUnsupported: asset.destructionUnsupported, series: seriesFor(frames, asset.destructionUnsupported) });
+}
+
+/** One detail object per asset, variants in order, and a browse card pointing at it. */
+async function catalogCards(groups, writer) {
   const cards = [];
   for (const asset of groups.values()) {
     asset.variants.sort((a, b) => a.variant - b.variant);
     const detail = await writer.put({ schema: SCHEMA, ...asset });
     cards.push({ id: asset.id, name: asset.name, category: asset.category, thumbnail: asset.thumbnail, variants: asset.variants.length, detail });
   }
-  const indexes = await buildIndexes(cards, data => writer.put(data));
-  const byId = await (await import('./core.mjs')).buildTree(cards.map(card => ({ key: card.id, card })), data => writer.put(data));
-  const release = { schema: SCHEMA, commit, version, assetCount: cards.length,
-    variantCount: cards.reduce((n, c) => n + c.variants, 0), screenshotCount, indexes, byId };
-  const bytes = Buffer.from(JSON.stringify(release));
-  const file = `releases/${digest(bytes)}.json`;
-  const { mkdir } = await import('node:fs/promises');
-  await mkdir(join(output, 'releases'), { recursive: true });
-  await writeFile(join(output, file), bytes);
-  const result = { file, commit, version, legacy: allowLegacy, ...writer.stats(), assets: cards.length, screenshotCount, reused };
-  await writeFile(join(output, 'publication.json'), JSON.stringify(result, null, 2));
-  return result;
+  return cards;
 }

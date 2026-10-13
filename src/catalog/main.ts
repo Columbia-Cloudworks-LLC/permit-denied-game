@@ -140,7 +140,8 @@ element('next').onclick = () => { cursors[++page] = nextCursor; void browse(); }
 async function restoreUrl() {
   const params = new URLSearchParams(location.search); search.value = params.get('q') || '';
   category.value = params.get('category') && release.indexes[params.get('category')!] ? params.get('category')! : 'all';
-  page = 0; cursors = ['']; void browse();
+  // Finish the page first, so its status cannot overwrite a missing-asset notice.
+  page = 0; cursors = ['']; await browse();
   const id = params.get('asset');
   if (id) {
     // IDs are indexed separately; a deep link doesn't scan the browsing index.

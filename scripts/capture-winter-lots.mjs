@@ -19,35 +19,41 @@ const scenes = [
 
 const snowIdentities = ["residence", "shop", "farm", "contractor", "service", "utility"];
 
-await withGameCapture(async ({ browser, openPage, origin }) => {
-  const page = await openPage({ query: scenes[0].query });
-  await mkdir(OUT, { recursive: true });
+/** Open a scene and frame the dozer at street zoom. */
+async function load(target, origin, query) {
+  await target.goto(gameUrl(origin, query), { waitUntil: "networkidle" });
+  await waitForGame(target);
+  await target.evaluate(() => {
+    const game = window.__pd;
+    const pose = game.dozerSnapshot();
+    game.lookAtWorld(pose.x, pose.y, pose.heading, 1.15);
+  });
+  await target.waitForTimeout(400);
+}
 
-  async function load(target, query) {
-    await target.goto(gameUrl(origin, query), { waitUntil: "networkidle" });
-    await waitForGame(target);
-    await target.evaluate(() => {
-      const game = window.__pd;
-      const pose = game.dozerSnapshot();
-      game.lookAtWorld(pose.x, pose.y, pose.heading, 1.15);
-    });
-    await target.waitForTimeout(400);
-  }
+async function snap(target, file) {
+  await target.screenshot({ path: `${OUT}/${file}`, type: "png" });
+}
 
-  async function snap(target, file) {
-    await target.screenshot({ path: `${OUT}/${file}`, type: "png" });
-  }
+async function lookAt(page, spot) {
+  await page.evaluate(({ x, y, zoom }) => window.__pd.lookAtWorld(x, y, 0, zoom), { x: spot.x, y: spot.y, zoom: ZOOM });
+  await page.waitForTimeout(350);
+}
 
+/** Each overview scene, checked for the ground condition it should show. */
+async function captureScenes(page, origin) {
   for (const shot of scenes) {
-    await load(page, shot.query);
+    await load(page, origin, shot.query);
     const condition = await page.evaluate(() => window.__pd.townSnapshot().groundCondition);
     if (condition !== shot.want) {
       throw new Error(`${shot.file} expected ${shot.want} ground, got ${condition}`);
     }
     await snap(page, shot.file);
   }
+}
 
-  await load(page, scenes[0].query);
+/** One close shot per lot identity the snow scene has; returns the identities captured. */
+async function captureSnowLots(page) {
   const lots = await page.evaluate(() =>
     window.__pd.townSnapshot().lots.map((lot) => ({
       id: lot.id,
@@ -61,51 +67,50 @@ await withGameCapture(async ({ browser, openPage, origin }) => {
     const lot = lots.find((entry) => entry.identity === identity);
     if (!lot) continue;
     seen.add(identity);
-    await page.evaluate(
-      ({ x, y, zoom }) => window.__pd.lookAtWorld(x, y, 0, zoom),
-      { x: lot.x, y: lot.y, zoom: ZOOM },
-    );
-    await page.waitForTimeout(350);
+    await lookAt(page, lot);
     await snap(page, `snow-${identity}.png`);
   }
+  return seen;
+}
 
-  const drivewayLot = await page.evaluate(() => {
-    const patch = window.__pd.townSnapshot().ground.find((g) => g.cover === "driveway" || g.cover === "parking");
-    if (!patch) return null;
-    return { x: patch.x + patch.w * 0.5, y: patch.y + patch.d * 0.5, cover: patch.cover };
-  });
-  if (drivewayLot) {
-    await page.evaluate(
-      ({ x, y, zoom }) => window.__pd.lookAtWorld(x, y, 0, zoom),
-      { x: drivewayLot.x, y: drivewayLot.y, zoom: ZOOM },
-    );
-    await page.waitForTimeout(350);
-    await snap(page, "snow-driveway.png");
-  }
+/** A close shot of the first ground patch with one of these covers; false when the scene has none. */
+async function captureCover(page, covers, file) {
+  const spot = await page.evaluate((wanted) => {
+    const patch = window.__pd.townSnapshot().ground.find((g) => wanted.includes(g.cover));
+    return patch ? { x: patch.x + patch.w * 0.5, y: patch.y + patch.d * 0.5 } : null;
+  }, covers);
+  if (!spot) return false;
+  await lookAt(page, spot);
+  await snap(page, file);
+  return true;
+}
 
-  const tracksLot = await page.evaluate(() => {
-    const patch = window.__pd.townSnapshot().ground.find((g) => g.cover === "tracks");
-    if (!patch) return null;
-    return { x: patch.x + patch.w * 0.5, y: patch.y + patch.d * 0.5 };
-  });
-  if (tracksLot) {
-    await page.evaluate(
-      ({ x, y, zoom }) => window.__pd.lookAtWorld(x, y, 0, zoom),
-      { x: tracksLot.x, y: tracksLot.y, zoom: ZOOM },
-    );
-    await page.waitForTimeout(350);
-    await snap(page, "snow-tracks.png");
-  }
+function assertWinterCoverage(seen, driveway, tracks) {
+  const required = [
+    [seen.has("residence"), "missing snow residential lot capture"],
+    [seen.has("shop") || seen.has("service"), "missing snow commercial lot capture"],
+    [driveway, "missing driveway/parking capture"],
+    [tracks, "missing tracks capture"],
+  ];
+  const missing = required.find(([captured]) => !captured);
+  if (missing) throw new Error(missing[1]);
+}
+
+await withGameCapture(async ({ browser, openPage, origin }) => {
+  const page = await openPage({ query: scenes[0].query });
+  await mkdir(OUT, { recursive: true });
+  await captureScenes(page, origin);
+  await load(page, origin, scenes[0].query);
+  const seen = await captureSnowLots(page);
+  const driveway = await captureCover(page, ["driveway", "parking"], "snow-driveway.png");
+  const tracks = await captureCover(page, ["tracks"], "snow-tracks.png");
 
   const mobile = await browser.newPage({ viewport: { width: 844, height: 390 }, deviceScaleFactor: 2 });
   await injectConsent(mobile);
-  await load(mobile, scenes[0].query);
+  await load(mobile, origin, scenes[0].query);
   await snap(mobile, "snow-mobile-landscape.png");
   await mobile.close();
 
-  if (!seen.has("residence")) throw new Error("missing snow residential lot capture");
-  if (![...seen].some((id) => id === "shop" || id === "service")) throw new Error("missing snow commercial lot capture");
-  if (!drivewayLot) throw new Error("missing driveway/parking capture");
-  if (!tracksLot) throw new Error("missing tracks capture");
+  assertWinterCoverage(seen, driveway, tracks);
   console.log(`wrote winter lots to ${OUT} identities=${[...seen].join(",")}`);
 });

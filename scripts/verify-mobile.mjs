@@ -34,6 +34,11 @@ async function assertPwaDiscovery(target) {
     const iconResponse = await target.request.get(new URL(icon.src, base).href);
     assert.equal(iconResponse.ok(), true, `${icon.src} must be available`);
   }
+  await assertServedServiceWorker(target);
+}
+
+/** Where the origin serves a worker it must precache the shell; dev origins may serve none. */
+async function assertServedServiceWorker(target) {
   const sw = await target.request.get(new URL('/sw.js', base).href);
   const swType = sw.headers()['content-type'] || '';
   const swBody = await sw.text();
