@@ -674,7 +674,7 @@ dt { color: #d9b96f; font: bold 11px/1.5 var(--mono); } dd { margin: 0; color: #
 #simulation-frozen { position:absolute; z-index:12; top:max(110px,calc(env(safe-area-inset-top) + 110px)); left:max(16px,env(safe-area-inset-left)); max-width:calc(100% - 32px); display:flex; flex-wrap:wrap; align-items:center; gap:8px; padding:8px 12px; background:#1b211f; border:2px solid var(--yellow); color:var(--cream); pointer-events:auto; }
 #hud-root.modal-open #simulation-frozen { display:none; }
 /* Playthrough capture/replay: binder row, and a badge that stays up over gameplay. */
-#debug-panel .debug-playthrough { flex:none; padding:6px 0; border-bottom:1px solid var(--binder-line, var(--line)); }
+#debug-panel .debug-playthrough { padding:6px 0 8px; margin-bottom:6px; border-bottom:1px solid var(--binder-line, var(--line)); }
 #debug-panel .debug-playthrough-buttons { display:flex; flex-wrap:wrap; gap:6px; }
 #debug-panel .debug-playthrough-buttons button { flex:1 1 auto; }
 #debug-panel .debug-playthrough .fine-print { margin:4px 0 0; color:inherit; font-size:11px; line-height:1.4; }

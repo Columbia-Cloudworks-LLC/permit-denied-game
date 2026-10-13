@@ -59,7 +59,8 @@ export class PlaythroughPanel {
         <input type="file" accept="application/json,.json" hidden>
       </div>
       <p class="fine-print" data-pt-note role="status"></p>`;
-    hudRoot.querySelector("#debug-panel .debug-toolbar")!.after(this.row);
+    // Inside the scrolling pages, so the fixed binder header stays short on small phones.
+    hudRoot.querySelector("#debug-panel .debug-pages")!.prepend(this.row);
     this.file = this.row.querySelector("input[type=file]")!;
     this.recordButton = this.row.querySelector("[data-pt=record]")!;
     this.badge = document.createElement("div");
