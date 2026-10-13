@@ -4,6 +4,8 @@ import type { CampaignLevelId } from "../game/campaign";
 import type { DistrictId, PlayMode, SessionKind } from "../game/session";
 import type { TestMapRequest } from "../world/testMapRequest";
 import type { TerrainFeature } from "../world/terrainFeatures";
+import type { Playthrough } from "./playthrough";
+import type { PlaythroughStatus } from "../game/playthroughRun";
 
 export const DEBUG_BRIDGE_VERSION = 1 as const;
 
@@ -157,6 +159,15 @@ export interface DebugBridge {
   finish(death: string, won: boolean): void;
   inputAxis(): { throttle: number; steer: number };
   runVehiclePerfHarness(): Promise<VehiclePerfReport>;
+  /** Restart the current site and capture its fixed steps. */
+  startRecording(): void;
+  /** Finish the capture; the payload is also kept as the last playthrough. */
+  stopRecording(): Playthrough | null;
+  lastPlaythrough(): Playthrough | null;
+  /** Replay a payload (object or JSON text), or the last playthrough when omitted. Throws on a malformed payload. */
+  replayPlaythrough(input?: Playthrough | string): void;
+  playthroughStatus(): PlaythroughStatus;
+  playthroughControl(command: "play" | "pause" | "restart" | "exit"): void;
 }
 
 export function serializeTownFeature(feature: TerrainFeature): TownFeatureSnapshot {

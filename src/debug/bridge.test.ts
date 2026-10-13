@@ -52,6 +52,12 @@ function host(overrides: Partial<DebugHost> = {}): DebugHost {
     finish: () => undefined,
     inputAxis: () => ({ throttle: 0, steer: 0 }),
     runVehiclePerfHarness: async () => ({ vehicles: 0, simP95Ms: 0, renderSubmitP95Ms: 0, stats: {}, renderStats: {} }),
+    startRecording: () => undefined,
+    stopRecording: () => null,
+    lastPlaythrough: () => null,
+    replayPlaythrough: () => undefined,
+    playthroughStatus: () => ({ state: "idle", step: 0, steps: 0, paused: false, done: false, drift: null, hasLast: false, note: "" }),
+    playthroughControl: () => undefined,
   };
   return { ...base, ...overrides };
 }

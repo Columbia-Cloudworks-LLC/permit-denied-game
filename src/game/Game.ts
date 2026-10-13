@@ -91,6 +91,10 @@ import {
 import { bindHudSession } from "./hudBindings";
 import { startRuntimeTicker } from "./runtime";
 import { bootOpenedSession } from "./sessionBoot";
+import { PlaythroughRun, playthroughDigest } from "./playthroughRun";
+import type { Playthrough, PlaythroughAction } from "../debug/playthrough";
+import { downloadPlaythrough, PlaythroughPanel } from "../render/playthroughPanel";
+import { version as buildVersion } from "../../package.json";
 
 class Game {
   private readonly analytics = new RunAnalytics();
@@ -142,6 +146,8 @@ class Game {
   private detachInput: (() => void) | null = null;
   private fieldNotice = "";
   private fieldNoticeUntil = 0;
+  private readonly playthrough = new PlaythroughRun();
+  private playthroughPanel?: PlaythroughPanel;
 
   async start(root: HTMLElement, hudRoot: HTMLElement): Promise<void> {
     document.title = TITLE;
@@ -162,6 +168,16 @@ class Game {
     this.hudRoot = hudRoot;
     this.hud = new Hud(hudRoot);
     this.bindHud();
+    this.playthroughPanel = new PlaythroughPanel(hudRoot, {
+      record: () => this.startRecording(),
+      stop: () => { this.stopPlaythrough(); },
+      replayLast: () => this.playthroughControl("replay"),
+      load: (text) => this.loadReplay(text),
+      save: () => { if (this.playthrough.last) downloadPlaythrough(this.playthrough.last); },
+      togglePause: () => this.playthrough.togglePause(),
+      restart: () => this.playthroughControl("restart"),
+      perf: () => { this.renderer.debug.perf = !this.renderer.debug.perf; this.syncDebug(); },
+    });
     if (this.rules.testMap) await this.ensureYardPanel();
     this.detachInput = this.input.attach();
     this.touch = new TouchControls(hudRoot, {
@@ -248,6 +264,7 @@ class Game {
   }
 
   reset(kind: "same" | "new" = "same"): void {
+    this.stopPlaythrough();
     setAnalyticsTestSession(!!this.rules.testMap || !!this.rules.towerTest || this.perf.enabled);
     this.analytics.reset(this.elapsed > 0);
     this.towerOverview = true;
@@ -398,7 +415,12 @@ class Game {
     this.hud.syncDebug(this.renderer.debug);
   }
 
+  /** Live upgrade picks; a replay applies its recorded picks instead. */
   private pickUpgrade(id: "blade" | "engine" | "push"): void {
+    if (!this.playthrough.replaying) this.applyUpgrade(id);
+  }
+
+  private applyUpgrade(id: "blade" | "engine" | "push"): void {
     if (!canPickUpgrade(this.rules, this.mode, this.earnedChoice)) return;
     if (this.job && !this.job.takeChoice()) return;
     this.earnedChoice = false;
@@ -407,6 +429,7 @@ class Game {
       this.campaign.upgrades[id] += 1;
     }
     if (this.mode === "upgrade") this.mode = this.campaign?.briefing ? "briefing" : "play";
+    this.playthrough.noteAction({ kind: "upgrade", id });
   }
 
   private frame(realDt: number): void {
@@ -418,6 +441,7 @@ class Game {
     if (this.input.down.size > 0) void this.audio.unlock();
     this.touch?.setBlocked(this.mode !== 'play' || this.renderer.debug.freeze);
     const simCpuMs = this.advance(realDt);
+    this.playthrough.settle(() => this.playthroughDigest());
     const prepStart = performance.now();
     this.touch?.setBlocked(this.mode !== 'play' || this.renderer.debug.freeze);
     this.draw(realDt);
@@ -475,7 +499,8 @@ class Game {
 
   /** Run fixed steps for this frame's time while playing; returns the CPU time spent. */
   private advance(realDt: number): number {
-    if (this.mode !== "play" || this.renderer.debug.freeze) {
+    this.applyReplayActions();
+    if (this.mode !== "play" || this.renderer.debug.freeze || this.playthrough.holds) {
       this.acc = 0;
       this.input.flush();
       this.audio.hush();
@@ -528,15 +553,16 @@ class Game {
 
   private step(dt: number): void {
     if (!termsAccepted() || privacyOpen()) return;
-    setAnalyticsTestSession(!!this.rules.testMap || !!this.rules.towerTest || this.perf.enabled || this.renderer.debug.freeze);
+    setAnalyticsTestSession(!!this.rules.testMap || !!this.rules.towerTest || this.perf.enabled || this.renderer.debug.freeze || this.playthrough.replaying);
     this.analytics.step(dt, this.rules.job ? 'brick-job' : this.rules.kind, this.rules.district);
-    const drive = this.input.axis();
+    this.applyReplayActions();
+    const drive = this.playthrough.control({ ...this.input.axis(), blade: this.input.blade() });
     stepDozer(
       this.dozer,
       {
         throttle: drive.throttle,
         steer: drive.steer,
-        blade: this.input.blade(),
+        blade: drive.blade,
         ...upgradeModifiers(this.upgrades),
       },
       dt,
@@ -706,7 +732,12 @@ class Game {
   }
 
   spawnRoadVehicle(): void {
-    if (this.rules.kind !== "sandbox") return;
+    if (this.playthrough.replaying || !this.placeRoadVehicle()) return;
+    this.playthrough.noteAction({ kind: "road-vehicle" });
+  }
+
+  private placeRoadVehicle(): boolean {
+    if (this.rules.kind !== "sandbox") return false;
     this.followRoadCamera = true;
     const route = pickVerificationRoute(this.town.network) ?? [];
     replaceRoadVehicle(this.town, createRoadVehicle(
@@ -715,6 +746,81 @@ class Game {
       this.town.roadSpawnHeading,
       route,
     ));
+    return true;
+  }
+
+  /** Recorded actions due before the next replayed step. */
+  private applyReplayActions(): void {
+    for (const action of this.playthrough.due()) this.replayAction(action);
+  }
+
+  private replayAction(action: PlaythroughAction): void {
+    if (action.kind === "upgrade") this.applyUpgrade(action.id);
+    else if (action.kind === "resubmit") this.spendResubmission(action.fee);
+    else this.placeRoadVehicle();
+  }
+
+  private spendResubmission(fee: number): void {
+    this.resubmission.used = true;
+    if (this.campaign) spendCampaignCash(this.campaign, fee);
+    this.cash -= fee;
+  }
+
+  /** Restart the current site and capture every fixed step from its first frame. */
+  startRecording(): void {
+    if (this.mode === "title") return;
+    this.prepareCleanRun();
+    if (this.campaign) {
+      this.campaign = { ...retryCampaignLevel(this.campaign), briefing: false };
+      this.rules.seed = this.campaign.levelSeed;
+    }
+    const setup = structuredClone({ rules: this.rules, campaign: this.campaign, upgrades: this.upgrades });
+    this.reset("same");
+    this.playthrough.record(setup, buildVersion);
+  }
+
+  /** Rebuild a recording's site and drive it from the recorded steps; no live input reaches the dozer. */
+  startReplay(playthrough: Playthrough): void {
+    this.prepareCleanRun();
+    const setup = structuredClone({ rules: playthrough.rules, campaign: playthrough.campaign, upgrades: playthrough.upgrades });
+    this.rules = setup.rules;
+    this.campaign = setup.campaign;
+    this.upgrades = setup.upgrades;
+    this.reset("same");
+    this.syncSessionUrl();
+    this.playthrough.replay(playthrough);
+  }
+
+  /** Recording and replay start in active play: binder closed, simulation running. */
+  private prepareCleanRun(): void {
+    this.hud.closeDebug();
+    this.renderer.debug.freeze = false;
+    this.syncDebug();
+  }
+
+  /** Finish a recording (returned and kept as the last playthrough) or leave a replay. */
+  stopPlaythrough(): Playthrough | null {
+    return this.playthrough.stop(() => this.playthroughDigest());
+  }
+
+  private loadReplay(text: string): void {
+    try {
+      this.startReplay(this.playthrough.load(text));
+    } catch (error) {
+      this.playthrough.note = `Could not load replay: ${error instanceof Error ? error.message : String(error)}`;
+    }
+  }
+
+  private playthroughDigest() {
+    return playthroughDigest(this.town, this.dozer, this.cash, this.elapsed, this.playthrough.status().step);
+  }
+
+  /** Replay the last recording again from its first step, or pause, resume or leave the current replay. */
+  private playthroughControl(command: "replay" | "play" | "pause" | "restart" | "exit"): void {
+    const target = command === "restart" ? this.playthrough.replayed ?? this.playthrough.last : this.playthrough.last;
+    if (command === "exit") this.stopPlaythrough();
+    else if (command === "replay" || command === "restart") { if (target) this.startReplay(target); }
+    else if (this.playthrough.replaying && this.playthrough.status().paused !== (command === "pause")) this.playthrough.togglePause();
   }
 
   obstructionAt(x: number, y: number, radius = 0.7) {
@@ -837,6 +943,7 @@ class Game {
     this.renderer.camX -= dock / 2;
     this.yardPanel?.tick(dt);
     this.hud.render(this.hudState());
+    this.playthroughPanel?.render(this.playthrough.status());
   }
 
   /** Tower test overview, a framed yard bay, the followed road car, the town overview, or the dozer. */
@@ -999,11 +1106,11 @@ class Game {
       onClick: () => { void this.audio.unlock().then(() => this.audio.switchClick()); },
       onUnlockSound: () => this.audio.unlock(),
       onResubmit: () => {
-        if (this.mode !== "play" && this.mode !== "pause") return null;
+        if ((this.mode !== "play" && this.mode !== "pause") || this.playthrough.replaying) return null;
         const fee = this.resubmission.charge(this.campaign?.spendable ?? this.cash);
         if (fee !== null) {
-          if (this.campaign) spendCampaignCash(this.campaign, fee);
-          this.cash -= fee;
+          this.spendResubmission(fee);
+          this.playthrough.noteAction({ kind: "resubmit", fee });
           this.releaseControls();
         }
         return fee;
@@ -1082,7 +1189,9 @@ class Game {
       onDebugToggle: (key, value) => { this.renderer.debug[key] = value; this.syncDebug(); },
       onDebugFloor: (floor) => { this.renderer.debug.maxFloor = floor; this.syncDebug(); },
       onDebugReset: () => { Object.assign(this.renderer.debug, defaultDebugView()); this.syncDebug(); },
-      onDebugStep: () => { if (this.renderer.debug.freeze && this.mode !== "upgrade" && this.mode !== "results") this.step(SIM_DT); },
+      onDebugStep: () => {
+        if (this.renderer.debug.freeze && this.mode !== "upgrade" && this.mode !== "results" && !this.playthrough.exhausted) this.step(SIM_DT);
+      },
     });
   }
 
@@ -1171,6 +1280,16 @@ class Game {
       analyticsStep: (seconds, mode, district) => this.analytics.step(seconds, mode, district),
       finish: (death, won) => this.finish(death, won),
       inputAxis: () => this.input.axis(),
+      startRecording: () => this.startRecording(),
+      stopRecording: () => this.stopPlaythrough(),
+      lastPlaythrough: () => this.playthrough.last,
+      replayPlaythrough: (input) => {
+        if (input !== undefined) this.playthrough.load(input);
+        else if (!this.playthrough.last) throw new Error("No playthrough recorded or loaded yet.");
+        this.playthroughControl("replay");
+      },
+      playthroughStatus: () => this.playthrough.status(),
+      playthroughControl: (command) => this.playthroughControl(command),
       runVehiclePerfHarness: () => this.runVehiclePerfHarness(),
     };
   }

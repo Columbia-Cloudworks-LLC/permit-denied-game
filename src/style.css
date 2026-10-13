@@ -673,6 +673,19 @@ dt { color: #d9b96f; font: bold 11px/1.5 var(--mono); } dd { margin: 0; color: #
 #hud-root #debug-panel :is(button,select,input,summary):focus-visible { outline:3px solid #285c88; outline-offset:2px; }
 #simulation-frozen { position:absolute; z-index:12; top:max(110px,calc(env(safe-area-inset-top) + 110px)); left:max(16px,env(safe-area-inset-left)); max-width:calc(100% - 32px); display:flex; flex-wrap:wrap; align-items:center; gap:8px; padding:8px 12px; background:#1b211f; border:2px solid var(--yellow); color:var(--cream); pointer-events:auto; }
 #hud-root.modal-open #simulation-frozen { display:none; }
+/* Playthrough capture/replay: binder row, and a badge that stays up over gameplay. */
+#debug-panel .debug-playthrough { padding:6px 0 8px; margin-bottom:6px; border-bottom:1px solid var(--binder-line, var(--line)); }
+#debug-panel .debug-playthrough-buttons { display:flex; flex-wrap:wrap; gap:6px; }
+#debug-panel .debug-playthrough-buttons button { flex:1 1 auto; }
+#debug-panel .debug-playthrough .fine-print { margin:4px 0 0; color:inherit; font-size:11px; line-height:1.4; }
+#debug-panel .debug-playthrough .fine-print:empty { display:none; }
+#playthrough-badge { position:absolute; z-index:13; top:calc(var(--top-panel-height, 96px) + 8px); left:50%; transform:translateX(-50%); max-width:calc(100% - 32px); display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:8px; padding:6px 10px; background:#1b211f; border:2px solid var(--yellow); color:var(--cream); font:700 12px/1.2 ui-monospace,Consolas,monospace; letter-spacing:.06em; pointer-events:auto; }
+#playthrough-badge[hidden] { display:none; }
+#playthrough-badge > i { width:10px; height:10px; border-radius:50%; background:var(--yellow); }
+#playthrough-badge[data-state=recording] { border-color:var(--red); }
+#playthrough-badge[data-state=recording] > i { background:var(--red); animation:playthrough-blink 1s steps(2,start) infinite; }
+@keyframes playthrough-blink { to { visibility:hidden; } }
+@media (prefers-reduced-motion: reduce) { #playthrough-badge[data-state=recording] > i { animation:none; } }
 .dispatch-fields #mode-description { display:block; font-weight:normal; letter-spacing:normal; }
 @media (max-height:500px) {
   #hud-root #debug-panel { overflow-y:auto; overflow-x:hidden; }

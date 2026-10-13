@@ -518,7 +518,8 @@ export class Hud {
       element.setAttribute('aria-label', `${element.dataset.description}: ${value.toFixed(2)} times`);
       element.getAnimations().forEach(animation => animation.cancel());
       if (previous !== undefined && value > previous && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
-        element.animate([{ color: '#fff4c4', textShadow: '0 0 12px #ffc863' }, { color: '#e8bf70', textShadow: '0 0 3px #e8bf7026' }], { duration: 650 });
+        // A later change cancels this glow; cancellation rejects `finished`, which nothing awaits.
+        element.animate([{ color: '#fff4c4', textShadow: '0 0 12px #ffc863' }, { color: '#e8bf70', textShadow: '0 0 3px #e8bf7026' }], { duration: 650 }).finished.catch(() => undefined);
       }
       this.modifierValues.set(key, value);
     }
