@@ -12,6 +12,7 @@ import {
   buildingBonus,
   footprintSolid,
   stepStructures,
+  type StructureStepResult,
   type StructureStepStats,
 } from "../structure/building";
 import { applyFixtureDamage, fixtureSolid, fixtureWorldBox, interiorFloorCoverage, type FixtureFrag } from "../structure/interior";
@@ -36,7 +37,7 @@ import {
   payFieldDamage,
 } from "../world/fields";
 import { emitDozerCues } from "./dozerCues";
-import { churnFieldAt, movementBlocked, resolveTraversal, terrainTraversalAt } from "../world/terrainFeatures";
+import { churnFieldAt, movementBlocked, resolveTraversal, terrainTraversalAt, type FieldFeature } from "../world/terrainFeatures";
 import { standingCrop } from "../world/season";
 import { leaveSeasonalTrack } from "../world/seasonTracks";
 
@@ -98,22 +99,7 @@ function rebuildHash(town: Town): boolean {
   if (!collisionNeedsRebuild(town)) return false;
   hash.clear();
   for (const b of town.buildings) {
-    if (b.retired) { b.collisionDirty = false; continue; }
-    for (let gx = 0; gx < b.w; gx++) {
-      for (let gy = 0; gy < b.d; gy++) {
-        if (!footprintSolid(b, gx, gy)) continue;
-        const cell = b.grid[0]![gx]![gy]!;
-        const box = cellWorldBox(b, cell);
-        const ref: SolidRef = { kind: "cell", building: b, cell, ...box };
-        hash.insert(box.x, box.y, box.w, box.d, ref);
-      }
-    }
-    const coverage = b.fixtures.some(f => f.floor === 0 && !f.broken) ? interiorFloorCoverage(b) : undefined;
-    for (const fixture of b.fixtures) {
-      if (!fixtureSolid(b, fixture, coverage)) continue;
-      const box = fixtureWorldBox(fixture);
-      hash.insert(box.x, box.y, box.w, box.d, { kind: "fixture", building: b, fixture, ...box });
-    }
+    if (!b.retired) hashBuilding(b);
     b.collisionDirty = false;
   }
   let broken = 0;
@@ -129,6 +115,25 @@ function rebuildHash(town: Town): boolean {
   hashValid = true;
   propsBrokenStamp = broken;
   return true;
+}
+
+/** Solid ground-floor cells and standing ground-floor fixtures. */
+function hashBuilding(b: Building): void {
+  for (let gx = 0; gx < b.w; gx++) {
+    for (let gy = 0; gy < b.d; gy++) {
+      if (!footprintSolid(b, gx, gy)) continue;
+      const cell = b.grid[0]![gx]![gy]!;
+      const box = cellWorldBox(b, cell);
+      const ref: SolidRef = { kind: "cell", building: b, cell, ...box };
+      hash.insert(box.x, box.y, box.w, box.d, ref);
+    }
+  }
+  const coverage = b.fixtures.some(f => f.floor === 0 && !f.broken) ? interiorFloorCoverage(b) : undefined;
+  for (const fixture of b.fixtures) {
+    if (!fixtureSolid(b, fixture, coverage)) continue;
+    const box = fixtureWorldBox(fixture);
+    hash.insert(box.x, box.y, box.w, box.d, { kind: "fixture", building: b, fixture, ...box });
+  }
 }
 
 export function spawnFixtureFrags(town: Town, frags: FixtureFrag[], bodyLimit = Infinity): void {
@@ -164,6 +169,20 @@ function ensureBuildingHash(town: Town): void {
   buildingHashTown = town;
 }
 
+/** Per-step dozer contact inputs shared by the contact passes. */
+interface DozerContact {
+  town: Town;
+  dozer: Dozer;
+  particles: ParticlePool;
+  events: WorldEvent[];
+  bladeMul: number;
+  grind: number;
+  speed: number;
+  dt: number;
+  damaged: Set<Cell>;
+  dozerPins: Set<Prop>;
+}
+
 export function stepWorld(
   town: Town,
   dozer: Dozer,
@@ -182,129 +201,70 @@ export function stepWorld(
   hash.query(dozer.x - 3, dozer.y - 3, 6, 6, nearby);
 
   const { bladeMul, engineMul } = upgradeModifiers(upgrades);
-  const grind = (dozer.bladeDown ? DOZER.grindDps * (0.65 + (dozer.pushT > 0 ? DOZER.pushGrind : 1)) : DOZER.grindDps * 0.45) * bladeMul;
-  const speed = dozerSpeed(dozer);
+  const contact = prepareContact(town, dozer, particles, events, bladeMul, dt);
   const pts = bladePoints(dozer);
 
-  const damaged = new Set<Cell>();
-  const dozerPins = new Set<Prop>();
+  for (const ref of nearby) cash += bodyContact(contact, ref);
+  for (const pt of pts) cash = bladePointContacts(contact, pt, cash);
+  cash = clearDestroyedProps(contact, birds, cash);
 
+  const structStats: StructureStepStats = { stepped: 0, skipped: 0 };
+  cash = settleStructures(town, dozer, particles, events, dt, structStats, cash);
+
+  if (retireStructures(town, dozer, dt) > 0) buildingHashTown = null;
+  roughenOverCollapsedSite(town, dozer, dt);
+
+  const debris = stepDebris(town, dozer, particles, events, engineMul, dt);
+
+  const roadCar = town.roadCar;
+  if(roadCar?.roadDemo && roadCar.autonomous && !roadCar.waypoints.length && roadCar.status==='operational') stepRoadVehicle(roadCar,town,0);
+  cash += stepVehicleWorld(town,dozer,particles,events,dt,bladeMul);
+
+  clampDozer(dozer, town.minX + 0.8, town.minY + 0.8, town.maxX - 0.8, town.maxY - 0.8);
+  if (town.surface || town.features.length) cash = dozerOnTerrain(town, dozer, particles, events, dt, cash);
+  emitDozerCues(town, dozer, particles, events, dt);
+  particles.step(dt);
+  depositSettledParticles(town, particles);
+
+  return {
+    cash,
+    events,
+    birds,
+    debrisLoad: debris.load,
+    metrics: {
+      buildingsStepped: structStats.stepped,
+      buildingsSkipped: structStats.skipped,
+      collisionRebuilds: rebuilt ? 1 : 0,
+    },
+  };
+}
+
+/** Blade point contact with every solid it sits inside. */
+function bladePointContacts(c: DozerContact, pt: { x: number; y: number }, cash: number): number {
+  hash.query(pt.x - 0.2, pt.y - 0.2, 0.4, 0.4, nearby);
   for (const ref of nearby) {
-    if (ref.kind === "cell" && ref.building && ref.cell) {
-      const impact = resolveCircleSolid(dozer, ref.x, ref.y, ref.w, ref.d, 0.08);
-      if (impact > 0.4) {
-        dozer.heat += impact * DOZER.heatImpact * 0.08;
-        dozer.track += impact * 0.35;
-        if (impact > 1.6) {
-          events.push({
-            kind: "impact",
-            x: dozer.x,
-            y: dozer.y,
-            z: 0.6,
-            mag: Math.min(2.2, impact * 0.35),
-          });
-        }
-        const amt = impact * DOZER.ramScale * 0.35 * bladeMul;
-        cash += applyCellDamage(ref.building, ref.cell, amt, dozer.x - (ref.x + ref.w / 2), dozer.y - (ref.y + ref.d / 2), particles, events);
-        damaged.add(ref.cell);
-      }
-    } else if (ref.kind === "prop") {
-      const p = ref.prop;
-      if (!p || p.broken) continue;
-      const impact = resolveCircleSolid(dozer, p.x, p.y, p.w, p.d, 0.05);
-      if (impact > 0.25) {
-        if (p.assetId === 'interior-bowling-pins') dozerPins.add(p);
-        applyAssetHit(p, impact * 6, dozer.x - (p.x + p.w / 2), dozer.y - (p.y + p.d / 2));
-        dozer.track += trackFromAsset(p, speed) * 0.25;
-        const def = getAsset(p.assetId);
-        if (def.sparks && p.hp < p.maxHp * 0.7) {
-          events.push({ kind: "spark", x: p.x + p.w / 2, y: p.y + p.d / 2, z: 0.8, mag: 0.35, material: p.material });
-        }
-      }
-    } else if (ref.kind === "fixture") {
-      const fixture = ref.fixture;
-      const host = ref.building;
-      if (!fixture || !host || fixture.broken) continue;
-      const impact = resolveCircleSolid(dozer, ref.x, ref.y, ref.w, ref.d, 0.04);
-      if (impact > 0.2) {
-        const hit = applyFixtureDamage(
-          host,
-          fixture,
-          impact * 7,
-          dozer.x - (ref.x + ref.w / 2),
-          dozer.y - (ref.y + ref.d / 2),
-          particles,
-          events,
-          true,
-        );
-        cash += hit.cash;
-        spawnFixtureFrags(town, hit.frags);
-      }
-    }
+    if (pt.x < ref.x || pt.y < ref.y || pt.x > ref.x + ref.w || pt.y > ref.y + ref.d) continue;
+    cash += bladeContact(c, ref);
   }
+  return cash;
+}
 
-  for (const pt of pts) {
-    hash.query(pt.x - 0.2, pt.y - 0.2, 0.4, 0.4, nearby);
-    for (const ref of nearby) {
-      if (pt.x < ref.x || pt.y < ref.y || pt.x > ref.x + ref.w || pt.y > ref.y + ref.d) continue;
-      if (ref.kind === "cell" && ref.building && ref.cell) {
-        if (damaged.has(ref.cell) && !dozer.bladeDown) continue;
-        const fx = Math.cos(dozer.heading);
-        const fy = Math.sin(dozer.heading);
-        const toCx = ref.x + ref.w / 2 - dozer.x;
-        const toCy = ref.y + ref.d / 2 - dozer.y;
-        const ang = Math.max(0.35, (fx * toCx + fy * toCy) / (len(toCx, toCy) || 1));
-        const ram = speed * DOZER.ramScale * ang * bladeMul * dt;
-        const g = grind * dt * ang;
-        const amt = ram + g;
-        const gained = applyCellDamage(ref.building, ref.cell, amt, fx, fy, particles, events);
-        cash += gained;
-        if (amt > 0.15) {
-          dozer.heat += DOZER.heatGrind * dt * (dozer.bladeDown ? 1 : 0.35);
-          if (speed > 3) {
-            dozer.vx *= 1 - 0.55 * dt;
-            dozer.vy *= 1 - 0.55 * dt;
-          }
-        }
-      } else if (ref.kind === "prop") {
-        const p = ref.prop;
-        if (!p || p.broken) continue;
-        if (p.assetId === 'interior-bowling-pins') dozerPins.add(p);
-        applyAssetHit(p, (8 + speed * 4) * bladeMul * dt, Math.cos(dozer.heading), Math.sin(dozer.heading));
-        const def = getAsset(p.assetId);
-        if (def.sparks && p.hp < p.maxHp * 0.75) {
-          events.push({ kind: "spark", x: p.x + p.w / 2, y: p.y + p.d / 2, z: 0.8, mag: 0.3, material: p.material });
-        }
-      } else if (ref.kind === "fixture") {
-        const fixture = ref.fixture;
-        const host = ref.building;
-        if (!fixture || !host || fixture.broken) continue;
-        const hit = applyFixtureDamage(
-          host,
-          fixture,
-          (7 + speed * 3) * bladeMul * dt,
-          Math.cos(dozer.heading),
-          Math.sin(dozer.heading),
-          particles,
-          events,
-          true,
-        );
-        cash += hit.cash;
-        spawnFixtureFrags(town, hit.frags);
-      }
-    }
-  }
-
+/** Props worn to zero hp break apart, pay out, wear the tracks, and may scare up birds. */
+function clearDestroyedProps(c: DozerContact, birds: { x: number; y: number }[], cash: number): number {
+  const { town, dozer, particles, events } = c;
   for (const p of town.props) {
     if (p.broken || p.hp > 0) continue;
     const def = getAsset(p.assetId);
     cash += destroyProp(town, p, particles, events, dozer.x, dozer.y);
-    if (dozerPins.has(p)) events.push({ kind: 'bowling-strike', x: p.x, y: p.y, z: .5, mag: 1 });
-    dozer.track += trackFromAsset(p, speed);
+    if (c.dozerPins.has(p)) events.push({ kind: 'bowling-strike', x: p.x, y: p.y, z: .5, mag: 1 });
+    dozer.track += trackFromAsset(p, c.speed);
     if (def.birdGag) birds.push({ x: p.x, y: p.y });
   }
+  return cash;
+}
 
-  const structStats: StructureStepStats = { stepped: 0, skipped: 0 };
+/** Step every structure, hand their rubble to debris, lean falling cells into neighbours, and pay bonuses. */
+function settleStructures(town: Town, dozer: Dozer, particles: ParticlePool, events: WorldEvent[], dt: number, structStats: StructureStepStats, cash: number): number {
   const struct = stepStructures(town.buildings, dt, particles, events, structStats);
   cash += struct.cash;
   for (const impact of struct.coreImpacts) applyCoreImpact(town, dozer, particles, impact, events);
@@ -317,37 +277,178 @@ export function stepWorld(
   ensureBuildingHash(town);
   for (const lean of struct.leans) {
     buildingHash.query(lean.x - 3.2, lean.y - 3.2, 6.4, 6.4, nearbyBuildings);
-    for (const other of nearbyBuildings) {
-      const right = other.x + other.w * other.cellSize;
-      const bot = other.y + other.d * other.cellSize;
-      const qx = clamp(lean.x, other.x, right);
-      const qy = clamp(lean.y, other.y, bot);
-      const dist = len(lean.x - qx, lean.y - qy);
-      if (dist > 3.1) continue;
-      const toX = (other.x + right) / 2 - lean.x;
-      const toY = (other.y + bot) / 2 - lean.y;
-      const toward = lean.dx * toX + lean.dy * toY;
-      if (toward < -0.4 && dist > 1.4) continue;
-      const gx = Math.floor((qx - other.x) / other.cellSize);
-      const gy = Math.floor((qy - other.y) / other.cellSize);
-      for (const [ox, oy] of [
-        [0, 0],
-        [1, 0],
-        [-1, 0],
-        [0, 1],
-        [0, -1],
-      ]) {
-        const cell = other.grid[0]?.[gx + ox]?.[gy + oy];
-        if (!cell || !cellPresent(cell)) continue;
-        cash += applyCellDamage(other, cell, Math.max(24, lean.mag * 0.85), lean.dx, lean.dy, particles, events);
-        const above = other.grid[1]?.[gx + ox]?.[gy + oy];
-        if (above && cellPresent(above)) {
-          cash += applyCellDamage(other, above, Math.max(16, lean.mag * 0.5), lean.dx, lean.dy, particles, events);
-        }
-      }
+    for (const other of nearbyBuildings) cash = leanInto(other, lean, particles, events, cash);
+  }
+  return payCollapseBonuses(town, events, cash);
+}
+
+/** Driving fast over a collapsed site's rough ground wears the tracks. */
+function roughenOverCollapsedSite(town: Town, dozer: Dozer, dt: number): void {
+  const overSite = siteContaining(town, dozer.x, dozer.y);
+  if (!overSite) return;
+  const feel = siteFeel(overSite, dozer.x, dozer.y);
+  if (feel > 0.1 && dozerSpeed(dozer) > 1.6) dozer.track += feel * 1.1 * dt;
+}
+
+/** Reused every step so the contact passes allocate nothing beyond the original hit sets. */
+const contactScratch = { bladeMul: 0, grind: 0, speed: 0, dt: 0 } as DozerContact;
+
+function prepareContact(town: Town, dozer: Dozer, particles: ParticlePool, events: WorldEvent[], bladeMul: number, dt: number): DozerContact {
+  const c = contactScratch;
+  c.town = town;
+  c.dozer = dozer;
+  c.particles = particles;
+  c.events = events;
+  c.bladeMul = bladeMul;
+  c.dt = dt;
+  c.grind = (dozer.bladeDown ? DOZER.grindDps * (0.65 + (dozer.pushT > 0 ? DOZER.pushGrind : 1)) : DOZER.grindDps * 0.45) * bladeMul;
+  c.speed = dozerSpeed(dozer);
+  c.damaged = new Set<Cell>();
+  c.dozerPins = new Set<Prop>();
+  return c;
+}
+
+/** The dozer body shoves into a nearby solid; returns cash earned. */
+function bodyContact(c: DozerContact, ref: SolidRef): number {
+  if (ref.kind === "cell") return ramCell(c, ref);
+  if (ref.kind === "prop") {
+    bumpProp(c, ref.prop);
+    return 0;
+  }
+  const fixture = ref.fixture;
+  const host = ref.building;
+  if (!fixture || !host || fixture.broken) return 0;
+  const impact = resolveCircleSolid(c.dozer, ref.x, ref.y, ref.w, ref.d, 0.04);
+  if (impact <= 0.2) return 0;
+  const hit = applyFixtureDamage(host, fixture, impact * 7, c.dozer.x - (ref.x + ref.w / 2), c.dozer.y - (ref.y + ref.d / 2), c.particles, c.events, true);
+  spawnFixtureFrags(c.town, hit.frags);
+  return hit.cash;
+}
+
+/** Ramming a wall cell: heat, track wear, a thump on hard hits, and damage scaled by impact. */
+function ramCell(c: DozerContact, ref: SolidRef): number {
+  const { dozer } = c;
+  if (!ref.building || !ref.cell) return 0;
+  const impact = resolveCircleSolid(dozer, ref.x, ref.y, ref.w, ref.d, 0.08);
+  if (impact <= 0.4) return 0;
+  dozer.heat += impact * DOZER.heatImpact * 0.08;
+  dozer.track += impact * 0.35;
+  if (impact > 1.6) {
+    c.events.push({
+      kind: "impact",
+      x: dozer.x,
+      y: dozer.y,
+      z: 0.6,
+      mag: Math.min(2.2, impact * 0.35),
+    });
+  }
+  const amt = impact * DOZER.ramScale * 0.35 * c.bladeMul;
+  const gained = applyCellDamage(ref.building, ref.cell, amt, dozer.x - (ref.x + ref.w / 2), dozer.y - (ref.y + ref.d / 2), c.particles, c.events);
+  c.damaged.add(ref.cell);
+  return gained;
+}
+
+function bumpProp(c: DozerContact, p: Prop | undefined): void {
+  const { dozer } = c;
+  if (!p || p.broken) return;
+  const impact = resolveCircleSolid(dozer, p.x, p.y, p.w, p.d, 0.05);
+  if (impact <= 0.25) return;
+  if (p.assetId === 'interior-bowling-pins') c.dozerPins.add(p);
+  applyAssetHit(p, impact * 6, dozer.x - (p.x + p.w / 2), dozer.y - (p.y + p.d / 2));
+  dozer.track += trackFromAsset(p, c.speed) * 0.25;
+  const def = getAsset(p.assetId);
+  if (def.sparks && p.hp < p.maxHp * 0.7) {
+    c.events.push({ kind: "spark", x: p.x + p.w / 2, y: p.y + p.d / 2, z: 0.8, mag: 0.35, material: p.material });
+  }
+}
+
+/** The blade edge grinds whatever solid a blade point is inside; returns cash earned. */
+function bladeContact(c: DozerContact, ref: SolidRef): number {
+  if (ref.kind === "cell") return grindCell(c, ref);
+  const { dozer, speed } = c;
+  if (ref.kind === "prop") {
+    grindProp(c, ref.prop);
+    return 0;
+  }
+  const fixture = ref.fixture;
+  const host = ref.building;
+  if (!fixture || !host || fixture.broken) return 0;
+  const hit = applyFixtureDamage(host, fixture, (7 + speed * 3) * c.bladeMul * c.dt, Math.cos(dozer.heading), Math.sin(dozer.heading), c.particles, c.events, true);
+  spawnFixtureFrags(c.town, hit.frags);
+  return hit.cash;
+}
+
+/** Ram plus grind, weighted by how squarely the cell sits ahead; heavy work heats and slows the dozer. */
+function grindCell(c: DozerContact, ref: SolidRef): number {
+  const { dozer, speed, dt } = c;
+  if (!ref.building || !ref.cell) return 0;
+  if (c.damaged.has(ref.cell) && !dozer.bladeDown) return 0;
+  const fx = Math.cos(dozer.heading);
+  const fy = Math.sin(dozer.heading);
+  const toCx = ref.x + ref.w / 2 - dozer.x;
+  const toCy = ref.y + ref.d / 2 - dozer.y;
+  const ang = Math.max(0.35, (fx * toCx + fy * toCy) / (len(toCx, toCy) || 1));
+  const ram = speed * DOZER.ramScale * ang * c.bladeMul * dt;
+  const g = c.grind * dt * ang;
+  const amt = ram + g;
+  const gained = applyCellDamage(ref.building, ref.cell, amt, fx, fy, c.particles, c.events);
+  if (amt > 0.15) {
+    dozer.heat += DOZER.heatGrind * dt * (dozer.bladeDown ? 1 : 0.35);
+    if (speed > 3) {
+      dozer.vx *= 1 - 0.55 * dt;
+      dozer.vy *= 1 - 0.55 * dt;
     }
   }
+  return gained;
+}
 
+function grindProp(c: DozerContact, p: Prop | undefined): void {
+  const { dozer, speed } = c;
+  if (!p || p.broken) return;
+  if (p.assetId === 'interior-bowling-pins') c.dozerPins.add(p);
+  applyAssetHit(p, (8 + speed * 4) * c.bladeMul * c.dt, Math.cos(dozer.heading), Math.sin(dozer.heading));
+  const def = getAsset(p.assetId);
+  if (def.sparks && p.hp < p.maxHp * 0.75) {
+    c.events.push({ kind: "spark", x: p.x + p.w / 2, y: p.y + p.d / 2, z: 0.8, mag: 0.3, material: p.material });
+  }
+}
+
+const LEAN_SPLASH: readonly (readonly [number, number])[] = [
+  [0, 0],
+  [1, 0],
+  [-1, 0],
+  [0, 1],
+  [0, -1],
+];
+
+/** A falling cell leans into a neighbouring building within 3.1 units, damaging the cells it lands on. */
+function leanInto(other: Building, lean: StructureStepResult["leans"][number], particles: ParticlePool, events: WorldEvent[], cash: number): number {
+  const right = other.x + other.w * other.cellSize;
+  const bot = other.y + other.d * other.cellSize;
+  const qx = clamp(lean.x, other.x, right);
+  const qy = clamp(lean.y, other.y, bot);
+  const dist = len(lean.x - qx, lean.y - qy);
+  if (dist > 3.1) return cash;
+  const toX = (other.x + right) / 2 - lean.x;
+  const toY = (other.y + bot) / 2 - lean.y;
+  const toward = lean.dx * toX + lean.dy * toY;
+  if (toward < -0.4 && dist > 1.4) return cash;
+  const gx = Math.floor((qx - other.x) / other.cellSize);
+  const gy = Math.floor((qy - other.y) / other.cellSize);
+  for (const [ox, oy] of LEAN_SPLASH) {
+    const cell = other.grid[0]?.[gx + ox]?.[gy + oy];
+    if (!cell || !cellPresent(cell)) continue;
+    cash += applyCellDamage(other, cell, Math.max(24, lean.mag * 0.85), lean.dx, lean.dy, particles, events);
+    const above = other.grid[1]?.[gx + ox]?.[gy + oy];
+    if (above && cellPresent(above)) {
+      cash += applyCellDamage(other, above, Math.max(16, lean.mag * 0.5), lean.dx, lean.dy, particles, events);
+    }
+  }
+  return cash;
+}
+
+/** Each fully-down building leaves a collapsed site and pays its bonus once. */
+function payCollapseBonuses(town: Town, events: WorldEvent[], cash: number): number {
   for (const b of town.buildings) {
     if (!b.fullyDown) continue;
     ensureCollapsedSite(town, b);
@@ -364,59 +465,32 @@ export function stepWorld(
       cash: bonus,
     });
   }
+  return cash;
+}
 
-  if (retireStructures(town, dozer, dt) > 0) buildingHashTown = null;
-
-  const overSite = siteContaining(town, dozer.x, dozer.y);
-  if (overSite) {
-    const feel = siteFeel(overSite, dozer.x, dozer.y);
-    if (feel > 0.1 && dozerSpeed(dozer) > 1.6) dozer.track += feel * 1.1 * dt;
-  }
-
-
-  const debris = stepDebris(town, dozer, particles, events, engineMul, dt);
-
-  if(town.roadCar?.roadDemo && town.roadCar.autonomous && !town.roadCar.waypoints.length && town.roadCar.status==='operational') stepRoadVehicle(town.roadCar,town,0);
-  cash += stepVehicleWorld(town,dozer,particles,events,dt,bladeMul);
-
-  clampDozer(dozer, town.minX + 0.8, town.minY + 0.8, town.maxX - 0.8, town.maxY - 0.8);
-  if (town.surface || town.features.length) {
-    const pins = [
-      { x: dozer.x, y: dozer.y },
-      { x: dozer.x + Math.cos(dozer.heading) * DOZER.radius, y: dozer.y + Math.sin(dozer.heading) * DOZER.radius },
-      { x: dozer.x - Math.cos(dozer.heading) * DOZER.radius * 0.6, y: dozer.y - Math.sin(dozer.heading) * DOZER.radius * 0.6 },
-    ];
-    if (pins.some((pin) => movementBlocked(terrainTraversalAt(town.features, pin.x, pin.y, town.surface), town.season))) {
-      const startX = dozer.motionStartX ?? dozer.x;
-      const startY = dozer.motionStartY ?? dozer.y;
-      const resolved = resolveTraversal(dozer.x, dozer.y, startX, startY, town.features, town.surface, town.season);
-      dozer.x = resolved.x;
-      dozer.y = resolved.y;
-      if (resolved.blocked) {
-        dozer.vx *= 0.28;
-        dozer.vy *= 0.28;
-      }
-    }
-    if (dozerSpeed(dozer) > 1.15) leaveSeasonalTrack(town, dozer.x, dozer.y, dozer.heading);
-    if (town.features.some((feature) => feature.kind === "field")) {
-      cash += flattenCrops(town, dozer, particles, events, dt);
+/** Keep the dozer out of water and forest cores, leave seasonal tracks, and flatten crops. */
+function dozerOnTerrain(town: Town, dozer: Dozer, particles: ParticlePool, events: WorldEvent[], dt: number, cash: number): number {
+  const pins = [
+    { x: dozer.x, y: dozer.y },
+    { x: dozer.x + Math.cos(dozer.heading) * DOZER.radius, y: dozer.y + Math.sin(dozer.heading) * DOZER.radius },
+    { x: dozer.x - Math.cos(dozer.heading) * DOZER.radius * 0.6, y: dozer.y - Math.sin(dozer.heading) * DOZER.radius * 0.6 },
+  ];
+  if (pins.some((pin) => movementBlocked(terrainTraversalAt(town.features, pin.x, pin.y, town.surface), town.season))) {
+    const startX = dozer.motionStartX ?? dozer.x;
+    const startY = dozer.motionStartY ?? dozer.y;
+    const resolved = resolveTraversal(dozer.x, dozer.y, startX, startY, town.features, town.surface, town.season);
+    dozer.x = resolved.x;
+    dozer.y = resolved.y;
+    if (resolved.blocked) {
+      dozer.vx *= 0.28;
+      dozer.vy *= 0.28;
     }
   }
-  emitDozerCues(town, dozer, particles, events, dt);
-  particles.step(dt);
-  depositSettledParticles(town, particles);
-
-  return {
-    cash,
-    events,
-    birds,
-    debrisLoad: debris.load,
-    metrics: {
-      buildingsStepped: structStats.stepped,
-      buildingsSkipped: structStats.skipped,
-      collisionRebuilds: rebuilt ? 1 : 0,
-    },
-  };
+  if (dozerSpeed(dozer) > 1.15) leaveSeasonalTrack(town, dozer.x, dozer.y, dozer.heading);
+  if (town.features.some((feature) => feature.kind === "field")) {
+    cash += flattenCrops(town, dozer, particles, events, dt);
+  }
+  return cash;
 }
 
 function cropTrackPoints(dozer: Dozer): { x: number; y: number }[] {
@@ -446,30 +520,42 @@ function flattenCrops(
   let flattened = 0;
   for (const feature of town.features) {
     if (feature.kind !== "field") continue;
-    let newly = 0;
-    for (const point of points) {
-      newly += churnFieldAt(feature, point.x, point.y, radius, mark);
-    }
+    const newly = churnPoints(feature, points, radius, mark);
     if (newly <= 0) continue;
     flattened += newly;
     const wasCleared = !!feature.cleared;
     cash += payFieldDamage(feature, newly);
-    const take = Math.min(FIELD_CROP_FRAGS_PER_TICK - frags, Math.min(4, 1 + Math.floor(newly / 6)));
-    if (take > 0 && standingCrop(feature.state)) {
-      particles.cropFrags(dozer.x, dozer.y, 0.32, take, cropFragmentColor(feature.crop));
-      frags += take;
-    }
-    if (cropSoundCredit >= 1) {
-      cropSoundCredit -= 1;
-      events.push({ kind: "crush", x: dozer.x, y: dozer.y, z: 0.2, mag: bladeDown ? 0.38 : 0.22 });
-    }
-    if (!wasCleared && feature.cleared && standingCrop(feature.state)) {
-      events.push({ kind: "cash", x: dozer.x, y: dozer.y, z: 0.4, mag: 1.2, cash: Math.max(1, Math.floor((feature.value ?? 0) * 0.2)) });
-    }
+    frags += cropFragments(feature, newly, frags, dozer, particles);
+    cropFeedback(feature, wasCleared, dozer, events);
   }
   if (flattened > 0) {
     town.featureRevision += 1;
     particles.burst("dust", dozer.x, dozer.y, 0.22, 0.28 + Math.min(0.2, flattened * 0.01));
   }
   return cash;
+}
+
+function churnPoints(feature: FieldFeature, points: readonly { x: number; y: number }[], radius: number, mark: number): number {
+  let newly = 0;
+  for (const point of points) newly += churnFieldAt(feature, point.x, point.y, radius, mark);
+  return newly;
+}
+
+/** Crop bits thrown from a standing field, capped per tick; returns how many were thrown. */
+function cropFragments(feature: FieldFeature, newly: number, frags: number, dozer: Dozer, particles: ParticlePool): number {
+  const take = Math.min(FIELD_CROP_FRAGS_PER_TICK - frags, Math.min(4, 1 + Math.floor(newly / 6)));
+  if (take <= 0 || !standingCrop(feature.state)) return 0;
+  particles.cropFrags(dozer.x, dozer.y, 0.32, take, cropFragmentColor(feature.crop));
+  return take;
+}
+
+/** A rate-limited crush sound, and a cash pop when this pass clears a standing field. */
+function cropFeedback(feature: FieldFeature, wasCleared: boolean, dozer: Dozer, events: WorldEvent[]): void {
+  if (cropSoundCredit >= 1) {
+    cropSoundCredit -= 1;
+    events.push({ kind: "crush", x: dozer.x, y: dozer.y, z: 0.2, mag: dozer.bladeDown ? 0.38 : 0.22 });
+  }
+  if (!wasCleared && feature.cleared && standingCrop(feature.state)) {
+    events.push({ kind: "cash", x: dozer.x, y: dozer.y, z: 0.4, mag: 1.2, cash: Math.max(1, Math.floor((feature.value ?? 0) * 0.2)) });
+  }
 }

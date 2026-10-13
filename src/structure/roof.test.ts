@@ -348,6 +348,22 @@ describe("structural roofs", () => {
     expect(applyBrokenRoofEdge(b, mid, raw)).toEqual(broken);
   });
 
+  it("tears a tipping roof open on the sides it falls toward", () => {
+    const b = createBuildingFromArchetype("ranch", "FRAMING", 0, 0);
+    const roof = { ...b.roofs[0]!, neighbors: undefined, state: "falling" as const, fallT: 0 };
+    const raw = displacedRoofVerts(roof);
+    const [minX, maxX] = [Math.min(...raw.map((v) => v.x)), Math.max(...raw.map((v) => v.x))];
+    const [minY, maxY] = [Math.min(...raw.map((v) => v.y)), Math.max(...raw.map((v) => v.y))];
+    const pulled = (verts: typeof raw, onEdge: (v: (typeof raw)[number]) => boolean, inward: (v: (typeof raw)[number], r: (typeof raw)[number]) => boolean) =>
+      verts.some((v, i) => onEdge(raw[i]!) && inward(v, raw[i]!));
+    const southEast = applyBrokenRoofEdge(b, { ...roof, fallDx: 0.5, fallDy: 0.5 }, raw);
+    expect(pulled(southEast, (r) => r.x >= maxX - 0.1, (v, r) => v.x < r.x)).toBe(true);
+    expect(pulled(southEast, (r) => r.y >= maxY - 0.1, (v, r) => v.y < r.y)).toBe(true);
+    const northWest = applyBrokenRoofEdge(b, { ...roof, fallDx: -0.5, fallDy: -0.5 }, raw);
+    expect(pulled(northWest, (r) => r.x <= minX + 0.1, (v, r) => v.x > r.x)).toBe(true);
+    expect(pulled(northWest, (r) => r.y <= minY + 0.1, (v, r) => v.y > r.y)).toBe(true);
+  });
+
   it("regenerates the same gable geometry for the same footprint", () => {
     const a = createBuildingFromArchetype("cottage", "A", 4, 5);
     const b = createBuildingFromArchetype("cottage", "B", 4, 5);

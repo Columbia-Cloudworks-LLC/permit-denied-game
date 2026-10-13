@@ -63,46 +63,51 @@ export function emitDozerCues(
 
   const cover = coverAtPoint(town, dozer.x, dozer.y);
   const f = dozerForward(dozer);
-  const odoTick = (scale: number) => ((dozer.odo * scale) | 0) !== (((dozer.odo - speed * dt) * scale) | 0);
+  if (moving) movingCues(town, dozer, particles, cover, f, speed, load, dt);
+  if (impact) impactCue(town, dozer, particles, events, cover, f);
+}
 
-  if (moving && (dozer.heat > 0.22 || load) && odoTick(1.6)) {
+/** True when the odometer crossed a whole multiple of 1/scale this step. */
+function odoTick(dozer: Dozer, speed: number, dt: number, scale: number): boolean {
+  return ((dozer.odo * scale) | 0) !== (((dozer.odo - speed * dt) * scale) | 0);
+}
+
+const TRACK_SIDES = [-1, 1] as const;
+
+/** Exhaust under load or heat, tread marks and dust on soft ground, scrapes on pavement at speed. */
+function movingCues(town: Town, dozer: Dozer, particles: ParticlePool, cover: CoverKind | undefined, f: { x: number; y: number }, speed: number, load: boolean, dt: number): void {
+  if ((dozer.heat > 0.22 || load) && odoTick(dozer, speed, dt, 1.6)) {
     const stackX = dozer.x - f.x * 0.72;
     const stackY = dozer.y - f.y * 0.72;
     const n = dozer.heat > 0.7 ? 2 : 1;
     particles.spawn("dust", stackX, stackY, 1.15 + dozer.heat * 0.35, n, 0.18 + speed * 0.04, 0.55);
   }
+  if (!cover) return;
+  if (SOFT.has(cover) && odoTick(dozer, speed, dt, 1.15)) treadCue(town, dozer, particles, f, speed, load);
+  if (HARD.has(cover) && speed > 2.4 && odoTick(dozer, speed, dt, 0.85)) scrapeCue(town, dozer, particles, f);
+}
 
-  if (moving && cover && SOFT.has(cover) && odoTick(1.15)) {
-    const rx = -f.y;
-    const ry = f.x;
-    for (const side of [-1, 1] as const) {
-      addSurfaceMark(
-        town,
-        dozer.x + rx * 0.55 * side,
-        dozer.y + ry * 0.55 * side,
-        "tire",
-        "concrete",
-        dozer.heading,
-      );
-    }
-    particles.spawn("dust", dozer.x, dozer.y, 0.12, load ? 3 : 1, 0.35 + speed * 0.08, 0.7);
+function treadCue(town: Town, dozer: Dozer, particles: ParticlePool, f: { x: number; y: number }, speed: number, load: boolean): void {
+  for (const side of TRACK_SIDES) {
+    addSurfaceMark(town, dozer.x - f.y * 0.55 * side, dozer.y + f.x * 0.55 * side, "tire", "concrete", dozer.heading);
   }
+  particles.spawn("dust", dozer.x, dozer.y, 0.12, load ? 3 : 1, 0.35 + speed * 0.08, 0.7);
+}
 
-  if (moving && cover && HARD.has(cover) && speed > 2.4 && odoTick(0.85)) {
-    addSurfaceMark(town, dozer.x, dozer.y, "scrape", "concrete", dozer.heading);
-    if (dozer.bladeDown) particles.spawn("concrete", dozer.x + f.x * 0.9, dozer.y + f.y * 0.9, 0.18, 1, 0.4, 0.9);
-  }
+function scrapeCue(town: Town, dozer: Dozer, particles: ParticlePool, f: { x: number; y: number }): void {
+  addSurfaceMark(town, dozer.x, dozer.y, "scrape", "concrete", dozer.heading);
+  if (dozer.bladeDown) particles.spawn("concrete", dozer.x + f.x * 0.9, dozer.y + f.y * 0.9, 0.18, 1, 0.4, 0.9);
+}
 
-  if (impact) {
-    const hardHit = !cover || HARD.has(cover);
-    particles.burst(hardHit ? "concrete" : "dust", dozer.x + f.x * 0.8, dozer.y + f.y * 0.8, 0.22, 0.35 + dozer.lastImpact * 0.25);
-    if (hardHit) {
-      addSurfaceMark(town, dozer.x + f.x * 0.7, dozer.y + f.y * 0.7, "scrape", impactMaterial(cover), dozer.heading);
-      if (cover === "parking" || cover === "concrete") {
-        particles.spawn("metal", dozer.x + f.x, dozer.y + f.y, 0.35, 2, 1.1, 2.4);
-        events.push({ kind: "spark", x: dozer.x + f.x, y: dozer.y + f.y, z: 0.4, mag: 0.28, material: "metal" });
-      }
-    }
+/** A hard hit throws grit or dust; on pavement it scrapes, and on parking or concrete it sparks. */
+function impactCue(town: Town, dozer: Dozer, particles: ParticlePool, events: WorldEvent[], cover: CoverKind | undefined, f: { x: number; y: number }): void {
+  const hardHit = !cover || HARD.has(cover);
+  particles.burst(hardHit ? "concrete" : "dust", dozer.x + f.x * 0.8, dozer.y + f.y * 0.8, 0.22, 0.35 + dozer.lastImpact * 0.25);
+  if (!hardHit) return;
+  addSurfaceMark(town, dozer.x + f.x * 0.7, dozer.y + f.y * 0.7, "scrape", impactMaterial(cover), dozer.heading);
+  if (cover === "parking" || cover === "concrete") {
+    particles.spawn("metal", dozer.x + f.x, dozer.y + f.y, 0.35, 2, 1.1, 2.4);
+    events.push({ kind: "spark", x: dozer.x + f.x, y: dozer.y + f.y, z: 0.4, mag: 0.28, material: "metal" });
   }
 }
 

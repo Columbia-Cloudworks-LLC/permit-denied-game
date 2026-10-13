@@ -98,43 +98,48 @@ export function generateInteriors(building: Building): InteriorFixture[] {
   const fixtures: InteriorFixture[] = [];
   const bw = building.w * building.cellSize, bd = building.d * building.cellSize;
   for (const room of building.layout.rooms) {
+    if (room.floor < DETAILED_FLOORS) contentFixtures(building, room, fixtures);
+  }
+  if (!building.layout.partitions) return fixtures;
+  for (const stair of building.layout.stairs ?? []) {
+    const room = building.layout.rooms.find(r => r.id === stair.a)!;
     if (room.floor >= DETAILED_FLOORS) continue;
-    for (const slot of room.contents) {
-      const x = building.x + (room.x + slot.x * room.w) * bw;
-      const y = building.y + (room.y + slot.y * room.d) * bd;
-      const w = slot.w * room.w * bw, d = slot.d * room.d * bd;
-      fixtures.push(makeFixture(building, fixtures.length + 1, slot.kind, room.kind, room.floor, x, y, w, d, slot.h, room.id, slot.id, slot.rotation));
-    }
+    fixtures.push(makeFixture(building, fixtures.length + 1, stair.kind === 'ramp' ? 'vehicle-ramp' : 'staircase', room.kind, room.floor,
+      building.x + stair.x * bw, building.y + stair.y * bd, stair.w * bw, stair.d * bd, FLOOR_Z, room.id, `stairs-${stair.a}-${stair.b}`, stair.rotation??0));
+    fixtures[fixtures.length-1]!.landingSupport = stairLandingCells(stair,building.w,building.d,room.floor+1);
   }
-  if (building.layout.partitions) {
-    for (const stair of building.layout.stairs ?? []) {
-      const room = building.layout.rooms.find(r => r.id === stair.a)!;
-      if (room.floor >= DETAILED_FLOORS) continue;
-      fixtures.push(makeFixture(building, fixtures.length + 1, stair.kind === 'ramp' ? 'vehicle-ramp' : 'staircase', room.kind, room.floor,
-        building.x + stair.x * bw, building.y + stair.y * bd, stair.w * bw, stair.d * bd, FLOOR_Z, room.id, `stairs-${stair.a}-${stair.b}`, stair.rotation??0));
-      fixtures[fixtures.length-1]!.landingSupport = stairLandingCells(stair,building.w,building.d,room.floor+1);
-    }
-    const rooms = building.layout.rooms.filter(r => r.floor < Math.min(building.floors, DETAILED_FLOORS));
-    for (let i = 0; i < rooms.length; i++) for (let j = i + 1; j < rooms.length; j++) {
-      const a = rooms[i]!, b = rooms[j]!;
-      const edge = sharedRoomEdge(a, b);
-      if (!edge) continue;
-      const { vertical } = edge;
-      const start = edge.start * (vertical ? bd : bw), end = edge.end * (vertical ? bd : bw);
-      const plane = edge.plane * (vertical ? bw : bd);
-      const door = building.layout.connections?.find(c => c.a === a.id && c.b === b.id || c.a === b.id && c.b === a.id);
-      const mid = start + (end - start) * (door?.at ?? .5), doorHalf = (end - start) * (door?.width ?? 0) / 2;
-      const segments = door ? [[start, mid - doorHalf], [mid + doorHalf, end]] : [[start, end]];
-      for (const [lo, hi] of segments) {
-        if (hi! - lo! < .01) continue;
-        const x = building.x + (vertical ? plane - .05 : lo!);
-        const y = building.y + (vertical ? lo! : plane - .05);
-        fixtures.push(makeFixture(building, fixtures.length + 1, "partition", a.kind, a.floor, x, y,
-          vertical ? .1 : hi! - lo!, vertical ? hi! - lo! : .1, FLOOR_Z * .8, a.id, `partition-${a.id}-${b.id}-${lo}`));
-      }
-    }
-  }
+  const rooms = building.layout.rooms.filter(r => r.floor < Math.min(building.floors, DETAILED_FLOORS));
+  for (let i = 0; i < rooms.length; i++) for (let j = i + 1; j < rooms.length; j++) partitionFixtures(building, rooms[i]!, rooms[j]!, fixtures);
   return fixtures;
+}
+
+type LayoutRoom = Building["layout"]["rooms"][number];
+
+function contentFixtures(building: Building, room: LayoutRoom, fixtures: InteriorFixture[]): void {
+  const bw = building.w * building.cellSize, bd = building.d * building.cellSize;
+  for (const slot of room.contents) {
+    const x = building.x + (room.x + slot.x * room.w) * bw;
+    const y = building.y + (room.y + slot.y * room.d) * bd;
+    const w = slot.w * room.w * bw, d = slot.d * room.d * bd;
+    fixtures.push(makeFixture(building, fixtures.length + 1, slot.kind, room.kind, room.floor, x, y, w, d, slot.h, room.id, slot.id, slot.rotation));
+  }
+}
+
+/** A thin wall along the edge two rooms share, split around their connecting door if they have one. */
+function partitionFixtures(building: Building, a: LayoutRoom, b: LayoutRoom, fixtures: InteriorFixture[]): void {
+  const edge = sharedRoomEdge(a, b);
+  if (!edge) return;
+  const bw = building.w * building.cellSize, bd = building.d * building.cellSize;
+  const { vertical } = edge;
+  const plane = edge.plane * (vertical ? bw : bd);
+  const door = building.layout.connections?.find(c => c.a === a.id && c.b === b.id || c.a === b.id && c.b === a.id);
+  for (const [lo, hi] of wallRuns(edge.start * (vertical ? bd : bw), edge.end * (vertical ? bd : bw), door)) {
+    if (hi! - lo! < .01) continue;
+    const x = building.x + (vertical ? plane - .05 : lo!);
+    const y = building.y + (vertical ? lo! : plane - .05);
+    fixtures.push(makeFixture(building, fixtures.length + 1, "partition", a.kind, a.floor, x, y,
+      vertical ? .1 : hi! - lo!, vertical ? hi! - lo! : .1, FLOOR_Z * .8, a.id, `partition-${a.id}-${b.id}-${lo}`));
+  }
 }
 
 export function fixtureWorldBox(fixture: InteriorFixture): { x: number; y: number; w: number; d: number } {
@@ -156,6 +161,20 @@ function envelopeOpen(building: Building, gx: number, gy: number, floor: number)
   return !!cell && Object.values(cell.exterior).some(Boolean) && (cell.state === "breached" || !cellPresent(cell) || cell.cladding?.hp === 0);
 }
 
+const FLOOR_DIRS = [
+  [1, 0],
+  [-1, 0],
+  [0, 1],
+  [0, -1],
+] as const;
+
+/** Wall extent along a shared edge, with a gap where the door sits. */
+function wallRuns(start: number, end: number, door: { at: number; width: number } | undefined): number[][] {
+  if (!door) return [[start, end]];
+  const mid = start + (end - start) * door.at, doorHalf = (end - start) * door.width / 2;
+  return [[start, mid - doorHalf], [mid + doorHalf, end]];
+}
+
 function markIndependentFloorTiles(
   building: Building,
   floor: number,
@@ -165,37 +184,36 @@ function markIndependentFloorTiles(
   const w = building.w;
   const index = floorIndex(building);
   const tiles = index.byFloor[floor]!.filter(t => t.state === 'intact');
-  const finishAt = (gx: number, gy: number) => interiorFloorFinish(building, gx, gy, floor);
   if (reveal) {
-    for (const tile of tiles) marks[tile.gy * w + tile.gx] = finishAt(tile.gx, tile.gy);
+    for (const tile of tiles) marks[tile.gy * w + tile.gx] = interiorFloorFinish(building, tile.gx, tile.gy, floor);
     return;
   }
+  floodFromOpenEnvelope(building, floor, tiles, marks);
+  for (const tile of tiles) {
+    if (marks[tile.gy * w + tile.gx] || index.columns[tile.gx * building.d + tile.gy]!.some(t => t.floor > floor && t.state !== 'gone') || roofCoversCell(building, tile.gx, tile.gy, floor)) continue;
+    marks[tile.gy * w + tile.gx] = interiorFloorFinish(building, tile.gx, tile.gy, floor);
+  }
+}
+
+/** Mark every intact tile reachable from a tile whose envelope wall is open. */
+function floodFromOpenEnvelope(building: Building, floor: number, tiles: readonly { gx: number; gy: number }[], marks: (FloorFinish | null)[]): void {
+  const w = building.w;
   const have = new Set(tiles.map((t) => `${t.gx},${t.gy}`));
   const stack: { gx: number; gy: number }[] = [];
   for (const tile of tiles) {
     if (!envelopeOpen(building, tile.gx, tile.gy, floor)) continue;
-    marks[tile.gy * w + tile.gx] = finishAt(tile.gx, tile.gy);
+    marks[tile.gy * w + tile.gx] = interiorFloorFinish(building, tile.gx, tile.gy, floor);
     stack.push(tile);
   }
-  const dirs = [
-    [1, 0],
-    [-1, 0],
-    [0, 1],
-    [0, -1],
-  ] as const;
   while (stack.length) {
     const cur = stack.pop()!;
-    for (const [dx, dy] of dirs) {
+    for (const [dx, dy] of FLOOR_DIRS) {
       const gx = cur.gx + dx;
       const gy = cur.gy + dy;
       if (!have.has(`${gx},${gy}`) || marks[gy * w + gx]) continue;
-      marks[gy * w + gx] = finishAt(gx, gy);
+      marks[gy * w + gx] = interiorFloorFinish(building, gx, gy, floor);
       stack.push({ gx, gy });
     }
-  }
-  for (const tile of tiles) {
-    if (marks[tile.gy * w + tile.gx] || index.columns[tile.gx * building.d + tile.gy]!.some(t => t.floor > floor && t.state !== 'gone') || roofCoversCell(building, tile.gx, tile.gy, floor)) continue;
-    marks[tile.gy * w + tile.gx] = finishAt(tile.gx, tile.gy);
   }
 }
 
@@ -240,26 +258,29 @@ function collectInteriorFloorSpans(building: Building, reveal = false): Interior
     const used = new Array(building.w * building.d).fill(false);
     for (let gy = 0; gy < building.d; gy++) {
       for (let gx = 0; gx < building.w; gx++) {
-        const idx = gy * building.w + gx;
-        if (used[idx]) continue;
-        const finish = marks[idx];
-        if (!finish) continue;
-        let gx1 = gx;
-        while (gx1 + 1 < building.w && !used[gy * building.w + gx1 + 1] && marks[gy * building.w + gx1 + 1] === finish) {
-          gx1++;
-        }
-        let gy1 = gy;
-        while (gy1 + 1 < building.d && markedRowMatches(marks, building.w, gx, gx1, gy1 + 1, finish, used)) {
-          gy1++;
-        }
-        for (let yy = gy; yy <= gy1; yy++) {
-          for (let xx = gx; xx <= gx1; xx++) used[yy * building.w + xx] = true;
-        }
-        spans.push({ floor, gx0: gx, gx1, gy0: gy, gy1, finish });
+        const finish = used[gy * building.w + gx] ? null : marks[gy * building.w + gx];
+        if (finish) spans.push(claimFloorSpan(building, floor, marks, used, gx, gy, finish));
       }
     }
   }
   return spans;
+}
+
+/** Grow the widest run of one finish from (gx, gy), then extend it down while whole rows match. */
+function claimFloorSpan(building: Building, floor: number, marks: (FloorFinish | null)[], used: boolean[], gx: number, gy: number, finish: FloorFinish): InteriorFloorSpan {
+  const { w, d } = building;
+  let gx1 = gx;
+  while (gx1 + 1 < w && !used[gy * w + gx1 + 1] && marks[gy * w + gx1 + 1] === finish) {
+    gx1++;
+  }
+  let gy1 = gy;
+  while (gy1 + 1 < d && markedRowMatches(marks, w, gx, gx1, gy1 + 1, finish, used)) {
+    gy1++;
+  }
+  for (let yy = gy; yy <= gy1; yy++) {
+    for (let xx = gx; xx <= gx1; xx++) used[yy * w + xx] = true;
+  }
+  return { floor, gx0: gx, gx1, gy0: gy, gy1, finish };
 }
 
 interface InteriorFloorCache {

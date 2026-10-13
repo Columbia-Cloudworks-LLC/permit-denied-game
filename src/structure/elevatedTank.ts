@@ -31,24 +31,35 @@ export function stepElevatedTank(b: Building, dt: number, result: StructureStepR
   if(s.phase==='gone')return;
   const legs=tankLegs(b), live=legs.filter(p=>b.grid.every(layer=>cellPresent(layer[p.gx]![p.gy]!)));
   s.legs=live.length;
-  if(s.phase==='standing' && live.length<def.minimumLegs) {
-    s.phase='warning';s.elapsed=0;
-    const lost=legs.filter(p=>!live.includes(p));
-    const dx=lost.reduce((n,p)=>n+p.gx-(b.w-1)/2,0),dy=lost.reduce((n,p)=>n+p.gy-(b.d-1)/2,0), len=Math.hypot(dx,dy);
-    s.dx=len?dx/len:0;s.dy=len?dy/len:1;
-    const p=tankPose(b);events.push({kind:'snap',x:p.x,y:p.y,z:p.z,mag:1.4,material:'metal'});
-  }
+  if(s.phase==='standing' && live.length<def.minimumLegs) warnTank(b,legs.filter(p=>!live.includes(p)),events);
   if(s.phase==='standing')return;
   s.elapsed+=dt;b.visualRevision++;b.structureDirty=true;
   if(s.phase==='warning') {
     if(s.elapsed<def.warningDuration)return;
-    s.phase='falling';s.elapsed=0;
-    // The tank pulls the remaining frame down with it; column debris stays on the production path.
-    for(const c of b.cells)if(cellPresent(c)){c.hp=0;c.state='breached';c.lastHitNx=s.dx;c.lastHitNy=s.dy;}
-    b.collisionDirty=true;
+    dropTankFrame(b);
   }
   s.progress=Math.min(1,s.elapsed/def.fallDuration);
   if(s.progress<1)return;
+  landTank(b,result,particles,events);
+}
+/** Too few legs: lean away from the lost ones and snap. */
+function warnTank(b: Building, lost: ReturnType<typeof tankLegs>, events: WorldEvent[]) {
+  const s=b.elevatedTank!;
+  s.phase='warning';s.elapsed=0;
+  const dx=lost.reduce((n,p)=>n+p.gx-(b.w-1)/2,0),dy=lost.reduce((n,p)=>n+p.gy-(b.d-1)/2,0), len=Math.hypot(dx,dy);
+  s.dx=len?dx/len:0;s.dy=len?dy/len:1;
+  const p=tankPose(b);events.push({kind:'snap',x:p.x,y:p.y,z:p.z,mag:1.4,material:'metal'});
+}
+function dropTankFrame(b: Building) {
+  const s=b.elevatedTank!;
+  s.phase='falling';s.elapsed=0;
+  // The tank pulls the remaining frame down with it; column debris stays on the production path.
+  for(const c of b.cells)if(cellPresent(c)){c.hp=0;c.state='breached';c.lastHitNx=s.dx;c.lastHitNy=s.dy;}
+  b.collisionDirty=true;
+}
+/** The tank hits the ground: dust, a snap, and a ring of steel panels. */
+function landTank(b: Building, result: StructureStepResult, particles: ParticlePool, events: WorldEvent[]) {
+  const s=b.elevatedTank!, def=s.definition;
   const p=tankPose(b);s.phase='gone';
   particles.radialDust(p.x,p.y,def.radius,22);
   events.push({kind:'snap',x:p.x,y:p.y,z:0,mag:2,material:'metal'});

@@ -44,6 +44,9 @@ export const PILE_TILE = 16;
 /** Views sample up to two cells past a changed one, so a change dirties tiles within this apron. */
 const TILE_APRON = 2;
 
+/** Spread of added mass over the 3x3 cells around the drop point. */
+const ADD_WEIGHTS = [0.06, 0.12, 0.06, 0.12, 0.28, 0.12, 0.06, 0.12, 0.06] as const;
+
 export class PileField {
   ownerAt?: (x: number, y: number) => string | undefined;
   private owners = new Map<string, Map<number, number>>();
@@ -65,15 +68,15 @@ export class PileField {
     const ix0 = Math.max(0, Math.floor((x - this.ox) / this.cell)), ix1 = Math.min(this.cols, Math.ceil((x + w - this.ox) / this.cell));
     const iy0 = Math.max(0, Math.floor((y - this.oy) / this.cell)), iy1 = Math.min(this.rows, Math.ceil((y + d - this.oy) / this.cell));
     for (let iy = iy0; iy < iy1; iy++) {
-      for (let ix = ix0; ix < ix1; ix++) {
-        const i = iy * this.cols + ix;
-        this.mass[i] = 0; this.height[i] = 0; this.compact[i] = 0;
-        for (const mat of this.mats) mat[i] = 0;
-        for (const [key, cells] of this.owners) { cells.delete(i); if (!cells.size) this.owners.delete(key); }
-        for (const [key, cells] of this.ownerMaterials) { cells.delete(i); if (!cells.size) this.ownerMaterials.delete(key); }
-      }
+      for (let ix = ix0; ix < ix1; ix++) this.clearCell(iy * this.cols + ix);
     }
     this.touch(ix0, iy0, ix1 - 1, iy1 - 1);
+  }
+  private clearCell(i: number): void {
+    this.mass[i] = 0; this.height[i] = 0; this.compact[i] = 0;
+    for (const mat of this.mats) mat[i] = 0;
+    for (const [key, cells] of this.owners) { cells.delete(i); if (!cells.size) this.owners.delete(key); }
+    for (const [key, cells] of this.ownerMaterials) { cells.delete(i); if (!cells.size) this.ownerMaterials.delete(key); }
   }
   removeOwner(owner: string): void {
     const cells = this.owners.get(owner);
@@ -146,14 +149,13 @@ export class PileField {
   addMass(x: number, y: number, mass: number, material: Material = "concrete", ownership?: string | Record<string, number>): void {
     if (mass <= 1e-6) return;
     const { ix, iy } = this.cellOf(x, y);
-    const weights = [0.06, 0.12, 0.06, 0.12, 0.28, 0.12, 0.06, 0.12, 0.06];
     const hits: { i: number; w: number }[] = [];
     let wsum = 0;
     let wi = 0;
     for (let dy = -1; dy <= 1; dy++) {
       for (let dx = -1; dx <= 1; dx++) {
         const i = this.index(ix + dx, iy + dy);
-        const w = weights[wi++]!;
+        const w = ADD_WEIGHTS[wi++]!;
         if (i < 0) continue;
         hits.push({ i, w });
         wsum += w;
@@ -164,24 +166,28 @@ export class PileField {
     const weightsByOwner = typeof owner === "string" ? { [owner]: 1 } : owner;
     const mi = materialIndex(material);
     for (const hit of hits) {
-      const w = hit.w / wsum;
-      const add = mass * w;
-      if (weightsByOwner) for (const [key, fraction] of Object.entries(weightsByOwner)) {
-        let cells = this.owners.get(key);
-        if (!cells) { cells = new Map(); this.owners.set(key, cells); }
-        cells.set(hit.i, (cells.get(hit.i) ?? 0) + add * fraction);
-        let materials = this.ownerMaterials.get(key);
-        if (!materials) { materials = new Map(); this.ownerMaterials.set(key, materials); }
-        let composition = materials.get(hit.i);
-        if (!composition) { composition = [0, 0, 0, 0, 0]; materials.set(hit.i, composition); }
-        composition[mi] += add * fraction;
-      }
+      const add = mass * (hit.w / wsum);
+      if (weightsByOwner) this.creditOwners(hit.i, add, mi, weightsByOwner);
       this.mass[hit.i] += add;
       this.mats[mi]![hit.i] += add;
       const compact = this.compact[hit.i]!;
       this.height[hit.i] += add * 0.16 * (1 - 0.38 * compact);
     }
     this.touch(ix - 1, iy - 1, ix + 1, iy + 1);
+  }
+
+  /** Record which yard owners put mass into cell i, and of which material. */
+  private creditOwners(i: number, add: number, mi: number, weightsByOwner: Record<string, number>): void {
+    for (const [key, fraction] of Object.entries(weightsByOwner)) {
+      let cells = this.owners.get(key);
+      if (!cells) { cells = new Map(); this.owners.set(key, cells); }
+      cells.set(i, (cells.get(i) ?? 0) + add * fraction);
+      let materials = this.ownerMaterials.get(key);
+      if (!materials) { materials = new Map(); this.ownerMaterials.set(key, materials); }
+      let composition = materials.get(i);
+      if (!composition) { composition = [0, 0, 0, 0, 0]; materials.set(i, composition); }
+      composition[mi] += add * fraction;
+    }
   }
 
   compactPoint(x: number, y: number, amount: number): void {
@@ -215,20 +221,7 @@ export class PileField {
     const { ix, iy } = this.cellOf(x, y);
     const reach = Math.ceil(radius / this.cell) + 1;
     const hits: { i: number; mass: number }[] = [];
-    let available = 0;
-    for (let dy = -reach; dy <= reach; dy++) {
-      for (let dx = -reach; dx <= reach; dx++) {
-        const i = this.index(ix + dx, iy + dy);
-        if (i < 0) continue;
-        const cx = this.ox + (ix + dx + 0.5) * this.cell;
-        const cy = this.oy + (iy + dy + 0.5) * this.cell;
-        if (Math.hypot(cx - x, cy - y) > radius + this.cell * 0.35) continue;
-        const m = this.mass[i]!;
-        if (m <= 1e-6) continue;
-        hits.push({ i, mass: m });
-        available += m;
-      }
-    }
+    const available = this.diskCells(ix, iy, reach, x, y, radius, hits);
     if (available <= 1e-6) return empty;
     const take = Math.min(maxMass, available);
     const composition = [0, 0, 0, 0, 0];
@@ -240,19 +233,7 @@ export class PileField {
       const share = (hit.mass / available) * take;
       if (share <= 1e-8) continue;
       const ratio = share / hit.mass;
-      for (const [key, cells] of this.owners) {
-        const owned = cells.get(hit.i) ?? 0;
-        if (!owned) continue;
-        owners[key] = (owners[key] ?? 0) + owned * ratio / take;
-        const remaining = owned * (1 - ratio);
-        const materials = this.ownerMaterials.get(key);
-        const composition = materials?.get(hit.i);
-        if (remaining < 1e-8) materials?.delete(hit.i);
-        else if (composition) for (let m = 0; m < composition.length; m++) composition[m] *= 1 - ratio;
-        if (materials && !materials.size) this.ownerMaterials.delete(key);
-        if (remaining < 1e-8) cells.delete(hit.i); else cells.set(hit.i, remaining);
-        if (!cells.size) this.owners.delete(key);
-      }
+      this.releaseOwners(hit.i, ratio, take, owners);
       this.mass[hit.i] = Math.max(0, this.mass[hit.i]! - share);
       this.height[hit.i] = Math.max(0, this.height[hit.i]! * (1 - ratio));
       for (let mi = 0; mi < this.mats.length; mi++) {
@@ -273,6 +254,46 @@ export class PileField {
       compact,
       composition,
     };
+  }
+
+  /** Cells with mass whose centres fall inside the disk (plus a little slack); returns their total mass. */
+  private diskCells(ix: number, iy: number, reach: number, x: number, y: number, radius: number, hits: { i: number; mass: number }[]): number {
+    let available = 0;
+    for (let dy = -reach; dy <= reach; dy++) {
+      for (let dx = -reach; dx <= reach; dx++) {
+        const i = this.index(ix + dx, iy + dy);
+        if (i < 0) continue;
+        const cx = this.ox + (ix + dx + 0.5) * this.cell;
+        const cy = this.oy + (iy + dy + 0.5) * this.cell;
+        if (Math.hypot(cx - x, cy - y) > radius + this.cell * 0.35) continue;
+        const m = this.mass[i]!;
+        if (m <= 1e-6) continue;
+        hits.push({ i, mass: m });
+        available += m;
+      }
+    }
+    return available;
+  }
+
+  /** Move each owner's `ratio` of cell i into `owners` (as a share of `take`) and shrink what stays. */
+  private releaseOwners(i: number, ratio: number, take: number, owners: Record<string, number>): void {
+    for (const [key, cells] of this.owners) {
+      const owned = cells.get(i) ?? 0;
+      if (!owned) continue;
+      owners[key] = (owners[key] ?? 0) + owned * ratio / take;
+      const remaining = owned * (1 - ratio);
+      this.shrinkOwnerMaterials(key, i, ratio, remaining);
+      if (remaining < 1e-8) cells.delete(i); else cells.set(i, remaining);
+      if (!cells.size) this.owners.delete(key);
+    }
+  }
+
+  private shrinkOwnerMaterials(key: string, i: number, ratio: number, remaining: number): void {
+    const materials = this.ownerMaterials.get(key);
+    const composition = materials?.get(i);
+    if (remaining < 1e-8) materials?.delete(i);
+    else if (composition) for (let m = 0; m < composition.length; m++) composition[m] *= 1 - ratio;
+    if (materials && !materials.size) this.ownerMaterials.delete(key);
   }
 
   sample(x: number, y: number): { height: number; mass: number; compact: number; material: Material } {

@@ -22,26 +22,31 @@ export function siloPose(b:Building,s:SiloState) {
     radius:d.diameter*b.cellSize/2,height:d.height*(1-drop*.97),tilt:p*.35};
 }
 export function stepSilos(b:Building,dt:number,result:StructureStepResult,particles:ParticlePool) {
-  for(const s of b.silos??[]) {
-    if(s.phase==='gone')continue;
-    const cells=siloCells(b,s);
-    if(s.phase==='standing' && cells.filter(cellPresent).length<s.definition.minimumSupports) {
-      s.phase='falling';
-      const lost=cells.filter(c=>!cellPresent(c));
-      const dx=lost.reduce((sum,c)=>sum+Math.cos(c.silo!.angle),0),dy=lost.reduce((sum,c)=>sum+Math.sin(c.silo!.angle),0),len=Math.hypot(dx,dy);
-      s.dx=len?dx/len:1;s.dy=len?dy/len:0;
-      for(const c of cells)if(cellPresent(c)){c.hp=0;c.state='breached';c.lastHitNx=s.dx;c.lastHitNy=s.dy;}
-      b.collisionDirty=true;b.structureDirty=true;
-    }
-    if(s.phase!=='falling')continue;
-    s.progress=Math.min(1,s.progress+dt/2.4);b.visualRevision++;
-    if(s.progress<1)continue;
-    s.phase='gone';const p=siloPose(b,s);
-    particles.radialDust(p.x,p.y,p.radius,22);
-    for(let i=0;i<16;i++) {
-      const angle=i*Math.PI/8;
-      result.rubbleSpawns.push({x:p.x+Math.cos(angle)*p.radius*.65,y:p.y+Math.sin(angle)*p.radius*.65,dx:Math.cos(angle),dy:Math.sin(angle),
-        material:'metal',floor:0,cellSize:b.cellSize,source:'roof',panelW:p.radius*.65,panelD:s.definition.height*.3});
-    }
+  for(const s of b.silos??[]) if(s.phase!=='gone') stepSilo(b,s,dt,result,particles);
+}
+function stepSilo(b:Building,s:SiloState,dt:number,result:StructureStepResult,particles:ParticlePool) {
+  const cells=siloCells(b,s);
+  if(s.phase==='standing' && cells.filter(cellPresent).length<s.definition.minimumSupports) toppleSilo(b,s,cells);
+  if(s.phase!=='falling')return;
+  s.progress=Math.min(1,s.progress+dt/2.4);b.visualRevision++;
+  if(s.progress<1)return;
+  landSilo(b,s,result,particles);
+}
+/** Too few supports: the bin tips away from the lost ones and takes its remaining supports with it. */
+function toppleSilo(b:Building,s:SiloState,cells:Cell[]) {
+  s.phase='falling';
+  const lost=cells.filter(c=>!cellPresent(c));
+  const dx=lost.reduce((sum,c)=>sum+Math.cos(c.silo!.angle),0),dy=lost.reduce((sum,c)=>sum+Math.sin(c.silo!.angle),0),len=Math.hypot(dx,dy);
+  s.dx=len?dx/len:1;s.dy=len?dy/len:0;
+  for(const c of cells)if(cellPresent(c)){c.hp=0;c.state='breached';c.lastHitNx=s.dx;c.lastHitNy=s.dy;}
+  b.collisionDirty=true;b.structureDirty=true;
+}
+function landSilo(b:Building,s:SiloState,result:StructureStepResult,particles:ParticlePool) {
+  s.phase='gone';const p=siloPose(b,s);
+  particles.radialDust(p.x,p.y,p.radius,22);
+  for(let i=0;i<16;i++) {
+    const angle=i*Math.PI/8;
+    result.rubbleSpawns.push({x:p.x+Math.cos(angle)*p.radius*.65,y:p.y+Math.sin(angle)*p.radius*.65,dx:Math.cos(angle),dy:Math.sin(angle),
+      material:'metal',floor:0,cellSize:b.cellSize,source:'roof',panelW:p.radius*.65,panelD:s.definition.height*.3});
   }
 }
