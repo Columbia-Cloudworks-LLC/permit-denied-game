@@ -1,5 +1,8 @@
 import type { WeatherDetail, WeatherKind } from "../world/season";
 
+/** Lowpass corner for each weather bed: hiss for rain and snow, a lower rustle for leaves. */
+const AMBIENT_FILTER: Record<Exclude<WeatherKind, "clear">, number> = { rain: 900, flurries: 1400, leaves: 600 };
+
 export class AudioBus {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
@@ -108,9 +111,8 @@ export class AudioBus {
       this.ambientGain.gain.setTargetAtTime(0, now, 0.2);
       return;
     }
-    const freq = active === "rain" ? 900 : active === "flurries" ? 1400 : active === "leaves" ? 600 : 500;
     const gain = detail === "reduced" ? 0.012 : 0.028;
-    this.ambientFilter.frequency.setTargetAtTime(freq, now, 0.2);
+    this.ambientFilter.frequency.setTargetAtTime(AMBIENT_FILTER[active], now, 0.2);
     this.ambientGain.gain.setTargetAtTime(gain, now, 0.3);
   }
 

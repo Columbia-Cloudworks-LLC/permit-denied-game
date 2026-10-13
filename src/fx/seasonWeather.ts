@@ -44,19 +44,7 @@ export class SeasonWeather {
       this.flakes = [];
       return;
     }
-    if (this.flakes.length < CAP && this.rng.next() < input.dt * 18) {
-      const spread = 10;
-      this.flakes.push({
-        x: input.camX + (this.rng.next() - 0.5) * spread,
-        y: input.camY + (this.rng.next() - 0.5) * spread,
-        z: 2 + this.rng.next() * 3,
-        vx: input.kind === "leaves" ? 0.8 : input.kind === "rain" ? 0.2 : 0.35,
-        vy: input.kind === "rain" ? 2.4 : 0.6,
-        vz: input.kind === "rain" ? -3.2 : -0.8,
-        life: 1.6,
-        kind: input.kind,
-      });
-    }
+    if (this.flakes.length < CAP && this.rng.next() < input.dt * 18) this.flakes.push(this.spawnFlake(input));
     const next: WeatherFlake[] = [];
     for (const flake of this.flakes) {
       flake.x += flake.vx * input.dt;
@@ -68,7 +56,27 @@ export class SeasonWeather {
     }
     this.flakes = next.slice(-CAP);
   }
+
+  /** A new flake somewhere over the camera, drifting by weather kind. */
+  private spawnFlake(input: { kind: WeatherKind; camX: number; camY: number }): WeatherFlake {
+    const spread = 10;
+    return {
+      x: input.camX + (this.rng.next() - 0.5) * spread,
+      y: input.camY + (this.rng.next() - 0.5) * spread,
+      z: 2 + this.rng.next() * 3,
+      ...FLAKE_DRIFT[input.kind],
+      life: 1.6,
+      kind: input.kind,
+    };
+  }
 }
+
+const FLAKE_DRIFT: Record<WeatherKind, { vx: number; vy: number; vz: number }> = {
+  clear: { vx: 0.35, vy: 0.6, vz: -0.8 },
+  flurries: { vx: 0.35, vy: 0.6, vz: -0.8 },
+  leaves: { vx: 0.8, vy: 0.6, vz: -0.8 },
+  rain: { vx: 0.2, vy: 2.4, vz: -3.2 },
+};
 
 export function presentationTint(light: number, detail: WeatherDetail): number {
   if (detail === "off") return 0xffffff;

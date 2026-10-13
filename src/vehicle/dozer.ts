@@ -75,13 +75,7 @@ export interface DriveInput {
 export function stepDozer(d: Dozer, input: DriveInput, dt: number): void {
   d.motionStartX = d.x;
   d.motionStartY = d.y;
-  if (input.blade && d.pushCd <= 0 && d.pushT <= 0) {
-    d.pushT = DOZER.pushSeconds * input.pushMul;
-    d.pushCd = DOZER.pushCooldown;
-  }
-  d.bladeDown = input.blade || d.pushT > 0;
-  if (d.pushT > 0) d.pushT -= dt;
-  if (d.pushCd > 0 && d.pushT <= 0) d.pushCd -= dt;
+  stepPush(d, input, dt);
 
   const f = dozerForward(d);
   const speed = dozerSpeed(d);
@@ -89,26 +83,13 @@ export function stepDozer(d: Dozer, input: DriveInput, dt: number): void {
   const steerScale = 1 / (1 + speed * DOZER.steerSpeedFalloff);
   d.heading += input.steer * DOZER.steer * steerScale * dt;
 
-  let target = 0;
-  if (input.throttle > 0) target = DOZER.maxSpeed * input.engineMul * Math.min(1, input.throttle);
-  if (input.throttle < 0) target = DOZER.maxReverse * Math.max(-1, input.throttle);
-  const acc = input.throttle >= 0 ? DOZER.accel * input.engineMul : DOZER.reverseAccel;
-  let nextAlong = approach(along, target, acc * dt);
-  if (input.throttle === 0) nextAlong = approach(along, 0, DOZER.coast * dt);
-  if (d.pushT > 0 && input.throttle >= 0) nextAlong += DOZER.pushForce * dt;
-
+  const nextAlong = nextAlongSpeed(d, input, along, dt);
   const latX = d.vx - along * f.x;
   const latY = d.vy - along * f.y;
   const latScale = Math.max(0, 1 - DOZER.lateralGrip * dt);
   d.vx = nextAlong * f.x + latX * latScale;
   d.vy = nextAlong * f.y + latY * latScale;
-
-  const max = input.throttle < 0 ? DOZER.maxReverse : DOZER.maxSpeed * input.engineMul * (d.pushT > 0 ? 1.12 : 1);
-  const sp = dozerSpeed(d);
-  if (sp > max) {
-    d.vx *= max / sp;
-    d.vy *= max / sp;
-  }
+  capDozerSpeed(d, input);
 
   d.x += d.vx * dt;
   d.y += d.vy * dt;
@@ -117,6 +98,37 @@ export function stepDozer(d: Dozer, input: DriveInput, dt: number): void {
   d.heat = Math.max(0, d.heat - DOZER.heatCool * dt);
   d.track = Math.max(0, d.track - DOZER.trackCool * dt);
   d.lastImpact = Math.max(0, d.lastImpact - dt);
+}
+
+/** Holding the blade starts a timed push once the cooldown allows; the blade stays down for the push. */
+function stepPush(d: Dozer, input: DriveInput, dt: number): void {
+  if (input.blade && d.pushCd <= 0 && d.pushT <= 0) {
+    d.pushT = DOZER.pushSeconds * input.pushMul;
+    d.pushCd = DOZER.pushCooldown;
+  }
+  d.bladeDown = input.blade || d.pushT > 0;
+  if (d.pushT > 0) d.pushT -= dt;
+  if (d.pushCd > 0 && d.pushT <= 0) d.pushCd -= dt;
+}
+
+/** Forward speed after throttle or coasting, plus the push surge while driving forward. */
+function nextAlongSpeed(d: Dozer, input: DriveInput, along: number, dt: number): number {
+  const throttle = input.throttle;
+  if (throttle === 0) return approach(along, 0, DOZER.coast * dt) + (d.pushT > 0 ? DOZER.pushForce * dt : 0);
+  const target = throttle > 0 ? DOZER.maxSpeed * input.engineMul * Math.min(1, throttle) : DOZER.maxReverse * Math.max(-1, throttle);
+  const acc = throttle > 0 ? DOZER.accel * input.engineMul : DOZER.reverseAccel;
+  const next = approach(along, target, acc * dt);
+  return d.pushT > 0 && throttle > 0 ? next + DOZER.pushForce * dt : next;
+}
+
+/** Clamp to reverse or forward top speed; a push may run slightly over. */
+function capDozerSpeed(d: Dozer, input: DriveInput): void {
+  const max = input.throttle < 0 ? DOZER.maxReverse : DOZER.maxSpeed * input.engineMul * (d.pushT > 0 ? 1.12 : 1);
+  const sp = dozerSpeed(d);
+  if (sp > max) {
+    d.vx *= max / sp;
+    d.vy *= max / sp;
+  }
 }
 
 function applyDozerImpulse(d: Dozer, nx: number, ny: number, depth: number, bounce: number): number {

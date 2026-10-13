@@ -129,21 +129,19 @@ function spanCovers(span: InteriorFloorSpan, gx: number, gy: number): boolean {
 function spanGapCount(b: Building, spans: InteriorFloorSpan[]): number {
   const covered = (gx: number, gy: number) => spans.some((s) => spanCovers(s, gx, gy));
   let gaps = 0;
-  for (let gy = 0; gy < b.d; gy++) {
-    let prev = -2;
-    for (let gx = 0; gx < b.w; gx++) {
-      if (!covered(gx, gy)) continue;
-      if (prev >= 0 && gx > prev + 1) gaps++;
-      prev = gx;
-    }
-  }
-  for (let gx = 0; gx < b.w; gx++) {
-    let prev = -2;
-    for (let gy = 0; gy < b.d; gy++) {
-      if (!covered(gx, gy)) continue;
-      if (prev >= 0 && gy > prev + 1) gaps++;
-      prev = gy;
-    }
+  for (let gy = 0; gy < b.d; gy++) gaps += lineGaps(b.w, (gx) => covered(gx, gy));
+  for (let gx = 0; gx < b.w; gx++) gaps += lineGaps(b.d, (gy) => covered(gx, gy));
+  return gaps;
+}
+
+/** Uncovered stretches between covered cells along one row or column. */
+function lineGaps(length: number, covered: (i: number) => boolean): number {
+  let gaps = 0;
+  let prev = -2;
+  for (let i = 0; i < length; i++) {
+    if (!covered(i)) continue;
+    if (prev >= 0 && i > prev + 1) gaps++;
+    prev = i;
   }
   return gaps;
 }
@@ -268,18 +266,32 @@ function isoPoly(x: number, y: number, w: number, d: number, z: number): string 
   return pts.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
 }
 
+/** Lot, exposed floors, south walls, roofs and exposed fixtures as one isometric SVG. */
 function phaseSvg(b: Building): string {
   const cs = b.cellSize;
-  const surfaces = extractBuildingSurfaces(b);
   const parts: string[] = [];
   parts.push(`<polygon points="${isoPoly(b.x, b.y, b.w * cs, b.d * cs, 0)}" fill="#7cb342" />`);
   for (const span of interiorFloorSpans(b)) {
-    const fill = span.finish === "tile" ? "#c4c0b4" : span.finish === "linoleum" ? "#c4a86a" : "#c49a5c";
     parts.push(
-      `<polygon points="${isoPoly(b.x + span.gx0 * cs, b.y + span.gy0 * cs, (span.gx1 - span.gx0 + 1) * cs, (span.gy1 - span.gy0 + 1) * cs, 0.11)}" fill="${fill}" />`,
+      `<polygon points="${isoPoly(b.x + span.gx0 * cs, b.y + span.gy0 * cs, (span.gx1 - span.gx0 + 1) * cs, (span.gy1 - span.gy0 + 1) * cs, 0.11)}" fill="${FLOOR_FILLS[span.finish] ?? "#c49a5c"}" />`,
     );
   }
-  for (const wall of surfaces.walls) {
+  parts.push(...southWallPolys(b), ...roofPolys(b));
+  for (const f of b.fixtures) {
+    if (!fixtureExposed(b, f)) continue;
+    parts.push(
+      `<polygon points="${isoPoly(f.x, f.y, f.w, f.d, 0.2)}" fill="${f.broken ? "#6d5a3a" : "#5a8f4a"}" />`,
+    );
+  }
+  return svgFrame(b, parts);
+}
+
+const FLOOR_FILLS: Record<string, string> = { tile: "#c4c0b4", linoleum: "#c4a86a" };
+
+function southWallPolys(b: Building): string[] {
+  const cs = b.cellSize;
+  const parts: string[] = [];
+  for (const wall of extractBuildingSurfaces(b).walls) {
     if (wall.dir !== "south") continue;
     const x = b.x + wall.gx0 * cs;
     const y = b.y + (wall.gy0 + 1) * cs;
@@ -292,6 +304,12 @@ function phaseSvg(b: Building): string {
       `<polygon points="${a.x.toFixed(1)},${a.y.toFixed(1)} ${e.x.toFixed(1)},${e.y.toFixed(1)} ${c.x.toFixed(1)},${c.y.toFixed(1)} ${f.x.toFixed(1)},${f.y.toFixed(1)}" fill="#c68654" />`,
     );
   }
+  return parts;
+}
+
+/** Standing roofs; a falling roof fades, and an exposed frame gets a heavier outline. */
+function roofPolys(b: Building): string[] {
+  const parts: string[] = [];
   for (const roof of b.roofs) {
     if (roof.state === "gone") continue;
     const falling = roof.state === "falling";
@@ -302,12 +320,11 @@ function phaseSvg(b: Building): string {
       `<polygon points="${pts}" fill="${falling ? "#6a3428" : "#8b3a2a"}" stroke="${framing ? "#6d4c2b" : "#6b2a1e"}" stroke-width="${framing ? 1.4 : 0.6}" fill-opacity="${falling ? 0.55 : 0.92}" />`,
     );
   }
-  for (const f of b.fixtures) {
-    if (!fixtureExposed(b, f)) continue;
-    parts.push(
-      `<polygon points="${isoPoly(f.x, f.y, f.w, f.d, 0.2)}" fill="${f.broken ? "#6d5a3a" : "#5a8f4a"}" />`,
-    );
-  }
+  return parts;
+}
+
+function svgFrame(b: Building, parts: string[]): string {
+  const cs = b.cellSize;
   const xs = [worldToScreen(b.x, b.y, 0), worldToScreen(b.x + b.w * cs, b.y, 0), worldToScreen(b.x, b.y + b.d * cs, 3), worldToScreen(b.x + b.w * cs, b.y + b.d * cs, 3)];
   const minX = Math.min(...xs.map((p) => p.x)) - 8;
   const minY = Math.min(...xs.map((p) => p.y)) - 8;
@@ -357,62 +374,19 @@ export function runRanchLever(outDir = RANCH_LEVER_DIR): LeverReport {
   const particles = new ParticlePool();
   const dozer = createDozer(ranch.x + (ranch.w * ranch.cellSize) * 0.5, ranch.y + ranch.d * ranch.cellSize + 3.4, -Math.PI / 2);
   let tick = 0;
-  const phases: LeverPhase[] = [];
-
   const step = (n: number): void => {
     for (let i = 0; i < n; i++) {
       stepWorld(town, dozer, particles, UPGRADES, SIM_DT);
       tick++;
     }
   };
-
-  phases.push(capture("intact", "intact", "closed", tick, ranch));
-
-  smash(ranch, particles, 2, ranch.d - 1);
-  step(4);
-  phases.push(capture("first-south-breach", "first south breach", "open", tick, ranch));
-
-  smash(ranch, particles, 1, ranch.d - 1);
-  smash(ranch, particles, 3, ranch.d - 1);
-  step(12);
-  phases.push(capture("mid-collapse-a", "mid-collapse (breached)", "open", tick, ranch));
-  step(20);
-  phases.push(capture("mid-collapse-b", "mid-collapse (sag)", "open", tick, ranch));
-  step(24);
-  phases.push(capture("mid-collapse-c", "mid-collapse (fall)", "open", tick, ranch));
-
-  let guard = 0;
-  while (guard++ < 80) {
-    const south = [1, 2, 3].map((gx) => ranch.grid[0]![gx]![ranch.d - 1]!);
-    if (south.every((c) => c.state === "gone")) break;
-    step(1);
-  }
-  phases.push(capture("south-middle-open", "south-middle open (screenshot state)", "open", tick, ranch));
-
-  for (let gx = 0; gx < 4; gx++) {
-    for (let gy = 0; gy < ranch.d; gy++) smash(ranch, particles, gx, gy);
-  }
-  step(16);
-  phases.push(capture("half-destroyed", "half destroyed", "open", tick, ranch));
-
-  for (const cell of ranch.cells) {
-    if (cell.gx === ranch.w - 1 && cell.gy === 0) continue;
-    smash(ranch, particles, cell.gx, cell.gy);
-  }
-  step(24);
-  phases.push(capture("near-total", "near-total", "rubble", tick, ranch));
-
+  const phases = demolishRanch(ranch, particles, step, () => tick);
   const resetTown = createTown({ district: "d10", seed });
   const resetRanch = resetTown.buildings.find((b) => b.archetypeId === "ranch");
   if (!resetRanch) throw new Error("d10 town has no ranch");
   phases.push(capture("reset", "reset", "closed", 0, resetRanch));
-
-  const failed: LeverReport["failed"] = [];
-  for (const phase of phases) {
-    for (const check of phase.checks) {
-      if (!check.ok) failed.push({ phase: phase.id, check: check.id, detail: check.detail });
-    }
-  }
+  const failed = phases.flatMap((phase) => phase.checks.filter((check) => !check.ok)
+    .map((check) => ({ phase: phase.id, check: check.id, detail: check.detail })));
   const report: LeverReport = {
     command: "npx vitest run src/debug/ranchLever.test.ts",
     district: "d10",
@@ -424,4 +398,46 @@ export function runRanchLever(outDir = RANCH_LEVER_DIR): LeverReport {
   };
   writeArtifacts(report);
   return report;
+}
+
+/** Open the south face, let it fall, take half the ranch, then nearly all of it, capturing each phase. */
+function demolishRanch(ranch: Building, particles: ParticlePool, step: (n: number) => void, tick: () => number): LeverPhase[] {
+  const phases: LeverPhase[] = [];
+  phases.push(capture("intact", "intact", "closed", tick(), ranch));
+
+  smash(ranch, particles, 2, ranch.d - 1);
+  step(4);
+  phases.push(capture("first-south-breach", "first south breach", "open", tick(), ranch));
+
+  smash(ranch, particles, 1, ranch.d - 1);
+  smash(ranch, particles, 3, ranch.d - 1);
+  step(12);
+  phases.push(capture("mid-collapse-a", "mid-collapse (breached)", "open", tick(), ranch));
+  step(20);
+  phases.push(capture("mid-collapse-b", "mid-collapse (sag)", "open", tick(), ranch));
+  step(24);
+  phases.push(capture("mid-collapse-c", "mid-collapse (fall)", "open", tick(), ranch));
+
+  let guard = 0;
+  while (guard++ < 80) {
+    const south = [1, 2, 3].map((gx) => ranch.grid[0]![gx]![ranch.d - 1]!);
+    if (south.every((c) => c.state === "gone")) break;
+    step(1);
+  }
+  phases.push(capture("south-middle-open", "south-middle open (screenshot state)", "open", tick(), ranch));
+
+  for (let gx = 0; gx < 4; gx++) {
+    for (let gy = 0; gy < ranch.d; gy++) smash(ranch, particles, gx, gy);
+  }
+  step(16);
+  phases.push(capture("half-destroyed", "half destroyed", "open", tick(), ranch));
+
+  for (const cell of ranch.cells) {
+    if (cell.gx === ranch.w - 1 && cell.gy === 0) continue;
+    smash(ranch, particles, cell.gx, cell.gy);
+  }
+  step(24);
+  phases.push(capture("near-total", "near-total", "rubble", tick(), ranch));
+
+  return phases;
 }
