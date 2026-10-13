@@ -45,11 +45,16 @@ export async function waitForGame(page) {
   await page.waitForFunction(() => window.__pd?.version === 1 && window.__pd.ready());
 }
 
-async function startPreview(preferredPort) {
-  let lastError;
+/** The preferred port first, then free ports, eight in all. */
+async function previewPorts(preferredPort) {
   const attempts = preferredPort ? [preferredPort] : [];
   while (attempts.length < 8) attempts.push(await reservePort());
-  for (const port of attempts) {
+  return attempts;
+}
+
+async function startPreview(preferredPort) {
+  let lastError;
+  for (const port of await previewPorts(preferredPort)) {
     try {
       const server = await preview({
         preview: { host: "127.0.0.1", port, strictPort: true, open: false },
@@ -78,6 +83,19 @@ async function closePreview(server) {
   });
 }
 
+/** Page settings a session applies unless a single openPage call overrides them. */
+export function pageDefaults(options) {
+  const { viewport, deviceScaleFactor, debug, consent, waitForGame: wait, analytics } = options;
+  return {
+    viewport: DEFAULT_VIEWPORT, deviceScaleFactor: 1, debug: true, consent: true, wait: true, analytics: "declined",
+    ...definedOnly({ viewport, deviceScaleFactor, debug, consent, wait, analytics }),
+  };
+}
+
+function definedOnly(values) {
+  return Object.fromEntries(Object.entries(values).filter(([, value]) => value !== undefined));
+}
+
 /**
  * Shared Playwright capture session: preview, Chromium flags, consent, readiness,
  * and cleanup on success or failure. Scene scripts supply navigation and shots.
@@ -91,17 +109,10 @@ export async function withGameCapture(action, options = {}) {
       browser,
       origin,
       port,
-      async openPage({
-        query = "",
-        viewport = options.viewport ?? DEFAULT_VIEWPORT,
-        deviceScaleFactor = options.deviceScaleFactor ?? 1,
-        debug = options.debug !== false,
-        consent = options.consent !== false,
-        wait = options.waitForGame !== false,
-        pageOptions = {},
-      } = {}) {
+      async openPage({ query = "", pageOptions = {}, ...request } = {}) {
+        const { viewport, deviceScaleFactor, debug, consent, wait, analytics } = { ...pageDefaults(options), ...definedOnly(request) };
         const page = await browser.newPage({ viewport, deviceScaleFactor, ...pageOptions });
-        if (consent) await injectConsent(page, { analytics: options.analytics ?? "declined" });
+        if (consent) await injectConsent(page, { analytics });
         await page.goto(gameUrl(origin, query, { debug }), { waitUntil: "networkidle" });
         if (wait) await waitForGame(page);
         return page;

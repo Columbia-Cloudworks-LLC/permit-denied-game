@@ -218,30 +218,11 @@ export async function runPreflight({
   requireIdentity = true,
   fetchTimeoutMs = FETCH_TIMEOUT_MS,
 } = {}) {
-  const startDir = path.resolve(cwd);
-  const repoRoot = await resolveGitRoot(startDir);
-  if (!repoRoot) {
-    return withSummary(emptyReport({
-      state: STATES.NO_REMOTE,
-      summary: 'Not a git repository. Make no changes. Run this from the permit-denied checkout.',
-    }));
-  }
-
-  if (requireIdentity) {
-    const identity = await verifyPermitDeniedRepo(repoRoot);
-    if (!identity.ok) {
-      return withSummary(emptyReport({
-        state: STATES.NO_REMOTE,
-        summary: `Wrong repository (${identity.reason}). Make no changes.`,
-      }));
-    }
-  }
-
-  const headSha = await revParse(repoRoot, 'HEAD');
-  const symbolic = await gitText(repoRoot, ['symbolic-ref', '--quiet', 'HEAD']);
-  const detached = symbolic.code !== 0;
-  const branchResult = await gitText(repoRoot, ['rev-parse', '--abbrev-ref', 'HEAD']);
-  const branch = detached || branchResult.stdout.trim() === 'HEAD' ? null : branchResult.stdout.trim();
+  const repo = await locateRepo(path.resolve(cwd), requireIdentity);
+  if (repo.report) return repo.report;
+  const { repoRoot } = repo;
+  const head = await readHead(repoRoot);
+  const { branch, headSha } = head;
 
   const remote = await gitText(repoRoot, ['remote', 'get-url', ORIGIN_NAME]);
   if (remote.code !== 0) {
@@ -256,17 +237,7 @@ export async function runPreflight({
   const status = await gitText(repoRoot, ['status', '--porcelain=v1', '--untracked-files=all']);
   const porcelain = inspectPorcelain(status.stdout);
   const originBefore = await revParse(repoRoot, `refs/remotes/${ORIGIN_NAME}/${MAIN_BRANCH}`);
-
-  let fetchError = null;
-  try {
-    const fetched = await gitText(repoRoot, ['fetch', '--prune', ORIGIN_NAME], { timeoutMs: fetchTimeoutMs });
-    if (fetched.code !== 0) {
-      fetchError = fetched.stderr || fetched.stdout || `git fetch exited ${fetched.code}`;
-    }
-  } catch (error) {
-    fetchError = error instanceof Error ? error.message : String(error);
-  }
-
+  const fetchError = await fetchOrigin(repoRoot, fetchTimeoutMs);
   const originMainSha = await revParse(repoRoot, `refs/remotes/${ORIGIN_NAME}/${MAIN_BRANCH}`);
   if (fetchError) {
     return withSummary({
@@ -276,10 +247,7 @@ export async function runPreflight({
         branch,
         headSha,
         originMainSha: originMainSha ?? originBefore,
-        dirty: porcelain.dirty,
-        dirtyTracked: porcelain.tracked,
-        dirtyStaged: porcelain.staged,
-        dirtyUntracked: porcelain.untracked,
+        ...dirtyFields(porcelain),
         worktreePreventedUpdate: porcelain.dirty,
       }),
     });
@@ -294,77 +262,115 @@ export async function runPreflight({
     }));
   }
 
-  const counts = await gitText(repoRoot, ['rev-list', '--left-right', '--count', `HEAD...${ORIGIN_NAME}/${MAIN_BRANCH}`]);
-  let ahead = 0;
-  let behind = 0;
-  if (counts.code === 0) {
-    const match = counts.stdout.trim().match(/^(\d+)\s+(\d+)$/u);
-    if (match) {
-      ahead = Number(match[1]);
-      behind = Number(match[2]);
-    }
-  }
-
-  const snapshot = { detached, dirty: porcelain.dirty, ahead, behind };
-  const classified = classifyAfterFetch(snapshot);
-  const canFastForward = !detached && !porcelain.dirty && ahead === 0 && behind > 0;
-
-  if (canFastForward) {
-    const fromSha = headSha;
-    const merged = await gitText(repoRoot, ['merge', '--ff-only', `${ORIGIN_NAME}/${MAIN_BRANCH}`]);
-    if (merged.code !== 0) {
-      return withSummary({
-        state: STATES.DIVERGED,
-        freshness: 'verified',
-        branch,
-        headSha,
-        originMainSha,
-        ahead,
-        behind,
-        dirty: porcelain.dirty,
-        dirtyTracked: porcelain.tracked,
-        dirtyStaged: porcelain.staged,
-        dirtyUntracked: porcelain.untracked,
-        fastForwarded: false,
-        fromSha: null,
-        worktreePreventedUpdate: true,
-        summary: `Fast-forward of ${branch ?? 'HEAD'} failed; left HEAD at ${shortSha(headSha)}. No reset or non-ff merge.`,
-      });
-    }
-    const newHead = await revParse(repoRoot, 'HEAD');
-    return withSummary({
-      state: STATES.FAST_FORWARDED,
-      freshness: 'verified',
-      branch,
-      headSha: newHead,
-      originMainSha,
-      ahead: 0,
-      behind: 0,
-      dirty: false,
-      dirtyTracked: false,
-      dirtyStaged: false,
-      dirtyUntracked: false,
-      fastForwarded: true,
-      fromSha,
-      worktreePreventedUpdate: false,
-    });
-  }
+  const { ahead, behind } = await aheadBehind(repoRoot);
+  const canFastForward = !head.detached && !porcelain.dirty && ahead === 0 && behind > 0;
+  if (canFastForward) return fastForward(repoRoot, { branch, headSha, originMainSha, ahead, behind, porcelain });
 
   return withSummary({
-    state: classified,
+    state: classifyAfterFetch({ detached: head.detached, dirty: porcelain.dirty, ahead, behind }),
     freshness: 'verified',
     branch,
     headSha,
     originMainSha,
     ahead,
     behind,
+    ...dirtyFields(porcelain),
+    fastForwarded: false,
+    fromSha: null,
+    worktreePreventedUpdate: porcelain.dirty || head.detached || ahead > 0,
+  });
+}
+
+/** The checkout's git root, or a report explaining why this is the wrong place to run. */
+async function locateRepo(startDir, requireIdentity) {
+  const repoRoot = await resolveGitRoot(startDir);
+  if (!repoRoot) {
+    return { report: withSummary(emptyReport({
+      state: STATES.NO_REMOTE,
+      summary: 'Not a git repository. Make no changes. Run this from the permit-denied checkout.',
+    })) };
+  }
+  if (!requireIdentity) return { repoRoot };
+  const identity = await verifyPermitDeniedRepo(repoRoot);
+  if (identity.ok) return { repoRoot };
+  return { report: withSummary(emptyReport({
+    state: STATES.NO_REMOTE,
+    summary: `Wrong repository (${identity.reason}). Make no changes.`,
+  })) };
+}
+
+/** HEAD's commit and branch; a detached HEAD has no branch. */
+async function readHead(repoRoot) {
+  const headSha = await revParse(repoRoot, 'HEAD');
+  const symbolic = await gitText(repoRoot, ['symbolic-ref', '--quiet', 'HEAD']);
+  const detached = symbolic.code !== 0;
+  const branchResult = await gitText(repoRoot, ['rev-parse', '--abbrev-ref', 'HEAD']);
+  const name = branchResult.stdout.trim();
+  return { headSha, detached, branch: detached || name === 'HEAD' ? null : name };
+}
+
+/** Fetch origin; returns why it failed, or null when it succeeded. */
+async function fetchOrigin(repoRoot, timeoutMs) {
+  try {
+    const fetched = await gitText(repoRoot, ['fetch', '--prune', ORIGIN_NAME], { timeoutMs });
+    if (fetched.code === 0) return null;
+    return fetched.stderr || fetched.stdout || `git fetch exited ${fetched.code}`;
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
+  }
+}
+
+/** Commits HEAD has that origin/main lacks, and the reverse; zero when git cannot count them. */
+async function aheadBehind(repoRoot) {
+  const counts = await gitText(repoRoot, ['rev-list', '--left-right', '--count', `HEAD...${ORIGIN_NAME}/${MAIN_BRANCH}`]);
+  const match = counts.code === 0 ? counts.stdout.trim().match(/^(\d+)\s+(\d+)$/u) : null;
+  return match ? { ahead: Number(match[1]), behind: Number(match[2]) } : { ahead: 0, behind: 0 };
+}
+
+function dirtyFields(porcelain) {
+  return {
     dirty: porcelain.dirty,
     dirtyTracked: porcelain.tracked,
     dirtyStaged: porcelain.staged,
     dirtyUntracked: porcelain.untracked,
-    fastForwarded: false,
-    fromSha: null,
-    worktreePreventedUpdate: porcelain.dirty || detached || ahead > 0,
+  };
+}
+
+/** Fast-forward a clean branch that is only behind; a failed merge leaves HEAD where it was. */
+async function fastForward(repoRoot, { branch, headSha, originMainSha, ahead, behind, porcelain }) {
+  const merged = await gitText(repoRoot, ['merge', '--ff-only', `${ORIGIN_NAME}/${MAIN_BRANCH}`]);
+  if (merged.code !== 0) {
+    return withSummary({
+      state: STATES.DIVERGED,
+      freshness: 'verified',
+      branch,
+      headSha,
+      originMainSha,
+      ahead,
+      behind,
+      ...dirtyFields(porcelain),
+      fastForwarded: false,
+      fromSha: null,
+      worktreePreventedUpdate: true,
+      summary: `Fast-forward of ${branch ?? 'HEAD'} failed; left HEAD at ${shortSha(headSha)}. No reset or non-ff merge.`,
+    });
+  }
+  const newHead = await revParse(repoRoot, 'HEAD');
+  return withSummary({
+    state: STATES.FAST_FORWARDED,
+    freshness: 'verified',
+    branch,
+    headSha: newHead,
+    originMainSha,
+    ahead: 0,
+    behind: 0,
+    dirty: false,
+    dirtyTracked: false,
+    dirtyStaged: false,
+    dirtyUntracked: false,
+    fastForwarded: true,
+    fromSha: headSha,
+    worktreePreventedUpdate: false,
   });
 }
 
@@ -372,7 +378,11 @@ export async function readStdinJson() {
   if (process.stdin.isTTY) return null;
   const chunks = [];
   for await (const chunk of process.stdin) chunks.push(chunk);
-  const raw = Buffer.concat(chunks).toString('utf8').trim();
+  return parseJsonOrNull(Buffer.concat(chunks).toString('utf8').trim());
+}
+
+/** Parsed JSON, or null for empty or malformed input. */
+export function parseJsonOrNull(raw) {
   if (!raw) return null;
   try {
     return JSON.parse(raw);

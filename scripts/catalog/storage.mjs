@@ -1,23 +1,39 @@
 import { S3Client, GetObjectCommand, PutObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
 import { digest, safeKey } from './core.mjs';
 
-export function r2Store(bucket) {
-  const { R2_ACCOUNT_ID: account, R2_ACCESS_KEY_ID: accessKeyId, R2_SECRET_ACCESS_KEY: secretAccessKey } = process.env;
-  if (!account || !accessKeyId || !secretAccessKey || !bucket) throw new Error('R2 account, bucket and scoped credentials are required');
+/** Account and scoped keys from the environment; all are required and the account must be well-formed. */
+export function r2Credentials(env, bucket) {
+  const { R2_ACCOUNT_ID: account, R2_ACCESS_KEY_ID: accessKeyId, R2_SECRET_ACCESS_KEY: secretAccessKey } = env;
+  if (![account, accessKeyId, secretAccessKey, bucket].every(Boolean)) throw new Error('R2 account, bucket and scoped credentials are required');
   if (!/^[a-f0-9]{32}$/.test(account)) throw new Error('Invalid R2 account ID');
+  return { account, accessKeyId, secretAccessKey };
+}
+
+/** R2 answers a missing key with a 404; anything else is a real failure. */
+export function isNotFound(error) {
+  return /** @type {{ $metadata?: { httpStatusCode?: number } }} */ (error)?.$metadata?.httpStatusCode === 404;
+}
+
+/** Null for a missing key, rethrowing every other failure. */
+async function orNullWhenMissing(request) {
+  try { return await request(); }
+  catch (e) { if (isNotFound(e)) return null; throw e; }
+}
+
+export function r2Store(bucket) {
+  const { account, accessKeyId, secretAccessKey } = r2Credentials(process.env, bucket);
   const client = new S3Client({ region: 'auto', endpoint: `https://${account}.r2.cloudflarestorage.com`,
     credentials: { accessKeyId, secretAccessKey }, maxAttempts: 5 });
   return {
-    async get(key) {
-      try {
+    get(key) {
+      return orNullWhenMissing(async () => {
         const result = await client.send(new GetObjectCommand({ Bucket: bucket, Key: safeKey(key) }));
         if (!result.Body) throw new Error('R2 get returned no body');
         return Buffer.from(await result.Body.transformToByteArray());
-      } catch (e) { if (/** @type {{ $metadata?: { httpStatusCode?: number } }} */ (e).$metadata?.httpStatusCode === 404) return null; throw e; }
+      });
     },
-    async head(key) {
-      try { return await client.send(new HeadObjectCommand({ Bucket: bucket, Key: safeKey(key) })); }
-      catch (e) { if (/** @type {{ $metadata?: { httpStatusCode?: number } }} */ (e).$metadata?.httpStatusCode === 404) return null; throw e; }
+    head(key) {
+      return orNullWhenMissing(() => client.send(new HeadObjectCommand({ Bucket: bucket, Key: safeKey(key) })));
     },
     async put(key, body, type = 'application/json') {
       await client.send(new PutObjectCommand({ Bucket: bucket, Key: safeKey(key), Body: body,

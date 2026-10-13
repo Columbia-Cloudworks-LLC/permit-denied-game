@@ -1,8 +1,9 @@
 import { readFile, writeFile, mkdir, cp, appendFile } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { fingerprint, sharedFingerprint, publicationFiles, safeKey, digest } from './catalog/core.mjs';
+import { sharedFingerprint, publicationFiles, safeKey } from './catalog/core.mjs';
 import { withCapturePage } from './catalog/preview.mjs';
+import { assetDuration, packWorkers } from './catalog/plan.mjs';
 import { generateCatalog, readCaptures } from './catalog/generate.mjs';
 import { r2Store, uploadVerified, pool } from './catalog/storage.mjs';
 import { saveCapture } from './catalog/cache.mjs';
@@ -40,30 +41,9 @@ if (command === 'plan') {
         if (!capture) throw new Error('asset capture binder missing');
         return capture.inputs(id);
       }, asset.id);
-      let duration = 0;
-      for (let variant = 0; variant < asset.variants; variant++) {
-        const key = fingerprint(runtime, inputs, variant);
-        const record = cache && await cache.get(`captures/${key}.json`);
-        const timing = !record && cache && await cache.get(`timings/${digest(Buffer.from(`${asset.id}/${variant}`))}.json`);
-        let measured = 0;
-        try { measured = timing ? Number(JSON.parse(timing.toString()).durationMs) : 0; } catch {}
-        duration += record ? 5000 : (Number.isFinite(measured) && measured > 0 ? measured : Math.max(15000, (asset.floors + 1) * 15000));
-      }
-      tasks.push({ id: asset.id, duration });
+      tasks.push({ id: asset.id, duration: await assetDuration(asset, inputs, runtime, cache) });
     }
-    // Four workers with bounded batches, rather than an asset-sized CI matrix.
-    /** @type {{ catalog: typeof catalog, batches: { catalog: typeof catalog, ids: string[], duration: number }[], duration: number }[]} */
-    const workers = Array.from({ length: 4 }, () => ({ catalog, batches: [], duration: 0 }));
-    for (const task of tasks.sort((a, b) => b.duration - a.duration)) {
-      const worker = [...workers].sort((a, b) => a.duration - b.duration)[0];
-      let batch = worker.batches.at(-1);
-      if (!batch || batch.duration + task.duration > 480000 || batch.ids.length >= 12) {
-        batch = { catalog, ids: [], duration: 0 }; worker.batches.push(batch);
-      }
-      batch.ids.push(task.id); batch.duration += task.duration;
-      worker.duration += task.duration;
-    }
-    return workers;
+    return packWorkers(tasks, catalog);
   });
   await mkdir(output, { recursive: true });
   for (const [i, plan] of plans.entries()) await writeFile(join(output, `${i}.json`), JSON.stringify(plan));

@@ -39,6 +39,14 @@ const recipes = {
   theater: () => [all('auditorium', 'living', [.2, .45, .7].flatMap(y => [f('theater-seats', .08, y, .35, .15, .9), f('theater-seats', .57, y, .35, .15, .9)]), 'plank')],
   cold: () => [all('cold-room', 'storage', rows('display-fridge', 4, .7, 1.5), 'concrete')],
 };
+const APARTMENT_WINGS = ['garden-apartment-block', 'courtyard-apartment'];
+/** Doors within one layout. An apartment wing's private hall opens only into its main room. */
+function layoutDoors(id, name, rooms) {
+  const wingHall = APARTMENT_WINGS.includes(id) && ['west', 'east'].includes(name);
+  if (!wingHall) return doors(rooms);
+  const main = id === 'garden-apartment-block' ? 'bedroom' : 'living';
+  return doors(rooms).filter(c => !(c.a === 'hall' || c.b === 'hall') || c.a === main || c.b === main);
+}
 const s = (id, x, y, w, d, floor, floors, recipe) => ({ id, role: id, x, y, w, d, floor, floors, recipe });
 const plans = [
   ['B03', 'fourplex', 'FOURPLEX', 'residential', 'brick-mixed-use', 'flat', 'colonial', 8, 6, [s('west-units', 0, 0, 4, 6, 0, 2, 'home'), s('east-units', 4, 0, 4, 6, 0, 2, 'home')]],
@@ -138,6 +146,6 @@ for (const [backlog, id, label, group, construction, roof, theme, w, d, parts] o
   if (id === 'hotel-podium') hotelAccess(definition, layouts);
   if (id === 'boarding-house') boardingAccess(definition, layouts);
   await writeFile(`${path}/main.building.json`, JSON.stringify(definition, null, 2) + '\n');
-  for (const [name, rooms] of layouts) await writeFile(`${path}/${name}.layout.json`, JSON.stringify({ partitions: true, rooms, connections: doors(rooms).filter(c => !(['garden-apartment-block','courtyard-apartment'].includes(id) && ['west','east'].includes(name) && (c.a === 'hall' || c.b === 'hall')) || c.a === (id==='garden-apartment-block'?'bedroom':'living') || c.b === (id==='garden-apartment-block'?'bedroom':'living')) }, null, 2) + '\n');
+  for (const [name, rooms] of layouts) await writeFile(`${path}/${name}.layout.json`, JSON.stringify({ partitions: true, rooms, connections: layoutDoors(id, name, rooms) }, null, 2) + '\n');
   console.log(`${backlog}: ${id}`);
 }

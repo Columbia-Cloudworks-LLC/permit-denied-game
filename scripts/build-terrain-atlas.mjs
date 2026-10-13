@@ -94,26 +94,20 @@ function wedgeBits(px, py) {
   const tau = Math.PI * 2;
   const a = (ang + tau) % tau;
   const slice = Math.floor(((a + Math.PI / 8) % tau) / (Math.PI / 4));
-  // 0 = E, 1 = SE, 2 = S, 3 = SW, 4 = W, 5 = NW, 6 = N, 7 = NE
-  switch (slice) {
-    case 0:
-      return { e: true };
-    case 1:
-      return { se: true, e: true, s: true };
-    case 2:
-      return { s: true };
-    case 3:
-      return { sw: true, s: true, w: true };
-    case 4:
-      return { w: true };
-    case 5:
-      return { nw: true, n: true, w: true };
-    case 6:
-      return { n: true };
-    default:
-      return { ne: true, n: true, e: true };
-  }
+  return WEDGE_NEIGHBORS[slice] ?? WEDGE_NEIGHBORS[7];
 }
+
+/** Neighbors each screen wedge reads, by slice: 0 = E, 1 = SE, 2 = S, 3 = SW, 4 = W, 5 = NW, 6 = N, 7 = NE. */
+const WEDGE_NEIGHBORS = [
+  { e: true },
+  { se: true, e: true, s: true },
+  { s: true },
+  { sw: true, s: true, w: true },
+  { w: true },
+  { nw: true, n: true, w: true },
+  { n: true },
+  { ne: true, n: true, e: true },
+];
 
 function maskHas(mask, bits) {
   const set = blobBits(mask);
@@ -123,14 +117,7 @@ function maskHas(mask, bits) {
 function drawSolid(color, variant) {
   const buf = Buffer.alloc(TILE_W * TILE_H * 4);
   for (let y = 0; y < TILE_H; y++) {
-    for (let x = 0; x < TILE_W; x++) {
-      const o = (y * TILE_W + x) * 4;
-      const [r, g, b] = jitter(color, variant, x, y);
-      buf[o] = r;
-      buf[o + 1] = g;
-      buf[o + 2] = b;
-      buf[o + 3] = 255;
-    }
+    for (let x = 0; x < TILE_W; x++) paintPixel(buf, color, variant, x, y, 255);
   }
   return buf;
 }
@@ -139,18 +126,25 @@ function drawBlob(color, mask, variant = 1) {
   const buf = Buffer.alloc(TILE_W * TILE_H * 4);
   for (let y = 0; y < TILE_H; y++) {
     for (let x = 0; x < TILE_W; x++) {
-      const o = (y * TILE_W + x) * 4;
-      if (!inDiamond(x + 0.5, y + 0.5)) continue;
-      const bits = wedgeBits(x + 0.5, y + 0.5);
-      if (!maskHas(mask, bits)) continue;
-      const [r, g, b] = jitter(color, variant, x, y);
-      buf[o] = r;
-      buf[o + 1] = g;
-      buf[o + 2] = b;
-      buf[o + 3] = 220;
+      if (blobCovers(mask, x + 0.5, y + 0.5)) paintPixel(buf, color, variant, x, y, 220);
     }
   }
   return buf;
+}
+
+/** Inside the tile diamond, in a wedge whose neighbors the mask includes. */
+function blobCovers(mask, px, py) {
+  return inDiamond(px, py) && maskHas(mask, wedgeBits(px, py));
+}
+
+/** One jittered texel; blob overlays are slightly translucent over their solid. */
+function paintPixel(buf, color, variant, x, y, alpha) {
+  const o = (y * TILE_W + x) * 4;
+  const [r, g, b] = jitter(color, variant, x, y);
+  buf[o] = r;
+  buf[o + 1] = g;
+  buf[o + 2] = b;
+  buf[o + 3] = alpha;
 }
 
 const frames = [];

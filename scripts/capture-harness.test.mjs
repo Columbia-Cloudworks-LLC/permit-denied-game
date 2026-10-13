@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { TERMS_VERSION } from "./terms-version.mjs";
-import { gameUrl, reservePort } from "./capture/harness.mjs";
+import { DEFAULT_VIEWPORT, gameUrl, pageDefaults, reservePort } from "./capture/harness.mjs";
 
 test("consent version is read from src/privacy/state.ts", () => {
   const source = readFileSync(new URL("../src/privacy/state.ts", import.meta.url), "utf8");
@@ -22,4 +22,14 @@ test("reservePort yields distinct listening ports", async () => {
   assert.notEqual(first, 0);
   assert.notEqual(second, 0);
   assert.notEqual(first, second);
+});
+
+test('capture pages use session defaults unless a call overrides them', () => {
+  assert.deepEqual(pageDefaults({}), { viewport: DEFAULT_VIEWPORT, deviceScaleFactor: 1, debug: true, consent: true, wait: true, analytics: 'declined' });
+  const session = pageDefaults({ debug: false, waitForGame: false, viewport: { width: 1199, height: 630 }, analytics: 'adult-allowed' });
+  assert.equal(session.debug, false);
+  assert.equal(session.wait, false);
+  assert.equal(session.consent, true);
+  assert.equal(session.analytics, 'adult-allowed');
+  assert.deepEqual(session.viewport, { width: 1199, height: 630 });
 });

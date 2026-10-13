@@ -96,11 +96,16 @@ async function applyParse(): Promise<void> {
     return;
   }
   showOk(`${result.definition.id} · ${result.definition.label} · ${result.definition.w}×${result.definition.d}×${result.definition.floors}`);
+  await showPreview(result.definition);
+}
+
+/** Boot the preview on first use, then draw the definition; a failure shows as an error. */
+async function showPreview(definition: Parameters<IsolatePreview['show']>[0]): Promise<void> {
   try {
     preview ??= await bootIsolatePreview(element('preview-host'));
-    preview.show(result.definition, viewSelect.value as PreviewView);
+    preview.show(definition, viewSelect.value as PreviewView);
   } catch (error) {
-    showError(error instanceof Error ? error.message : String(error));
+    showError(String(error instanceof Error ? error.message : error));
   }
 }
 

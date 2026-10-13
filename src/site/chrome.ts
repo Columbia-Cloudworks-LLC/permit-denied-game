@@ -30,18 +30,23 @@ export function siteFooterMarkup(): string {
 /** Stamp stays visible without the title-menu intro. Pages can still scroll. */
 export function hydrateSiteChrome(current: SitePage): void {
   document.body.classList.add('site-page');
-  const header = document.querySelector<HTMLElement>('#site-header');
-  const footer = document.querySelector<HTMLElement>('#site-footer');
-  if (header && !header.querySelector('.site-titles')) header.innerHTML = siteHeaderMarkup(current);
-  if (footer && !footer.querySelector('.copyright')) footer.innerHTML = siteFooterMarkup();
-  const brand = document.querySelector<HTMLElement>('[data-site-permit]');
-  if (brand && !brand.querySelector('.permit-paper')) brand.innerHTML = permitDocument(false);
+  fillOnce('#site-header', '.site-titles', () => siteHeaderMarkup(current));
+  fillOnce('#site-footer', '.copyright', siteFooterMarkup);
+  fillOnce('[data-site-permit]', '.permit-paper', () => permitDocument(false));
   const paper = document.querySelector<HTMLElement>('#site-header .permit-paper');
-  if (paper) {
-    paper.classList.add('permit-ready');
-    const verdict = paper.querySelector<HTMLElement>('[data-typed-verdict]');
-    if (verdict) verdict.textContent = TAGLINE;
-    const caret = paper.querySelector('.typewriter-caret');
-    caret?.remove();
-  }
+  if (paper) settlePermit(paper);
+}
+
+/** Fill a placeholder with markup unless a prerendered page already did. */
+function fillOnce(selector: string, filled: string, markup: () => string): void {
+  const host = document.querySelector<HTMLElement>(selector);
+  if (host && !host.querySelector(filled)) host.innerHTML = markup();
+}
+
+/** Show the permit already typed: the verdict in place and no caret. */
+function settlePermit(paper: HTMLElement): void {
+  paper.classList.add('permit-ready');
+  const verdict = paper.querySelector<HTMLElement>('[data-typed-verdict]');
+  if (verdict) verdict.textContent = TAGLINE;
+  paper.querySelector('.typewriter-caret')?.remove();
 }

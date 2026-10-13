@@ -5,9 +5,10 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import ts from 'typescript';
 import sharp from 'sharp';
-import { fingerprint, buildIndexes, buildTree, digest, requiredCaptures, objectWriter, publicationFiles } from './catalog/core.mjs';
+import { fingerprint, buildIndexes, buildTree, digest, filesUnder, isFingerprintSource, requiredCaptures, objectWriter, publicationFiles } from './catalog/core.mjs';
+import { assetDuration, packWorkers } from './catalog/plan.mjs';
 import { restoreCapture, saveCapture } from './catalog/cache.mjs';
-import { uploadVerified } from './catalog/storage.mjs';
+import { isNotFound, r2Credentials, uploadVerified } from './catalog/storage.mjs';
 import { generateCatalog, isOpaqueIntactExterior, seriesFor, thumbnailSource } from './catalog/generate.mjs';
 
 const compiled = ts.transpileModule(await readFile('src/catalog/search.ts', 'utf8'), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
@@ -235,4 +236,46 @@ test('modular vehicles require every heading, directional failure, travel and pe
   const series=seriesFor(required.map(source=>({source})));
   assert.equal(series.filter(s=>/^vehicle-[0-3]$/.test(s.id)).length,4);
   assert.equal(series.find(s=>s.id==='vehicle-wreck').frames.length,3);
+});
+
+test('lists files recursively in sorted order and fingerprints only executable game source', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'pd-files-'));
+  try {
+    await mkdir(join(root, 'b'), { recursive: true });
+    await writeFile(join(root, 'b', 'z.ts'), '');
+    await writeFile(join(root, 'a.ts'), '');
+    assert.deepEqual(await filesUnder(root), ['a.ts', 'b/z.ts']);
+  } finally { await rm(root, { recursive: true, force: true }); }
+  assert.equal(isFingerprintSource('render/hud.ts'), true);
+  for (const file of ['world/data/x.json', 'render/hud.test.ts', 'catalog/main.ts', 'designer/main.ts', 'site/chrome.ts']) assert.equal(isFingerprintSource(file), false, file);
+});
+
+test('plans capture time from the cache, measured timings, then floor counts, and balances four workers', async () => {
+  const store = new Map();
+  const cache = { get: async (key) => store.get(key) ?? null };
+  const asset = { id: 'building:bakery', variants: 2, floors: 3 };
+  assert.equal(await assetDuration(asset, {}, {}, null), 2 * 60000);
+  store.set(`timings/${digest(Buffer.from('building:bakery/1'))}.json`, Buffer.from(JSON.stringify({ durationMs: 9000 })));
+  store.set(`timings/${digest(Buffer.from('building:bakery/0'))}.json`, Buffer.from('not json'));
+  assert.equal(await assetDuration(asset, {}, {}, cache), 60000 + 9000);
+  store.set(`captures/${fingerprint({}, {}, 0)}.json`, Buffer.from('{}'));
+  assert.equal(await assetDuration(asset, {}, {}, cache), 5000 + 9000);
+
+  const tasks = Array.from({ length: 30 }, (_, i) => ({ id: `a${i}`, duration: 100000 }));
+  const workers = packWorkers(tasks, []);
+  assert.equal(workers.length, 4);
+  assert.deepEqual(workers.map((w) => w.duration).sort(), [700000, 700000, 800000, 800000]);
+  for (const worker of workers) for (const batch of worker.batches) assert.ok(batch.ids.length <= 12 && batch.duration <= 480000);
+  assert.equal(workers.flatMap((w) => w.batches.flatMap((b) => b.ids)).length, 30);
+});
+
+test('R2 access needs every credential and a well-formed account, and treats only 404 as missing', () => {
+  const env = { R2_ACCOUNT_ID: 'a'.repeat(32), R2_ACCESS_KEY_ID: 'key', R2_SECRET_ACCESS_KEY: 'secret' };
+  assert.deepEqual(r2Credentials(env, 'bucket'), { account: 'a'.repeat(32), accessKeyId: 'key', secretAccessKey: 'secret' });
+  assert.throws(() => r2Credentials(env, ''), /scoped credentials are required/);
+  assert.throws(() => r2Credentials({ ...env, R2_SECRET_ACCESS_KEY: '' }, 'bucket'), /scoped credentials are required/);
+  assert.throws(() => r2Credentials({ ...env, R2_ACCOUNT_ID: 'nope' }, 'bucket'), /Invalid R2 account ID/);
+  assert.equal(isNotFound({ $metadata: { httpStatusCode: 404 } }), true);
+  assert.equal(isNotFound({ $metadata: { httpStatusCode: 500 } }), false);
+  assert.equal(isNotFound(undefined), false);
 });

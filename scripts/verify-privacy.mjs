@@ -39,6 +39,37 @@ async function shoot(page, path, options = {}) {
   throw last;
 }
 
+/** The analytics vendor script, or a recorded analytics event. */
+async function serveInsights(route, url, events, scripts) {
+  if (url.pathname.endsWith('script.js')) {
+    scripts.push(url.pathname);
+    await route.fulfill({ contentType: 'text/javascript', body: vendor });
+    return;
+  }
+  events.push(JSON.parse(route.request().postData() || '{}'));
+  await route.fulfill({ status: 200, body: '{}' });
+}
+
+const CONTENT_TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.svg': 'image/svg+xml' };
+
+/** A built file from dist/, with page directories resolved to their index.html; 404 when missing. */
+async function serveDist(route, pathname) {
+  const relative = distPath(pathname);
+  const absolute = path.resolve('dist', relative);
+  assert.ok(absolute.startsWith(path.resolve('dist') + path.sep));
+  try {
+    const body = await readFile(absolute);
+    await route.fulfill({ body, contentType: CONTENT_TYPES[path.extname(relative)] ?? 'application/octet-stream', headers: { 'referrer-policy': 'no-referrer' } });
+  } catch { await route.fulfill({ status: 404, body: '' }); }
+}
+
+/** The built file for a URL path: the root and page directories serve their index.html. */
+function distPath(pathname) {
+  if (pathname === '/') return 'index.html';
+  const relative = pathname.replace(/^\//, '');
+  return /^(privacy|terms|catalog)\/?$/.test(relative) ? relative.replace(/\/$/, '') + '/index.html' : relative;
+}
+
 async function context(options = {}) {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 }, userAgent: 'Mozilla/5.0 Chrome/130.0.0.0 Safari/537.36', ...options });
   await ctx.addInitScript(() => Object.defineProperty(navigator, 'webdriver', { get: () => false }));
@@ -49,21 +80,10 @@ async function context(options = {}) {
   });
   await ctx.route('https://permitdenied.app/**', async route => {
     const url = new URL(route.request().url());
-    if (url.pathname.startsWith('/_vercel/insights/')) {
-      if (url.pathname.endsWith('script.js')) { scripts.push(url.pathname); await route.fulfill({ contentType: 'text/javascript', body: vendor }); }
-      else { events.push(JSON.parse(route.request().postData() || '{}')); await route.fulfill({ status: 200, body: '{}' }); }
-      return;
-    }
-    if (url.pathname === '/sw.js') { await route.fulfill({ status: 404, body: '' }); return; }
-    if (url.pathname === '/catalog/release.json') { await route.fulfill({ json: { url: 'https://assets.permitdenied.app/release.json', commit: 'test', version: 'test' } }); return; }
-    let relative = url.pathname === '/' ? 'index.html' : url.pathname.replace(/^\//, '');
-    if (/^(privacy|terms|catalog)\/?$/.test(relative)) relative = relative.replace(/\/$/, '') + '/index.html';
-    const absolute = path.resolve('dist', relative);
-    assert.ok(absolute.startsWith(path.resolve('dist') + path.sep));
-    try {
-      const body = await readFile(absolute), extension = path.extname(relative);
-      await route.fulfill({ body, contentType: ({ '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.svg': 'image/svg+xml' })[extension] || 'application/octet-stream', headers: { 'referrer-policy': 'no-referrer' } });
-    } catch { await route.fulfill({ status: 404, body: '' }); }
+    if (url.pathname.startsWith('/_vercel/insights/')) await serveInsights(route, url, events, scripts);
+    else if (url.pathname === '/sw.js') await route.fulfill({ status: 404, body: '' });
+    else if (url.pathname === '/catalog/release.json') await route.fulfill({ json: { url: 'https://assets.permitdenied.app/release.json', commit: 'test', version: 'test' } });
+    else await serveDist(route, url.pathname);
   });
   ctx.on('page', page => page.on('pageerror', error => errors.push(error.message)));
   return { ctx, events, scripts };

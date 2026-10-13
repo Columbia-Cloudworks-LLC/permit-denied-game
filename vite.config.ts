@@ -29,6 +29,13 @@ const INTEGRATION_TESTS = [
 
 const SOAK_TESTS = ["src/sim/soak.test.ts"];
 const BENCH_TESTS = ["src/sim/bench.test.ts", "src/render/denseCityBench.test.ts", "src/render/chugBench.test.ts"];
+const NON_GAME_PAGES = ["/catalog/", "/designer/", "/privacy/", "/terms/"];
+/** Vendor and data chunks, by the module paths that belong in each. */
+const VENDOR_CHUNKS: [string, string[]][] = [
+  ["pixi", ["node_modules/pixi.js", "node_modules/@pixi/"]],
+  ["analytics", ["node_modules/@vercel/analytics"]],
+  ["buildings", ["/src/world/data/"]],
+];
 
 const testShared = {
   environment: "node" as const,
@@ -44,7 +51,8 @@ export default defineConfig({
       this.emitFile({ type: 'asset', fileName: 'build.json', source: JSON.stringify({ version, commit: process.env.DEPLOY_SHA || 'local' }) });
     },
     transformIndexHtml(_html, context) {
-      if (context.path.startsWith('/catalog/') || context.path.startsWith('/designer/') || context.path.startsWith('/privacy/') || context.path.startsWith('/terms/')) return [];
+      // Only the game page carries the Facebook app metadata.
+      if (NON_GAME_PAGES.some(page => context.path.startsWith(page))) return [];
       return facebookMetadata(process.env.FACEBOOK_APP_ID, process.env.REQUIRE_FACEBOOK_APP_ID === '1');
     },
   }, VitePWA({
@@ -101,9 +109,7 @@ export default defineConfig({
       output: {
         manualChunks(id) {
           const normalized = id.replaceAll("\\", "/");
-          if (normalized.includes("node_modules/pixi.js") || normalized.includes("node_modules/@pixi/")) return "pixi";
-          if (normalized.includes("node_modules/@vercel/analytics")) return "analytics";
-          if (normalized.includes("/src/world/data/")) return "buildings";
+          return VENDOR_CHUNKS.find(([, paths]) => paths.some(part => normalized.includes(part)))?.[0];
         },
       },
     },

@@ -137,21 +137,30 @@ category.onchange = () => { page = 0; cursors = ['']; setUrl(); void browse(); }
 element('previous').onclick = () => { if (page > 0) { page--; void browse(); } };
 element('next').onclick = () => { cursors[++page] = nextCursor; void browse(); };
 
+// Only the newest restore may act; an older one abandons itself after any await.
+let restoreEpoch = 0;
 async function restoreUrl() {
+  const epoch = ++restoreEpoch;
   const params = new URLSearchParams(location.search); search.value = params.get('q') || '';
   category.value = params.get('category') && release.indexes[params.get('category')!] ? params.get('category')! : 'all';
-  page = 0; cursors = ['']; void browse();
+  // Finish the page first, so its status cannot overwrite a missing-asset notice.
+  page = 0; cursors = ['']; await browse();
+  if (epoch !== restoreEpoch) return;
   const id = params.get('asset');
-  if (id) {
-    // IDs are indexed separately; a deep link doesn't scan the browsing index.
-    async function find(tree: Tree): Promise<Card | undefined> {
-      const node = await load<{ items?: { key: string; card: Card }[]; children?: Tree[] }>(tree.file);
-      if (node.items) return node.items.find(item => item.key === id)?.card;
-      const child = node.children?.find(c => c.min! <= id! && c.max! >= id!);
-      return child ? find(child) : undefined;
-    }
-    const card = await find(release.byId); if (card) await openAsset(card, params); else status('That asset is not in this catalog release.');
-  } else if (dialog.open) closeViewer();
+  if (!id) {
+    if (dialog.open) closeViewer();
+    return;
+  }
+  const card = await findCard(release.byId, id);
+  if (epoch !== restoreEpoch) return;
+  if (card) await openAsset(card, params); else status('That asset is not in this catalog release.');
+}
+/** IDs are indexed separately; a deep link doesn't scan the browsing index. */
+async function findCard(tree: Tree, id: string): Promise<Card | undefined> {
+  const node = await load<{ items?: { key: string; card: Card }[]; children?: Tree[] }>(tree.file);
+  if (node.items) return node.items.find(item => item.key === id)?.card;
+  const child = node.children?.find(c => c.min! <= id && c.max! >= id);
+  return child ? findCard(child, id) : undefined;
 }
 window.addEventListener('popstate', () => { void restoreUrl(); });
 void (async () => {

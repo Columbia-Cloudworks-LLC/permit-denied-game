@@ -7,6 +7,7 @@ import {
   STATES,
   formatSessionContext,
   gitSafePath,
+  parseJsonOrNull,
   runGit,
   runPreflight,
 } from './repo-preflight.mjs';
@@ -257,4 +258,10 @@ test('session context names the TypeScript stack and omits Go/Ebitengine guidanc
   assert.doesNotMatch(context, /build\.bat/i);
   assert.doesNotMatch(context, /one-lot/i);
   assert.doesNotMatch(context, /no campaign/i);
+});
+
+test('hook input parses as JSON, and empty or malformed input reads as nothing', () => {
+  assert.deepEqual(parseJsonOrNull('{"tool_input":{"command":"ls"}}'), { tool_input: { command: 'ls' } });
+  assert.equal(parseJsonOrNull(''), null);
+  assert.equal(parseJsonOrNull('{not json'), null);
 });

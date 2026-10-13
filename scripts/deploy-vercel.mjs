@@ -45,12 +45,8 @@ export async function staticDeploymentFiles(directory) {
 }
 
 export async function deploy() {
-  const { VERCEL_TOKEN: token, VERCEL_ORG_ID: teamId, VERCEL_PROJECT_ID: projectId, DEPLOY_TARGET: target } = process.env;
-  if (!token || !teamId || !projectId || !target || !['production', 'preview'].includes(target)) throw new Error('Missing or invalid deployment configuration');
-  const pointer = JSON.parse(await readFile('dist/catalog/release.json', 'utf8'));
-  if (!/^https:\/\/assets\.permitdenied\.app\/releases\/[a-f0-9]{64}\.json$/.test(pointer.url) || !/^[a-f0-9]{40}$/.test(process.env.DEPLOY_SHA || '') || pointer.commit !== process.env.DEPLOY_SHA) {
-    throw new Error('Deployment requires a verified R2 catalog release for this commit');
-  }
+  const { token, teamId, projectId, target } = deploymentConfig(process.env);
+  await assertCatalogRelease(process.env.DEPLOY_SHA || '');
   const vercel = vercelApi({ token, teamId });
   const api = async (endpoint, body) => (await vercel(endpoint, { method: body ? 'POST' : 'GET', body })).data;
   const project = await api(`/v9/projects/${projectId}`);
@@ -63,18 +59,37 @@ export async function deploy() {
   console.log(`Vercel deployment created: ${deployment.id}`);
   for (let attempt = 0; attempt < 120; attempt++) {
     const result = await api(`/v13/deployments/${deployment.id}`);
-    if (result.readyState === 'READY') {
-      if (result.aliasError) throw new Error(`Vercel alias failed: ${result.aliasError.message}`);
-      const url = `https://${result.url}`;
-      if (process.env.GITHUB_OUTPUT) await appendFile(process.env.GITHUB_OUTPUT, `url=${url}\n`);
-      if (process.env.GITHUB_STEP_SUMMARY) await appendFile(process.env.GITHUB_STEP_SUMMARY, `### ${target} deployment\n${url}\n`);
-      console.log(`Deployment ready: ${url}`);
-      return url;
-    }
+    if (result.readyState === 'READY') return announceDeployment(result, target);
     if (['ERROR', 'CANCELED'].includes(result.readyState)) throw new Error(`Vercel deployment ${result.readyState}: ${result.errorMessage || result.errorCode || deployment.id}`);
     await new Promise(resolve => setTimeout(resolve, 5000));
   }
   throw new Error(`Timed out waiting for Vercel deployment ${deployment.id}`);
+}
+
+/** Token, team, project and a production or preview target, all required. */
+function deploymentConfig(env) {
+  const { VERCEL_TOKEN: token, VERCEL_ORG_ID: teamId, VERCEL_PROJECT_ID: projectId, DEPLOY_TARGET: target } = env;
+  if (![token, teamId, projectId].every(Boolean) || !['production', 'preview'].includes(target)) throw new Error('Missing or invalid deployment configuration');
+  return { token, teamId, projectId, target };
+}
+
+/** The build must point at a published R2 catalog release made for this very commit. */
+async function assertCatalogRelease(sha) {
+  const pointer = JSON.parse(await readFile('dist/catalog/release.json', 'utf8'));
+  const published = /^https:\/\/assets\.permitdenied\.app\/releases\/[a-f0-9]{64}\.json$/.test(pointer.url);
+  if (!published || !/^[a-f0-9]{40}$/.test(sha) || pointer.commit !== sha) {
+    throw new Error('Deployment requires a verified R2 catalog release for this commit');
+  }
+}
+
+/** Report a ready deployment's URL to the console and, in Actions, to the step output and summary. */
+async function announceDeployment(result, target) {
+  if (result.aliasError) throw new Error(`Vercel alias failed: ${result.aliasError.message}`);
+  const url = `https://${result.url}`;
+  if (process.env.GITHUB_OUTPUT) await appendFile(process.env.GITHUB_OUTPUT, `url=${url}\n`);
+  if (process.env.GITHUB_STEP_SUMMARY) await appendFile(process.env.GITHUB_STEP_SUMMARY, `### ${target} deployment\n${url}\n`);
+  console.log(`Deployment ready: ${url}`);
+  return url;
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) await deploy();

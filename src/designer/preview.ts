@@ -19,6 +19,10 @@ function viewSize(host: HTMLElement): { width: number; height: number } {
   return { width, height };
 }
 
+function fitRenderer(app: Application, width: number, height: number): void {
+  if (app.renderer.width !== width || app.renderer.height !== height) app.renderer.resize(width, height);
+}
+
 export async function bootIsolatePreview(host: HTMLElement): Promise<IsolatePreview> {
   const size = viewSize(host);
   const app = new Application();
@@ -40,11 +44,11 @@ export async function bootIsolatePreview(host: HTMLElement): Promise<IsolatePrev
   function renderCurrent(): void {
     if (!current) return;
     const { width, height } = viewSize(host);
-    if (app.renderer.width !== width || app.renderer.height !== height) app.renderer.resize(width, height);
+    fitRenderer(app, width, height);
     const lot = instantiateIsolateDefinition(current.definition);
     particles.ownerAt = lot.town.debrisOwnerAt;
     particles.reseed(4517);
-    Object.assign(renderer.debug, defaultDebugView(), current.view === 'cutaway' ? { reveal: true } : {});
+    Object.assign(renderer.debug, defaultDebugView(), { reveal: current.view === 'cutaway' });
     frameIsolateLot(renderer, lot.camera, width, height);
     renderer.invalidate();
     renderer.layout(width, height, 0, 0);

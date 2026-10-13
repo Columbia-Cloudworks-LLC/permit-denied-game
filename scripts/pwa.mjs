@@ -37,34 +37,44 @@ export function assertSameOriginRef(value, field) {
   if (url.origin !== 'https://permitdenied.app') throw new Error(`${field} escapes the production origin: ${value}`);
 }
 
+/** Fixed manifest fields, checked in order; each names what it requires. */
+const MANIFEST_RULES = [
+  [m => m.name === PWA_NAME && m.short_name === PWA_NAME, 'Manifest name must be PERMIT DENIED'],
+  [m => m.id === PWA_ID, 'Manifest id must be /'],
+  [m => m.start_url === PWA_START_URL, 'Manifest start_url must be /'],
+  [m => m.scope === PWA_SCOPE, 'Manifest scope must be /'],
+  [m => m.display === PWA_DISPLAY, 'Manifest display must be fullscreen'],
+  [m => m.orientation === PWA_ORIENTATION, 'Manifest orientation must be landscape-primary'],
+  [m => m.theme_color === PWA_THEME_COLOR && m.background_color === PWA_THEME_COLOR, 'Manifest colors must match the game theme'],
+  [m => Array.isArray(m.categories) && m.categories.includes('games'), 'Manifest categories must include games'],
+];
+
 export function assertWebAppManifest(manifest) {
   if (!manifest || typeof manifest !== 'object') throw new Error('Manifest is missing or malformed');
-  if (manifest.name !== PWA_NAME || manifest.short_name !== PWA_NAME) throw new Error('Manifest name must be PERMIT DENIED');
-  if (manifest.id !== PWA_ID) throw new Error('Manifest id must be /');
-  if (manifest.start_url !== PWA_START_URL) throw new Error('Manifest start_url must be /');
-  if (manifest.scope !== PWA_SCOPE) throw new Error('Manifest scope must be /');
-  if (manifest.display !== PWA_DISPLAY) throw new Error('Manifest display must be fullscreen');
-  if (manifest.orientation !== PWA_ORIENTATION) throw new Error('Manifest orientation must be landscape-primary');
-  if (manifest.theme_color !== PWA_THEME_COLOR || manifest.background_color !== PWA_THEME_COLOR) {
-    throw new Error('Manifest colors must match the game theme');
-  }
-  if (!Array.isArray(manifest.categories) || !manifest.categories.includes('games')) {
-    throw new Error('Manifest categories must include games');
-  }
-  if (Array.isArray(manifest.display_override)) {
-    if (manifest.display_override[0] !== 'fullscreen') throw new Error('display_override must prefer fullscreen');
-    if (manifest.display_override.includes('browser') || manifest.display_override.includes('minimal-ui')) {
-      throw new Error('display_override must not fall back to browser chrome');
-    }
-  }
+  for (const [ok, message] of MANIFEST_RULES) if (!ok(manifest)) throw new Error(message);
+  assertDisplayOverride(manifest.display_override);
   for (const field of ['id', 'start_url', 'scope']) assertSameOriginRef(manifest[field], field);
-  if (!Array.isArray(manifest.icons) || manifest.icons.length < 3) throw new Error('Manifest is missing install icons');
-  const any192 = manifest.icons.some(icon => icon.sizes === '192x192' && (!icon.purpose || icon.purpose === 'any'));
-  const any512 = manifest.icons.some(icon => icon.sizes === '512x512' && (!icon.purpose || /\bany\b/.test(icon.purpose)));
-  const maskable = manifest.icons.find(icon => icon.sizes === '512x512' && /\bmaskable\b/.test(icon.purpose || ''));
+  assertInstallIcons(manifest.icons);
+}
+
+/** An optional display_override must still prefer fullscreen and never fall back to browser chrome. */
+function assertDisplayOverride(override) {
+  if (!Array.isArray(override)) return;
+  if (override[0] !== 'fullscreen') throw new Error('display_override must prefer fullscreen');
+  if (override.includes('browser') || override.includes('minimal-ui')) {
+    throw new Error('display_override must not fall back to browser chrome');
+  }
+}
+
+/** 192 and 512 any-purpose icons, a separate 512 maskable icon, all PNG on this origin. */
+function assertInstallIcons(icons) {
+  if (!Array.isArray(icons) || icons.length < 3) throw new Error('Manifest is missing install icons');
+  const any192 = icons.some(icon => icon.sizes === '192x192' && (!icon.purpose || icon.purpose === 'any'));
+  const any512 = icons.some(icon => icon.sizes === '512x512' && (!icon.purpose || /\bany\b/.test(icon.purpose)));
+  const maskable = icons.find(icon => icon.sizes === '512x512' && /\bmaskable\b/.test(icon.purpose || ''));
   if (!any192 || !any512) throw new Error('Manifest needs 192 and 512 any-purpose PNG icons');
   if (!maskable || /\bany\b/.test(maskable.purpose)) throw new Error('Manifest needs a separate 512 maskable icon');
-  for (const icon of manifest.icons) {
+  for (const icon of icons) {
     if (icon.type && icon.type !== 'image/png') throw new Error(`Install icons must be PNG: ${icon.src}`);
     assertSameOriginRef(icon.src, `icon ${icon.src}`);
   }

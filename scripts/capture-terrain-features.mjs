@@ -48,6 +48,7 @@ const log = [];
 await captureShots(OUT, shots, async (page, shot) => {
   await page.waitForTimeout(250);
   await page.evaluate(async (kind) => {
+    // Runs in the page: every helper lives inside this callback.
     const game = window.__pd;
     const town = game.townSnapshot();
     const forest = town.features.find((f) => f.kind === "forest");
@@ -56,24 +57,24 @@ await captureShots(OUT, shots, async (page, shot) => {
     const field = ["mature", "short", "stubble"].map((s) => fields.find((f) => f.state === s)).find(Boolean) ?? fields[0];
     const tree = town.props.find((p) => p.assetId === "oak" || p.assetId === "pine");
     const look = (x, y, heading = 0, zoom = 1.45) => game.lookAtWorld(x, y, heading, zoom);
-    if (kind === "field" && field) look(field.x + field.w * 0.5, field.y + field.d * 0.5, field.heading);
-    else if (kind === "forest" && forest) look(forest.cx + forest.coreR + 2.4, forest.cy, Math.PI);
-    else if (kind === "water" && water) {
-      if (water.kind === "river") look(water.path[1].x + 2.4, water.path[1].y, 0);
-      else {
-        const maxX = Math.max(...water.poly.map((p) => p.x));
-        const cy = water.poly.reduce((s, p) => s + p.y, 0) / water.poly.length;
-        look(maxX + 3.4, cy, Math.PI);
-      }
-    } else if (kind === "tree" && tree) look(tree.x - 1.8, tree.y + tree.d * 0.5, 0, 1.7);
-    else if (kind === "blocked") {
-      if (forest) look(forest.cx - forest.coreR - 1.8, forest.cy, 0);
-      else if (water && water.kind !== "river") {
-        const minX = Math.min(...water.poly.map((p) => p.x));
-        const cy = water.poly.reduce((s, p) => s + p.y, 0) / water.poly.length;
-        look(minX - 3.2, cy, 0);
-      }
-    }
+    const midY = (poly) => poly.reduce((s, p) => s + p.y, 0) / poly.length;
+    const lookAtWater = () => {
+      if (water.kind === "river") return look(water.path[1].x + 2.4, water.path[1].y, 0);
+      look(Math.max(...water.poly.map((p) => p.x)) + 3.4, midY(water.poly), Math.PI);
+    };
+    // Face the forest core, else the still water, from the west.
+    const lookAtBarrier = () => {
+      if (forest) return look(forest.cx - forest.coreR - 1.8, forest.cy, 0);
+      if (water && water.kind !== "river") look(Math.min(...water.poly.map((p) => p.x)) - 3.2, midY(water.poly), 0);
+    };
+    const aims = {
+      field: () => field && look(field.x + field.w * 0.5, field.y + field.d * 0.5, field.heading),
+      forest: () => forest && look(forest.cx + forest.coreR + 2.4, forest.cy, Math.PI),
+      water: () => water && lookAtWater(),
+      tree: () => tree && look(tree.x - 1.8, tree.y + tree.d * 0.5, 0, 1.7),
+      blocked: lookAtBarrier,
+    };
+    aims[kind]?.();
     await document.fonts.ready;
   }, shot.aim);
   await page.waitForTimeout(500);
