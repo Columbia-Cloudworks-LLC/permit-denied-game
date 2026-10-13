@@ -18,6 +18,10 @@ const DETAILS = {
   [ASSETS[1]!.detail]: { id: 'prop:oak', name: 'Oak Tree', variants: [{ variant: 0, destructionUnsupported: 'Trees fall over.', series: [{ id: 'model', name: 'Model', frames: frames(8) }] }] },
 };
 
+/** The id index file, and archive files whose next fetch should arrive late. */
+let byIdFile = '';
+const slowOnce = new Map<string, number>();
+
 /** One-leaf trees: browse by name, search by word suffix, and look up by id. */
 function archive() {
   const files = new Map<string, unknown>(Object.entries(DETAILS));
@@ -40,6 +44,7 @@ function archive() {
     byId: leaf(ASSETS.map((card) => ({ key: card.id, card }))) };
   const releaseFile = key('releases', 9, 'json');
   files.set(releaseFile, release);
+  byIdFile = release.byId.file;
   files.set('pointer', { url: `/catalog/${releaseFile}`, commit: release.commit, version: release.version });
   return files;
 }
@@ -56,6 +61,8 @@ beforeAll(async () => {
   const files = archive();
   vi.stubGlobal('fetch', vi.fn(async (input: string | URL) => {
     const path = new URL(String(input), location.href).pathname;
+    const delay = slowOnce.get(path);
+    if (delay) { slowOnce.delete(path); await new Promise((resolve) => setTimeout(resolve, delay)); }
     const body = path === '/catalog/release.json' ? files.get('pointer') : files.get(path.replace('/catalog/', ''));
     return { ok: body !== undefined, json: async () => body };
   }));
@@ -119,6 +126,20 @@ describe('catalog page', () => {
     expect(location.search).not.toContain('asset=');
   });
 
+  it('lets only the newest of overlapping navigations act', async () => {
+    // The older navigation's id lookup lands after the newer one has opened its asset.
+    slowOnce.set(`/catalog/${byIdFile}`, 40);
+    history.replaceState(null, '', '/catalog/?asset=building%3Abakery');
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    history.replaceState(null, '', '/catalog/?asset=prop%3Aoak');
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    await until(() => $<HTMLDialogElement>('viewer').open && $('viewer-title').textContent === 'Oak Tree');
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect($('viewer-title').textContent).toBe('Oak Tree');
+    expect(location.search).toContain('asset=prop%3Aoak');
+    $('close').click();
+  });
+
   it('restores a deep link to an asset frame, and reports assets the release lacks', async () => {
     history.replaceState(null, '', '/catalog/?asset=prop%3Aoak&variant=0&series=model&frame=2');
     window.dispatchEvent(new PopStateEvent('popstate'));
@@ -132,4 +153,5 @@ describe('catalog page', () => {
     window.dispatchEvent(new PopStateEvent('popstate'));
     await until(() => $('status').textContent === 'That asset is not in this catalog release.');
   });
+
 });
