@@ -127,25 +127,30 @@ async function loadAtlas(): Promise<TerrainAtlas | null> {
   try {
     const sheet = await Assets.load(ATLAS_URL);
     const source = (sheet?.texture as Texture | undefined) ?? Texture.WHITE;
-    const frames = new Map<string, AtlasFrame>();
-    const textures = (sheet?.textures ?? {}) as Record<string, Texture>;
-    const width = source.width || source.source?.width || 1;
-    const height = source.height || source.source?.height || 1;
-    for (const [name, tex] of Object.entries(textures)) {
-      const frame = tex.frame;
-      frames.set(name, {
-        name,
-        u0: frame.x / width,
-        v0: frame.y / height,
-        u1: (frame.x + frame.width) / width,
-        v1: (frame.y + frame.height) / height,
-      });
-    }
+    const frames = atlasFrames((sheet?.textures ?? {}) as Record<string, Texture>, source);
     if (!frames.size) return fallbackAtlas();
     return { texture: source, frames, revision: atlasRevision + 1 };
   } catch {
     return fallbackAtlas();
   }
+}
+
+/** Each named sheet frame as UVs within the sheet texture. */
+function atlasFrames(textures: Record<string, Texture>, source: Texture): Map<string, AtlasFrame> {
+  const width = source.width || source.source?.width || 1;
+  const height = source.height || source.source?.height || 1;
+  const frames = new Map<string, AtlasFrame>();
+  for (const [name, tex] of Object.entries(textures)) {
+    const frame = tex.frame;
+    frames.set(name, {
+      name,
+      u0: frame.x / width,
+      v0: frame.y / height,
+      u1: (frame.x + frame.width) / width,
+      v1: (frame.y + frame.height) / height,
+    });
+  }
+  return frames;
 }
 
 function fallbackAtlas(): TerrainAtlas {
@@ -243,6 +248,21 @@ function paintFrozenWater(parent: Container, grid: SurfaceGrid): void {
   if (painted) parent.addChild(g);
 }
 
+type TileQuad = { x: number; y: number; frame: AtlasFrame };
+
+/** A cell's base tile, then its overlay; a missing variant falls back to variant 0 (or grass). */
+function pushCellQuads(quads: TileQuad[], grid: SurfaceGrid, ix: number, iy: number, atlas: TerrainAtlas, condition: GroundCondition, season: SeasonId): void {
+  const cell = describeCell(grid, ix, iy, condition, season);
+  if (!cell) return;
+  const wx = grid.ox + ix;
+  const wy = grid.oy + iy;
+  const base = atlas.frames.get(cell.base) ?? atlas.frames.get("grass-0");
+  if (base) quads.push({ x: wx, y: wy, frame: base });
+  if (!cell.overlay) return;
+  const over = atlas.frames.get(cell.overlay) ?? atlas.frames.get(`${cell.overlay.replace(/-\d+$/, "-0")}`);
+  if (over) quads.push({ x: wx, y: wy, frame: over });
+}
+
 function buildChunkMesh(
   grid: SurfaceGrid,
   cx: number,
@@ -255,20 +275,9 @@ function buildChunkMesh(
   const y0 = cy * SURFACE_CHUNK;
   const x1 = Math.min(grid.cols, x0 + SURFACE_CHUNK);
   const y1 = Math.min(grid.rows, y0 + SURFACE_CHUNK);
-  const quads: { x: number; y: number; frame: AtlasFrame }[] = [];
+  const quads: TileQuad[] = [];
   for (let iy = y0; iy < y1; iy++) {
-    for (let ix = x0; ix < x1; ix++) {
-      const cell = describeCell(grid, ix, iy, condition, season);
-      if (!cell) continue;
-      const wx = grid.ox + ix;
-      const wy = grid.oy + iy;
-      const base = atlas.frames.get(cell.base) ?? atlas.frames.get("grass-0");
-      if (base) quads.push({ x: wx, y: wy, frame: base });
-      if (cell.overlay) {
-        const over = atlas.frames.get(cell.overlay) ?? atlas.frames.get(`${cell.overlay.replace(/-\d+$/, "-0")}`);
-        if (over) quads.push({ x: wx, y: wy, frame: over });
-      }
-    }
+    for (let ix = x0; ix < x1; ix++) pushCellQuads(quads, grid, ix, iy, atlas, condition, season);
   }
   if (!quads.length) return null;
   const positions = new Float32Array(quads.length * 8);

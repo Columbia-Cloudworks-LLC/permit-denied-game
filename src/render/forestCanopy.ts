@@ -229,28 +229,24 @@ function pickChunkCells(
     if (coreIsEdge(grid, cell.ix, cell.iy)) edge.push({ ...cell, form: "edge" });
     else interior.push({ ...cell, form: "interior" });
   }
-  edge.sort((a, b) => hashCell(a.ix, a.iy, seed) - hashCell(b.ix, b.iy, seed) || a.ix - b.ix || a.iy - b.iy);
-  interior.sort((a, b) => hashCell(a.ix, a.iy, seed) - hashCell(b.ix, b.iy, seed) || a.ix - b.ix || a.iy - b.iy);
-  const out: { ix: number; iy: number; form: ForestForm }[] = [];
+  hashOrder(edge, seed);
+  hashOrder(interior, seed);
+  // A long edge leaves about a third of its cells open, so the treeline reads ragged.
   const gapEdges = edge.length > 6;
-  for (const cell of edge) {
-    if (out.length >= FOREST_GARNISH_CHUNK_CAP) return out;
-    if (gapEdges && hashCell(cell.ix, cell.iy, seed) % 100 < 34) continue;
-    out.push(cell);
-  }
-  for (const cell of interior) {
-    if (out.length >= FOREST_GARNISH_CHUNK_CAP) return out;
-    out.push(cell);
-  }
-  const under: { ix: number; iy: number; form: ForestForm }[] = floor
+  const under = hashOrder(floor
     .filter((cell) => hashCell(cell.ix, cell.iy, seed) % 100 < 58)
-    .map((cell) => ({ ...cell, form: "understory" as const }))
-    .sort((a, b) => hashCell(a.ix, a.iy, seed) - hashCell(b.ix, b.iy, seed) || a.ix - b.ix || a.iy - b.iy);
-  for (const cell of under) {
-    if (out.length >= FOREST_GARNISH_CHUNK_CAP) return out;
-    out.push(cell);
-  }
-  return out;
+    .map((cell) => ({ ...cell, form: "understory" as const })), seed);
+  // Edge trees first, then interior, then understory, until the chunk cap.
+  return [
+    ...edge.filter((cell) => !gapEdges || hashCell(cell.ix, cell.iy, seed) % 100 >= 34),
+    ...interior,
+    ...under,
+  ].slice(0, FOREST_GARNISH_CHUNK_CAP);
+}
+
+/** Sort cells in place into a stable pseudo-random order for this seed. */
+function hashOrder<T extends { ix: number; iy: number }>(cells: T[], seed: number): T[] {
+  return cells.sort((a, b) => hashCell(a.ix, a.iy, seed) - hashCell(b.ix, b.iy, seed) || a.ix - b.ix || a.iy - b.iy);
 }
 
 function coreIsEdge(grid: SurfaceGrid, ix: number, iy: number): boolean {
@@ -264,20 +260,24 @@ function coreIsEdge(grid: SurfaceGrid, ix: number, iy: number): boolean {
 }
 
 function speciesFor(biome: BiomeProfile, salt: number, form: ForestForm): ForestSpecies {
+  const tree = forestTree(biome, salt);
+  const growth = undergrowth(form, salt % 10);
+  return growth ? `${tree}-${growth}` : tree;
+}
+
+/** A biome with one tree kind uses it; a mixed biome alternates by salt. */
+function forestTree(biome: BiomeProfile, salt: number): "oak" | "pine" {
   const oak = biome.trees.includes("oak");
   const pine = biome.trees.includes("pine");
-  const conifer = pine && !oak ? "pine" : oak && !pine ? "oak" : (salt & 1) === 0 ? "oak" : "pine";
-  if (form === "understory") {
-    const roll = salt % 10;
-    if (roll < 5) return conifer === "pine" ? "pine-shrub" : "oak-shrub";
-    if (roll < 8) return conifer === "pine" ? "pine-sapling" : "oak-sapling";
-    return conifer;
-  }
-  if (form === "interior") return conifer;
-  const roll = salt % 10;
-  if (roll < 2) return conifer === "pine" ? "pine-sapling" : "oak-sapling";
-  if (roll < 3) return conifer === "pine" ? "pine-shrub" : "oak-shrub";
-  return conifer;
+  if (pine !== oak) return pine ? "pine" : "oak";
+  return (salt & 1) === 0 ? "oak" : "pine";
+}
+
+/** Understory is mostly shrubs and saplings; an edge is mostly full trees; the interior is all trees. */
+function undergrowth(form: ForestForm, roll: number): "shrub" | "sapling" | undefined {
+  if (form === "interior") return undefined;
+  if (form === "understory") return roll < 5 ? "shrub" : roll < 8 ? "sapling" : undefined;
+  return roll < 2 ? "sapling" : roll < 3 ? "shrub" : undefined;
 }
 
 function scaleFor(form: ForestForm, species: ForestSpecies, rng: Rng): number {
@@ -303,66 +303,66 @@ export interface ForestMass {
 export function planForestMasses(grid: SurfaceGrid, biome?: BiomeProfile, seed = 0): ForestMass[] {
   const runs: ForestMass[] = [];
   const cell = grid.cell;
-  for (let iy = 0; iy < grid.rows; iy++) {
-    let run = -1;
-    for (let ix = 0; ix <= grid.cols; ix++) {
-      const id = ix < grid.cols ? grid.surface[iy * grid.cols + ix] : -1;
-      const wood = id === SURFACE_ID["forest-core"] || id === SURFACE_ID["forest-floor"];
-      if (wood && run < 0) run = ix;
-      if (wood && ix < grid.cols) continue;
-      if (run < 0) continue;
-      const span = ix - run;
-      if (span >= 2) {
-        const species = biome && speciesFor(biome, hashCell(Math.floor(run / SURFACE_CHUNK), Math.floor(iy / SURFACE_CHUNK), seed), "interior").startsWith("pine") ? "pine" as const : "oak" as const;
-        const mass = {
-          species,
-          x: grid.ox + run * cell,
-          y: grid.oy + iy * cell,
-          w: span * cell,
-          d: cell,
-        };
-        const prev = runs[runs.length - 1];
-        if (prev && prev.species === species && prev.x === mass.x && prev.w === mass.w && Math.abs(prev.y + prev.d - mass.y) < 0.01) prev.d += cell;
-        else runs.push(mass);
-      }
-      run = -1;
-    }
-  }
+  for (let iy = 0; iy < grid.rows; iy++) forEachWoodRun(grid, iy, (run, span) => {
+    if (span < 2) return;
+    const species = biome && speciesFor(biome, hashCell(Math.floor(run / SURFACE_CHUNK), Math.floor(iy / SURFACE_CHUNK), seed), "interior").startsWith("pine") ? "pine" as const : "oak" as const;
+    addMassRow(runs, { species, x: grid.ox + run * cell, y: grid.oy + iy * cell, w: span * cell, d: cell });
+  });
   return runs;
+}
+
+/** Each run of forest cells along one grid row, as its first column and length. */
+function forEachWoodRun(grid: SurfaceGrid, iy: number, visit: (run: number, span: number) => void): void {
+  let run = -1;
+  for (let ix = 0; ix <= grid.cols; ix++) {
+    const id = ix < grid.cols ? grid.surface[iy * grid.cols + ix] : -1;
+    const wood = id === SURFACE_ID["forest-core"] || id === SURFACE_ID["forest-floor"];
+    if (wood && run < 0) run = ix;
+    if (wood && ix < grid.cols) continue;
+    if (run >= 0) visit(run, ix - run);
+    run = -1;
+  }
+}
+
+/** A row run directly below a matching run deepens that mass instead of starting another. */
+function addMassRow(runs: ForestMass[], mass: ForestMass): void {
+  const prev = runs[runs.length - 1];
+  if (prev && prev.species === mass.species && prev.x === mass.x && prev.w === mass.w && Math.abs(prev.y + prev.d - mass.y) < 0.01) prev.d += mass.d;
+  else runs.push(mass);
 }
 
 export function drawForestMass(g: Graphics, mass: ForestMass, season: SeasonId = "summer"): void {
   const pine = mass.species === "pine";
   if (season === "winter" && !pine) {
-    // A dense low thicket preserves the blocked forest footprint; upright forks
-    // identify bare broadleaf woods without a recolored summer canopy.
-    drawOrientedIsoBox(g, mass.x + mass.w / 2, mass.y + mass.d / 2, 0, mass.w, mass.d, 0.04, 0.18, 0x736757, 0x554b40, 0x65594a, .85);
-    const count = Math.min(6, Math.max(2, Math.ceil(mass.w / 2)));
-    for (let i = 0; i < count; i++) {
-      const x = mass.x + (i + .5) * mass.w / count, y = mass.y + mass.d * .5;
-      drawOrientedIsoBox(g, x, y, 0, .12, .12, .1, 1.25, 0x806c52, 0x4c4033, 0x62523f, 1);
-      drawOrientedIsoBox(g, x, y, .55, .9, .1, .85, .96, 0x806c52, 0x4c4033, 0x62523f, 1);
-      drawOrientedIsoBox(g, x, y, -.55, .65, .1, 1.08, 1.18, 0x806c52, 0x4c4033, 0x62523f, 1);
-    }
+    drawBareThicket(g, mass);
     return;
   }
-  const color = pine ? { t: season === "winter" ? 0xb9c8c7 : 0x347850, l: 0x1a4230, r: 0x265c3c } : forestMassColor(season);
-  drawOrientedIsoBox(g, mass.x + mass.w * 0.5, mass.y + mass.d * 0.5, 0, mass.w, mass.d, 0.35, season === "spring" && !pine ? .72 : 1.15, color.t, color.l, color.r, 0.92);
+  const color = pine ? (season === "winter" ? SNOWY_PINE_MASS : PINE_MASS) : BROADLEAF_MASS[season];
+  // Spring broadleaf canopy is still thin, so the slab sits lower.
+  const top = season === "spring" && !pine ? .72 : 1.15;
+  drawOrientedIsoBox(g, mass.x + mass.w * 0.5, mass.y + mass.d * 0.5, 0, mass.w, mass.d, 0.35, top, color.t, color.l, color.r, 0.92);
 }
 
-function forestMassColor(season: SeasonId): { t: number; l: number; r: number } {
-  switch (season) {
-    case "spring":
-      return { t: 0x6a9a44, l: 0x3a5c28, r: 0x4e7a34 };
-    case "summer":
-      return { t: 0x3e6828, l: 0x24441c, r: 0x2a4c20 };
-    case "autumn":
-      return { t: 0xa85a28, l: 0x6a3418, r: 0x8a4420 };
-    case "winter":
-      return { t: 0x8a94a0, l: 0x5a646c, r: 0x6e7880 };
-    default: {
-      const _never: never = season;
-      return _never;
-    }
+/**
+ * A dense low thicket preserves the blocked forest footprint; upright forks
+ * identify bare broadleaf woods without a recolored summer canopy.
+ */
+function drawBareThicket(g: Graphics, mass: ForestMass): void {
+  drawOrientedIsoBox(g, mass.x + mass.w / 2, mass.y + mass.d / 2, 0, mass.w, mass.d, 0.04, 0.18, 0x736757, 0x554b40, 0x65594a, .85);
+  const count = Math.min(6, Math.max(2, Math.ceil(mass.w / 2)));
+  for (let i = 0; i < count; i++) {
+    const x = mass.x + (i + .5) * mass.w / count, y = mass.y + mass.d * .5;
+    drawOrientedIsoBox(g, x, y, 0, .12, .12, .1, 1.25, 0x806c52, 0x4c4033, 0x62523f, 1);
+    drawOrientedIsoBox(g, x, y, .55, .9, .1, .85, .96, 0x806c52, 0x4c4033, 0x62523f, 1);
+    drawOrientedIsoBox(g, x, y, -.55, .65, .1, 1.08, 1.18, 0x806c52, 0x4c4033, 0x62523f, 1);
   }
 }
+
+const PINE_MASS = { t: 0x347850, l: 0x1a4230, r: 0x265c3c };
+const SNOWY_PINE_MASS = { ...PINE_MASS, t: 0xb9c8c7 };
+const BROADLEAF_MASS: Record<SeasonId, { t: number; l: number; r: number }> = {
+  spring: { t: 0x6a9a44, l: 0x3a5c28, r: 0x4e7a34 },
+  summer: { t: 0x3e6828, l: 0x24441c, r: 0x2a4c20 },
+  autumn: { t: 0xa85a28, l: 0x6a3418, r: 0x8a4420 },
+  winter: { t: 0x8a94a0, l: 0x5a646c, r: 0x6e7880 },
+};

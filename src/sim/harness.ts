@@ -45,17 +45,15 @@ export function floatingPresent(building: Building): boolean {
   });
 }
 
+/** Same-floor offsets within two grid steps. */
+const NEAR_OFFSETS = [[-2, 0], [-1, -1], [-1, 0], [-1, 1], [0, -2], [0, -1], [0, 1], [0, 2], [1, -1], [1, 0], [1, 1], [2, 0]] as const;
+
 /** True when a present cell within two steps on the same floor stands on a present cell. */
 function nearColumn(building: Building, cell: Cell): boolean {
-  for (let dx = -2; dx <= 2; dx++) {
-    for (let dy = -2; dy <= 2; dy++) {
-      const steps = Math.abs(dx) + Math.abs(dy);
-      if (steps === 0 || steps > 2) continue;
-      const nb = building.grid[cell.floor]![cell.gx + dx]?.[cell.gy + dy];
-      if (nb && cellPresent(nb) && cellPresent(building.grid[cell.floor - 1]![nb.gx]![nb.gy]!)) return true;
-    }
-  }
-  return false;
+  return NEAR_OFFSETS.some(([dx, dy]) => {
+    const nb = building.grid[cell.floor]![cell.gx + dx]?.[cell.gy + dy];
+    return !!nb && cellPresent(nb) && cellPresent(building.grid[cell.floor - 1]![nb.gx]![nb.gy]!);
+  });
 }
 
 export function driveIntoFirstHouse(seconds = 6): {

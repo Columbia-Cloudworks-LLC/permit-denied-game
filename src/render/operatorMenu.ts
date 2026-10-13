@@ -28,6 +28,10 @@ const facebookUrl = import.meta.env.VITE_FACEBOOK_PAGE_URL;
 const facebookLink = facebookUrl ? '<a class="menu-social" data-facebook-link target="_blank" rel="noopener noreferrer" aria-label="PERMIT DENIED on Facebook (opens in a new tab)"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><circle cx="12" cy="12" r="12" fill="#1877f2"/><path d="M13.6 22v-8h2.7l.4-3h-3.1V9.1c0-.9.3-1.5 1.6-1.5H17V4.9c-.3 0-1.4-.1-2.5-.1-2.5 0-4.2 1.5-4.2 4.4V11H7.5v3h2.8v8z" fill="#fff"/></svg><span>Facebook</span></a>' : '';
 const copyright = '<span>© 2026</span>' + publisher + '<span>All rights reserved.</span>';
 
+const WEATHER_DETAIL_LABELS: Record<WeatherDetail, string> = { on: 'On', reduced: 'Reduced', off: 'Off' };
+const CONTROLS_HTML = `<dl class="control-list"><div><dt>W / S or ↑ / ↓</dt><dd>Drive forward / reverse</dd></div><div><dt>A / D or ← / →</dt><dd>Steer left / right</dd></div><div><dt>Hold SPACE</dt><dd>Power the blade</dd></div><div><dt>Esc / Pause</dt><dd>Pause / Resume</dd></div><div><dt>R</dt><dd>${L.restart}</dd></div><div><dt>N</dt><dd>${L.newLayout}</dd></div><div><dt>1 / 2 / 3</dt><dd>${L.blade} / ${L.engine} / ${L.push} upgrade</dd></div><div><dt>M</dt><dd>Toggle sound</dd></div></dl><div class="instruction-card"><strong>Touch Controls</strong><p>Drag the left stick to drive and steer. Hold the right POWER BLADE button while driving. Release the stick to coast. Release the blade to finish the current push.</p></div><p class="fine-print">Watch ENGINE HEAT and TRACK STRESS. Above 65%, release the blade or back off rubble. In sandbox these gauges remain advisory.</p>`;
+const ABOUT_HTML = `<dl class="credits-list"><div><dt>Publisher</dt><dd>${publisher}</dd></div><div><dt>Website</dt><dd><a href="https://columbiacloudworks.com" target="_blank" rel="noopener noreferrer">columbiacloudworks.com ↗</a></dd></div><div><dt>Contact</dt><dd><a href="mailto:nicholas.king@columbiacloudworks.com">nicholas.king@columbiacloudworks.com</a></dd></div><div><dt>Game</dt><dd><a href="https://permitdenied.app" target="_blank" rel="noopener noreferrer">permitdenied.app ↗</a></dd></div><div><dt>GitHub</dt><dd><a href="https://github.com/Columbia-Cloudworks-LLC/permit-denied-game" target="_blank" rel="noopener noreferrer">permit-denied-game ↗</a></dd></div><div><dt>Version</dt><dd>${version}</dd></div></dl><details class="license-notices"><summary>Third-party software notices</summary><pre></pre></details>`;
+
 /** One navigation and focus owner for keyboard, mouse and touch menus. */
 export class OperatorMenu {
   readonly root = document.createElement('section');
@@ -67,76 +71,97 @@ export class OperatorMenu {
     this.body = this.root.querySelector('.menu-body')!;
     this.heading = this.root.querySelector('#operator-heading')!;
     parent.append(this.root);
-    this.root.addEventListener('click', e => {
-      if ((e.target as Element).closest('[data-replay-permit]')) { this.replayIntro(); return; }
-      const button = (e.target as Element).closest<HTMLButtonElement>('button');
-      if (!button || button.disabled) return;
-      this.actions.click();
-      const nav = button.dataset.nav;
-      if (nav === 'back') this.back();
-      else if (nav) this.navigate(nav as Page);
-      const action = button.dataset.menuAction;
-      if (action === 'resume') this.actions.resume();
-      if (action === 'restart') this.actions.restart();
-      if (action === 'debug') this.actions.debug?.();
-      if (action === 'title') this.actions.title();
-      if (action === 'mute') this.actions.mute();
-      if (action === 'pwa-update') this.actions.pwaUpdate?.();
-      if (action === 'start') {
-        this.actions.start(this.session, this.level, this.seasonSelection, this.effects);
-      }
-    });
+    this.root.addEventListener('click', e => this.onClick(e));
     this.body.addEventListener('change', e => {
       const input = e.target as HTMLSelectElement;
-      if (input.id === 'dispatch-mode') {
-        this.session = input.value as SessionKind;
-        this.syncSetup();
-      }
-      if (input.id === 'dispatch-lot') this.level = input.value as CampaignLevelId;
-      if (input.id === 'dispatch-season') this.seasonSelection = input.value as SeasonSelection;
-      if (input.id === 'dispatch-effects') this.effects = input.value as WeatherDetail;
+      this.setupFields[input.id]?.(input.value);
     });
     // Handle menu navigation before focused controls consume the key.
-    this.root.addEventListener('keydown', e => {
-      if (['Enter', ' '].includes(e.key) && (e.target as Element).closest('[data-replay-permit]')) {
-        e.preventDefault();
-        if (!e.repeat) this.replayIntro();
-        return;
-      }
-      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); this.back(); }
-      if (e.key.toLowerCase() === 'm' && !e.repeat && !(e.target as Element).closest('input, select, textarea')) this.actions.mute();
-      if (e.key !== 'Tab') return;
-      const nodes = [...this.root.querySelectorAll<HTMLElement>('button, a[href], input, select, summary, [tabindex="0"]')]
-        .filter(el => !el.closest('[hidden]') && !el.matches(':disabled') && el.getClientRects().length);
-      const first = nodes[0], last = nodes.at(-1);
-      if (!first) { e.preventDefault(); this.heading.focus(); return; }
-      if (e.shiftKey && (document.activeElement === first || document.activeElement === this.heading)) { e.preventDefault(); last?.focus(); }
-      else if (!e.shiftKey && (document.activeElement === last || document.activeElement === this.heading)) { e.preventDefault(); first.focus(); }
-    }, true);
+    this.root.addEventListener('keydown', e => this.onKey(e), true);
+  }
+
+  private onClick(e: MouseEvent): void {
+    if ((e.target as Element).closest('[data-replay-permit]')) { this.replayIntro(); return; }
+    const button = (e.target as Element).closest<HTMLButtonElement>('button');
+    if (!button || button.disabled) return;
+    this.actions.click();
+    const nav = button.dataset.nav;
+    if (nav === 'back') this.back();
+    else if (nav) this.navigate(nav as Page);
+    const action = button.dataset.menuAction;
+    if (action) this.menuActs[action]?.();
+  }
+
+  private readonly menuActs: Record<string, () => void> = {
+    resume: () => this.actions.resume(),
+    restart: () => this.actions.restart(),
+    debug: () => this.actions.debug?.(),
+    title: () => this.actions.title(),
+    mute: () => this.actions.mute(),
+    'pwa-update': () => this.actions.pwaUpdate?.(),
+    start: () => this.actions.start(this.session, this.level, this.seasonSelection, this.effects),
+  };
+
+  /** New-game fields by select id; the mode also reshapes the season fields. */
+  private readonly setupFields: Record<string, (value: string) => void> = {
+    'dispatch-mode': value => { this.session = value as SessionKind; this.syncSetup(); },
+    'dispatch-lot': value => { this.level = value as CampaignLevelId; },
+    'dispatch-season': value => { this.seasonSelection = value as SeasonSelection; },
+    'dispatch-effects': value => { this.effects = value as WeatherDetail; },
+  };
+
+  private onKey(e: KeyboardEvent): void {
+    const target = e.target as Element;
+    if (['Enter', ' '].includes(e.key) && target.closest('[data-replay-permit]')) {
+      e.preventDefault();
+      if (!e.repeat) this.replayIntro();
+      return;
+    }
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); this.back(); }
+    if (e.key.toLowerCase() === 'm' && !e.repeat && !target.closest('input, select, textarea')) this.actions.mute();
+    if (e.key === 'Tab') this.trapFocus(e);
+  }
+
+  /** Tab wraps within the visible, enabled controls; with none, focus stays on the heading. */
+  private trapFocus(e: KeyboardEvent): void {
+    const nodes = [...this.root.querySelectorAll<HTMLElement>('button, a[href], input, select, summary, [tabindex="0"]')]
+      .filter(el => !el.closest('[hidden]') && !el.matches(':disabled') && el.getClientRects().length);
+    const first = nodes[0], last = nodes.at(-1);
+    if (!first) { e.preventDefault(); this.heading.focus(); return; }
+    const from = document.activeElement;
+    const edge = e.shiftKey ? first : last;
+    if (from !== edge && from !== this.heading) return;
+    e.preventDefault();
+    (e.shiftKey ? last : first)?.focus();
   }
 
   show(mode: 'title' | 'pause' | null, session: SessionKind, district: DistrictId, developmentScenario = false, level?: CampaignLevelId, season?: SeasonId, effects?: WeatherDetail): void {
     if (this.mode === mode) return;
-    if (mode === 'pause') {
-      this.session = session;
-      this.level = level ?? 'county';
-      if (season) this.seasonSelection = season;
-      if (effects) this.effects = effects;
-      void district;
-      void developmentScenario;
-    }
-    if (mode === 'title') { this.session = 'sandbox'; this.level = 'county'; this.seasonSelection = 'random'; this.effects = 'on'; }
+    void district;
+    void developmentScenario;
+    // Pause opens on the running game's setup; the title menu starts from the defaults.
+    if (mode === 'pause') this.adoptSetup(session, level ?? 'county', season, effects);
+    if (mode === 'title') this.adoptSetup('sandbox', 'county', 'random', 'on');
     this.mode = mode;
     this.root.hidden = !mode;
-    if (mode) {
-      this.navigate('home');
-    } else {
-      this.actions.page?.(null);
-      this.introVersion++;
-      this.intro.stop();
-      const debug = document.querySelector<HTMLElement>('#debug-panel:not([hidden])');
-      (debug ?? document.querySelector<HTMLCanvasElement>('#game-root canvas'))?.focus();
-    }
+    if (mode) this.navigate('home');
+    else this.close();
+  }
+
+  private adoptSetup(session: SessionKind, level: CampaignLevelId, season?: SeasonSelection, effects?: WeatherDetail): void {
+    this.session = session;
+    this.level = level;
+    if (season) this.seasonSelection = season;
+    if (effects) this.effects = effects;
+  }
+
+  /** Hand focus back to an open debug binder, else to the game canvas. */
+  private close(): void {
+    this.actions.page?.(null);
+    this.introVersion++;
+    this.intro.stop();
+    const debug = document.querySelector<HTMLElement>('#debug-panel:not([hidden])');
+    (debug ?? document.querySelector<HTMLCanvasElement>('#game-root canvas'))?.focus();
   }
 
   back(): void {
@@ -184,31 +209,42 @@ export class OperatorMenu {
     this.page = page;
     this.root.classList.toggle('title-open', this.mode === 'title' && page === 'home');
     this.root.querySelector<HTMLButtonElement>('[data-nav="back"]')!.hidden = page === 'home' || page === 'dispatch';
+    const titlePage = this.mode === 'title' && page === 'home';
     const titles = { home: this.mode === 'title' ? TITLE : 'Paused', dispatch: L.newGame, controls: L.controls, about: L.about, equipment: 'Equipment & Objective' };
     this.heading.textContent = titles[page];
-    this.root.querySelector<HTMLElement>('.nameplate')!.hidden = !(this.mode === 'title' && page === 'home') && page !== 'about';
-    if (page === 'home') this.body.innerHTML = `${this.mode === 'title'
-      ? `${permitDocument()}<button class="ignition primary" data-nav="dispatch"><span class="ignition-symbol" aria-hidden="true">${MENU_ICONS.power}</span><span>${L.play}</span><span aria-hidden="true">↗</span></button>`
-      : `<button class="primary" data-menu-action="resume">${L.resume}</button><div class="mobile-menu-links menu-grid"><button data-nav="equipment">Equipment & Objective</button><button data-menu-action="debug">${L.debug}</button></div><div class="menu-grid"><button data-menu-action="restart" aria-describedby="restart-help">${L.restart}</button><button data-nav="dispatch">${L.newGame}</button></div><p class="fine-print" id="restart-help">Start this site over with the same layout. Resets cash, demolition, upgrades, and the permit application.</p>`}
-      <nav class="menu-grid" aria-label="Game menu"><button data-nav="controls">${labeledMenuButton(MENU_ICONS.gamepad, L.controls)}</button><button data-menu-action="mute">${soundButtonContent(false)}</button><button data-nav="about">${labeledMenuButton(MENU_ICONS.about, L.about)}</button>${facebookLink}${this.mode === 'pause' ? `<button data-menu-action="title" aria-describedby="main-menu-help">${L.mainMenu}</button>` : ''}</nav>${this.mode === 'pause' ? '<p class="fine-print" id="main-menu-help">Returning to the main menu ends this game. You cannot resume it.</p>' : ''}${this.updatePromptHtml()}`;
-    if (page === 'equipment') this.body.innerHTML = '<div class="equipment-details"></div><h2>Permit Application</h2><p class="fine-print">Resubmitting spends cash on a county processing fee.</p><div class="menu-permit-host"></div>';
-    if (page === 'dispatch') {
-      const seasonOptions = [`<option value="random">Random</option>`, ...SEASONS.map((id) => `<option value="${id}">${seasonLabel(id)}</option>`)].join('');
-      const effectOptions = WEATHER_DETAILS.map((id) => `<option value="${id}">${id === 'on' ? 'On' : id === 'reduced' ? 'Reduced' : 'Off'}</option>`).join('');
-      this.body.innerHTML = `<div class="dispatch-fields"><label>Mode<select id="dispatch-mode">${Object.entries(MODE_LABELS).map(([id, label]) => `<option value="${id}">${label}</option>`).join('')}</select><span class="fine-print" id="mode-description"></span></label><label id="dispatch-lot-field">Level<select id="dispatch-lot"></select></label><label id="dispatch-season-field">Season<select id="dispatch-season">${seasonOptions}</select></label><label id="dispatch-effects-field">Weather<select id="dispatch-effects">${effectOptions}</select></label></div><p class="fine-print" id="season-note"></p>${this.mode === 'pause' ? '<p class="caution">Starting a new game replaces your current progress and upgrades.</p>' : ''}<button class="primary" data-menu-action="start">${L.start}</button><button data-nav="back">Back</button>`;
-      this.syncSetup();
-    }
-    if (page === 'controls') this.body.innerHTML = `<dl class="control-list"><div><dt>W / S or ↑ / ↓</dt><dd>Drive forward / reverse</dd></div><div><dt>A / D or ← / →</dt><dd>Steer left / right</dd></div><div><dt>Hold SPACE</dt><dd>Power the blade</dd></div><div><dt>Esc / Pause</dt><dd>Pause / Resume</dd></div><div><dt>R</dt><dd>${L.restart}</dd></div><div><dt>N</dt><dd>${L.newLayout}</dd></div><div><dt>1 / 2 / 3</dt><dd>${L.blade} / ${L.engine} / ${L.push} upgrade</dd></div><div><dt>M</dt><dd>Toggle sound</dd></div></dl><div class="instruction-card"><strong>Touch Controls</strong><p>Drag the left stick to drive and steer. Hold the right POWER BLADE button while driving. Release the stick to coast. Release the blade to finish the current push.</p></div><p class="fine-print">Watch ENGINE HEAT and TRACK STRESS. Above 65%, release the blade or back off rubble. In sandbox these gauges remain advisory.</p>`;
-    if (page === 'about') {
-      this.body.innerHTML = `<dl class="credits-list"><div><dt>Publisher</dt><dd>${publisher}</dd></div><div><dt>Website</dt><dd><a href="https://columbiacloudworks.com" target="_blank" rel="noopener noreferrer">columbiacloudworks.com ↗</a></dd></div><div><dt>Contact</dt><dd><a href="mailto:nicholas.king@columbiacloudworks.com">nicholas.king@columbiacloudworks.com</a></dd></div><div><dt>Game</dt><dd><a href="https://permitdenied.app" target="_blank" rel="noopener noreferrer">permitdenied.app ↗</a></dd></div><div><dt>GitHub</dt><dd><a href="https://github.com/Columbia-Cloudworks-LLC/permit-denied-game" target="_blank" rel="noopener noreferrer">permit-denied-game ↗</a></dd></div><div><dt>Version</dt><dd>${version}</dd></div></dl><details class="license-notices"><summary>Third-party software notices</summary><pre></pre></details>`;
-      this.body.querySelector('pre')!.textContent = notices;
-    }
+    this.root.querySelector<HTMLElement>('.nameplate')!.hidden = !titlePage && page !== 'about';
+    this.pages[page]();
     this.body.querySelector<HTMLAnchorElement>('[data-facebook-link]')?.setAttribute("href", facebookUrl);
     this.actions.page?.(page, this.body);
     this.syncMuted(this.muted);
     this.heading.focus();
     this.root.querySelector('.console-panel')!.scrollTop = 0;
-    if (this.mode === 'title' && page === 'home') this.playIntro();
+    if (titlePage) this.playIntro();
+  }
+
+  private readonly pages: Record<Page, () => void> = {
+    home: () => { this.body.innerHTML = this.homeHtml(); },
+    equipment: () => { this.body.innerHTML = '<div class="equipment-details"></div><h2>Permit Application</h2><p class="fine-print">Resubmitting spends cash on a county processing fee.</p><div class="menu-permit-host"></div>'; },
+    dispatch: () => { this.body.innerHTML = this.dispatchHtml(); this.syncSetup(); },
+    controls: () => { this.body.innerHTML = CONTROLS_HTML; },
+    about: () => {
+      this.body.innerHTML = ABOUT_HTML;
+      this.body.querySelector('pre')!.textContent = notices;
+    },
+  };
+
+  private homeHtml(): string {
+    const pause = this.mode === 'pause';
+    return `${this.mode === 'title'
+      ? `${permitDocument()}<button class="ignition primary" data-nav="dispatch"><span class="ignition-symbol" aria-hidden="true">${MENU_ICONS.power}</span><span>${L.play}</span><span aria-hidden="true">↗</span></button>`
+      : `<button class="primary" data-menu-action="resume">${L.resume}</button><div class="mobile-menu-links menu-grid"><button data-nav="equipment">Equipment & Objective</button><button data-menu-action="debug">${L.debug}</button></div><div class="menu-grid"><button data-menu-action="restart" aria-describedby="restart-help">${L.restart}</button><button data-nav="dispatch">${L.newGame}</button></div><p class="fine-print" id="restart-help">Start this site over with the same layout. Resets cash, demolition, upgrades, and the permit application.</p>`}
+      <nav class="menu-grid" aria-label="Game menu"><button data-nav="controls">${labeledMenuButton(MENU_ICONS.gamepad, L.controls)}</button><button data-menu-action="mute">${soundButtonContent(false)}</button><button data-nav="about">${labeledMenuButton(MENU_ICONS.about, L.about)}</button>${facebookLink}${pause ? `<button data-menu-action="title" aria-describedby="main-menu-help">${L.mainMenu}</button>` : ''}</nav>${pause ? '<p class="fine-print" id="main-menu-help">Returning to the main menu ends this game. You cannot resume it.</p>' : ''}${this.updatePromptHtml()}`;
+  }
+
+  private dispatchHtml(): string {
+    const seasonOptions = [`<option value="random">Random</option>`, ...SEASONS.map((id) => `<option value="${id}">${seasonLabel(id)}</option>`)].join('');
+    const effectOptions = WEATHER_DETAILS.map((id) => `<option value="${id}">${WEATHER_DETAIL_LABELS[id]}</option>`).join('');
+    return `<div class="dispatch-fields"><label>Mode<select id="dispatch-mode">${Object.entries(MODE_LABELS).map(([id, label]) => `<option value="${id}">${label}</option>`).join('')}</select><span class="fine-print" id="mode-description"></span></label><label id="dispatch-lot-field">Level<select id="dispatch-lot"></select></label><label id="dispatch-season-field">Season<select id="dispatch-season">${seasonOptions}</select></label><label id="dispatch-effects-field">Weather<select id="dispatch-effects">${effectOptions}</select></label></div><p class="fine-print" id="season-note"></p>${this.mode === 'pause' ? '<p class="caution">Starting a new game replaces your current progress and upgrades.</p>' : ''}<button class="primary" data-menu-action="start">${L.start}</button><button data-nav="back">Back</button>`;
   }
 
   private updatePromptHtml(): string {

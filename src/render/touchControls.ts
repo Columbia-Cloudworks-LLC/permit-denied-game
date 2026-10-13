@@ -104,8 +104,8 @@ export class TouchControls {
   reset(): void {
     const stickPointer = this.stickPointer, bladePointer = this.bladePointer;
     this.stickPointer = this.bladePointer = null;
-    if (stickPointer !== null && this.stick.hasPointerCapture(stickPointer)) this.stick.releasePointerCapture(stickPointer);
-    if (bladePointer !== null && this.blade.hasPointerCapture(bladePointer)) this.blade.releasePointerCapture(bladePointer);
+    releaseCapture(this.stick, stickPointer);
+    releaseCapture(this.blade, bladePointer);
     this.state = { throttle: 0, steer: 0, blade: false };
     this.knob.style.transform = '';
     this.emit();
@@ -140,4 +140,8 @@ export class TouchControls {
     this.root.remove();
     document.documentElement.classList.remove('touch-ui', 'touch-portrait');
   }
+}
+
+function releaseCapture(el: HTMLElement, pointer: number | null): void {
+  if (pointer !== null && el.hasPointerCapture(pointer)) el.releasePointerCapture(pointer);
 }

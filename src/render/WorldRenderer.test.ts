@@ -38,6 +38,16 @@ function dropStaticBuildingCache(renderer: WorldRenderer): void {
   Object.assign(renderer, { staticBuildingCmds: new WeakMap() });
 }
 
+/** Camera positions stepping out from a point along each axis, each paired with a short pan back. */
+function panProbes(originX: number, originY: number, pan: number) {
+  const offsets = [90, 130, 170, 210, 250, 290, 330, 370, 420, 480, 560, 640];
+  const directions = [{ dx: 1, dy: 0 }, { dx: -1, dy: 0 }, { dx: 0, dy: 1 }, { dx: 0, dy: -1 }];
+  return directions.flatMap(({ dx, dy }) => offsets.map((offset) => {
+    const x = originX + dx * offset, y = originY + dy * offset;
+    return { x, y, panX: x - dx * pan, panY: y - dy * pan };
+  }));
+}
+
 function framePartialBuilding(
   renderer: WorldRenderer,
   town: ReturnType<typeof createTown>,
@@ -56,27 +66,18 @@ function framePartialBuilding(
     building.x + building.w * building.cellSize / 2,
     building.y + building.d * building.cellSize / 2,
   );
-  const originX = mid.x * renderer.zoom;
-  const originY = mid.y * renderer.zoom;
-  const pan = 28;
-  const offsets = [90, 130, 170, 210, 250, 290, 330, 370, 420, 480, 560, 640];
-  for (const axis of ["x", "y"] as const) {
-    for (const sign of [1, -1]) {
-      for (const offset of offsets) {
-        renderer.camX = originX + (axis === "x" ? sign * offset : 0);
-        renderer.camY = originY + (axis === "y" ? sign * offset : 0);
-        renderer.layout(viewW, viewH, 0, 0);
-        renderer.draw(town, dozer, particles, [], 1, false);
-        const edgeKeys = renderer.submittedKeys();
-        if (edgeKeys.length === 0) continue;
-        renderer.camX += axis === "x" ? -sign * pan : 0;
-        renderer.camY += axis === "y" ? -sign * pan : 0;
-        renderer.layout(viewW, viewH, 0, 0);
-        renderer.draw(town, dozer, particles, [], 1, false);
-        const pannedKeys = renderer.submittedKeys();
-        if (pannedKeys.join("\0") !== edgeKeys.join("\0")) return { edgeKeys, pannedKeys };
-      }
-    }
+  const keysAt = (camX: number, camY: number) => {
+    renderer.camX = camX;
+    renderer.camY = camY;
+    renderer.layout(viewW, viewH, 0, 0);
+    renderer.draw(town, dozer, particles, [], 1, false);
+    return renderer.submittedKeys();
+  };
+  for (const probe of panProbes(mid.x * renderer.zoom, mid.y * renderer.zoom, 28)) {
+    const edgeKeys = keysAt(probe.x, probe.y);
+    if (edgeKeys.length === 0) continue;
+    const pannedKeys = keysAt(probe.panX, probe.panY);
+    if (pannedKeys.join("\0") !== edgeKeys.join("\0")) return { edgeKeys, pannedKeys };
   }
   throw new Error("no camera offset revealed additional static building commands");
 }

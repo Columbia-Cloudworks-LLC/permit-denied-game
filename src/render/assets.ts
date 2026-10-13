@@ -8,70 +8,89 @@ import { shade } from "./palette";
 
 export function drawCatalogProp(g: Graphics, p: Prop, season: SeasonId = "summer"): void {
   const def = getAsset(p.assetId);
-  const z0 = p.elev + p.pose.crush * -0.18;
   const lean = p.pose.lean * 0.35;
-  const heading = p.heading + p.pose.roll;
-  const cx = p.x + p.w * 0.5 + p.pose.leanX * lean;
-  const cy = p.y + p.d * 0.5 + p.pose.leanY * lean;
+  const pose: PropPose = {
+    cx: p.x + p.w * 0.5 + p.pose.leanX * lean,
+    cy: p.y + p.d * 0.5 + p.pose.leanY * lean,
+    z0: p.elev + p.pose.crush * -0.18,
+    heading: p.heading + p.pose.roll,
+    crush: p.pose.crush,
+    tint: 1 - p.variant * 0.04,
+    season,
+    pine: def.id.startsWith("pine"),
+  };
   drawShadow(g, p.x, p.y, p.w, p.d, 0.2);
   if (def.id === "car") {
     drawCar(g, p);
     return;
   }
-  const boxes = def.boxes.length
-    ? def.boxes
-    : [
-        {
-          along: 0,
-          across: 0,
-          z: 0,
-          len: p.w,
-          wid: p.d,
-          h: Math.max(0.4, def.footprint.h * (1 - p.pose.crush * 0.45)),
-          top: PAL.metalTop,
-          left: PAL.metalDark,
-          right: PAL.metal,
-        },
-      ];
-  const tint = 1 - p.variant * 0.04;
-  const pine = def.id.startsWith("pine");
   const deciduous = def.id.startsWith("oak") || def.id === "mature-tree" || def.id === "shrub";
+  // A bare winter crown is one pair of branches, however many canopy boxes the tree has.
   let bareDrawn = false;
-  for (const box of boxes) {
+  for (const box of propBoxes(def, p)) {
     const canopy = box.z > 0.45;
     if (deciduous && season === "winter" && canopy) {
-      if (!bareDrawn) {
-        drawOrientedIsoBox(g, cx, cy, heading, 0.55, 0.1, 1.15, 0.1, 0x7a4e28, 0x5a3818, 0x6a4424, 1);
-        drawOrientedIsoBox(g, cx, cy, heading + 0.8, 0.42, 0.08, 1.35, 0.08, 0x6a4424, 0x4a3018, 0x7a4e28, 1);
-        bareDrawn = true;
-      }
+      if (!bareDrawn) drawBareBranches(g, pose);
+      bareDrawn = true;
       continue;
     }
-    const fx = Math.cos(heading);
-    const fy = Math.sin(heading);
-    const x = cx + fx * box.along - fy * box.across;
-    const y = cy + fy * box.along + fx * box.across;
-    const h = box.h * (1 - p.pose.crush * 0.4);
-    const colors = foliageTint(box.top, box.left, box.right, season, pine, deciduous && canopy);
-    drawOrientedIsoBox(
-      g,
-      x,
-      y,
-      heading,
-      box.len,
-      box.wid,
-      z0 + box.z,
-      Math.max(0.05, h * (season === "spring" && deciduous && canopy ? 0.7 : 1)),
-      shade(colors.top, tint),
-      shade(colors.left, tint),
-      shade(colors.right, tint),
-      1,
-      'slope' in box && box.slope === true,
-    );
+    drawPropBox(g, pose, box, deciduous && canopy);
   }
-  if (pine && season === "winter") {
-    drawOrientedIsoBox(g, cx, cy, heading, p.w * 0.35, p.d * 0.35, z0 + 2.2, 0.12, 0xe4eef4, 0xb7c6d0, 0xd0dce6, 1);
+  if (pose.pine && season === "winter") {
+    drawOrientedIsoBox(g, pose.cx, pose.cy, pose.heading, p.w * 0.35, p.d * 0.35, pose.z0 + 2.2, 0.12, 0xe4eef4, 0xb7c6d0, 0xd0dce6, 1);
   }
+}
+
+/** Where and how a prop stands this frame: leaned center, sunk base, and colour inputs. */
+interface PropPose { cx: number; cy: number; z0: number; heading: number; crush: number; tint: number; season: SeasonId; pine: boolean }
+type PropBox = ReturnType<typeof getAsset>["boxes"][number];
+
+/** Authored boxes, or one metal block of the footprint that squashes as it is crushed. */
+function propBoxes(def: ReturnType<typeof getAsset>, p: Prop): readonly PropBox[] {
+  if (def.boxes.length) return def.boxes;
+  return [{
+    along: 0,
+    across: 0,
+    z: 0,
+    len: p.w,
+    wid: p.d,
+    h: Math.max(0.4, def.footprint.h * (1 - p.pose.crush * 0.45)),
+    top: PAL.metalTop,
+    left: PAL.metalDark,
+    right: PAL.metal,
+  }];
+}
+
+function drawBareBranches(g: Graphics, { cx, cy, heading }: PropPose): void {
+  drawOrientedIsoBox(g, cx, cy, heading, 0.55, 0.1, 1.15, 0.1, 0x7a4e28, 0x5a3818, 0x6a4424, 1);
+  drawOrientedIsoBox(g, cx, cy, heading + 0.8, 0.42, 0.08, 1.35, 0.08, 0x6a4424, 0x4a3018, 0x7a4e28, 1);
+}
+
+function drawPropBox(g: Graphics, pose: PropPose, box: PropBox, leafy: boolean): void {
+  const { cx, cy, heading, season, tint } = pose;
+  const fx = Math.cos(heading);
+  const fy = Math.sin(heading);
+  const x = cx + fx * box.along - fy * box.across;
+  const y = cy + fy * box.along + fx * box.across;
+  const h = box.h * (1 - pose.crush * 0.4);
+  const colors = foliageTint(box.top, box.left, box.right, season, pose.pine, leafy);
+  // Spring leaves are still filling out, so a broadleaf crown sits lower.
+  const grown = season === "spring" && leafy ? 0.7 : 1;
+  drawOrientedIsoBox(
+    g,
+    x,
+    y,
+    heading,
+    box.len,
+    box.wid,
+    pose.z0 + box.z,
+    Math.max(0.05, h * grown),
+    shade(colors.top, tint),
+    shade(colors.left, tint),
+    shade(colors.right, tint),
+    1,
+    'slope' in box && box.slope === true,
+  );
 }
 
 function foliageTint(top: number, left: number, right: number, season: SeasonId, pine: boolean, canopy: boolean): { top: number; left: number; right: number } {

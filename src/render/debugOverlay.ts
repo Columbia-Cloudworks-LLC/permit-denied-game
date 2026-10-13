@@ -1,7 +1,7 @@
 import { Graphics } from "pixi.js";
 import { DOZER, FLOOR_Z } from "../game/constants";
 import type { DebugView } from "../debug/view";
-import { cellPresent, cellWorldBox } from "../structure/types";
+import { cellPresent, cellWorldBox, type Building, type Cell } from "../structure/types";
 import { fixtureSolid, fixtureWorldBox } from "../structure/interior";
 import type { Town } from "../world/town";
 import type { Dozer } from "../vehicle/dozer";
@@ -15,47 +15,63 @@ function box(x: number, y: number, w: number, d: number, z = .05): DebugLine["po
 /** Geometry comes from live collision/support data, independent of visibility switches. */
 export function debugLines(town: Town, dozer: Dozer, view: DebugView): DebugLine[] {
   const lines: DebugLine[] = [];
-  if (view.paths) for (const segment of town.network.segments) {
-    lines.push({ points: segment.points.map(p => ({ x: p.x, y: p.y, z: p.elev + .08 })),
-      color: town.roadCar?.route.includes(segment.id) ? 0xffd24a : segment.roadClass === "driveway" ? 0xffb347 : 0x7ec8ff });
-  }
-  for (const lot of town.lots) {
-    if (view.lots && lot.boundary.length) lines.push({ points: [...lot.boundary, lot.boundary[0]!], color: 0x5ad68a });
-    if (view.buildable && lot.buildable) {
-      const r = lot.buildable;
-      lines.push({ points: box(r.x, r.y, r.w, r.d), color: 0xe07cff });
-    }
-  }
-  for (const b of town.buildings) {
-    if (view.rooms) for (const room of b.layout.rooms) {
-      if (room.floor >= b.floors || room.floor > view.maxFloor) continue;
-      const w = b.w * b.cellSize, d = b.d * b.cellSize;
-      lines.push({ points: box(b.x + room.x * w, b.y + room.y * d, room.w * w, room.d * d, room.floor * FLOOR_Z + .15), color: 0xf6d677 });
-    }
-    for (const cell of b.cells) {
-      if (cell.floor > view.maxFloor) continue;
-      if (view.collision && cell.floor === 0 && cellPresent(cell)) {
-        const r = cellWorldBox(b, cell);
-        lines.push({ points: box(r.x, r.y, r.w, r.d), color: 0xff697c });
-      }
-      if (view.supports && cell.isSupport && cell.state !== "gone") {
-        const x = b.x + (cell.gx + .5) * b.cellSize, y = b.y + (cell.gy + .5) * b.cellSize;
-        lines.push({ points: [{ x, y, z: cell.floor * FLOOR_Z }, { x, y, z: (cell.floor + 1) * FLOOR_Z }],
-          color: cellPresent(cell) ? 0x53efb2 : 0xff697c });
-      }
-    }
-    if (view.collision) for (const fixture of b.fixtures) {
-      if (!fixtureSolid(b, fixture)) continue;
-      const r = fixtureWorldBox(fixture);
-      lines.push({ points: box(r.x, r.y, r.w, r.d), color: 0xffb347 });
-    }
-  }
-  if (view.collision) {
-    for (const p of town.props) if (!p.broken) lines.push({ points: box(p.x, p.y, p.w, p.d), color: 0xffb347 });
-    const ring = Array.from({ length: 25 }, (_, i) => ({ x: dozer.x + Math.cos(i * Math.PI / 12) * DOZER.radius, y: dozer.y + Math.sin(i * Math.PI / 12) * DOZER.radius, z: .1 }));
-    lines.push({ points: ring, color: 0xffffff });
-  }
+  if (view.paths) for (const segment of town.network.segments) lines.push(pathLine(town, segment));
+  for (const lot of town.lots) lotLines(lines, lot, view);
+  for (const b of town.buildings) buildingLines(lines, b, view);
+  if (view.collision) collisionLines(lines, town, dozer);
   return lines;
+}
+
+/** The road car's route in yellow, driveways in orange, other roads in blue. */
+function pathLine(town: Town, segment: Town["network"]["segments"][number]): DebugLine {
+  const color = town.roadCar?.route.includes(segment.id) ? 0xffd24a : segment.roadClass === "driveway" ? 0xffb347 : 0x7ec8ff;
+  return { points: segment.points.map(p => ({ x: p.x, y: p.y, z: p.elev + .08 })), color };
+}
+
+function lotLines(lines: DebugLine[], lot: Town["lots"][number], view: DebugView): void {
+  if (view.lots && lot.boundary.length) lines.push({ points: [...lot.boundary, lot.boundary[0]!], color: 0x5ad68a });
+  if (view.buildable && lot.buildable) {
+    const r = lot.buildable;
+    lines.push({ points: box(r.x, r.y, r.w, r.d), color: 0xe07cff });
+  }
+}
+
+/** Room outlines, ground-floor collision boxes, support posts, and solid fixtures for one building. */
+function buildingLines(lines: DebugLine[], b: Building, view: DebugView): void {
+  if (view.rooms) roomLines(lines, b, view.maxFloor);
+  for (const cell of b.cells) if (cell.floor <= view.maxFloor) cellLines(lines, b, cell, view);
+  if (view.collision) for (const fixture of b.fixtures) {
+    if (!fixtureSolid(b, fixture)) continue;
+    const r = fixtureWorldBox(fixture);
+    lines.push({ points: box(r.x, r.y, r.w, r.d), color: 0xffb347 });
+  }
+}
+
+function roomLines(lines: DebugLine[], b: Building, maxFloor: number): void {
+  const w = b.w * b.cellSize, d = b.d * b.cellSize;
+  for (const room of b.layout.rooms) {
+    if (room.floor >= b.floors || room.floor > maxFloor) continue;
+    lines.push({ points: box(b.x + room.x * w, b.y + room.y * d, room.w * w, room.d * d, room.floor * FLOOR_Z + .15), color: 0xf6d677 });
+  }
+}
+
+function cellLines(lines: DebugLine[], b: Building, cell: Cell, view: DebugView): void {
+  if (view.collision && cell.floor === 0 && cellPresent(cell)) {
+    const r = cellWorldBox(b, cell);
+    lines.push({ points: box(r.x, r.y, r.w, r.d), color: 0xff697c });
+  }
+  if (view.supports && cell.isSupport && cell.state !== "gone") {
+    const x = b.x + (cell.gx + .5) * b.cellSize, y = b.y + (cell.gy + .5) * b.cellSize;
+    lines.push({ points: [{ x, y, z: cell.floor * FLOOR_Z }, { x, y, z: (cell.floor + 1) * FLOOR_Z }],
+      color: cellPresent(cell) ? 0x53efb2 : 0xff697c });
+  }
+}
+
+/** Standing props and the dozer's collision circle. */
+function collisionLines(lines: DebugLine[], town: Town, dozer: Dozer): void {
+  for (const p of town.props) if (!p.broken) lines.push({ points: box(p.x, p.y, p.w, p.d), color: 0xffb347 });
+  const ring = Array.from({ length: 25 }, (_, i) => ({ x: dozer.x + Math.cos(i * Math.PI / 12) * DOZER.radius, y: dozer.y + Math.sin(i * Math.PI / 12) * DOZER.radius, z: .1 }));
+  lines.push({ points: ring, color: 0xffffff });
 }
 
 export function drawDebugOverlay(g: Graphics, town: Town, dozer: Dozer, view: DebugView): void {

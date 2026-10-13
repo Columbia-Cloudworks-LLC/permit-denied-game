@@ -173,44 +173,35 @@ export function wallSpanFadeRuns(
   span: WallSpan,
   dozer: OccludeDozer,
 ): { span: WallSpan; fade: number }[] {
-  const cs = b.cellSize;
-  const along0 = span.dir === "south" ? span.gx0 : span.gy0;
-  const along1 = span.dir === "south" ? span.gx1 : span.gy1;
+  const south = span.dir === "south";
+  const along0 = south ? span.gx0 : span.gy0;
+  const along1 = south ? span.gx1 : span.gy1;
+  const fadeAt = (i: number) => i > along1 ? Number.NaN
+    : wallCellOcclusionFade(b, span.dir, south ? i : span.gx0, south ? span.gy0 : i, span.floor, dozer);
   const runs: { span: WallSpan; fade: number }[] = [];
   let run0 = along0;
-  let runFade = wallCellOcclusionFade(
-    b,
-    span.dir,
-    span.dir === "south" ? along0 : span.gx0,
-    span.dir === "south" ? span.gy0 : along0,
-    span.floor,
-    dozer,
-  );
+  let runFade = fadeAt(along0);
   for (let i = along0 + 1; i <= along1 + 1; i++) {
-    const fade =
-      i <= along1
-        ? wallCellOcclusionFade(
-            b,
-            span.dir,
-            span.dir === "south" ? i : span.gx0,
-            span.dir === "south" ? span.gy0 : i,
-            span.floor,
-            dozer,
-          )
-        : Number.NaN;
+    const fade = fadeAt(i);
     if (fade === runFade) continue;
-    const gx0 = span.dir === "south" ? run0 : span.gx0;
-    const gx1 = span.dir === "south" ? i - 1 : span.gx0;
-    const gy0 = span.dir === "south" ? span.gy0 : run0;
-    const gy1 = span.dir === "south" ? span.gy0 : i - 1;
-    const depth = depthKey(
-      b.x + (span.dir === "east" ? gx0 + 1 : (gx0 + gx1 + 1) * 0.5) * cs,
-      b.y + (span.dir === "south" ? gy0 + 1 : (gy0 + gy1 + 1) * 0.5) * cs,
-      span.floor * FLOOR_Z,
-    );
-    runs.push({ span: sliceWallSpan(span, run0, i - 1, depth), fade: runFade });
+    runs.push({ span: wallRun(b, span, run0, i - 1), fade: runFade });
     run0 = i;
     runFade = fade;
   }
   return runs;
+}
+
+/** Cells a..b of a wall span as their own span, sorted at the run's middle. */
+function wallRun(b: Building, span: WallSpan, a: number, end: number): WallSpan {
+  const south = span.dir === "south";
+  const gx0 = south ? a : span.gx0;
+  const gx1 = south ? end : span.gx0;
+  const gy0 = south ? span.gy0 : a;
+  const gy1 = south ? span.gy0 : end;
+  const depth = depthKey(
+    b.x + (span.dir === "east" ? gx0 + 1 : (gx0 + gx1 + 1) * 0.5) * b.cellSize,
+    b.y + (south ? gy0 + 1 : (gy0 + gy1 + 1) * 0.5) * b.cellSize,
+    span.floor * FLOOR_Z,
+  );
+  return sliceWallSpan(span, a, end, depth);
 }
