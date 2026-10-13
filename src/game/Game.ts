@@ -25,7 +25,7 @@ import { AudioBus } from "../audio/synth";
 import { emptyPerfSnapshot, formatPerfOverlay, PerfCollector } from "../debug/perf";
 import { CameraShake } from "../fx/cameraShake";
 import { ParticlePool } from "../fx/particles";
-import { Hud } from "../render/hud";
+import { Hud, type CampaignHud, type HudState } from "../render/hud";
 import { WorldRenderer } from "../render/WorldRenderer";
 import { lastDebrisStats, obstructionAt } from "../sim/debris";
 import { stepWorld, type Upgrades } from "../sim/worldSim";
@@ -34,7 +34,7 @@ import { createDozer, dozerSpeed, stepDozer } from "../vehicle/dozer";
 import { createRoadVehicle, replaceRoadVehicle } from "../vehicle/roadVehicle";
 import { pickVerificationRoute } from "../world/routing";
 import { worldBoundsToScreen, worldToScreen } from "../world/iso";
-import { createTown } from "../world/town";
+import { createTown, type Town } from "../world/town";
 import { biomeById } from "../world/biomes";
 import { resolveSeason } from "../world/season";
 import {
@@ -257,6 +257,27 @@ class Game {
     this.releaseControls();
     this.followRoadCamera = true;
     this.followZoom = 1.15;
+    this.resolveResetSetup(kind, keepSetup);
+    const ranch = this.rebuildTown();
+    this.hud.preserveBinderScroll(() => this.yardPanel?.reset());
+    this.yardFocus = this.town.yard?.bays.find(b => b.key === frameKey);
+    const followed = this.town.yard?.bays.find(b => b.key === followKey)?.vehicle;
+    this.town.roadCar = followed ?? null;
+    this.followRoadCamera = !!followed;
+    this.shake.reset();
+    this.renderer.bowlingStrikes.clear();
+    this.renderer.invalidate();
+    this.birds = [];
+    this.resetRun(keepSetup, ranch);
+    this.perf.reset();
+    const spawn = cameraFocus(this.dozer.x, this.dozer.y, 0.4, this.renderer.zoom);
+    this.renderer.camX = spawn.x;
+    this.renderer.camY = spawn.y;
+    if (kind === 'new') this.syncSessionUrl();
+  }
+
+  /** A new layout reseeds a free map, or retries the campaign level; a campaign fixes seed, season and biome. */
+  private resolveResetSetup(kind: "same" | "new", keepSetup: boolean): void {
     if (!showCampaignHud(this.rules, this.campaign)) this.campaign = null;
     if (kind === "new" && !keepSetup && !this.campaign) {
       this.rules.seed = nextSeed(this.rules.seed);
@@ -268,6 +289,10 @@ class Game {
       this.rules.season = this.campaign.season;
       this.rules.biomeId = this.campaign.biomeId;
     }
+  }
+
+  /** Generate the town for the current rules and place the dozer; returns the focused ranch, if any. */
+  private rebuildTown(): Town["buildings"][number] | undefined {
     const level = generationLevel(this.rules, this.campaign);
     this.town = createTown({
       towerTest: this.rules.towerTest,
@@ -293,46 +318,40 @@ class Game {
       : createDozer(this.town.spawnX, this.town.spawnY, this.town.spawnHeading);
     this.particles.reseed(this.rules.seed ^ 0x51f00d);
     this.particles.ownerAt = this.town.debrisOwnerAt;
-    this.hud.preserveBinderScroll(() => this.yardPanel?.reset());
-    this.yardFocus = this.town.yard?.bays.find(b => b.key === frameKey);
-    const followed = this.town.yard?.bays.find(b => b.key === followKey)?.vehicle;
-    this.town.roadCar = followed ?? null;
-    this.followRoadCamera = !!followed;
-    this.shake.reset();
-    this.renderer.bowlingStrikes.clear();
-    this.renderer.invalidate();
-    this.birds = [];
-    this.cash = this.campaign?.spendable ?? 0;
+    return ranch;
+  }
+
+  /** Cash, clock, upgrades, job and landmark for a fresh run; a campaign carries its upgrades. */
+  private resetRun(keepSetup: boolean, ranch: Town["buildings"][number] | undefined): void {
+    const campaign = this.campaign;
+    this.cash = campaign?.spendable ?? 0;
     this.resubmission = new Resubmission();
     this.hud.permitLogo.reset();
     this.hud.resetCash();
-    this.timeLeft = this.campaign ? currentLevel(this.campaign).timeLimit : MATCH_SECONDS;
+    this.timeLeft = campaign ? currentLevel(campaign).timeLimit : MATCH_SECONDS;
     this.elapsed = 0;
     this.hint = 1;
     this.fieldNotice = "";
     this.fieldNoticeUntil = 0;
-    this.mode = this.campaign?.briefing ? "briefing" : "play";
+    this.mode = campaign?.briefing ? "briefing" : "play";
     this.death = null;
-    if (this.campaign) {
-      this.upgrades = { ...this.campaign.upgrades };
-      this.nextUpgrade = this.campaign.nextUpgrade;
-    } else if (!keepSetup) this.upgrades = { blade: 0, engine: 0, push: 0 };
-    if (!this.campaign) this.nextUpgrade = 0;
+    if (campaign) {
+      this.upgrades = { ...campaign.upgrades };
+      this.nextUpgrade = campaign.nextUpgrade;
+    } else {
+      if (!keepSetup) this.upgrades = { blade: 0, engine: 0, push: 0 };
+      this.nextUpgrade = 0;
+    }
     this.earnedChoice = false;
     this.job = this.rules.job && ranch ? new DemolitionJob(ranch) : undefined;
     this.renderer.jobTarget = this.job?.target;
-    this.renderer.landmarkTarget = this.campaign
+    this.renderer.landmarkTarget = campaign
       ? this.town.buildings.find(building => building.campaignLandmark)
       : undefined;
     this.acc = 0;
     this.grindAud = 0;
     this.scrapeCd = 0;
     this.droppedSimSec = 0;
-    this.perf.reset();
-    const spawn = cameraFocus(this.dozer.x, this.dozer.y, 0.4, this.renderer.zoom);
-    this.renderer.camX = spawn.x;
-    this.renderer.camY = spawn.y;
-    if (kind === 'new') this.syncSessionUrl();
   }
 
   setDemo(demo: DemoAsset): void {
@@ -391,65 +410,89 @@ class Game {
   }
 
   private frame(realDt: number): void {
-    if (!termsAccepted() && this.mode !== 'title' && !privacyOpen()) {
-      void ensureTerms().then(yes => { if (!yes) this.mode = 'title'; });
-    }
-    if (privacyOpen() || (!termsAccepted() && this.mode !== 'title')) {
-      this.releaseControls(); this.touch?.setBlocked(true); this.audio.hush(); this.acc = 0; this.draw(0); return;
-    }
+    if (this.blockedByTerms()) return;
     this.touch?.setBlocked(this.mode !== 'play' || this.renderer.debug.freeze);
     const now = performance.now();
     const frameMs = this.perf.markFrameStart(now);
-    if (this.input.consume("m") || this.input.consume("M")) {
+    this.handleFrameKeys();
+    if (this.input.down.size > 0) void this.audio.unlock();
+    this.touch?.setBlocked(this.mode !== 'play' || this.renderer.debug.freeze);
+    const simCpuMs = this.advance(realDt);
+    const prepStart = performance.now();
+    this.touch?.setBlocked(this.mode !== 'play' || this.renderer.debug.freeze);
+    this.draw(realDt);
+    this.recordPerf(frameMs, simCpuMs, performance.now() - prepStart);
+    this.paintPerf();
+  }
+
+  /** Until the terms are accepted, or while the privacy dialog is open, hold everything and only draw. */
+  private blockedByTerms(): boolean {
+    if (!termsAccepted() && this.mode !== 'title' && !privacyOpen()) {
+      void ensureTerms().then(yes => { if (!yes) this.mode = 'title'; });
+    }
+    if (!privacyOpen() && (termsAccepted() || this.mode === 'title')) return false;
+    this.releaseControls(); this.touch?.setBlocked(true); this.audio.hush(); this.acc = 0; this.draw(0);
+    return true;
+  }
+
+  private consumeKey(key: string): boolean {
+    return this.input.consume(key) || this.input.consume(key.toUpperCase());
+  }
+
+  private handleFrameKeys(): void {
+    if (this.consumeKey("m")) {
       void this.audio.unlock();
       this.audio.toggleMute();
     }
-    if (this.mode === "play" || this.mode === "results") {
-      if (this.input.consume("r") || this.input.consume("R")) this.reset("same");
-      if (this.input.consume("n") || this.input.consume("N")) this.reset("new");
-      if ((this.input.consume("v") || this.input.consume("V")) && !this.rules.testMap) this.spawnRoadVehicle();
-      if (this.input.consume("g") || this.input.consume("G")) { this.renderer.showNhood = !this.renderer.showNhood; this.syncDebug(); }
-      if (this.input.consume("`")) {
-        this.renderer.debug.perf = !this.renderer.debug.perf;
-        this.syncDebug();
-      }
-    }
+    if (this.mode === "play" || this.mode === "results") this.handleRunKeys();
     if (this.mode === "play" || this.mode === "upgrade") {
       if (this.input.consume("1")) this.pickUpgrade("blade");
       if (this.input.consume("2")) this.pickUpgrade("engine");
       if (this.input.consume("3")) this.pickUpgrade("push");
     }
-    if (this.input.consume("Escape")) {
-      this.releaseControls();
-      if (!this.hud.closeDebug(true)) {
-        if (this.mode === "play") this.mode = "pause";
-        else if (this.mode === "briefing") this.mode = "pause";
-        else if (this.mode === "pause") this.mode = this.campaign?.briefing ? "briefing" : "play";
-      }
-    }
-    if (this.input.down.size > 0) void this.audio.unlock();
+    if (this.input.consume("Escape")) this.escape();
+  }
 
-    let simCpuMs = 0;
-    this.touch?.setBlocked(this.mode !== 'play' || this.renderer.debug.freeze);
-    if (this.mode === "play" && !this.renderer.debug.freeze) {
-      this.acc += realDt;
-      const simStart = performance.now();
-      const advanced = advanceSimulation(this.acc, SIM_DT, SIM_MAX_STEPS,
-        () => this.mode === "play", () => this.step(SIM_DT));
-      this.acc = advanced.acc;
-      this.droppedSimSec += advanced.dropped;
-      simCpuMs = performance.now() - simStart;
-    } else {
+  /** Restart, new layout, road car, neighborhood overview and perf overlay. */
+  private handleRunKeys(): void {
+    if (this.consumeKey("r")) this.reset("same");
+    if (this.consumeKey("n")) this.reset("new");
+    if (this.consumeKey("v") && !this.rules.testMap) this.spawnRoadVehicle();
+    if (this.consumeKey("g")) { this.renderer.showNhood = !this.renderer.showNhood; this.syncDebug(); }
+    if (this.input.consume("`")) {
+      this.renderer.debug.perf = !this.renderer.debug.perf;
+      this.syncDebug();
+    }
+  }
+
+  /** Escape closes the debug binder first, then toggles pause. */
+  private escape(): void {
+    this.releaseControls();
+    if (this.hud.closeDebug(true)) return;
+    if (this.mode === "play" || this.mode === "briefing") this.mode = "pause";
+    else if (this.mode === "pause") this.mode = this.campaign?.briefing ? "briefing" : "play";
+  }
+
+  /** Run fixed steps for this frame's time while playing; returns the CPU time spent. */
+  private advance(realDt: number): number {
+    if (this.mode !== "play" || this.renderer.debug.freeze) {
       this.acc = 0;
       this.input.flush();
       this.audio.hush();
+      return 0;
     }
+    this.acc += realDt;
+    const simStart = performance.now();
+    const advanced = advanceSimulation(this.acc, SIM_DT, SIM_MAX_STEPS,
+      () => this.mode === "play", () => this.step(SIM_DT));
+    this.acc = advanced.acc;
+    this.droppedSimSec += advanced.dropped;
+    return performance.now() - simStart;
+  }
 
-    const prepStart = performance.now();
-    this.touch?.setBlocked(this.mode !== 'play' || this.renderer.debug.freeze);
-    this.draw(realDt);
-    const renderPrepMs = performance.now() - prepStart;
+  private recordPerf(frameMs: number, simCpuMs: number, renderPrepMs: number): void {
     const debris = lastDebrisStats();
+    const memory = (performance as Performance & { memory?: { usedJSHeapSize: number } }).memory;
     this.perf.record({
       ...emptyPerfSnapshot(),
       frameMs,
@@ -469,14 +512,16 @@ class Game {
       renderTotal: this.renderer.stats.total,
       bodyMass: debris.bodyMass,
       pileMass: debris.pileMass,
-      heapMB: (performance as Performance & { memory?: { usedJSHeapSize: number } }).memory?.usedJSHeapSize !== undefined
-        ? (performance as Performance & { memory: { usedJSHeapSize: number } }).memory.usedJSHeapSize / 1048576 : null,
-      runtimeObjects: this.perf.enabled ? this.town.buildings.reduce((n, b) => n + b.cells.length + b.fixtures.length + b.floorTiles.length + b.roofs.length, this.town.rubble.length + this.town.props.length) : 0,
+      heapMB: memory?.usedJSHeapSize !== undefined ? memory.usedJSHeapSize / 1048576 : null,
+      runtimeObjects: this.perf.enabled ? this.runtimeObjectCount() : 0,
       retiredBuildings: this.town.buildings.filter(b => b.retired).length,
       drawCached: this.renderer.stats.cached,
       drawRebuilt: this.renderer.stats.rebuilt,
     });
-    this.paintPerf();
+  }
+
+  private runtimeObjectCount(): number {
+    return this.town.buildings.reduce((n, b) => n + b.cells.length + b.fixtures.length + b.floorTiles.length + b.roofs.length, this.town.rubble.length + this.town.props.length);
   }
 
   private lastMetrics = { buildingsStepped: 0, buildingsSkipped: 0, collisionRebuilds: 0 };
@@ -500,13 +545,30 @@ class Game {
     const beforeHeat = this.dozer.heat;
     const out = stepWorld(this.town, this.dozer, this.particles, this.upgrades, dt);
     this.lastMetrics = out.metrics;
-    if (this.campaign) {
-      creditCampaignEarnings(this.campaign, out.cash);
-      this.cash = this.campaign.spendable;
-    } else this.cash += out.cash;
+    this.earn(out.cash);
     this.react(out.events);
     this.syncFieldNotice(dt);
-    for (const b of out.birds) {
+    this.stepBirds(out.birds, dt);
+    this.elapsed += dt;
+    this.timeLeft -= dt;
+    this.hint = Math.max(0, this.hint - dt * 0.12);
+    this.scrapeCd = Math.max(0, this.scrapeCd - dt);
+    this.syncMachineAudio(out.debrisLoad, beforeHeat, dt);
+    if (this.offerUpgrade()) return;
+    if (this.campaign) this.judgeCampaign(this.campaign);
+    else this.judgeSession();
+  }
+
+  private earn(amount: number): void {
+    if (this.campaign) {
+      creditCampaignEarnings(this.campaign, amount);
+      this.cash = this.campaign.spendable;
+    } else this.cash += amount;
+  }
+
+  /** Birds flushed by demolition fly off up and to the right, then expire. */
+  private stepBirds(flushed: { x: number; y: number }[], dt: number): void {
+    for (const b of flushed) {
       this.birds.push({
         x: b.x,
         y: b.y,
@@ -517,7 +579,6 @@ class Game {
         life: 2.8,
       });
     }
-
     for (const bird of this.birds) {
       bird.x += bird.vx * dt;
       bird.y += bird.vy * dt;
@@ -526,62 +587,60 @@ class Game {
       bird.life -= dt;
     }
     this.birds = this.birds.filter((b) => b.life > 0);
+  }
 
-    this.elapsed += dt;
-    this.timeLeft -= dt;
-    this.hint = Math.max(0, this.hint - dt * 0.12);
-    this.scrapeCd = Math.max(0, this.scrapeCd - dt);
-    const pushing = this.dozer.bladeDown && out.debrisLoad > 0.2;
+  /** Engine pitch follows speed and heat; the blade grinds while pushing or heating up. */
+  private syncMachineAudio(debrisLoad: number, beforeHeat: number, dt: number): void {
+    const pushing = this.dozer.bladeDown && debrisLoad > 0.2;
+    const grinding = this.dozer.bladeDown && (this.dozer.heat > beforeHeat - 0.01 || pushing);
     this.grindAud = lerp(
       this.grindAud,
-      this.dozer.bladeDown && (this.dozer.heat > beforeHeat - 0.01 || pushing) ? 0.14 + Math.min(0.1, out.debrisLoad * 0.04) : 0,
+      grinding ? 0.14 + Math.min(0.1, debrisLoad * 0.04) : 0,
       1 - Math.pow(0.001, dt),
     );
     this.audio.engineLevel(dozerSpeed(this.dozer), this.dozer.heat);
     this.audio.grindLevel(this.dozer.bladeDown ? 0.08 + this.grindAud : 0);
     this.audio.syncAmbient(this.town.weather.kind, this.town.weatherDetail);
+  }
 
+  /** A paid job or a cash milestone pauses for an upgrade choice. True when it did. */
+  private offerUpgrade(): boolean {
     const payout = this.job?.settle() ?? 0;
     if (payout) {
-      if (this.campaign) {
-        creditCampaignEarnings(this.campaign, payout);
-        this.cash = this.campaign.spendable;
-      } else this.cash += payout;
+      this.earn(payout);
       this.audio.cash();
       this.earnedChoice = true;
       this.mode = "upgrade";
-      return;
+      return true;
     }
     const milestoneCash = this.campaign?.campaignEarned ?? this.cash;
-    if (
-      sessionForcesUpgrade(this.rules) &&
-      this.nextUpgrade < UPGRADE_MILESTONES.length &&
-      milestoneCash >= UPGRADE_MILESTONES[this.nextUpgrade]!
-    ) {
-      this.nextUpgrade += 1;
-      if (this.campaign) this.campaign.nextUpgrade = this.nextUpgrade;
-      this.earnedChoice = true;
-      this.mode = "upgrade";
-      return;
-    }
+    if (!sessionForcesUpgrade(this.rules) || this.nextUpgrade >= UPGRADE_MILESTONES.length || milestoneCash < UPGRADE_MILESTONES[this.nextUpgrade]!)
+      return false;
+    this.nextUpgrade += 1;
+    if (this.campaign) this.campaign.nextUpgrade = this.nextUpgrade;
+    this.earnedChoice = true;
+    this.mode = "upgrade";
+    return true;
+  }
 
-    if (this.campaign) {
-      const level = currentLevel(this.campaign);
-      const landmark = landmarkDemolitionStatus(this.town.buildings, level);
-      const outcome = evaluateCampaignStep({
-        timeLeft: this.timeLeft,
-        heat: this.dozer.heat,
-        track: this.dozer.track,
-        landmarkReady: landmark.ready,
-        dollarsReady: dollarsReady(this.campaign, level),
-        expired: this.campaign.expired,
-        alreadyComplete: this.campaign.complete,
-      });
-      const death = applyCampaignOutcome(this.campaign, outcome);
-      if (outcome !== 'continue') this.finish(death ?? '', outcome === 'win');
-      return;
-    }
+  private judgeCampaign(campaign: CampaignRun): void {
+    const level = currentLevel(campaign);
+    const landmark = landmarkDemolitionStatus(this.town.buildings, level);
+    const outcome = evaluateCampaignStep({
+      timeLeft: this.timeLeft,
+      heat: this.dozer.heat,
+      track: this.dozer.track,
+      landmarkReady: landmark.ready,
+      dollarsReady: dollarsReady(campaign, level),
+      expired: campaign.expired,
+      alreadyComplete: campaign.complete,
+    });
+    const death = applyCampaignOutcome(campaign, outcome);
+    if (outcome !== 'continue') this.finish(death ?? '', outcome === 'win');
+  }
 
+  /** Free play ends on whichever failure the session enforces: heat, track, or the clock. */
+  private judgeSession(): void {
     const fail = sessionFailsOn(this.rules);
     if (fail.heat && this.dozer.heat >= 100) this.finish(COPY.engineCooked, false);
     else if (fail.track && this.dozer.track >= 100) this.finish(COPY.trackThrown, false);
@@ -597,54 +656,53 @@ class Game {
 
   private syncFieldNotice(dt: number): void {
     this.fieldNoticeUntil = Math.max(0, this.fieldNoticeUntil - dt);
-    for (const feature of this.town.features) {
-      if (feature.kind !== "field") continue;
-      const field = feature as FieldFeature;
-      if (field.cleared && !field.clearedAnnounced) {
-        field.clearedAnnounced = true;
-        field.noticed = true;
-        this.fieldNotice = COPY.fieldCleared;
-        this.fieldNoticeUntil = FIELD_CLEARED_SECONDS;
-        continue;
-      }
-      if (fieldDamagedCount(field) > 0 && !field.noticed) {
-        field.noticed = true;
-        this.fieldNotice = fieldNoticeText(field, true);
-        this.fieldNoticeUntil = FIELD_NOTICE_SECONDS;
-      }
-    }
+    for (const feature of this.town.features) if (feature.kind === "field") this.noticeField(feature as FieldFeature);
     if (this.fieldNoticeUntil <= 0) this.fieldNotice = "";
   }
 
-  private react(events: WorldEvent[]): void {
-    for (const e of events) {
-      if (e.kind === "bowling-strike") { this.renderer.bowlingStrikes.add(); this.audio.bowlingPins(); }
-      if (e.kind === "impact" || e.kind === "breach") {
-        this.shake.punch(e.mag);
-        this.audio.impact(e.mag);
-        if (e.kind === "breach") this.audio.breakMat(e.mag);
-      }
-      if (e.kind === "collapse") {
-        this.shake.punch(e.mag * 1.4);
-        this.audio.collapse(e.mag);
-      }
-      if (e.kind === "cash") this.audio.cash();
-      if (e.kind === "chip" && e.mag > 0.5) this.audio.impact(0.3);
-      if (e.kind === "scrape" && this.scrapeCd <= 0) {
-        this.scrapeCd = 0.08;
-        if (e.material === "metal" || e.material === "wood") this.audio.clatter(e.mag, e.material);
-        else this.audio.scrape(e.mag, e.material);
-      }
-      if (e.kind === "crush") {
-        this.audio.crunch(e.mag);
-        if (e.mag > 0.9) this.shake.punch(e.mag * 0.45);
-      }
-      if (e.kind === "blast") {
-        this.shake.punch(e.mag);
-        this.audio.impact(e.mag);
-      }
-      if (e.kind === "spark") this.audio.clatter(e.mag * 0.6, "metal");
+  /** Announce a field once when it is first damaged, and once more when it is cleared. */
+  private noticeField(field: FieldFeature): void {
+    if (field.cleared && !field.clearedAnnounced) {
+      field.clearedAnnounced = true;
+      field.noticed = true;
+      this.fieldNotice = COPY.fieldCleared;
+      this.fieldNoticeUntil = FIELD_CLEARED_SECONDS;
+      return;
     }
+    if (fieldDamagedCount(field) > 0 && !field.noticed) {
+      field.noticed = true;
+      this.fieldNotice = fieldNoticeText(field, true);
+      this.fieldNoticeUntil = FIELD_NOTICE_SECONDS;
+    }
+  }
+
+  private react(events: WorldEvent[]): void {
+    for (const e of events) this.reactions[e.kind]?.(e);
+  }
+
+  /** Camera shake and sound for each kind of world event. */
+  private readonly reactions: Partial<Record<WorldEvent["kind"], (e: WorldEvent) => void>> = {
+    "bowling-strike": () => { this.renderer.bowlingStrikes.add(); this.audio.bowlingPins(); },
+    impact: (e) => { this.shake.punch(e.mag); this.audio.impact(e.mag); },
+    breach: (e) => { this.shake.punch(e.mag); this.audio.impact(e.mag); this.audio.breakMat(e.mag); },
+    collapse: (e) => { this.shake.punch(e.mag * 1.4); this.audio.collapse(e.mag); },
+    cash: () => this.audio.cash(),
+    chip: (e) => { if (e.mag > 0.5) this.audio.impact(0.3); },
+    scrape: (e) => this.scrapeSound(e),
+    crush: (e) => {
+      this.audio.crunch(e.mag);
+      if (e.mag > 0.9) this.shake.punch(e.mag * 0.45);
+    },
+    blast: (e) => { this.shake.punch(e.mag); this.audio.impact(e.mag); },
+    spark: (e) => this.audio.clatter(e.mag * 0.6, "metal"),
+  };
+
+  /** Scrapes are rate-limited; metal and wood clatter, everything else scrapes. */
+  private scrapeSound(e: WorldEvent): void {
+    if (this.scrapeCd > 0) return;
+    this.scrapeCd = 0.08;
+    if (e.material === "metal" || e.material === "wood") this.audio.clatter(e.mag, e.material);
+    else this.audio.scrape(e.mag, e.material);
   }
 
   spawnRoadVehicle(): void {
@@ -769,36 +827,7 @@ class Game {
   private draw(dt: number): void {
     const dock = this.hud.debugDockWidth, viewW = Math.max(160, this.app.renderer.width - dock);
     if (this.input.axis().throttle || this.input.axis().steer || !this.town.yard?.bays.includes(this.yardFocus!)) this.yardFocus = undefined;
-    if (this.rules.towerTest && (this.towerOverview || this.town.buildings[0]?.coreCollapse?.phase === 'falling')) {
-      const b = this.town.buildings[0]!;
-      this.frameScreenBox(worldBoundsToScreen(b.x - 7, b.y - 7, b.w * b.cellSize + 14, b.d * b.cellSize + 14, 0, b.floors * 2.35 + 1), .72, this.app.renderer.width);
-    } else if (this.yardFocus) {
-      const bay = this.yardFocus, asset = bay.asset;
-      const height = Math.max(asset.vehicle?.height ?? 1, ...bayBuildings(bay).map(b => b.floors * 2.35 + .8));
-      let x = bay.x + asset.clearance, y = bay.y + asset.clearance, w = asset.w, d = asset.d;
-      if (bay.vehicle) {
-        const bounds = vehicleBoxes(bay.vehicle).map(boxBounds);
-        if (bounds.length) {
-          x = Math.min(...bounds.map(b => b.x)); y = Math.min(...bounds.map(b => b.y));
-          w = Math.max(...bounds.map(b => b.x + b.w)) - x; d = Math.max(...bounds.map(b => b.y + b.d)) - y;
-        }
-      }
-      this.frameScreenBox(worldBoundsToScreen(x - 2, y - 2, w + 4, d + 4, 0, height), .78, viewW);
-    } else if (this.town.roadCar && this.followRoadCamera) {
-      const car = this.town.roadCar;
-      const focus = worldToScreen(car.x, car.y, 0.3);
-      const zoom = 0.62;
-      this.renderer.zoom = zoom;
-      const k = 1 - Math.exp(-8 * dt);
-      this.renderer.camX += (focus.x * zoom - this.renderer.camX) * k;
-      this.renderer.camY += (focus.y * zoom - this.renderer.camY) * k;
-    } else if (this.renderer.showNhood) this.frameNhood(dt);
-    else {
-      this.renderer.zoom = this.followZoom;
-      const focus = cameraFocus(this.dozer.x, this.dozer.y, 0.4, this.renderer.zoom);
-      this.renderer.camX += (focus.x - this.renderer.camX) * (1 - Math.exp(-6 * dt));
-      this.renderer.camY += (focus.y - this.renderer.camY) * (1 - Math.exp(-6 * dt));
-    }
+    this.aimCamera(dt, viewW);
     const shake = this.mode === "play" ? this.shake.step(dt) : { x: 0, y: 0 };
     // Use the same shifted camera for projection and offscreen culling, without
     // feeding the temporary dock offset back into camera-follow interpolation.
@@ -807,12 +836,54 @@ class Game {
     this.renderer.draw(this.town, this.dozer, this.particles, this.birds, dt);
     this.renderer.camX -= dock / 2;
     this.yardPanel?.tick(dt);
-    this.hud.render({
+    this.hud.render(this.hudState());
+  }
+
+  /** Tower test overview, a framed yard bay, the followed road car, the town overview, or the dozer. */
+  private aimCamera(dt: number, viewW: number): void {
+    if (this.rules.towerTest && (this.towerOverview || this.town.buildings[0]?.coreCollapse?.phase === 'falling')) {
+      const b = this.town.buildings[0]!;
+      this.frameScreenBox(worldBoundsToScreen(b.x - 7, b.y - 7, b.w * b.cellSize + 14, b.d * b.cellSize + 14, 0, b.floors * 2.35 + 1), .72, this.app.renderer.width);
+    } else if (this.yardFocus) this.frameYardBay(this.yardFocus, viewW);
+    else if (this.town.roadCar && this.followRoadCamera) this.followCar(this.town.roadCar, dt);
+    else if (this.renderer.showNhood) this.frameNhood(dt);
+    else {
+      this.renderer.zoom = this.followZoom;
+      const focus = cameraFocus(this.dozer.x, this.dozer.y, 0.4, this.renderer.zoom);
+      this.renderer.camX += (focus.x - this.renderer.camX) * (1 - Math.exp(-6 * dt));
+      this.renderer.camY += (focus.y - this.renderer.camY) * (1 - Math.exp(-6 * dt));
+    }
+  }
+
+  /** Frame a bay's asset; a vehicle is framed by its current boxes so a wreck stays in view. */
+  private frameYardBay(bay: YardBay, viewW: number): void {
+    const asset = bay.asset;
+    const height = Math.max(asset.vehicle?.height ?? 1, ...bayBuildings(bay).map(b => b.floors * 2.35 + .8));
+    let x = bay.x + asset.clearance, y = bay.y + asset.clearance, w = asset.w, d = asset.d;
+    const bounds = bay.vehicle ? vehicleBoxes(bay.vehicle).map(boxBounds) : [];
+    if (bounds.length) {
+      x = Math.min(...bounds.map(b => b.x)); y = Math.min(...bounds.map(b => b.y));
+      w = Math.max(...bounds.map(b => b.x + b.w)) - x; d = Math.max(...bounds.map(b => b.y + b.d)) - y;
+    }
+    this.frameScreenBox(worldBoundsToScreen(x - 2, y - 2, w + 4, d + 4, 0, height), .78, viewW);
+  }
+
+  private followCar(car: { x: number; y: number }, dt: number): void {
+    const focus = worldToScreen(car.x, car.y, 0.3);
+    const zoom = 0.62;
+    this.renderer.zoom = zoom;
+    const k = 1 - Math.exp(-8 * dt);
+    this.renderer.camX += (focus.x * zoom - this.renderer.camX) * k;
+    this.renderer.camY += (focus.y * zoom - this.renderer.camY) * k;
+  }
+
+  private hudState(): HudState {
+    return {
       resubmitted: this.resubmission.used,
       upgradeModifiers: upgradeModifiers(this.upgrades),
       hasYard: !!this.town.yard,
       focusedTest: this.rules.testMap?.kind === 'asset',
-      testMapName: this.rules.testMap ? this.rules.testMap.kind === 'yard' ? 'All Assets Sandbox' : this.town.yard?.bays[0]?.asset.name ?? 'Asset link needs attention' : undefined,
+      testMapName: this.testMapName(),
       developmentScenario: !!(this.rules.demo || this.rules.towerTest || this.rules.job || this.rules.ranchFocus || this.town.yard),
       pileResistance: this.dozer.pileResistance,
       job: this.job ? { ...this.job.status(), paid: this.job.paid, payout: this.job.payout } : undefined,
@@ -833,40 +904,51 @@ class Game {
       weatherDetail: this.town.weatherDetail,
       seed: this.rules.seed,
       levelId: this.rules.level,
-      levelCard: (() => {
-        const level = generationLevel(this.rules, this.campaign);
-        return level ? {
-          levelIndex: level.index,
-          levelName: level.name,
-          levelId: level.id,
-          buildingCount: level.generation.buildingCount,
-          landmarkName: level.landmark.label,
-          dollarTarget: level.dollarTarget,
-          timeLimit: level.timeLimit,
-        } : undefined;
-      })(),
-      campaign: showCampaignHud(this.rules, this.campaign) && this.campaign ? (() => {
-        const level = currentLevel(this.campaign);
-        const landmark = landmarkDemolitionStatus(this.town.buildings, level);
-        return {
-          levelIndex: level.index,
-          levelName: level.name,
-          levelId: level.id,
-          landmarkName: level.landmark.label,
-          dollarTarget: level.dollarTarget,
-          levelEarned: this.campaign.levelEarned,
-          campaignEarned: this.campaign.campaignEarned,
-          landmarkProgress: landmark.progress,
-          landmarkReady: landmark.ready,
-          dollarsReady: dollarsReady(this.campaign, level),
-          briefing: campaignBriefingText(level, this.campaign.season),
-          victory: this.campaign.victory,
-          complete: this.campaign.complete,
-          buildingCount: level.generation.buildingCount,
-          timeLimit: level.timeLimit,
-        };
-      })() : undefined,
-    });
+      levelCard: this.levelCard(),
+      campaign: showCampaignHud(this.rules, this.campaign) && this.campaign ? this.campaignHud(this.campaign) : undefined,
+    };
+  }
+
+  private testMapName(): string | undefined {
+    const testMap = this.rules.testMap;
+    if (!testMap) return undefined;
+    return testMap.kind === 'yard' ? 'All Assets Sandbox' : this.town.yard?.bays[0]?.asset.name ?? 'Asset link needs attention';
+  }
+
+  /** The level the menu would generate, for the debug session facts. */
+  private levelCard(): HudState["levelCard"] {
+    const level = generationLevel(this.rules, this.campaign);
+    return level ? {
+      levelIndex: level.index,
+      levelName: level.name,
+      levelId: level.id,
+      buildingCount: level.generation.buildingCount,
+      landmarkName: level.landmark.label,
+      dollarTarget: level.dollarTarget,
+      timeLimit: level.timeLimit,
+    } : undefined;
+  }
+
+  private campaignHud(campaign: CampaignRun): CampaignHud {
+    const level = currentLevel(campaign);
+    const landmark = landmarkDemolitionStatus(this.town.buildings, level);
+    return {
+      levelIndex: level.index,
+      levelName: level.name,
+      levelId: level.id,
+      landmarkName: level.landmark.label,
+      dollarTarget: level.dollarTarget,
+      levelEarned: campaign.levelEarned,
+      campaignEarned: campaign.campaignEarned,
+      landmarkProgress: landmark.progress,
+      landmarkReady: landmark.ready,
+      dollarsReady: dollarsReady(campaign, level),
+      briefing: campaignBriefingText(level, campaign.season),
+      victory: campaign.victory,
+      complete: campaign.complete,
+      buildingCount: level.generation.buildingCount,
+      timeLimit: level.timeLimit,
+    };
   }
 
   private ensurePerfOverlay(): void {

@@ -101,88 +101,99 @@ function defaultSessionRules(): SessionRules {
 export function parseSessionFromSearch(search: string): SessionRules {
   const rules = defaultSessionRules();
   const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
-  if (params.get("sandbox") === "1" || params.get("mode") === "sandbox") rules.kind = "sandbox";
+  const sandboxLink = params.get("sandbox") === "1" || params.get("mode") === "sandbox";
+  if (sandboxLink) rules.kind = "sandbox";
   if (params.get('mode') === 'challenge' || params.get('sandbox') === '0') rules.kind = 'challenge';
-  const district = params.get("district");
-  if (district === "classic" || district === "d10" || district === "d30" || district === "d100") {
-    rules.district = playableDistrict(rules.kind, district);
-    rules.seed = DEFAULT_DISTRICT_SEEDS[rules.district];
-    rules.level = LEGACY_SANDBOX_LEVEL[rules.district];
-  }
-  const level = params.get("level");
-  if (
-    level === "county" ||
-    level === "village" ||
-    level === "township" ||
-    level === "suburb" ||
-    level === "city-borough" ||
-    level === "city-downtown" ||
-    level === "governors-mansion"
-  ) {
-    rules.level = level;
-  } else if ((params.get("mode") === "sandbox" || params.get("sandbox") === "1") && !rules.level && !params.get("yard") && !params.get("job")) {
-    rules.level = "county";
-  }
-  // Asset diagnostics are explicit and are not offered as a playable map size.
-  const rawSeed = params.get("seed");
-  const demo = params.get("demo");
-  if (params.get('ranch') === '1') rules.testMap = { kind: 'asset', assetId: 'building:ranch', variant: 0 };
-  if (params.get('yard') === '1') rules.testMap = { kind: 'yard' };
-  if (demo === 'ranch' || demo === 'rivertown' || demo === 'steel-warehouse') rules.testMap = { kind: 'asset', assetId: 'building:' + demo, variant: 0 };
-  if (params.get('tower') === '1') rules.testMap = { kind: 'asset', assetId: 'building:union-tower', variant: 0 };
-  if (params.has('testAsset')) rules.testMap = { kind: 'asset', assetId: params.get('testAsset')!, variant: Number(params.get('variant') ?? 0) };
-  if (rules.testMap) {
-    rules.kind = 'sandbox';
-    rules.district = 'classic';
-    rules.seed = DEFAULT_DISTRICT_SEEDS.classic;
-    rules.level = undefined;
-  }
-  if (rawSeed !== null && rawSeed !== "") {
-    const seed = Number(rawSeed);
-    if (Number.isFinite(seed) && seed >= 0) rules.seed = seed >>> 0;
-  }
+  applyDistrictLink(rules, params.get("district"));
+  applyLevelLink(rules, params, sandboxLink);
+  applyTestMapLink(rules, params);
+  applySeedLink(rules, params.get("seed"));
   const topology = params.get("topology");
-  if (
-    topology === "county" ||
-    topology === "crossroads" ||
-    topology === "tjunction" ||
-    topology === "curve-farm" ||
-    topology === "loop" ||
-    topology === "frontage"
-  ) {
-    rules.topology = topology;
-  }
-  const seasonParam = params.get("season");
-  if (seasonParam == null || seasonParam === "") {
-    rules.season = "summer";
-    rules.seasonExplicit = false;
-  } else if (seasonParam === "random") {
-    rules.seasonSelection = "random";
-    rules.season = resolveSeason(rules.seed);
-    rules.seasonExplicit = true;
-  } else if (isSeasonId(seasonParam)) {
-    rules.seasonSelection = seasonParam;
-    rules.season = seasonParam;
-    rules.seasonExplicit = true;
-  } else {
-    rules.season = "summer";
-    rules.seasonSelection = "summer";
-    rules.seasonExplicit = true;
-  }
+  if (TOPOLOGIES.has(topology as SessionTopology)) rules.topology = topology as SessionTopology;
+  applySeasonLink(rules, params.get("season"));
+  applyLookLinks(rules, params);
+  if (params.get("job") === "brick") applyBrickJob(rules);
+  return rules;
+}
+
+/** A named level wins; a plain sandbox link opens County unless it is a yard or job link. */
+function applyLevelLink(rules: SessionRules, params: URLSearchParams, sandboxLink: boolean): void {
+  const level = params.get("level");
+  if (CAMPAIGN_LEVEL_IDS.has(level as CampaignLevelId)) rules.level = level as CampaignLevelId;
+  else if (sandboxLink && !rules.level && !params.get("yard") && !params.get("job")) rules.level = "county";
+}
+
+/** A non-negative seed, kept to 32 bits; anything else keeps the default. */
+function applySeedLink(rules: SessionRules, rawSeed: string | null): void {
+  if (rawSeed === null || rawSeed === "") return;
+  const seed = Number(rawSeed);
+  if (Number.isFinite(seed) && seed >= 0) rules.seed = seed >>> 0;
+}
+
+function applyLookLinks(rules: SessionRules, params: URLSearchParams): void {
   const biome = biomeById(params.get("biome"));
   if (biome) rules.biomeId = biome.id;
   const effects = params.get("effects");
   if (effects && isWeatherDetail(effects)) rules.weatherDetail = effects;
-  if (params.get("job") === "brick") {
-    rules.testMap = undefined;
-    rules.towerTest = false;
-    rules.job = true;
-    rules.demo = "rivertown";
-    rules.kind = "challenge";
-    rules.district = "classic";
-    rules.level = undefined;
+}
+
+const DISTRICT_IDS = new Set<DistrictId>(["classic", "d10", "d30", "d100"]);
+const CAMPAIGN_LEVEL_IDS = new Set<CampaignLevelId>(["county", "village", "township", "suburb", "city-borough", "city-downtown", "governors-mansion"]);
+const TOPOLOGIES = new Set<SessionTopology>(["county", "crossroads", "tjunction", "curve-farm", "loop", "frontage"]);
+const DEMO_ASSETS = new Set<DemoAsset>(["ranch", "rivertown", "steel-warehouse"]);
+
+/** An old map-size link opens its matching campaign level on that district's seed. */
+function applyDistrictLink(rules: SessionRules, district: string | null): void {
+  if (!DISTRICT_IDS.has(district as DistrictId)) return;
+  rules.district = playableDistrict(rules.kind, district as DistrictId);
+  rules.seed = DEFAULT_DISTRICT_SEEDS[rules.district];
+  rules.level = LEGACY_SANDBOX_LEVEL[rules.district];
+}
+
+/** Asset diagnostics are explicit and are not offered as a playable map size; the last link given wins. */
+function applyTestMapLink(rules: SessionRules, params: URLSearchParams): void {
+  const demo = params.get("demo");
+  if (params.get('ranch') === '1') rules.testMap = { kind: 'asset', assetId: 'building:ranch', variant: 0 };
+  if (params.get('yard') === '1') rules.testMap = { kind: 'yard' };
+  if (DEMO_ASSETS.has(demo as DemoAsset)) rules.testMap = { kind: 'asset', assetId: 'building:' + demo, variant: 0 };
+  if (params.get('tower') === '1') rules.testMap = { kind: 'asset', assetId: 'building:union-tower', variant: 0 };
+  if (params.has('testAsset')) rules.testMap = { kind: 'asset', assetId: params.get('testAsset')!, variant: Number(params.get('variant') ?? 0) };
+  if (!rules.testMap) return;
+  rules.kind = 'sandbox';
+  rules.district = 'classic';
+  rules.seed = DEFAULT_DISTRICT_SEEDS.classic;
+  rules.level = undefined;
+}
+
+/** No season means summer; `random` resolves from the seed; an unknown name is an explicit summer. */
+function applySeasonLink(rules: SessionRules, seasonParam: string | null): void {
+  if (seasonParam == null || seasonParam === "") {
+    rules.season = "summer";
+    rules.seasonExplicit = false;
+    return;
   }
-  return rules;
+  rules.seasonExplicit = true;
+  if (seasonParam === "random") {
+    rules.seasonSelection = "random";
+    rules.season = resolveSeason(rules.seed);
+  } else if (isSeasonId(seasonParam)) {
+    rules.seasonSelection = seasonParam;
+    rules.season = seasonParam;
+  } else {
+    rules.season = "summer";
+    rules.seasonSelection = "summer";
+  }
+}
+
+/** The brick demolition job is its own challenge on the classic rivertown map. */
+function applyBrickJob(rules: SessionRules): void {
+  rules.testMap = undefined;
+  rules.towerTest = false;
+  rules.job = true;
+  rules.demo = "rivertown";
+  rules.kind = "challenge";
+  rules.district = "classic";
+  rules.level = undefined;
 }
 
 export function nextSeed(seed: number): number {

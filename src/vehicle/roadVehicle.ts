@@ -40,33 +40,31 @@ function attachRoadRoute(town: Town, v: RoadVehicle): void {
     if (v.route.length)
         return;
     const demo = pickVerificationRoute(town.network);
-    if (demo && demo.length) {
-        v.route = demo;
-        v.routeIndex = 0;
-        v.laneId = demo[0] ?? null;
-        return;
-    }
-    const start = nearestLane(town.network, v.x, v.y, v.layer);
-    const lanes = town.network.lanes.filter((l) => l.dir === 1);
-    let path: string[] | null = start ? [start.id] : null;
-    if (start) {
-        for (let i = lanes.length - 1; i >= 0; i--) {
-            const dest = lanes[i]!;
-            if (dest.id === start.id)
-                continue;
-            const found = findRoadRoute(town.network, start.id, dest.id);
-            if (found && found.length >= 2) {
-                path = found;
-                break;
-            }
-        }
-    }
+    const path = demo && demo.length ? demo : laneRoute(town, v);
     if (!path)
         return;
     v.route = path;
     v.routeIndex = 0;
     v.laneId = path[0] ?? null;
 }
+/** From the nearest lane to the last forward lane it can reach; just that lane when it reaches none. */
+function laneRoute(town: Town, v: RoadVehicle): string[] | null {
+    const start = nearestLane(town.network, v.x, v.y, v.layer);
+    if (!start)
+        return null;
+    const lanes = town.network.lanes.filter((l) => l.dir === 1 && l.id !== start.id);
+    return lastReachableRoute(town.network, start.id, lanes) ?? [start.id];
+}
+/** The route to the last lane, scanning back, that the start lane can reach. */
+function lastReachableRoute(network: Town['network'], startId: string, lanes: readonly { id: string }[]): string[] | undefined {
+    for (let i = lanes.length - 1; i >= 0; i--) {
+        const found = findRoadRoute(network, startId, lanes[i]!.id);
+        if (isRoute(found))
+            return found;
+    }
+    return undefined;
+}
+const isRoute = (path: string[] | null): path is string[] => !!path && path.length >= 2;
 export function stepRoadVehicle(v: RoadVehicle, town: Town, dt: number): void {
     if (!v.alive)
         return;

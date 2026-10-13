@@ -117,29 +117,33 @@ export class ParticlePool {
         p.alive = false;
         continue;
       }
-      if (p.settled) continue;
-      p.vx *= 1 - 1.4 * dt;
-      p.vy *= 1 - 1.4 * dt;
-      p.vz -= (p.kind === "dust" || p.kind === "crop" ? 4.5 : 18) * dt;
-      p.x += p.vx * dt;
-      p.y += p.vy * dt;
-      p.z += p.vz * dt;
-      p.rot += p.spin * dt;
-      if (p.z <= 0) {
-        p.z = 0;
-        p.vz *= -0.28;
-        p.vx *= 0.55;
-        p.vy *= 0.55;
-        if (p.kind === "dust" || p.kind === "crop" || Math.abs(p.vz) < 1.1) {
-          p.settled = true;
-          p.vz = 0;
-          p.vx = 0;
-          p.vy = 0;
-          if (p.kind === "dust" || p.kind === "crop") p.life = Math.min(p.life, 0.35);
-        }
-      }
+      if (!p.settled) flyParticle(p, dt);
     }
   }
+}
+
+/** Light dust and crop chaff float and settle on first touch; heavy chips bounce until slow. */
+const floats = (p: Particle) => p.kind === "dust" || p.kind === "crop";
+
+function flyParticle(p: Particle, dt: number): void {
+  p.vx *= 1 - 1.4 * dt;
+  p.vy *= 1 - 1.4 * dt;
+  p.vz -= (floats(p) ? 4.5 : 18) * dt;
+  p.x += p.vx * dt;
+  p.y += p.vy * dt;
+  p.z += p.vz * dt;
+  p.rot += p.spin * dt;
+  if (p.z > 0) return;
+  p.z = 0;
+  p.vz *= -0.28;
+  p.vx *= 0.55;
+  p.vy *= 0.55;
+  if (!floats(p) && Math.abs(p.vz) >= 1.1) return;
+  p.settled = true;
+  p.vz = 0;
+  p.vx = 0;
+  p.vy = 0;
+  if (floats(p)) p.life = Math.min(p.life, 0.35);
 }
 
 export function debrisKind(material: string): ParticleKind {
