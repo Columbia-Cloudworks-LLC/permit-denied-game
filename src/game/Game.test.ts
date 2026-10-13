@@ -295,3 +295,129 @@ describe('upgrades', () => {
     expect(internal.mode).toBe('play');
   });
 });
+
+describe('playthrough record and replay', () => {
+  type Status = ReturnType<NonNullable<typeof window.__pd>['playthroughStatus']>;
+  const pd = () => window.__pd!;
+  const status = (): Status => pd().playthroughStatus();
+  const upgrades = () => (internal as unknown as { upgrades: Record<string, number> }).upgrades;
+  /** Run frames until the replay has run every recorded step. */
+  const finishReplay = () => { for (let i = 0; i < 2000 && !status().done; i++) internal.frame(SIM_DT); };
+
+  beforeEach(async () => {
+    localStorage.removeItem('pd.playthrough.last');
+    history.replaceState(null, '', '/?sandbox=1&ranch=1');
+    document.body.innerHTML = '<div id="game-root"></div><div id="hud-root"></div>';
+    game.destroy();
+    game = await boot();
+    internal = game as unknown as GameInternals;
+  });
+
+  it('records from the debug binder, then replays the demolition to the same end state without live input', () => {
+    internal.hud.openDebug();
+    expect(hud('#debug-panel').hidden).toBe(false);
+    hud('.debug-playthrough [data-pt=record]').click();
+    expect(hud('#debug-panel').hidden).toBe(true);
+    frames(1);
+    expect(hud('#playthrough-badge').hidden).toBe(false);
+    expect(hud('#playthrough-badge').textContent).toContain('REC');
+    key('w'); frames(150);
+    key('1'); key(' '); frames(20); key(' ', 'keyup');
+    key('a'); frames(40); key('a', 'keyup');
+    frames(60); key('w', 'keyup'); frames(30);
+    expect(internal.cash).toBeGreaterThan(0);
+    const fee = internal.hud.onResubmit!();
+    frames(5);
+    hud('#playthrough-badge [data-pt=stop]').click();
+    const recorded = pd().lastPlaythrough()!;
+    expect(recorded.steps).toBeGreaterThan(250);
+    expect(recorded.final.steps).toBe(recorded.steps);
+    expect(recorded.actions).toEqual([
+      expect.objectContaining({ kind: 'upgrade', id: 'blade' }),
+      expect.objectContaining({ kind: 'resubmit', fee }),
+    ]);
+    expect(recorded.final.cells.intact).toBeLessThan(Object.values(recorded.final.cells).reduce((a, b) => a + b, 0));
+    expect(JSON.parse(localStorage.getItem('pd.playthrough.last')!).steps).toBe(recorded.steps);
+    frames(1);
+    expect(hud('#playthrough-badge').hidden).toBe(true);
+
+    internal.hud.openDebug();
+    hud('.debug-playthrough [data-pt=replay]').click();
+    expect(hud('#debug-panel').hidden).toBe(true);
+    // Held keys and upgrade picks during a replay never reach the run.
+    key('s'); key('2');
+    finishReplay();
+    key('s', 'keyup');
+    expect(status()).toMatchObject({ state: 'replaying', done: true, drift: [], step: recorded.steps });
+    expect(hud('#playthrough-badge').textContent).toContain('MATCH');
+    expect(upgrades()).toMatchObject({ blade: 1, engine: 0 });
+    expect(internal.cash).toBe(recorded.final.cash);
+    expect(pd().dozerSnapshot()).toMatchObject({ x: recorded.final.dozer.x, y: recorded.final.dozer.y, heading: recorded.final.dozer.heading });
+    // A finished replay holds the simulation until it is left.
+    const held = pd().snapshot().elapsed;
+    frames(10);
+    expect(pd().snapshot().elapsed).toBe(held);
+    pd().playthroughControl('exit');
+    expect(status().state).toBe('idle');
+  });
+
+  it('pauses, resumes and restarts a replay from the badge', () => {
+    pd().startRecording();
+    key('w'); frames(40); key('w', 'keyup');
+    pd().stopRecording();
+    pd().replayPlaythrough();
+    frames(10);
+    hud('#playthrough-badge [data-pt=toggle]').click();
+    const paused = status().step;
+    frames(10);
+    expect(status()).toMatchObject({ paused: true, step: paused });
+    expect(hud('#playthrough-badge').textContent).toContain('PAUSED');
+    pd().playthroughControl('play');
+    frames(5);
+    expect(status().step).toBeGreaterThan(paused);
+    // A frozen replay steps one recorded frame at a time, never past its end.
+    internal.hud.onDebugToggle!('freeze', true);
+    const frozen = status().step;
+    internal.hud.onDebugStep!();
+    expect(status().step).toBe(frozen + 1);
+    internal.hud.onDebugToggle!('freeze', false);
+    hud('#playthrough-badge [data-pt=restart]').click();
+    expect(status()).toMatchObject({ state: 'replaying', step: 0 });
+    finishReplay();
+    expect(status().drift).toEqual([]);
+    internal.hud.onDebugToggle!('freeze', true);
+    internal.hud.onDebugStep!();
+    expect(status().step).toBe(status().steps);
+  });
+
+  it('records a Time Challenge level from active play and replays it on that level', () => {
+    game.setSession('challenge');
+    expect(internal.mode).toBe('briefing');
+    pd().startRecording();
+    expect(internal.mode).toBe('play');
+    key('w'); frames(30); key('w', 'keyup');
+    const recorded = pd().stopRecording()!;
+    expect(recorded.campaign).toMatchObject({ briefing: false, levelIndex: 0 });
+    game.setSession('sandbox');
+    pd().replayPlaythrough(JSON.stringify(recorded));
+    expect(internal.campaign?.levelIndex).toBe(0);
+    expect(internal.mode).toBe('play');
+    finishReplay();
+    expect(status().drift).toEqual([]);
+  });
+
+  it('saves a recording when the site is restarted, and reports a malformed replay file', async () => {
+    pd().startRecording();
+    key('w'); frames(20); key('w', 'keyup');
+    key('r'); frames(1);
+    expect(status().state).toBe('idle');
+    expect(pd().lastPlaythrough()?.steps).toBeGreaterThan(0);
+    expect(() => pd().replayPlaythrough('{"format":"other"}')).toThrow('Not a PERMIT DENIED playthrough file.');
+    const file = hud('.debug-playthrough input[type=file]') as HTMLInputElement;
+    Object.defineProperty(file, 'files', { configurable: true, value: [new File(['not json'], 'bad.json')] });
+    file.dispatchEvent(new Event('change'));
+    await vi.waitFor(() => expect(status().note).toMatch(/^Could not load replay/));
+    frames(1);
+    expect(hud('.debug-playthrough [data-pt-note]').textContent).toMatch(/^Could not load replay/);
+  });
+});
