@@ -216,7 +216,7 @@ describe("seasons", () => {
     }
     expect(open).toBeTruthy();
     leaveSeasonalTrack(town, open!.x, open!.y, 0.4);
-    expect(town.marks.filter((mark) => mark.kind === "season-track")).toHaveLength(1);
+    expect(town.marks.filter((mark) => mark.kind === "season-track")).toHaveLength(2);
     const weather = new SeasonWeather();
     weather.step({ dt: 1, kind: "flurries", detail: "off", camX: 0, camY: 0, seed: 1 });
     expect(weather.flakes).toHaveLength(0);

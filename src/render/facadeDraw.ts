@@ -8,6 +8,7 @@ import { drawFaceWindow, drawIsoBox, drawShadow, drawWorldPoly } from "./drawIso
 import { drawThickBrokenWall } from "./interiorDraw";
 import { topFaceColor, wallFaceColor } from "./lighting";
 import { PAL } from "./palette";
+import { worldToScreen } from "../world/iso";
 
 const STORY_H = FLOOR_Z;
 
@@ -39,14 +40,39 @@ function drawSouthWall(g: Graphics, b: Building, span: WallSpan, mat: Cell["mate
   if (span.floor === 0) {
     drawFaceWindow(g, x0, y1, x0 + w, y1, z0, z1, 0, 1, 0, 0.1, PAL.foundation, alpha * 0.65);
   }
-  if (span.visual === "cracked") {
-    const mid = x0 + w * 0.48;
-    drawFaceWindow(g, mid - 0.02, y1, mid + 0.02, y1, z0, z1, 0, 1, 0.2, 0.85, PAL.crack, alpha * 0.55);
-  }
+  if (span.visual === "cracked") drawFaceCracks(g, span.gx1 - span.gx0 + 1, b.id * 31 + span.gx0 * 7 + span.floor, x0, y1, x0 + w, y1, z0, z1, alpha);
   if (span.visual === "broken-edge") {
     drawThickBrokenWall(g, b, "south", x0, y1, w, z0, mat, alpha);
   }
   drawSouthFacadeDecor(g, b, span, alpha);
+}
+
+/** Stable 0..1 jitter for a crack vertex, so cached facades redraw the same fracture. */
+const crackJitter = (seed: number, i: number) => {
+  const v = Math.sin(seed * 12.9898 + i * 78.233) * 43758.5453;
+  return v - Math.floor(v);
+};
+
+/**
+ * A stressed wall shows a fracture per cell: a jagged run from an upper impact point
+ * down the face, with one branch, over a darker spall where the blow landed.
+ */
+export function drawFaceCracks(
+  g: Graphics, cells: number, seed: number,
+  x0: number, y0: number, x1: number, y1: number, z0: number, z1: number, alpha: number,
+): void {
+  const at = (u: number, v: number) => worldToScreen(x0 + (x1 - x0) * u, y0 + (y1 - y0) * u, z0 + (z1 - z0) * v);
+  for (let cell = 0; cell < cells; cell++) {
+    const s = seed + cell * 13, left = cell / cells, span = 1 / cells;
+    const u0 = left + span * (0.3 + crackJitter(s, 0) * 0.4), v0 = 0.62 + crackJitter(s, 1) * 0.22;
+    drawFaceWindow(g, x0, y0, x1, y1, z0, z1, u0 - span * 0.07, u0 + span * 0.07, v0 - 0.06, v0 + 0.06, PAL.crack, alpha * 0.3);
+    const run = [at(u0, v0)];
+    for (let i = 1; i <= 4; i++) run.push(at(u0 + (crackJitter(s, i + 1) - 0.5) * span * 0.34, v0 - i * (v0 - 0.08) / 4));
+    g.poly(run.flatMap(p => [p.x, p.y]), false);
+    const fork = run[2]!, tip = at(u0 + (crackJitter(s, 7) > 0.5 ? 1 : -1) * span * 0.28, v0 * 0.62 + 0.12);
+    g.moveTo(fork.x, fork.y).lineTo(tip.x, tip.y);
+    g.stroke({ color: PAL.crack, width: 1.3, alpha: alpha * 0.8, join: "miter" });
+  }
 }
 
 function drawEastWall(g: Graphics, b: Building, span: WallSpan, mat: Cell["material"], color: number, alpha: number): void {
@@ -63,6 +89,7 @@ function drawEastWall(g: Graphics, b: Building, span: WallSpan, mat: Cell["mater
   if (span.floor === 0) {
     drawFaceWindow(g, x1, y0, x1, y0 + d, z0, z1, 0, 1, 0, 0.1, PAL.foundation, alpha * 0.5);
   }
+  if (span.visual === "cracked") drawFaceCracks(g, span.gy1 - span.gy0 + 1, b.id * 37 + span.gy0 * 11 + span.floor, x1, y0, x1, y0 + d, z0, z1, alpha);
   if (span.visual === "broken-edge") {
     drawThickBrokenWall(g, b, "east", x1, y0, d, z0, mat, alpha);
   }

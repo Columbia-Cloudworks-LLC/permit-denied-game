@@ -17,6 +17,7 @@ import {
 } from "../structure/building";
 import { applyFixtureDamage, fixtureSolid, fixtureWorldBox, interiorFloorCoverage, type FixtureFrag } from "../structure/interior";
 import { cellPresent, cellWorldBox, type Building, type Cell, type InteriorFixture, type Prop, type WorldEvent } from "../structure/types";
+import { MATERIALS, type Material } from "../structure/materials";
 import { bladePoints, clampDozer, dozerForward, dozerSpeed, resolveCircleSolid, type Dozer } from "../vehicle/dozer";
 import { stepRoadVehicle } from "../vehicle/roadVehicle";
 import type { Town } from "../world/town";
@@ -325,6 +326,11 @@ function bodyContact(c: DozerContact, ref: SolidRef): number {
   return hit.cash;
 }
 
+/** Dense materials and taller structures hit harder: wood ~0.9, a tall concrete block ~1.4. */
+export function impactHeft(building: Building, material: Material): number {
+  return 0.62 + MATERIALS[material].density * 0.5 + Math.min(6, building.floors) * 0.02;
+}
+
 /** Ramming a wall cell: heat, track wear, a thump on hard hits, and damage scaled by impact. */
 function ramCell(c: DozerContact, ref: SolidRef): number {
   const { dozer } = c;
@@ -334,12 +340,16 @@ function ramCell(c: DozerContact, ref: SolidRef): number {
   dozer.heat += impact * DOZER.heatImpact * 0.08;
   dozer.track += impact * 0.35;
   if (impact > 1.6) {
+    const f = dozerForward(dozer);
     c.events.push({
       kind: "impact",
       x: dozer.x,
       y: dozer.y,
       z: 0.6,
-      mag: Math.min(2.2, impact * 0.35),
+      mag: Math.min(2.6, impact * 0.35 * impactHeft(ref.building, ref.cell.material)),
+      material: ref.cell.material,
+      dirX: f.x,
+      dirY: f.y,
     });
   }
   const amt = impact * DOZER.ramScale * 0.35 * c.bladeMul;

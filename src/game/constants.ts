@@ -52,6 +52,8 @@ export const PARTICLE_CAP = 420;
 export const DEBRIS = {
   retireRadius: 28,
   retireDelay: 8,
+  /** Chunks on pavement wait this many retire delays, as evidence of the rampage. */
+  roadLinger: 3,
   remnantCap: 96,
   fragmentCap: 140,
   hardOverflow: 24,

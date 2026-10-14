@@ -298,6 +298,8 @@ export interface GroundMark {
   material: Material;
   seed: number;
   alpha: number;
+  /** Surface colour override, e.g. churned mud under a tread. */
+  tint?: number;
 }
 
 export interface Obstruction {
@@ -429,7 +431,7 @@ export interface Bird {
   life: number;
 }
 
-export type ParticleKind = "brick" | "concrete" | "wood" | "glass" | "metal" | "dust" | "crop";
+export type ParticleKind = "brick" | "concrete" | "wood" | "glass" | "metal" | "dust" | "crop" | "spark";
 
 export interface Particle {
   yardOwner?: string;
@@ -458,6 +460,9 @@ export interface WorldEvent {
   mag: number;
   material?: Material;
   cash?: number;
+  /** World-space direction of travel into an impact, for a directional camera jolt. */
+  dirX?: number;
+  dirY?: number;
 }
 
 export function materialHp(material: Material): number { return MATERIALS[material].hp; }

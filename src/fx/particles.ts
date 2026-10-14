@@ -52,26 +52,43 @@ export class ParticlePool {
     for (const p of this.items) {
       if (n >= count) return;
       if (p.alive && !p.settled) continue;
-      const ang = this.rng.range(0, Math.PI * 2);
-      const sp = this.rng.range(0.2, 1) * speed;
-      p.yardOwner = owner ?? this.ownerAt?.(x, y);
-      p.alive = true;
-      p.kind = kind;
-      p.x = x + this.rng.range(-0.15, 0.15);
-      p.y = y + this.rng.range(-0.15, 0.15);
-      p.z = Math.max(0.05, z + this.rng.range(-0.2, 0.4));
-      p.vx = Math.cos(ang) * sp;
-      p.vy = Math.sin(ang) * sp;
-      p.vz = this.rng.range(0.4, 1) * up;
-      p.maxLife = kind === "dust" || kind === "crop" ? this.rng.range(0.28, 0.7) : this.rng.range(0.9, 2.4);
-      p.life = p.maxLife;
-      p.size = kind === "dust" ? this.rng.range(0.18, 0.45) : kind === "crop" ? this.rng.range(0.06, 0.14) : this.rng.range(0.08, 0.22);
-      p.rot = this.rng.range(0, Math.PI * 2);
-      p.spin = this.rng.range(-8, 8);
-      p.settled = false;
-      p.tint = tint;
+      this.launch(p, kind, x, y, z, speed, up, owner, tint);
       n++;
     }
+  }
+
+  /** Sparks off a scraping edge, thrown with velocity (vx, vy) plus a little scatter. */
+  sparks(x: number, y: number, vx: number, vy: number, count: number, scatter: number): void {
+    let n = 0;
+    for (const p of this.items) {
+      if (n >= count) return;
+      if (p.alive && !p.settled) continue;
+      this.launch(p, "spark", x, y, 0.06, scatter, 2.2);
+      p.vx += vx;
+      p.vy += vy;
+      n++;
+    }
+  }
+
+  private launch(p: Particle, kind: ParticleKind, x: number, y: number, z: number, speed: number, up: number, owner?: string, tint?: number): void {
+    const ang = this.rng.range(0, Math.PI * 2);
+    const sp = this.rng.range(0.2, 1) * speed;
+    p.yardOwner = owner ?? this.ownerAt?.(x, y);
+    p.alive = true;
+    p.kind = kind;
+    p.x = x + this.rng.range(-0.15, 0.15);
+    p.y = y + this.rng.range(-0.15, 0.15);
+    p.z = Math.max(0.05, z + this.rng.range(-0.2, 0.4));
+    p.vx = Math.cos(ang) * sp;
+    p.vy = Math.sin(ang) * sp;
+    p.vz = this.rng.range(0.4, 1) * up;
+    p.maxLife = particleLife(kind, this.rng);
+    p.life = p.maxLife;
+    p.size = particleSize(kind, this.rng);
+    p.rot = this.rng.range(0, Math.PI * 2);
+    p.spin = this.rng.range(-8, 8);
+    p.settled = false;
+    p.tint = tint;
   }
 
   cropFrags(x: number, y: number, z: number, count: number, tint: number, owner?: string): void {
@@ -122,6 +139,16 @@ export class ParticlePool {
   }
 }
 
+function particleLife(kind: ParticleKind, rng: Rng): number {
+  if (kind === "spark") return rng.range(0.16, 0.38);
+  return kind === "dust" || kind === "crop" ? rng.range(0.28, 0.7) : rng.range(0.9, 2.4);
+}
+
+function particleSize(kind: ParticleKind, rng: Rng): number {
+  if (kind === "dust") return rng.range(0.18, 0.45);
+  return kind === "crop" ? rng.range(0.06, 0.14) : rng.range(0.08, 0.22);
+}
+
 /** Light dust and crop chaff float and settle on first touch; heavy chips bounce until slow. */
 const floats = (p: Particle) => p.kind === "dust" || p.kind === "crop";
 
@@ -135,6 +162,11 @@ function flyParticle(p: Particle, dt: number): void {
   p.rot += p.spin * dt;
   if (p.z > 0) return;
   p.z = 0;
+  // Sparks wink out on the pavement instead of settling into chips.
+  if (p.kind === "spark") {
+    p.life = Math.min(p.life, 0.05);
+    return;
+  }
   p.vz *= -0.28;
   p.vx *= 0.55;
   p.vy *= 0.55;

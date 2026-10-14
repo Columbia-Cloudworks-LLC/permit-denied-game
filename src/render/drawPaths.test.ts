@@ -6,10 +6,11 @@ import type { GroundKind, GroundMark } from '../structure/types';
 import { seasonTrackColor } from '../world/season';
 import { getBuildingSurfaces } from './buildingSurfaces';
 import { PAL } from './drawIso';
-import { drawWallSpan } from './facadeDraw';
+import { drawFaceCracks, drawWallSpan } from './facadeDraw';
 import { facadeDetailCommand } from './facadeDetails';
 import { drawForestMass } from './forestCanopy';
 import { drawGroundMark } from './groundDraw';
+import { shade } from './palette';
 import { drawRoofBay } from './roofDraw';
 import { siloCommands } from './silos';
 
@@ -114,9 +115,34 @@ describe('ground marks', () => {
     expect(draw((g) => drawGroundMark(g, mark('splinter', 'brick')))).toEqual([PAL.brickDark]);
     expect(draw((g) => drawGroundMark(g, mark('chip', 'metal')))).toEqual([PAL.metalDark]);
     expect(draw((g) => drawGroundMark(g, mark('chip', 'glass')))).toEqual([PAL.concreteDark]);
-    expect(draw((g) => drawGroundMark(g, mark('season-track'), 'winter'))).toEqual([seasonTrackColor('winter')]);
-    for (const kind of ['scrape', 'tire', 'oil', 'crack', 'dust', 'glass'] as const) {
+    expect(draw((g) => drawGroundMark(g, mark('season-track'), 'winter'))).toEqual([seasonTrackColor('winter'), shade(seasonTrackColor('winter'), 0.62)]);
+    for (const kind of ['scrape', 'oil', 'crack', 'dust', 'glass'] as const) {
       expect(draw((g) => drawGroundMark(g, mark(kind)))).toHaveLength(1);
     }
+  });
+
+  it('presses grouser grooves into a tread in its surface tint', () => {
+    const mud = 0x2a1f12;
+    expect(draw((g) => drawGroundMark(g, { ...mark('tire'), tint: mud }))).toEqual([mud, shade(mud, 0.62)]);
+  });
+});
+
+describe('facade fractures', () => {
+  const strokes = (g: Graphics) => g.context.instructions.filter((i) => i.action === 'stroke').length;
+
+  it('draws one stable spalled fracture per cracked cell on either face', () => {
+    const ranch = createBuildingFromArchetype('ranch', 'CRACK', 0, 0);
+    for (const dir of ['south', 'east'] as const) {
+      const span = { ...getBuildingSurfaces(ranch).walls.find((s) => s.dir === dir)!, visual: 'cracked' as const };
+      const cells = dir === 'south' ? span.gx1 - span.gx0 + 1 : span.gy1 - span.gy0 + 1;
+      const g = new Graphics();
+      drawWallSpan(g, ranch, span, 1);
+      expect(strokes(g)).toBe(cells);
+      expect(fills(g).filter((c) => c === PAL.crack)).toHaveLength(cells);
+    }
+    const once = new Graphics(), twice = new Graphics();
+    drawFaceCracks(once, 2, 7, 0, 0, 2, 0, 0, 2, 1);
+    drawFaceCracks(twice, 2, 7, 0, 0, 2, 0, 0, 2, 1);
+    expect({ ...once.bounds }).toEqual({ ...twice.bounds });
   });
 });

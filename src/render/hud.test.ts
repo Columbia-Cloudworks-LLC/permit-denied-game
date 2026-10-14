@@ -46,6 +46,8 @@ describe('play readouts', () => {
     expect(text('#hud-clock-label')).toBe('County Clock');
     expect(text('#hud-advisory')).toBe('HIGH HEAT · RELEASE BLADE');
     expect(root.querySelector('#gauge-heat')!.classList.contains('warning')).toBe(true);
+    expect(root.querySelector('#gauge-heat')!.classList.contains('critical')).toBe(false);
+    expect(root.querySelector('#gauge-track')!.classList.contains('critical')).toBe(true);
     expect(root.querySelector('#gauge-heat')!.getAttribute('aria-valuenow')).toBe('80');
     expect(text('#mobile-cash')).toBe('$1,234');
     expect(text('#mobile-target')).toBe(`of $${CASH_TARGET.toLocaleString('en-US')}`);

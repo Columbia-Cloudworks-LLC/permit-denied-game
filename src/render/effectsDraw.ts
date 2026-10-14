@@ -67,8 +67,11 @@ const CHIP_COLORS: Partial<Record<ParticleKind, { color: number; dark: number }>
   brick: { color: PAL.brick, dark: PAL.brickDark },
   metal: { color: PAL.metal, dark: PAL.metalDark },
   glass: { color: 0xa8c4d0, dark: PAL.concreteDark },
+  spark: { color: 0xffc860, dark: 0xff8a24 },
 };
 const CONCRETE_CHIP = { color: PAL.concrete, dark: PAL.concreteDark };
+const SPARK_CORE = 0xfffbe8;
+const SPARK_GLOW = 0xffa630;
 
 function particleChip(p: Particle): { color: number; dark: number; len: number; wid: number } {
   if (p.kind === "crop") {
@@ -82,8 +85,20 @@ function particleChip(p: Particle): { color: number; dark: number; len: number; 
   return { color, dark, len, wid };
 }
 
+/** A hot streak along its flight, a white core over an orange glow, with no ground shadow. */
+function drawSpark(g: Graphics, p: Particle, fade: number): void {
+  const a = worldToScreen(p.x, p.y, p.z);
+  const b = worldToScreen(p.x - p.vx * 0.06, p.y - p.vy * 0.06, p.z - p.vz * 0.06);
+  g.moveTo(a.x, a.y).lineTo(b.x, b.y).stroke({ color: SPARK_GLOW, width: 4.5, alpha: 0.6 * fade, cap: "round" });
+  g.moveTo(a.x, a.y).lineTo(b.x, b.y).stroke({ color: SPARK_CORE, width: 1.8, alpha: fade, cap: "round" });
+}
+
 export function drawParticle(g: Graphics, p: Particle): void {
   const fade = Math.min(1, p.life / p.maxLife);
+  if (p.kind === "spark") {
+    drawSpark(g, p, fade);
+    return;
+  }
   const s = worldToScreen(p.x, p.y, 0);
   g.ellipse(s.x, s.y, 3.2, 1.6);
   g.fill({ color: PAL.shadow, alpha: 0.2 * fade });

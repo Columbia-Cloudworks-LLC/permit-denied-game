@@ -5,6 +5,7 @@ import { ParticlePool } from '../fx/particles';
 import { applyCellDamage } from '../structure/building';
 import { addDebrisBody, stepDebris, totalDebrisMass } from './debris';
 import { stepWorld } from './worldSim';
+import { DEBRIS } from '../game/constants';
 
 it.each([true, false])('retires distant unattended debris below the caps without losing mass (sleeping=%s)', sleeping => {
   const town = createTown(), particles = new ParticlePool(), dozer = createDozer(2, 2, 0);
@@ -23,7 +24,9 @@ it('releases a distant demolished building runtime while retaining its site and 
   town.maxX += 100; town.maxY += 100;
   const dozer = createDozer(town.maxX - 1, town.maxY - 1, 0);
   for (const cell of b.cells) applyCellDamage(b, cell, 999, 1, 0, particles, []);
-  for (let i = 0; i < 900; i++) stepWorld(town, dozer, particles, { blade: 0, engine: 0, push: 0 }, 1/60);
+  // Long enough for the collapse to land and chunks thrown onto the road to outlast their pavement grace.
+  const steps = Math.ceil((DEBRIS.retireDelay * DEBRIS.roadLinger + 3) * 60);
+  for (let i = 0; i < steps; i++) stepWorld(town, dozer, particles, { blade: 0, engine: 0, push: 0 }, 1/60);
   expect(b.fullyDown).toBe(true);
   expect(b.collapseBonusPaid).toBe(true);
   expect(town.collapsedSites.filter(s => s.buildingId === b.id)).toHaveLength(1);

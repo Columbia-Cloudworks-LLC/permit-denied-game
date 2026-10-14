@@ -27,10 +27,11 @@ import { CameraShake } from "../fx/cameraShake";
 import { ParticlePool } from "../fx/particles";
 import { Hud, type CampaignHud, type HudState } from "../render/hud";
 import { WorldRenderer } from "../render/WorldRenderer";
+import { cashAnchor } from "../render/cashPopups";
 import { lastDebrisStats, obstructionAt } from "../sim/debris";
 import { stepWorld, type Upgrades } from "../sim/worldSim";
 import type { Bird, WorldEvent } from "../structure/types";
-import { createDozer, dozerSpeed, stepDozer } from "../vehicle/dozer";
+import { createDozer, dozerForward, dozerSpeed, stepDozer } from "../vehicle/dozer";
 import { createRoadVehicle, replaceRoadVehicle } from "../vehicle/roadVehicle";
 import { pickVerificationRoute } from "../world/routing";
 import { worldBoundsToScreen, worldToScreen } from "../world/iso";
@@ -66,6 +67,7 @@ import { ARCHETYPES } from "../world/archetypes";
 import {
   CASH_TARGET,
   COPY,
+  DOZER,
   MATCH_SECONDS,
   SIM_DT,
   SIM_MAX_STEPS,
@@ -283,6 +285,7 @@ class Game {
     this.followRoadCamera = !!followed;
     this.shake.reset();
     this.renderer.bowlingStrikes.clear();
+    this.renderer.cashPopups.clear();
     this.renderer.invalidate();
     this.birds = [];
     this.resetRun(keepSetup, ranch);
@@ -572,6 +575,7 @@ class Game {
     const out = stepWorld(this.town, this.dozer, this.particles, this.upgrades, dt);
     this.lastMetrics = out.metrics;
     this.earn(out.cash);
+    this.popCash(out.cash, out.events);
     this.react(out.events);
     this.syncFieldNotice(dt);
     this.stepBirds(out.birds, dt);
@@ -583,6 +587,17 @@ class Game {
     if (this.offerUpgrade()) return;
     if (this.campaign) this.judgeCampaign(this.campaign);
     else this.judgeSession();
+  }
+
+  /** Float the step's earnings over the damage that paid them, or the blade when nothing says where. */
+  private popCash(amount: number, events: WorldEvent[]): void {
+    if (!(amount > 0)) return;
+    const at = cashAnchor(events);
+    if (at) this.renderer.cashPopups.credit(amount, at.x, at.y, at.z);
+    else {
+      const f = dozerForward(this.dozer);
+      this.renderer.cashPopups.credit(amount, this.dozer.x + f.x * DOZER.bladeReach, this.dozer.y + f.y * DOZER.bladeReach, 1);
+    }
   }
 
   private earn(amount: number): void {
@@ -709,7 +724,12 @@ class Game {
   /** Camera shake and sound for each kind of world event. */
   private readonly reactions: Partial<Record<WorldEvent["kind"], (e: WorldEvent) => void>> = {
     "bowling-strike": () => { this.renderer.bowlingStrikes.add(); this.audio.bowlingPins(); },
-    impact: (e) => { this.shake.punch(e.mag); this.audio.impact(e.mag); },
+    impact: (e) => {
+      // The screen lurches along the dozer's travel, projected into screen space.
+      const dir = worldToScreen(e.dirX ?? 0, e.dirY ?? 0);
+      this.shake.punch(e.mag, dir.x, dir.y);
+      this.audio.impact(e.mag);
+    },
     breach: (e) => { this.shake.punch(e.mag); this.audio.impact(e.mag); this.audio.breakMat(e.mag); },
     collapse: (e) => { this.shake.punch(e.mag * 1.4); this.audio.collapse(e.mag); },
     cash: () => this.audio.cash(),

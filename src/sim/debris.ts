@@ -18,6 +18,7 @@ import type {
 import type { Dozer } from "../vehicle/dozer";
 import { dozerForward, dozerSpeed } from "../vehicle/dozer";
 import type { Town } from "../world/town";
+import { pointOnRoad } from "../world/roads";
 import { SpatialHash } from "./spatial";
 import { pileResistance, queryObstruction } from "./pile";
 import { siteContaining, siteFeel } from "../structure/site";
@@ -186,7 +187,8 @@ function markSize(kind: GroundKind, rng: { range: (a: number, b: number) => numb
     case "scrape":
       return { w: rng.range(0.28, 0.7), d: rng.range(0.05, 0.1), alpha: 0.35 };
     case "tire":
-      return { w: rng.range(0.42, 0.85), d: rng.range(0.06, 0.12), alpha: 0.28 };
+      // Longer than the 0.87 m tread-cue spacing, so a run of marks reads as one continuous track.
+      return { w: rng.range(0.94, 1.0), d: rng.range(0.32, 0.36), alpha: 0.34 };
     case "oil":
       return { w: rng.range(0.22, 0.48), d: rng.range(0.16, 0.32), alpha: 0.32 };
     case "crack":
@@ -576,6 +578,12 @@ function debrisProtected(town: Town, r: Rubble, dozerX: number, dozerY: number, 
     || town.vehicles.some(car=>car.alive&&(car.autonomous||Math.hypot(car.vx,car.vy)>.05)&&Math.hypot(r.x-car.x,r.y-car.y)<=DEBRIS.protectRadius);
 }
 
+/** Unattended chunks on pavement outlast the usual grace before joining the pile. */
+function lingersOnRoad(town: Town, r: Rubble, since: number): boolean {
+  const age = Math.min(debrisClock - since, debrisClock - r.touchedAt);
+  return age < DEBRIS.retireDelay * DEBRIS.roadLinger && pointOnRoad(town.network, r.x, r.y);
+}
+
 /** Unattended destruction becomes the editable pile after a bounded grace; returns bodies absorbed. */
 function retireUnattended(town: Town, dozerX: number, dozerY: number, touching: ReadonlySet<number>): number {
   let distance = 0;
@@ -585,6 +593,7 @@ function retireUnattended(town: Town, dozerX: number, dozerY: number, touching: 
     const since = unattendedSince.get(r);
     if (since === undefined) { unattendedSince.set(r, debrisClock); continue; }
     if (debrisClock - since < DEBRIS.retireDelay || debrisClock - r.touchedAt < DEBRIS.retireDelay) continue;
+    if (lingersOnRoad(town, r, since)) continue;
     absorbBody(town, r);
     unattendedSince.delete(r);
     distance++;
@@ -1374,7 +1383,7 @@ function recordDebrisStats(town: Town, contactPairs: number): void {
 
 export function depositSettledParticles(town: Town, particles: ParticlePool): void {
   for (const p of particles.items) {
-    if (!p.alive || !p.settled || p.kind === "dust" || p.kind === "crop") continue;
+    if (!p.alive || !p.settled || p.kind === "dust" || p.kind === "crop" || p.kind === "spark") continue;
     if (p.life > 0.4) continue;
     const kind: GroundKind = p.kind === "glass" ? "glass" : p.kind === "wood" ? "splinter" : "chip";
     const material: Material = p.kind;

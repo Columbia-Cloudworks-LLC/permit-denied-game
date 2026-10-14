@@ -554,7 +554,8 @@ export class Hud {
     const el = this.root.querySelector<HTMLElement>('#gauge-' + id)!;
     const clamped = Math.max(0, Math.min(100, value));
     el.style.setProperty('--needle', (clamped * 2.4 - 120) + 'deg');
-    el.classList.toggle('warning', value > 65);
+    el.classList.toggle('warning', value > GAUGE_WARNING);
+    el.classList.toggle('critical', value >= GAUGE_CRITICAL);
     el.setAttribute('aria-valuenow', String(Math.round(clamped)));
     el.querySelector('output')!.textContent = Math.round(clamped) + '%';
   }
@@ -793,6 +794,10 @@ const TAB_KEYS: Partial<Record<string, (index: number, count: number) => number>
   Home: () => 0,
   End: (_index, count) => count - 1,
 };
+
+/** Gauge rim thresholds: amber caution, then red critical. */
+const GAUGE_WARNING = 65;
+const GAUGE_CRITICAL = 85;
 
 function gauge(id: string, label: string): string {
   return `<div class="gauge-module"><div class="gauge" id="gauge-${id}" role="meter" aria-label="${label}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="gauge-ticks"></div><span class="gauge-min">0</span><span class="gauge-max">100</span><span class="gauge-needle"></span><span class="gauge-pin"></span><output>0%</output></div><span class="instrument-label">${label}</span></div>`;

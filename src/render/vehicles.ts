@@ -37,20 +37,24 @@ export function drawDozer(g: Graphics, d: Dozer, emphasis = false): void {
     drawOrientedIsoBox(g, idlerR.x, idlerR.y, h, 0.28, 0.36, 0.08, 0.22, 0x5a5a54, 0x2a2a26, 0x44443e, 1);
   }
 
+  // Hull pitch and impact compression ride on the tracks; the tracks stay on the ground.
+  const fx = Math.cos(h), fy = Math.sin(h), squash = d.lastImpact * 0.22;
+  const zAt = (p: { x: number; y: number }, z: number) => Math.max(0, z - d.pitch * ((p.x - d.x) * fx + (p.y - d.y) * fy) - squash);
+
   const belly = headingOffset(d.x, d.y, h, -0.12, 0);
-  drawOrientedIsoBox(g, belly.x, belly.y, h, 1.55, 0.92, 0.2, 0.22, PAL.dozerDark, 0x6a5410, PAL.dozerDark, 1);
+  drawOrientedIsoBox(g, belly.x, belly.y, h, 1.55, 0.92, zAt(belly, 0.2), 0.22, PAL.dozerDark, 0x6a5410, PAL.dozerDark, 1);
 
   const engine = headingOffset(d.x, d.y, h, -0.52, 0.04);
-  drawOrientedIsoBox(g, engine.x, engine.y, h, 1.05, 1.08, 0.38, 0.58, PAL.dozer, PAL.dozerDark, 0xf0cc42, 1);
+  drawOrientedIsoBox(g, engine.x, engine.y, h, 1.05, 1.08, zAt(engine, 0.38), 0.58, PAL.dozer, PAL.dozerDark, 0xf0cc42, 1);
   const grill = headingOffset(d.x, d.y, h, -1.02, 0.04);
-  drawOrientedIsoBox(g, grill.x, grill.y, h, 0.12, 0.86, 0.42, 0.42, 0x3a3a36, 0x1a1a18, 0x555550, 1);
+  drawOrientedIsoBox(g, grill.x, grill.y, h, 0.12, 0.86, zAt(grill, 0.42), 0.42, 0x3a3a36, 0x1a1a18, 0x555550, 1);
   const stack = headingOffset(d.x, d.y, h, -0.72, 0.28);
-  drawOrientedIsoBox(g, stack.x, stack.y, h, 0.12, 0.12, 0.94, 0.55, 0x4a4844, 0x2a2824, 0x6a6864, 1);
+  drawOrientedIsoBox(g, stack.x, stack.y, h, 0.12, 0.12, zAt(stack, 0.94), 0.55, 0x4a4844, 0x2a2824, 0x6a6864, 1);
   const cap = headingOffset(stack.x, stack.y, h, 0, 0);
-  drawOrientedIsoBox(g, cap.x, cap.y, h, 0.18, 0.18, 1.46, 0.08, 0x2a2824, 0x1a1814, 0x3a3834, 1);
+  drawOrientedIsoBox(g, cap.x, cap.y, h, 0.18, 0.18, zAt(cap, 1.46), 0.08, 0x2a2824, 0x1a1814, 0x3a3834, 1);
 
   const ripper = headingOffset(d.x, d.y, h, -1.28, 0);
-  drawOrientedIsoBox(g, ripper.x, ripper.y, h, 0.22, 0.18, 0.18, 0.42, PAL.blade, 0x4a4c50, 0x8a9094, 1);
+  drawOrientedIsoBox(g, ripper.x, ripper.y, h, 0.22, 0.18, zAt(ripper, 0.18), 0.42, PAL.blade, 0x4a4c50, 0x8a9094, 1);
 
   const bladeCenter = headingOffset(d.x, d.y, h, reach, 0);
   const cabCenter = headingOffset(d.x, d.y, h, 0.02, -0.16);
@@ -60,30 +64,30 @@ export function drawDozer(g: Graphics, d: Dozer, emphasis = false): void {
     for (const side of [-1, 1]) {
       const root = headingOffset(d.x, d.y, h, 0.28, side * 0.42);
       const mid = headingOffset(d.x, d.y, h, 0.72, side * 0.5);
-      drawOrientedIsoBox(g, root.x, root.y, h, 0.55, 0.13, 0.28, 0.16, PAL.dozerDark, 0x6a5410, PAL.dozer, 1);
-      drawOrientedIsoBox(g, mid.x, mid.y, h, 0.7, 0.1, bladeZ + 0.18, 0.12, PAL.blade, 0x4a4c50, 0x8a9094, 1);
+      drawOrientedIsoBox(g, root.x, root.y, h, 0.55, 0.13, zAt(root, 0.28), 0.16, PAL.dozerDark, 0x6a5410, PAL.dozer, 1);
+      drawOrientedIsoBox(g, mid.x, mid.y, h, 0.7, 0.1, zAt(mid, bladeZ + 0.18), 0.12, PAL.blade, 0x4a4c50, 0x8a9094, 1);
     }
     for (let i = -2; i <= 2; i++) {
       const t = i / 2;
       const yaw = h + t * 0.38;
       const p = headingOffset(d.x, d.y, h, reach + Math.abs(t) * 0.14, t * DOZER.bladeHalf * 0.9);
-      drawOrientedIsoBox(g, p.x, p.y, yaw, 0.2, DOZER.bladeHalf * 0.46, bladeZ, 0.58, PAL.blade, 0x4a4c50, 0xa8adb0, 1);
+      drawOrientedIsoBox(g, p.x, p.y, yaw, 0.2, DOZER.bladeHalf * 0.46, zAt(p, bladeZ), 0.58, PAL.blade, 0x4a4c50, 0xa8adb0, 1);
     }
     const lip = headingOffset(d.x, d.y, h, reach + 0.06, 0);
-    drawOrientedIsoBox(g, lip.x, lip.y, h, 0.08, DOZER.bladeHalf * 1.72, bladeZ + 0.5, 0.1, 0xb8bdc0, 0x6a6e72, PAL.blade, 1);
+    drawOrientedIsoBox(g, lip.x, lip.y, h, 0.08, DOZER.bladeHalf * 1.72, zAt(lip, bladeZ + 0.5), 0.1, 0xb8bdc0, 0x6a6e72, PAL.blade, 1);
   };
 
   const drawCab = () => {
     const cab = headingOffset(d.x, d.y, h, 0.02, -0.16);
-    drawOrientedIsoBox(g, cab.x, cab.y, h, 0.78, 0.74, 0.72, 0.7, PAL.dozerCabin, 0x1a2830, 0x3a5568, 1);
+    drawOrientedIsoBox(g, cab.x, cab.y, h, 0.78, 0.74, zAt(cab, 0.72), 0.7, PAL.dozerCabin, 0x1a2830, 0x3a5568, 1);
     const glass = headingOffset(d.x, d.y, h, 0.18, -0.16);
-    drawOrientedIsoBox(g, glass.x, glass.y, h, 0.42, 0.62, 0.92, 0.38, PAL.cabGlass, 0x1a3040, 0x4a7088, 0.92);
+    drawOrientedIsoBox(g, glass.x, glass.y, h, 0.42, 0.62, zAt(glass, 0.92), 0.38, PAL.cabGlass, 0x1a3040, 0x4a7088, 0.92);
     const roof = headingOffset(d.x, d.y, h, 0.02, -0.16);
-    drawOrientedIsoBox(g, roof.x, roof.y, h, 0.82, 0.78, 1.38, 0.1, PAL.dozer, PAL.dozerDark, 0xf0cc42, 1);
+    drawOrientedIsoBox(g, roof.x, roof.y, h, 0.82, 0.78, zAt(roof, 1.38), 0.1, PAL.dozer, PAL.dozerDark, 0xf0cc42, 1);
     const lightL = headingOffset(d.x, d.y, h, 0.42, -0.38);
     const lightR = headingOffset(d.x, d.y, h, 0.42, 0.08);
-    drawOrientedIsoBox(g, lightL.x, lightL.y, h, 0.08, 0.1, 0.86, 0.1, PAL.asphaltLine, 0x8a7a30, 0xf0e080, 1);
-    drawOrientedIsoBox(g, lightR.x, lightR.y, h, 0.08, 0.1, 0.86, 0.1, PAL.asphaltLine, 0x8a7a30, 0xf0e080, 1);
+    drawOrientedIsoBox(g, lightL.x, lightL.y, h, 0.08, 0.1, zAt(lightL, 0.86), 0.1, PAL.asphaltLine, 0x8a7a30, 0xf0e080, 1);
+    drawOrientedIsoBox(g, lightR.x, lightR.y, h, 0.08, 0.1, zAt(lightR, 0.86), 0.1, PAL.asphaltLine, 0x8a7a30, 0xf0e080, 1);
   };
 
   if (bladeInFront) {

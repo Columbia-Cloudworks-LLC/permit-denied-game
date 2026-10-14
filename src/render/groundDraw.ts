@@ -10,6 +10,7 @@ import type { CollapsedSite, GroundKind, GroundMark, GroundPatch, SiteMarkKind }
 import { coverColor, coverDark } from "./coverPalette";
 import { drawGroundPoly, drawIsoBox, drawOrientedGround, drawOrientedIsoBox, drawWorldPoly, PAL } from "./drawIso";
 import { worldToScreen } from "../world/iso";
+import { shade } from "./palette";
 
 const SITE_MARK_STYLE: Record<SiteMarkKind, { color: number; alpha: number }> = {
   dirt: { color: PAL.lotDark, alpha: 0.4 },
@@ -229,6 +230,7 @@ const MARK_COLORS: Record<Exclude<GroundKind, "chip" | "splinter" | "season-trac
 const CHIP_MARK_COLORS: Partial<Record<Material, number>> = { wood: PAL.woodDark, brick: PAL.brickDark, metal: PAL.metalDark };
 
 function markColor(mark: GroundMark, season: SeasonId = "summer"): number {
+  if (mark.tint !== undefined) return mark.tint;
   if (mark.kind === "season-track") return seasonTrackColor(season);
   if (mark.kind === "chip" || mark.kind === "splinter") return CHIP_MARK_COLORS[mark.material] ?? PAL.concreteDark;
   return MARK_COLORS[mark.kind];
@@ -236,20 +238,34 @@ function markColor(mark: GroundMark, season: SeasonId = "summer"): number {
 
 export function drawGroundMark(g: Graphics, mark: GroundMark, season: SeasonId = "summer"): void {
   const color = markColor(mark, season);
-  const fx = Math.cos(mark.heading);
-  const fy = Math.sin(mark.heading);
-  const hx = mark.w * 0.5;
-  const hy = mark.d * 0.5;
-  const pts = [
-    { x: mark.x + fx * hx - fy * hy, y: mark.y + fy * hx + fx * hy },
-    { x: mark.x + fx * hx + fy * hy, y: mark.y + fy * hx - fx * hy },
-    { x: mark.x - fx * hx + fy * hy, y: mark.y - fy * hx - fx * hy },
-    { x: mark.x - fx * hx - fy * hy, y: mark.y - fy * hx + fx * hy },
-  ];
-  const q = pts.flatMap((p) => {
+  g.poly(groundQuad(mark.x, mark.y, mark.heading, mark.w, mark.d));
+  g.fill({ color, alpha: mark.alpha });
+  if (mark.kind === "tire" || mark.kind === "season-track") drawTreadGrooves(g, mark, color);
+}
+
+/** Grouser bars pressed across a tread impression, darker than the compacted band. */
+const GROUSER_PITCH = 0.2;
+
+function drawTreadGrooves(g: Graphics, mark: GroundMark, color: number): void {
+  const fx = Math.cos(mark.heading), fy = Math.sin(mark.heading);
+  const bars = Math.max(2, Math.round(mark.w / GROUSER_PITCH));
+  for (let i = 0; i < bars; i++) {
+    const along = ((i + 0.5) / bars - 0.5) * mark.w;
+    g.poly(groundQuad(mark.x + fx * along, mark.y + fy * along, mark.heading, 0.06, mark.d * 0.92));
+  }
+  g.fill({ color: shade(color, 0.62), alpha: mark.alpha * 0.85 });
+}
+
+/** Screen polygon of a w (along heading) by d ground rectangle centred on (x, y). */
+function groundQuad(x: number, y: number, heading: number, w: number, d: number): number[] {
+  const fx = Math.cos(heading), fy = Math.sin(heading), hx = w * 0.5, hy = d * 0.5;
+  return [
+    { x: x + fx * hx - fy * hy, y: y + fy * hx + fx * hy },
+    { x: x + fx * hx + fy * hy, y: y + fy * hx - fx * hy },
+    { x: x - fx * hx + fy * hy, y: y - fy * hx - fx * hy },
+    { x: x - fx * hx - fy * hy, y: y - fy * hx + fx * hy },
+  ].flatMap((p) => {
     const s = worldToScreen(p.x, p.y, 0);
     return [s.x, s.y];
   });
-  g.poly(q);
-  g.fill({ color, alpha: mark.alpha });
 }
