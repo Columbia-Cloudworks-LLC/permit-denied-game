@@ -340,16 +340,18 @@ function ramCell(c: DozerContact, ref: SolidRef): number {
   dozer.heat += impact * DOZER.heatImpact * 0.08;
   dozer.track += impact * 0.35;
   if (impact > 1.6) {
-    const f = dozerForward(dozer);
+    // Impact energy is closing speed times the structure's weight tier; the jolt drives into the wall.
+    const heft = impactHeft(ref.building, ref.cell.material);
     c.events.push({
       kind: "impact",
       x: dozer.x,
       y: dozer.y,
       z: 0.6,
-      mag: Math.min(2.6, impact * 0.35 * impactHeft(ref.building, ref.cell.material)),
+      mag: Math.min(2.6, impact * 0.35 * heft),
       material: ref.cell.material,
-      dirX: f.x,
-      dirY: f.y,
+      dirX: -dozer.hitNx,
+      dirY: -dozer.hitNy,
+      heft,
     });
   }
   const amt = impact * DOZER.ramScale * 0.35 * c.bladeMul;

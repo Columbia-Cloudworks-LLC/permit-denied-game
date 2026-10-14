@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SIM_DT } from "../game/constants";
+import { DOZER, SIM_DT } from "../game/constants";
 import { createBuildingFromArchetype } from "../structure/building";
 import type { CoverKind, WorldEvent } from "../structure/types";
 import { impactHeft } from "./worldSim";
@@ -106,5 +106,60 @@ describe("impact heft", () => {
     const low = createBuildingFromArchetype("ranch", "T", 0, 0);
     expect(impactHeft(low, "concrete")).toBeGreaterThan(impactHeft(low, "wood"));
     expect(impactHeft({ ...low, floors: 6 }, "brick")).toBeGreaterThan(impactHeft({ ...low, floors: 1 }, "brick"));
+  });
+
+});
+
+describe("dozer pivot and track-crawl cues", () => {
+  const patch = (town: ReturnType<typeof createTown>, cover: CoverKind) =>
+    town.ground.push({ x: 0, y: 0, w: 40, d: 40, heading: 0, cover, seed: 1, z: 0.02 });
+
+  /** Pivot in place at full steer, off the road, for half a second, emitting cues each step. */
+  function pivot(town: ReturnType<typeof createTown>, speed = 0) {
+    const dozer = createDozer(6, 20, 0), particles = new ParticlePool(), events: WorldEvent[] = [];
+    for (let t = 0; t < 0.5; t += SIM_DT) {
+      dozer.vx = Math.cos(dozer.heading) * speed;
+      dozer.vy = Math.sin(dozer.heading) * speed;
+      dozer.yaw = DOZER.steer;
+      dozer.heading += dozer.yaw * SIM_DT;
+      emitDozerCues(town, dozer, particles, events, SIM_DT);
+    }
+    return { dozer, particles, events };
+  }
+
+  it("churns surface-tinted clumps from the inside track in a neutral turn, but not on pavement", () => {
+    const grass = createTown();
+    patch(grass, "grass");
+    const turned = pivot(grass);
+    const clumps = turned.particles.items.filter((p) => p.alive && p.kind === "crop");
+    expect(clumps.length).toBeGreaterThan(0);
+    // Positive yaw turns toward the right-hand side, so the inside track and its clumps are there.
+    const right = { x: -Math.sin(turned.dozer.heading), y: Math.cos(turned.dozer.heading) };
+    expect(clumps.some((p) => (p.x - 6) * right.x + (p.y - 20) * right.y > 0.2)).toBe(true);
+    const snow = createTown();
+    snow.groundCondition = "snow";
+    patch(snow, "dirt");
+    expect(pivot(snow).particles.items.some((p) => p.alive && p.kind === "crop" && p.tint === 0xe6ecef)).toBe(true);
+    const paved = createTown();
+    patch(paved, "parking");
+    expect(pivot(paved).particles.items.some((p) => p.alive && p.kind === "crop")).toBe(false);
+    expect(pivot(grass).events.some((e) => e.kind === "track-bind")).toBe(false);
+    expect(pivot(grass, 4).events.some((e) => e.kind === "track-bind")).toBe(true);
+  });
+
+  it("reports the blade landing once, and rolls the hull when one track mounts a pile", () => {
+    const town = createTown();
+    const dozer = createDozer(6, 20, 0), events: WorldEvent[] = [];
+    dozer.bladeLanded = true;
+    emitDozerCues(town, dozer, new ParticlePool(), events, SIM_DT);
+    expect(events.filter((e) => e.kind === "blade-drop")).toHaveLength(1);
+    // Rubble heaped under the right-hand (+y) track only.
+    for (let i = 0; i < 40; i++) town.pile.addMass(6 + (i % 5) * 0.2, 20.62, 1.2, "brick");
+    dozer.bladeLanded = false;
+    dozer.vy = 0;
+    dozer.vx = 0;
+    emitDozerCues(town, dozer, new ParticlePool(), [], SIM_DT);
+    expect(dozer.rideRoll).toBeGreaterThan(0);
+    expect(dozer.rideRoll).toBeLessThanOrEqual(0.026);
   });
 });

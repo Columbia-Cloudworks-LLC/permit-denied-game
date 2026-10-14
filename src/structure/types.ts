@@ -453,16 +453,18 @@ export interface Particle {
 }
 
 export interface WorldEvent {
-  kind: "bowling-strike" | "chip" | "breach" | "collapse" | "impact" | "cash" | "snap" | "bird" | "scrape" | "crush" | "spark" | "blast";
+  kind: "bowling-strike" | "chip" | "breach" | "collapse" | "impact" | "cash" | "snap" | "bird" | "scrape" | "crush" | "spark" | "blast" | "blade-drop" | "track-bind";
   x: number;
   y: number;
   z: number;
   mag: number;
   material?: Material;
   cash?: number;
-  /** World-space direction of travel into an impact, for a directional camera jolt. */
+  /** World-space direction into an impact (the inverse of the contact normal), for a directional camera jolt. */
   dirX?: number;
   dirY?: number;
+  /** How heavy the struck structure is (see impactHeft): light timber chatters, dense concrete heaves. */
+  heft?: number;
 }
 
 export function materialHp(material: Material): number { return MATERIALS[material].hp; }

@@ -59,3 +59,44 @@ describe("dozer chassis pitch", () => {
     expect(hit(40)).toBeLessThanOrEqual(0.13);
   });
 });
+
+describe("dozer track scrub and chassis roll", () => {
+  const input = (throttle: number, steer: number, blade = false) => ({ throttle, steer, blade, engineMul: 1, bladeMul: 1, pushMul: 1 });
+  const speedAfter = (throttle: number, steer: number, seconds: number, start = 0) => {
+    const d = createDozer(10, 10, 0);
+    d.vx = start;
+    for (let t = 0; t < seconds; t += SIM_DT) stepDozer(d, input(throttle, steer), SIM_DT);
+    return Math.hypot(d.vx, d.vy);
+  };
+
+  it("sheds speed in a pivot: a hard turn holds a lower top speed and a coasting turn slows faster", () => {
+    const straight = speedAfter(1, 0, 4), turning = speedAfter(1, 1, 4);
+    expect(turning).toBeLessThan(straight * 0.95);
+    expect(turning).toBeGreaterThan(straight * 0.75);
+    expect(speedAfter(0, 1, 0.5, 6)).toBeLessThan(speedAfter(0, 0, 0.5, 6) - 0.5);
+  });
+
+  it("rolls the struck side up on a glancing hit and springs back to the ground's roll", () => {
+    const d = createDozer(10, 10, 0);
+    d.vx = 4;
+    d.vy = 3;
+    // A wall on the right-hand (+y) side pushes back along -y.
+    resolveCircleSolid(d, 8, 10.6, 4, 2);
+    expect(d.hitNy).toBeLessThan(-0.9);
+    expect(d.roll).toBeGreaterThan(0);
+    expect(d.roll).toBeLessThanOrEqual(0.026);
+    d.vx = d.vy = 0;
+    d.rideRoll = -0.02;
+    for (let t = 0; t < 1.5; t += SIM_DT) stepDozer(d, input(0, 0), SIM_DT);
+    expect(d.roll).toBeCloseTo(-0.02, 3);
+  });
+
+  it("flags the blade landing for one step and rocks the nose down", () => {
+    const d = createDozer(10, 10, 0);
+    stepDozer(d, input(0, 0, true), SIM_DT);
+    expect(d.bladeLanded).toBe(true);
+    expect(d.pitchVel).toBeGreaterThan(0);
+    stepDozer(d, input(0, 0, true), SIM_DT);
+    expect(d.bladeLanded).toBe(false);
+  });
+});

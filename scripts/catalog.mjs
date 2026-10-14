@@ -3,7 +3,8 @@ import { resolve, join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { sharedFingerprint, publicationFiles, safeKey } from './catalog/core.mjs';
 import { withCapturePage } from './catalog/preview.mjs';
-import { assetDuration, packWorkers } from './catalog/plan.mjs';
+import { assetPlan, packWorkers } from './catalog/plan.mjs';
+import { restorePlanned } from './catalog/restore.mjs';
 import { generateCatalog, readCaptures } from './catalog/generate.mjs';
 import { r2Store, uploadVerified, pool } from './catalog/storage.mjs';
 import { saveCapture } from './catalog/cache.mjs';
@@ -19,6 +20,12 @@ if (process.env.R2_ACCOUNT_ID && process.env.R2_ACCOUNT_ID !== config.accountId)
 process.env.R2_ACCOUNT_ID = config.accountId;
 process.env.R2_PRIVATE_BUCKET ||= config.privateBucket;
 const commit = process.env.DEPLOY_SHA || 'local';
+/** The commit stamped into the build; in CI it must be the commit being published. */
+async function builtCommit() {
+  const { commit: built } = JSON.parse(await readFile(join(build, 'build.json'), 'utf8'));
+  if (process.env.DEPLOY_SHA && built !== process.env.DEPLOY_SHA) throw new Error('Build provenance mismatch');
+  return built;
+}
 function run(script, params = []) {
   const result = spawnSync(process.execPath, [script, ...params], { stdio: 'inherit', windowsHide: true });
   if (result.status !== 0) throw new Error(`${script} failed`);
@@ -41,19 +48,34 @@ if (command === 'plan') {
         if (!capture) throw new Error('asset capture binder missing');
         return capture.inputs(id);
       }, asset.id);
-      tasks.push({ id: asset.id, duration: await assetDuration(asset, inputs, runtime, cache) });
+      tasks.push({ id: asset.id, ...await assetPlan(asset, inputs, runtime, cache) });
     }
     return packWorkers(tasks, catalog);
   });
   await mkdir(output, { recursive: true });
   for (const [i, plan] of plans.entries()) await writeFile(join(output, `${i}.json`), JSON.stringify(plan));
   console.log(`${plans.reduce((n, p) => n + p.batches.length, 0)} capture batches across four workers`);
-} else if (command === 'capture-plan') {
+} else if (command === 'capture-plan' || command === 'restore-plan') {
+  // restore-plan does only the browserless half and writes what is left to capture, so CI
+  // installs Chromium only for workers that still have captures.
   const worker = option('worker', '0');
   const plan = JSON.parse(await readFile(join(option('plans', 'artifacts/catalog-plans'), `${worker}.json`), 'utf8'));
   await mkdir(root, { recursive: true });
-  const batches = plan.batches.length ? plan.batches : [{ catalog: plan.catalog, ids: [] }];
-  for (const [i, batch] of batches.entries()) {
+  const batches = [...plan.batches];
+  // A worker with nothing to capture still writes a shard so its artifact is never empty.
+  if (!plan.restored && (plan.restore?.length || !batches.length)) {
+    const store = args.includes('--cache') ? r2Store(config.privateBucket) : null;
+    const missed = await restorePlanned(plan, store, join(root, `restored-${worker}`), { commit: await builtCommit(), shared: await sharedFingerprint() });
+    if (missed.length) batches.push({ catalog: plan.catalog, ids: missed });
+    console.log(`Worker ${worker}: restored ${(plan.restore?.length ?? 0) - missed.length} cached assets without a browser`);
+  }
+  if (command === 'restore-plan') {
+    const pending = resolve(option('pending', 'artifacts/catalog-pending'));
+    await mkdir(pending, { recursive: true });
+    await writeFile(join(pending, `${worker}.json`), JSON.stringify({ catalog: plan.catalog, batches, restore: [], restored: true }));
+    if (process.env.GITHUB_OUTPUT) await appendFile(process.env.GITHUB_OUTPUT, `capture=${batches.length > 0}\n`);
+    console.log(`Worker ${worker}: ${batches.length} capture batches remain`);
+  } else for (const [i, batch] of batches.entries()) {
     const path = join(root, `plan-${worker}-${i}.json`);
     await writeFile(path, JSON.stringify(batch));
     run('scripts/capture-assets.mjs', [`--plan=${path}`, `--output=${join(root, `batch-${worker}-${i}`)}`, `--preview-dir=${build}`,
@@ -93,4 +115,4 @@ if (command === 'plan') {
   const summary = `Catalog: ${info.assets} assets, ${info.reused} reused variants; ${uploaded} new objects, ${bytes} uploaded bytes. Retained objects are not deleted.\n`;
   console.log(summary);
   if (process.env.GITHUB_STEP_SUMMARY) await appendFile(process.env.GITHUB_STEP_SUMMARY, summary);
-} else throw new Error('Expected plan, generate, local, cache, or publish');
+} else throw new Error('Expected plan, capture-plan, restore-plan, generate, local, cache, or publish');

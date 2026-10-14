@@ -28,4 +28,18 @@ describe("camera shake", () => {
     shake.punch(1);
     expect(shake.step(1 / 60)).toEqual({ x: 0, y: 0 });
   });
+
+  it("chatters fast and small for light timber, heaves slow and wide for heavy concrete", () => {
+    let i = 0;
+    vi.spyOn(Math, "random").mockImplementation(() => (i++ % 2 ? 0.95 : 0.05));
+    const trace = (heft: number) => {
+      const shake = new CameraShake();
+      shake.punch(1.2, 0, 0, heft);
+      return Array.from({ length: 16 }, () => shake.step(1 / 60).x);
+    };
+    const reversals = (xs: number[]) => xs.slice(2).filter((x, k) => Math.sign(x - xs[k + 1]!) !== Math.sign(xs[k + 1]! - xs[k]!)).length;
+    const light = trace(0.9), heavy = trace(1.45);
+    expect(reversals(light)).toBeGreaterThan(reversals(heavy));
+    expect(Math.max(...heavy.map(Math.abs))).toBeGreaterThan(Math.max(...light.map(Math.abs)));
+  });
 });

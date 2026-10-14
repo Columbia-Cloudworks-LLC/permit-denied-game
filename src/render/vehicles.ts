@@ -37,9 +37,12 @@ export function drawDozer(g: Graphics, d: Dozer, emphasis = false): void {
     drawOrientedIsoBox(g, idlerR.x, idlerR.y, h, 0.28, 0.36, 0.08, 0.22, 0x5a5a54, 0x2a2a26, 0x44443e, 1);
   }
 
-  // Hull pitch and impact compression ride on the tracks; the tracks stay on the ground.
+  // Hull pitch, roll and impact compression ride on the tracks; the tracks stay on the ground.
   const fx = Math.cos(h), fy = Math.sin(h), squash = d.lastImpact * 0.22;
-  const zAt = (p: { x: number; y: number }, z: number) => Math.max(0, z - d.pitch * ((p.x - d.x) * fx + (p.y - d.y) * fy) - squash);
+  const zAt = (p: { x: number; y: number }, z: number) => {
+    const dx = p.x - d.x, dy = p.y - d.y;
+    return Math.max(0, z - d.pitch * (dx * fx + dy * fy) + d.roll * (dy * fx - dx * fy) - squash);
+  };
 
   const belly = headingOffset(d.x, d.y, h, -0.12, 0);
   drawOrientedIsoBox(g, belly.x, belly.y, h, 1.55, 0.92, zAt(belly, 0.2), 0.22, PAL.dozerDark, 0x6a5410, PAL.dozerDark, 1);

@@ -10,7 +10,7 @@
 | `npm run test:bench` | `bench` | District sim timings and dense-city render samples | Manual / dispatch, not a merge gate |
 | `node --test scripts/*.test.mjs` | — | Operational script tests (paths, deploy helpers, capture harness, catalog planning, and a regeneration of every authored building package into a temp directory) | Linux + Windows |
 | `npm run check` | — | `tsc` for `src` and `checkJs` for operational scripts | Linux + Windows |
-| `npm run build` | — | Typecheck, production bundle, initial-JS budget | Linux + Windows |
+| `npm run build` | — | Typecheck, production bundle, initial-JS budget (`npm run build:dist` skips the typecheck when `check` already ran) | Linux + Windows |
 | `npx fallow dead-code` / `npx fallow dupes` | — | Unused files/exports, import cycles, copy-paste clones (should report none) | Manual |
 | `npm run health` | `unit` + `integration`, script tests | Function complexity and CRAP scored against real coverage (should report none) | Manual |
 
@@ -18,7 +18,9 @@ CI and the title-screenshot workflow run on every pull request, not only pull re
 
 Windows keeps the required check name `windows`. It is a representative smoke: unit tests, script tests, production build, PWA verification. That still catches numerical drift on the classic/d10 lots, path separators in Node scripts, and filesystem layout of `dist/`. It does not rerun d100 campaign matrices or the soak.
 
-Linux `build` runs unit + integration + soak, then packaging. Catalog capture remains Linux-only after that job. Benchmarks print timing lines and are excluded from ordinary correctness jobs; run `npm run test:bench` when investigating frame or debris cost.
+Linux `build` only typechecks, packages, verifies the PWA, and uploads `game-build`. Everything else starts from that artifact in parallel: `test` (unit, integration, soak, script tests, catalog and privacy verifiers), the eight `interface` jobs, and Linux-only catalog capture. Deployment waits for all of them. A newer push to a pull request cancels that PR's running CI; pushes to `main` always finish.
+
+`scripts/verify-release.mjs` takes comma lists so one runner shares a single preview: `RELEASE_TEST_SUITE=binder,menus,hud` runs suites in order, and `ISSUES_WIDTH=844,390,320` runs the layout suite two widths at a time, writing each width's evidence to `artifacts/open-issues/<width>/`. A single suite or width behaves as before. Playwright Chromium comes from the Actions cache through `.github/actions/setup-playwright`, keyed on the installed Playwright version. Benchmarks print timing lines and are excluded from ordinary correctness jobs; run `npm run test:bench` when investigating frame or debris cost.
 
 The previous Vitest worker-source rewrite (`scripts/vitest-rpc-timeout*.mjs`) is gone. Integration, soak, and bench run a single worker so birpc ACKs stay under 60s; soak and the long campaign-generation matrices also yield with `pumpVitestRpc()`.
 

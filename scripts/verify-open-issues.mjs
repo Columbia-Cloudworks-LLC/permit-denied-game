@@ -9,7 +9,9 @@ await mkdir(out,{recursive:true});
 const browser=await chromium.launch({headless:true});
 const results=[], errors=[];
 try {
- for(const [width,height] of [[1536,960],[1024,768],[768,1024],[844,390],[390,844],[320,568],[1920,1080]].filter(([w])=>!process.env.ISSUES_WIDTH||w===Number(process.env.ISSUES_WIDTH))) {
+ const viewports=[[1536,960],[1024,768],[768,1024],[844,390],[390,844],[320,568],[1920,1080]].filter(([w])=>!process.env.ISSUES_WIDTH||w===Number(process.env.ISSUES_WIDTH));
+ assert.ok(viewports.length,`No layout viewport has width ${process.env.ISSUES_WIDTH}`);
+ for(const [width,height] of viewports) {
   for(const touch of [false,true]) {
    const page=await browser.newPage({viewport:{width,height},hasTouch:touch,deviceScaleFactor:touch?2:1});
    await privacyTestSetup(page);page.on('pageerror',e=>errors.push(e.message));

@@ -838,7 +838,7 @@ export class WorldRenderer {
     this.cmds.push({
       key: "dozer",
       mobile: true,
-      version: [dozer.x, dozer.y, dozer.heading, dozer.bladeDown, dozer.odo, Math.round(dozer.pitch * 400), Math.round(dozer.lastImpact * 100), emphasis].join(":"),
+      version: [dozer.x, dozer.y, dozer.heading, dozer.bladeDown, dozer.odo, Math.round(dozer.pitch * 400), Math.round(dozer.roll * 400), Math.round(dozer.lastImpact * 100), emphasis].join(":"),
       depth: depthKey(dozer.x, dozer.y, 0.4),
       run: (g) => drawDozer(g, dozer, emphasis),
     });
