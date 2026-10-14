@@ -142,6 +142,33 @@ export class AudioBus {
     this.noiseBurst(0.06, Math.min(0.1, mag * 0.07), freq * 0.6);
   }
 
+  /** The blade's cutting edge landing: a dull low thump with a short grit tail. */
+  bladeThud(mag: number): void {
+    this.blip(58, 0.12, Math.min(0.12, 0.05 + mag * 0.06), "sine");
+    this.noiseBurst(0.05, Math.min(0.08, mag * 0.08), 260);
+  }
+
+  /** Tracks binding in a hard turn: a low groan that bends upward into a short squeal. */
+  trackBind(mag: number): void {
+    if (!this.ctx || !this.master || this.muted) return;
+    const ctx = this.ctx, now = ctx.currentTime, dur = 0.32 + mag * 0.12;
+    const osc = ctx.createOscillator(), filter = ctx.createBiquadFilter(), g = ctx.createGain();
+    osc.type = "sawtooth";
+    osc.frequency.setValueAtTime(62, now);
+    osc.frequency.exponentialRampToValueAtTime(96 + mag * 40, now + dur);
+    filter.type = "lowpass";
+    filter.frequency.value = 520;
+    g.gain.setValueAtTime(0.001, now);
+    g.gain.exponentialRampToValueAtTime(Math.min(0.09, 0.035 + mag * 0.05), now + 0.06);
+    g.gain.exponentialRampToValueAtTime(0.001, now + dur);
+    osc.connect(filter);
+    filter.connect(g);
+    g.connect(this.master);
+    osc.start(now);
+    osc.stop(now + dur + 0.02);
+    this.blip(1180 + mag * 220, 0.08, Math.min(0.03, mag * 0.03), "triangle");
+  }
+
   crunch(mag: number): void {
     this.noiseBurst(0.12, 0.1 + mag * 0.06, 220);
     this.blip(70, 0.08, 0.06, "sine");

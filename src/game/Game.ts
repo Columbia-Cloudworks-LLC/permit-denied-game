@@ -144,6 +144,7 @@ class Game {
   private acc = 0;
   private grindAud = 0;
   private scrapeCd = 0;
+  private groanCd = 0;
   private droppedSimSec = 0;
   private detachInput: (() => void) | null = null;
   private fieldNotice = "";
@@ -371,6 +372,7 @@ class Game {
     this.acc = 0;
     this.grindAud = 0;
     this.scrapeCd = 0;
+    this.groanCd = 0;
     this.droppedSimSec = 0;
   }
 
@@ -583,6 +585,7 @@ class Game {
     this.timeLeft -= dt;
     this.hint = Math.max(0, this.hint - dt * 0.12);
     this.scrapeCd = Math.max(0, this.scrapeCd - dt);
+    this.groanCd = Math.max(0, this.groanCd - dt);
     this.syncMachineAudio(out.debrisLoad, beforeHeat, dt);
     if (this.offerUpgrade()) return;
     if (this.campaign) this.judgeCampaign(this.campaign);
@@ -727,9 +730,12 @@ class Game {
     impact: (e) => {
       // The screen lurches along the dozer's travel, projected into screen space.
       const dir = worldToScreen(e.dirX ?? 0, e.dirY ?? 0);
-      this.shake.punch(e.mag, dir.x, dir.y);
+      this.shake.punch(e.mag, dir.x, dir.y, e.heft);
       this.audio.impact(e.mag);
     },
+    // The blade landing is a small downward thud on the camera.
+    "blade-drop": (e) => { this.shake.punch(e.mag, 0, 1, 1.45); this.audio.bladeThud(e.mag); },
+    "track-bind": (e) => this.trackBindSound(e),
     breach: (e) => { this.shake.punch(e.mag); this.audio.impact(e.mag); this.audio.breakMat(e.mag); },
     collapse: (e) => { this.shake.punch(e.mag * 1.4); this.audio.collapse(e.mag); },
     cash: () => this.audio.cash(),
@@ -742,6 +748,13 @@ class Game {
     blast: (e) => { this.shake.punch(e.mag); this.audio.impact(e.mag); },
     spark: (e) => this.audio.clatter(e.mag * 0.6, "metal"),
   };
+
+  /** A hard turn at speed groans as the tracks bind; rate-limited so it reads as one strain. */
+  private trackBindSound(e: WorldEvent): void {
+    if (this.groanCd > 0) return;
+    this.groanCd = 0.55;
+    this.audio.trackBind(e.mag);
+  }
 
   /** Scrapes are rate-limited; metal and wood clatter, everything else scrapes. */
   private scrapeSound(e: WorldEvent): void {

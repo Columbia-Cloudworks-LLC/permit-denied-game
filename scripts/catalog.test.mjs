@@ -1,12 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, writeFile, mkdir, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile, mkdir, rm, access } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import ts from 'typescript';
 import sharp from 'sharp';
 import { fingerprint, buildIndexes, buildTree, digest, filesUnder, isFingerprintSource, requiredCaptures, objectWriter, publicationFiles } from './catalog/core.mjs';
-import { assetDuration, packWorkers } from './catalog/plan.mjs';
+import { assetPlan, packWorkers } from './catalog/plan.mjs';
+import { restorePlanned, variantFolder } from './catalog/restore.mjs';
 import { restoreCapture, saveCapture } from './catalog/cache.mjs';
 import { isNotFound, r2Credentials, uploadVerified } from './catalog/storage.mjs';
 import { generateCatalog, isOpaqueIntactExterior, seriesFor, thumbnailSource } from './catalog/generate.mjs';
@@ -254,12 +255,14 @@ test('plans capture time from the cache, measured timings, then floor counts, an
   const store = new Map();
   const cache = { get: async (key) => store.get(key) ?? null };
   const asset = { id: 'building:bakery', variants: 2, floors: 3 };
-  assert.equal(await assetDuration(asset, {}, {}, null), 2 * 60000);
+  assert.deepEqual(await assetPlan(asset, {}, {}, null), { duration: 2 * 60000, restore: null });
   store.set(`timings/${digest(Buffer.from('building:bakery/1'))}.json`, Buffer.from(JSON.stringify({ durationMs: 9000 })));
   store.set(`timings/${digest(Buffer.from('building:bakery/0'))}.json`, Buffer.from('not json'));
-  assert.equal(await assetDuration(asset, {}, {}, cache), 60000 + 9000);
+  assert.deepEqual(await assetPlan(asset, {}, {}, cache), { duration: 60000 + 9000, restore: null });
   store.set(`captures/${fingerprint({}, {}, 0)}.json`, Buffer.from('{}'));
-  assert.equal(await assetDuration(asset, {}, {}, cache), 5000 + 9000);
+  assert.deepEqual(await assetPlan(asset, {}, {}, cache), { duration: 5000 + 9000, restore: null });
+  store.set(`captures/${fingerprint({}, {}, 1)}.json`, Buffer.from('{}'));
+  assert.deepEqual(await assetPlan(asset, {}, {}, cache), { duration: 10000, restore: [fingerprint({}, {}, 0), fingerprint({}, {}, 1)] });
 
   const tasks = Array.from({ length: 30 }, (_, i) => ({ id: `a${i}`, duration: 100000 }));
   const workers = packWorkers(tasks, []);
@@ -267,7 +270,31 @@ test('plans capture time from the cache, measured timings, then floor counts, an
   assert.deepEqual(workers.map((w) => w.duration).sort(), [700000, 700000, 800000, 800000]);
   for (const worker of workers) for (const batch of worker.batches) assert.ok(batch.ids.length <= 12 && batch.duration <= 480000);
   assert.equal(workers.flatMap((w) => w.batches.flatMap((b) => b.ids)).length, 30);
+
+  const mixed = packWorkers([{ id: 'hit', duration: 5000, restore: ['k'] }, { id: 'miss', duration: 60000 }], []);
+  assert.deepEqual(mixed.flatMap((w) => w.restore), [{ id: 'hit', keys: ['k'] }]);
+  assert.deepEqual(mixed.flatMap((w) => w.batches.flatMap((b) => b.ids)), ['miss']);
 });
+
+test('planned cache hits restore without a browser; a partly restorable asset leaves the shard for capture', () => fixture(async root => {
+  const store = memoryStore(), image = Buffer.from('png'), sha256 = digest(image);
+  const catalog = [{ id: 'building:a', variants: 1, floors: 1, destruction: 'supported' }, { id: 'building:b', variants: 2, floors: 1, destruction: 'supported' }];
+  for (const [id, variant, key] of [['building:a', 0, 'ka'], ['building:b', 0, 'kb0']]) {
+    const asset = { ...catalog.find(a => a.id === id), variant, folder: variantFolder(id, variant) };
+    store.data.set(`captures/${key}.json`, Buffer.from(JSON.stringify({ ...asset, fingerprint: key, restorationVerified: true,
+      captures: requiredCaptures(asset).map(file => ({ file, sha256 })) })));
+  }
+  store.data.set(`evidence/${sha256}.png`, image);
+  const plan = { catalog, restore: [{ id: 'building:a', keys: ['ka'] }, { id: 'building:b', keys: ['kb0', 'kb1'] }] };
+  const shard = join(root, 'restored-0');
+  assert.deepEqual(await restorePlanned(plan, store, shard, { commit: 'c', shared: 's' }), ['building:b']);
+  const manifest = JSON.parse(await readFile(join(shard, 'manifest.json'), 'utf8'));
+  assert.deepEqual(manifest.assets.map(a => [a.id, a.variant, a.reused]), [['building:a', 0, true]]);
+  assert.deepEqual([manifest.catalog, manifest.errors, manifest.filter, manifest.commit], [catalog, [], '', 'c']);
+  await access(join(shard, 'building/a/variant-0/model.png'));
+  await assert.rejects(access(join(shard, 'building/b/variant-0')), 'a missed asset leaves no restored variant behind');
+  assert.deepEqual(await restorePlanned(plan, null, join(root, 'uncached'), { commit: 'c', shared: 's' }), ['building:a', 'building:b']);
+}));
 
 test('R2 access needs every credential and a well-formed account, and treats only 404 as missing', () => {
   const env = { R2_ACCOUNT_ID: 'a'.repeat(32), R2_ACCESS_KEY_ID: 'key', R2_SECRET_ACCESS_KEY: 'secret' };

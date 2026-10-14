@@ -36,7 +36,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npx playwright install --with-deps chromium
+      # The planner reads the catalog and per-asset capture inputs from the running game.
+      - uses: ./.github/actions/setup-playwright
       - uses: actions/download-artifact@v8.0.1
         with:
           name: game-build
@@ -70,7 +71,6 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npx playwright install --with-deps chromium
       - uses: actions/download-artifact@v8.0.1
         with:
           name: game-build
@@ -79,7 +79,16 @@ jobs:
         with:
           name: catalog-plans
           path: artifacts/catalog-plans
-      - run: node scripts/catalog.mjs capture-plan --worker=${{ matrix.worker }} ${{ inputs.trusted && '--cache' || '' }}
+      # Verified R2 hits restore without a browser; Chromium is set up only if captures remain.
+      - id: restore
+        run: node scripts/catalog.mjs restore-plan --worker=${{ matrix.worker }} --pending=artifacts/catalog-pending ${{ inputs.trusted && '--cache' || '' }}
+        env:
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      - if: steps.restore.outputs.capture == 'true'
+        uses: ./.github/actions/setup-playwright
+      - if: steps.restore.outputs.capture == 'true'
+        run: node scripts/catalog.mjs capture-plan --worker=${{ matrix.worker }} --plans=artifacts/catalog-pending ${{ inputs.trusted && '--cache' || '' }}
         env:
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}

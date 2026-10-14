@@ -1,11 +1,12 @@
 {
   "name": "permit-denied",
   "private": true,
-  "version": "1.0.48",
+  "version": "1.0.49",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build && node scripts/analyze-bundle.mjs",
+    "build": "tsc --noEmit && npm run build:dist",
+    "build:dist": "vite build && node scripts/analyze-bundle.mjs",
     "preview": "vite preview",
     "check": "tsc --noEmit && tsc -p tsconfig.scripts.json",
     "analyze:bundle": "node scripts/analyze-bundle.mjs",

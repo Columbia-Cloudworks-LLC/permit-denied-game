@@ -28,6 +28,9 @@ export const DOZER = {
   lateralGrip: 18,
   steer: 2.85,
   steerSpeedFalloff: 0.2,
+  /** Track scrub: a hard pivot caps forward speed by up to this fraction and bleeds speed at scrubDecel. */
+  scrubSlow: 0.3,
+  scrubDecel: 6,
   impactLoss: 0.62,
   grindBody: 4,
   bladeReach: 1.42,

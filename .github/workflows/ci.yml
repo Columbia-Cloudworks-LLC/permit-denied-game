@@ -14,6 +14,12 @@ env:
 permissions:
   contents: read
 
+# A newer push to a PR supersedes its running checks. Pushes to main always finish, and
+# the deploy job keeps its own non-cancelling concurrency group.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -30,20 +36,39 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run check
-      - run: npm test
-      - run: npm run test:integration
-      - run: npm run test:soak
-      - run: node --test scripts/*.test.mjs
-      - run: npm run build
+      # check already typechecked; build:dist bundles and enforces the JS budget.
+      - run: npm run build:dist
       - run: node scripts/verify-pwa.mjs
-      - run: npx playwright install --with-deps chromium
-      - run: node scripts/verify-catalog.mjs
-      - run: node scripts/verify-privacy.mjs
       - uses: actions/upload-artifact@v7.0.1
         with:
           name: game-build
           path: dist
           retention-days: 14
+
+  # Runs alongside interface and catalog, which need only the build artifact.
+  test:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - uses: actions/download-artifact@v8.0.1
+        with:
+          name: game-build
+          path: dist
+      - run: npm test
+      - run: npm run test:integration
+      - run: npm run test:soak
+      - run: node --test scripts/*.test.mjs
+      - uses: ./.github/actions/setup-playwright
+      - run: node scripts/verify-catalog.mjs
+      - run: node scripts/verify-privacy.mjs
 
   windows:
     runs-on: windows-latest
@@ -59,7 +84,7 @@ jobs:
       - run: npm run check
       - run: npm test
       - run: node --test scripts/*.test.mjs
-      - run: npm run build
+      - run: npm run build:dist
       - run: node scripts/verify-pwa.mjs
 
   interface:
@@ -68,23 +93,20 @@ jobs:
     timeout-minutes: 30
     strategy:
       fail-fast: false
-      max-parallel: 6
+      max-parallel: 8
+      # One runner wave, no job much past the slowest single width (~8 min). The 1920, 1536,
+      # 1024 and 768 layouts each take 6-8 min, so they run alone; quick suites and phone
+      # widths share a preview through verify-release's comma lists.
       matrix:
         include:
-          - { suite: layout, width: 1536 }
-          - { suite: layout, width: 1024 }
-          - { suite: layout, width: 768 }
-          - { suite: layout, width: 844 }
-          - { suite: layout, width: 390 }
-          - { suite: layout, width: 320 }
-          - { suite: layout, width: 1920 }
-          - { suite: binder }
-          - { suite: menus }
-          - { suite: coverage }
-          - { suite: seasons }
-          - { suite: ice }
-          - { suite: performance }
-          - { suite: hud }
+          - { name: layout-1920, suite: layout, width: '1920' }
+          - { name: layout-1536, suite: layout, width: '1536' }
+          - { name: layout-1024, suite: layout, width: '1024' }
+          - { name: layout-768, suite: layout, width: '768' }
+          - { name: layout-phones, suite: layout, width: '844,390,320' }
+          - { name: binder-menus-hud, suite: 'binder,menus,hud' }
+          - { name: coverage, suite: coverage }
+          - { name: seasons-ice-performance, suite: 'seasons,ice,performance' }
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -98,7 +120,7 @@ jobs:
         with:
           name: game-build
           path: dist
-      - run: npx playwright install --with-deps chromium
+      - uses: ./.github/actions/setup-playwright
       - run: node scripts/verify-release.mjs
         env:
           RELEASE_TEST_SUITE: ${{ matrix.suite }}
@@ -106,7 +128,7 @@ jobs:
       - uses: actions/upload-artifact@v7.0.1
         if: always()
         with:
-          name: interface-and-season-evidence-${{ matrix.suite }}-${{ matrix.width || 'all' }}
+          name: interface-and-season-evidence-${{ matrix.name }}
           path: artifacts
           retention-days: 14
 
@@ -121,7 +143,7 @@ jobs:
       R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
 
   deploy:
-    needs: [build, windows, catalog, interface]
+    needs: [build, test, windows, catalog, interface]
     # Fork PRs get tests, never deployment credentials. Dispatch also handles the
     # final screenshot-bot commit, whose push does not start ordinary CI.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository

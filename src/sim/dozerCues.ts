@@ -1,7 +1,7 @@
 import { HARD_LOT_COVERS, SOFT_LOT_COVERS } from "../render/coverPalette";
 import type { CoverKind, Material, WorldEvent } from "../structure/types";
 import { DOZER } from "../game/constants";
-import { dozerForward, dozerSpeed, type Dozer } from "../vehicle/dozer";
+import { dozerForward, dozerSpeed, kickChassis, type Dozer } from "../vehicle/dozer";
 import { groundPatchContains, surfaceAt } from "../world/terrain";
 import type { Town } from "../world/town";
 import type { ParticlePool } from "../fx/particles";
@@ -62,12 +62,49 @@ export function emitDozerCues(
   const load = dozer.pushT > 0 || dozer.bladeDown;
   const moving = speed > 0.55;
   const impact = dozer.lastImpact > 0.12 && dozer.lastImpact + dt >= 0.2;
-  if (!moving && !impact) return;
+  const f = dozerForward(dozer);
+  rideTracks(town, dozer, f, dt);
+  if (dozer.bladeLanded) events.push({ kind: "blade-drop", x: dozer.x + f.x * DOZER.bladeReach, y: dozer.y + f.y * DOZER.bladeReach, z: 0, mag: 0.4 + Math.min(0.3, speed * 0.04) });
+  const pivoting = Math.abs(dozer.yaw) > DOZER.steer * 0.45;
+  if (!moving && !impact && !pivoting) return;
 
   const cover = coverAtPoint(town, dozer.x, dozer.y);
-  const f = dozerForward(dozer);
   if (moving) movingCues(town, dozer, particles, events, cover, f, speed, load, dt);
+  if (pivoting) pivotCue(town, dozer, particles, events, cover, f, speed, dt);
   if (impact) impactCue(town, dozer, particles, events, cover, f);
+}
+
+/** Track centrelines sit this far either side of the hull's axis. */
+const TRACK_OFFSET = 0.62;
+/** Height a road edge stands above the lot beside it, for the track crawl. */
+const CURB = 0.12;
+
+/** Ground height under one track: settled pile, plus a curb step on a road. */
+function trackGround(town: Town, x: number, y: number): number {
+  return town.pile.sample(x, y).height + (pointOnRoad(town.network, x, y) ? CURB : 0);
+}
+
+/**
+ * Track crawl: the hull rolls toward whichever track rides lower, and a track that mounts or
+ * drops off a curb or pile edge kicks the roll, so the dozer rides over things rather than
+ * clipping through. Presentation only.
+ */
+function rideTracks(town: Town, dozer: Dozer, f: { x: number; y: number }, dt: number): void {
+  const rx = -f.y, ry = f.x;
+  const step = (side: number) => {
+    const x = dozer.x + rx * TRACK_OFFSET * side, y = dozer.y + ry * TRACK_OFFSET * side;
+    const now = trackGround(town, x, y);
+    return { now, rise: now - trackGround(town, x - dozer.vx * dt, y - dozer.vy * dt) };
+  };
+  const left = step(-1), right = step(1);
+  dozer.rideRoll = Math.max(-0.026, Math.min(0.026, (right.now - left.now) / (TRACK_OFFSET * 2)));
+  // Mounting an edge noses the hull up; a step under one track only rolls it.
+  const roll = right.rise - left.rise, lift = (right.rise + left.rise) / 2;
+  if (Math.abs(roll) > 0.04 || Math.abs(lift) > 0.04) kickChassis(dozer, clampKick(-lift * 2.2), clampKick(roll * 2.2));
+}
+
+function clampKick(v: number): number {
+  return Math.max(-0.4, Math.min(0.4, v));
 }
 
 /** True when the odometer crossed a whole multiple of 1/scale this step. */
@@ -89,6 +126,29 @@ function movingCues(town: Town, dozer: Dozer, particles: ParticlePool, events: W
   if (!cover) return;
   if (SOFT.has(cover) && odoTick(dozer, speed, dt, 1.15) && !pointOnRoad(town.network, dozer.x, dozer.y)) treadCue(town, dozer, particles, cover, f, speed, load);
   if (HARD.has(cover) && speed > 2.4 && odoTick(dozer, speed, dt, 0.85)) scrapeCue(town, dozer, particles, f);
+}
+
+/** Clumps a pivoting track throws: snow, gravel, or the tread tint of the soft cover. */
+function churnTint(town: Town, cover: CoverKind): number | undefined {
+  if (town.groundCondition === "snow" || town.season === "winter") return 0xe6ecef;
+  if (cover === "gravel") return 0x8a8478;
+  return TREAD_TINT[cover];
+}
+
+/**
+ * A pivot churns the ground under the inside track, the one held still or run backward, and
+ * a hard turn at speed binds the tracks with a groan. Ticks on heading so a neutral turn,
+ * which covers no distance, still throws clumps.
+ */
+function pivotCue(town: Town, dozer: Dozer, particles: ParticlePool, events: WorldEvent[], cover: CoverKind | undefined, f: { x: number; y: number }, speed: number, dt: number): void {
+  if (((dozer.heading * 4) | 0) === (((dozer.heading - dozer.yaw * dt) * 4) | 0)) return;
+  const side = Math.sign(dozer.yaw);
+  const x = dozer.x - f.y * TRACK_OFFSET * side, y = dozer.y + f.x * TRACK_OFFSET * side;
+  if (speed > 2.2) events.push({ kind: "track-bind", x, y, z: 0.1, mag: Math.min(1, speed / DOZER.maxSpeed + Math.abs(dozer.yaw) / DOZER.steer * 0.5) });
+  if (!cover || PAVED.has(cover) || cover === "tracks" || cover === "water" || pointOnRoad(town.network, x, y)) return;
+  const tint = churnTint(town, cover);
+  particles.spawn("crop", x, y, 0.08, 3, 1.1, 1.9, undefined, tint);
+  particles.spawn("dust", x, y, 0.1, 1, 0.5, 0.6, undefined, tint);
 }
 
 /** Churned mud on bare ground; crushed, greener sod on grass and scrub. */
