@@ -51,7 +51,7 @@ Cleanup never deletes a collapsed site. Absorbing a body moves its mass into the
 
 ## Debris cleanup
 
-Caps live in `DEBRIS`: remnant/fragment soft caps, `hardOverflow`, `protectRadius`, `interactGrace`.
+Caps live in `DEBRIS`: remnant/fragment soft caps, `hardOverflow`, `protectRadius`, `interactGrace`, `retireDelay`, `roadLinger`.
 
 `addDebrisBody` does not absorb. Collapse can overflow for a moment. `stepDebris` then ranks eligible bodies by squared distance from the dozer (farther first, higher id on ties), prefers sleeping bodies, skips anything near the dozer or recently moved/spawned/awake, and never absorbs a body touching the dozer or blade. If the hard cap is still exceeded, the farthest unprotected bodies go regardless of sleep.
 
@@ -139,7 +139,7 @@ Police navigation is a **contract only** (`src/world/routing.ts`). Ordinary purs
 
 Broken furnishings transfer into the same debris stream as outdoor objects. Their old fixture visuals are not retained beside the emitted debris. Each world step removes their inactive fixture records.
 
-Debris continuously more than 28 world units from the dozer retires after eight unattended seconds and interaction grace, even below the normal caps. This deadline also retires numerical contact jitter that would otherwise keep a remote pile awake indefinitely. Nearby road vehicles protect their surroundings. Retirement preserves material mass and test-yard ownership in the editable pile. Normal budget and emergency cleanup still apply independently.
+Debris continuously more than 28 world units from the dozer retires after eight unattended seconds and interaction grace, even below the normal caps. Chunks lying on road pavement wait `DEBRIS.roadLinger` times as long, so a rampage leaves visible evidence on the streets. This deadline also retires numerical contact jitter that would otherwise keep a remote pile awake indefinitely. Nearby road vehicles protect their surroundings. Retirement preserves material mass and test-yard ownership in the editable pile. Normal budget and emergency cleanup still apply independently.
 
 Fully demolished buildings retain their identity and one-time reward status. After eight seconds more than 28 units from their footprint, their cells, structural grid, floors, roofs, fixtures and decoration arrays are released. A persistent site and editable pile represent the aftermath. Returning does not respawn the building; restoration constructs a fresh instance.
 

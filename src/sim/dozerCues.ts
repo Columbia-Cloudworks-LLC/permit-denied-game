@@ -1,9 +1,12 @@
 import { HARD_LOT_COVERS, SOFT_LOT_COVERS } from "../render/coverPalette";
 import type { CoverKind, Material, WorldEvent } from "../structure/types";
+import { DOZER } from "../game/constants";
 import { dozerForward, dozerSpeed, type Dozer } from "../vehicle/dozer";
 import { groundPatchContains, surfaceAt } from "../world/terrain";
 import type { Town } from "../world/town";
 import type { ParticlePool } from "../fx/particles";
+import { pointOnRoad } from "../world/roads";
+import { fadeTreadMarks } from "../world/seasonTracks";
 import { addSurfaceMark } from "./debris";
 
 const SOFT = new Set<CoverKind>(SOFT_LOT_COVERS);
@@ -63,7 +66,7 @@ export function emitDozerCues(
 
   const cover = coverAtPoint(town, dozer.x, dozer.y);
   const f = dozerForward(dozer);
-  if (moving) movingCues(town, dozer, particles, cover, f, speed, load, dt);
+  if (moving) movingCues(town, dozer, particles, events, cover, f, speed, load, dt);
   if (impact) impactCue(town, dozer, particles, events, cover, f);
 }
 
@@ -74,22 +77,28 @@ function odoTick(dozer: Dozer, speed: number, dt: number, scale: number): boolea
 
 const TRACK_SIDES = [-1, 1] as const;
 
-/** Exhaust under load or heat, tread marks and dust on soft ground, scrapes on pavement at speed. */
-function movingCues(town: Town, dozer: Dozer, particles: ParticlePool, cover: CoverKind | undefined, f: { x: number; y: number }, speed: number, load: boolean, dt: number): void {
+/** Exhaust under load or heat, blade sparks on pavement, tread marks and dust on soft off-road ground, scrapes on hard covers at speed. */
+function movingCues(town: Town, dozer: Dozer, particles: ParticlePool, events: WorldEvent[], cover: CoverKind | undefined, f: { x: number; y: number }, speed: number, load: boolean, dt: number): void {
   if ((dozer.heat > 0.22 || load) && odoTick(dozer, speed, dt, 1.6)) {
     const stackX = dozer.x - f.x * 0.72;
     const stackY = dozer.y - f.y * 0.72;
     const n = dozer.heat > 0.7 ? 2 : 1;
     particles.spawn("dust", stackX, stackY, 1.15 + dozer.heat * 0.35, n, 0.18 + speed * 0.04, 0.55);
   }
+  if (dozer.bladeDown && speed > 0.9 && odoTick(dozer, speed, dt, 2.4)) bladeSparkCue(town, dozer, particles, events, f, speed);
   if (!cover) return;
-  if (SOFT.has(cover) && odoTick(dozer, speed, dt, 1.15)) treadCue(town, dozer, particles, f, speed, load);
+  if (SOFT.has(cover) && odoTick(dozer, speed, dt, 1.15) && !pointOnRoad(town.network, dozer.x, dozer.y)) treadCue(town, dozer, particles, cover, f, speed, load);
   if (HARD.has(cover) && speed > 2.4 && odoTick(dozer, speed, dt, 0.85)) scrapeCue(town, dozer, particles, f);
 }
 
-function treadCue(town: Town, dozer: Dozer, particles: ParticlePool, f: { x: number; y: number }, speed: number, load: boolean): void {
+/** Churned mud on bare ground; crushed, greener sod on grass and scrub. */
+const TREAD_TINT: Partial<Record<CoverKind, number>> = { dirt: 0x2a1f12, lot: 0x2e2416, planted: 0x2c2214, grass: 0x34391f, scrub: 0x383a22 };
+
+function treadCue(town: Town, dozer: Dozer, particles: ParticlePool, cover: CoverKind, f: { x: number; y: number }, speed: number, load: boolean): void {
+  fadeTreadMarks(town, "tire");
   for (const side of TRACK_SIDES) {
-    addSurfaceMark(town, dozer.x - f.y * 0.55 * side, dozer.y + f.x * 0.55 * side, "tire", "concrete", dozer.heading);
+    addSurfaceMark(town, dozer.x - f.y * 0.62 * side, dozer.y + f.x * 0.62 * side, "tire", "concrete", dozer.heading);
+    town.marks[town.marks.length - 1]!.tint = TREAD_TINT[cover];
   }
   particles.spawn("dust", dozer.x, dozer.y, 0.12, load ? 3 : 1, 0.35 + speed * 0.08, 0.7);
 }
@@ -97,6 +106,24 @@ function treadCue(town: Town, dozer: Dozer, particles: ParticlePool, f: { x: num
 function scrapeCue(town: Town, dozer: Dozer, particles: ParticlePool, f: { x: number; y: number }): void {
   addSurfaceMark(town, dozer.x, dozer.y, "scrape", "concrete", dozer.heading);
   if (dozer.bladeDown) particles.spawn("concrete", dozer.x + f.x * 0.9, dozer.y + f.y * 0.9, 0.18, 1, 0.4, 0.9);
+}
+
+/** Covers hard enough for a lowered blade edge to strike sparks. */
+const PAVED = new Set<CoverKind>(["driveway", "parking", "concrete"]);
+
+/** A lowered blade dragged over pavement throws sparks from its cutting edge and grinds. */
+function bladeSparkCue(town: Town, dozer: Dozer, particles: ParticlePool, events: WorldEvent[], f: { x: number; y: number }, speed: number): void {
+  const x = dozer.x + f.x * DOZER.bladeReach, y = dozer.y + f.y * DOZER.bladeReach;
+  const cover = coverAtPoint(town, x, y);
+  if (!pointOnRoad(town.network, x, y) && !(cover && PAVED.has(cover))) return;
+  // Each blade corner throws a fan out to its side and a little ahead, riding the dozer's own speed.
+  const spray = 2.4 + speed * 0.45;
+  for (const sign of [-1, 1]) {
+    const rx = -f.y * sign, ry = f.x * sign;
+    const vx = dozer.vx + (rx + f.x * 0.45) * spray, vy = dozer.vy + (ry + f.y * 0.45) * spray;
+    particles.sparks(x + rx * DOZER.bladeHalf, y + ry * DOZER.bladeHalf, vx, vy, 3, 1.2);
+  }
+  events.push({ kind: "scrape", x, y, z: 0.06, mag: Math.min(0.9, 0.3 + speed * 0.06), material: "concrete" });
 }
 
 /** A hard hit throws grit or dust; on pavement it scrapes, and on parking or concrete it sparks. */

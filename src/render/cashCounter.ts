@@ -7,6 +7,7 @@ export class CashCounter {
   private balance = 0;
   private initialized = false;
   private frame = 0;
+  private flashedAt = -Infinity;
   private reduced = matchMedia('(prefers-reduced-motion: reduce)');
 
   constructor(private root: HTMLElement) {
@@ -65,7 +66,17 @@ export class CashCounter {
       this.draw(wheel);
     });
     this.initialized = true;
+    if (!immediate && direction > 0 && now - this.flashedAt > 320) this.flash(now);
     if (!immediate && !this.frame) this.frame = requestAnimationFrame(this.tick);
+  }
+
+  /** A gain lights the counter gold and settles back while the wheels roll. */
+  private flash(now: number): void {
+    this.flashedAt = now;
+    this.root.animate?.(
+      [{ filter: 'brightness(1.7) drop-shadow(0 0 6px #ffcf5c)', transform: 'scale(1.06)' }, { filter: 'none', transform: 'none' }],
+      { duration: 420, easing: 'ease-out' },
+    );
   }
 
   private sample(wheel: Wheel, now: number): void {

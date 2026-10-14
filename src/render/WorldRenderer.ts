@@ -1,5 +1,6 @@
 import { drawVehicleAssembly, vehicleRenderGroups } from './modularVehicle';
 import { BowlingStrikes } from './bowlingStrikes';
+import { CashPopups } from './cashPopups';
 import { PileHintLayer } from './pileHints';
 import { coreFloorClear, drawCoreFloor } from './coreCollapseDraw';
 import { paintsFloorSlab } from '../structure/coreCollapse';
@@ -97,6 +98,7 @@ interface Cmd {
 export class WorldRenderer {
   readonly root = new Container();
   readonly bowlingStrikes = new BowlingStrikes();
+  readonly cashPopups = new CashPopups();
   yardPreview: YardBay[] = [];
   yardPreviewValid = true;
   private yardLabels: Text[] = [];
@@ -158,7 +160,7 @@ export class WorldRenderer {
   constructor() {
     this.nhood.addChild(this.nhoodGfx);
     this.root.addChild(this.terrainLayer, this.ground, this.sites, this.overlay, this.pileHints.root, this.groundOverlays, this.drawing.root, this.world, this.nhood, this.debugOverlay);
-    this.root.addChild(this.bowlingStrikes.root, this.landmarkPin);
+    this.root.addChild(this.cashPopups.root, this.bowlingStrikes.root, this.landmarkPin);
     this.hudOverlay.addChild(this.landmarkArrow);
     this.root.sortableChildren = false;
   }
@@ -247,6 +249,8 @@ export class WorldRenderer {
     if (this.weatherTown !== town) { this.weather.reset(""); this.weatherTown = town; }
     const strikeAt = worldToScreen(dozer.x, dozer.y);
     this.bowlingStrikes.draw(dt, strikeAt.x, strikeAt.y, this.zoom);
+    this.cashPopups.draw(dt, this.zoom);
+    this.root.setChildIndex(this.cashPopups.root, this.root.children.length - 1);
     this.root.setChildIndex(this.bowlingStrikes.root, this.root.children.length - 1);
     this.root.tint = presentationTint(town.weather.light, town.weatherDetail);
     this.fades.begin();
@@ -834,7 +838,7 @@ export class WorldRenderer {
     this.cmds.push({
       key: "dozer",
       mobile: true,
-      version: [dozer.x, dozer.y, dozer.heading, dozer.bladeDown, dozer.odo, emphasis].join(":"),
+      version: [dozer.x, dozer.y, dozer.heading, dozer.bladeDown, dozer.odo, Math.round(dozer.pitch * 400), Math.round(dozer.lastImpact * 100), emphasis].join(":"),
       depth: depthKey(dozer.x, dozer.y, 0.4),
       run: (g) => drawDozer(g, dozer, emphasis),
     });

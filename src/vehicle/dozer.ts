@@ -18,6 +18,8 @@ export interface Dozer {
   track: number;
   lastImpact: number;
   odo: number;
+  /** Presentation only: radians of nose-down chassis pitch; negative squats the rear. */
+  pitch: number;
 }
 
 export function createDozer(x: number, y: number, heading: number): Dozer {
@@ -34,6 +36,7 @@ export function createDozer(x: number, y: number, heading: number): Dozer {
     track: 0,
     lastImpact: 0,
     odo: 0,
+    pitch: 0,
   };
 }
 
@@ -98,6 +101,17 @@ export function stepDozer(d: Dozer, input: DriveInput, dt: number): void {
   d.heat = Math.max(0, d.heat - DOZER.heatCool * dt);
   d.track = Math.max(0, d.track - DOZER.trackCool * dt);
   d.lastImpact = Math.max(0, d.lastImpact - dt);
+  settlePitch(d, along, nextAlong, dt);
+}
+
+const PITCH = { brake: 0.07, squat: -0.05, follow: 9, impact: 0.035, max: 0.13 } as const;
+
+/** Braking dips the nose and hard throttle squats the rear; impacts kick on top and settle out. */
+function settlePitch(d: Dozer, along: number, nextAlong: number, dt: number): void {
+  const surge = dt > 0 ? (nextAlong - along) / dt / DOZER.accel : 0;
+  const slowing = Math.sign(along) !== 0 && Math.sign(surge) === -Math.sign(along);
+  const target = slowing ? Math.min(1, Math.abs(surge)) * PITCH.brake : Math.min(1, Math.abs(surge)) * PITCH.squat;
+  d.pitch += (target - d.pitch) * Math.min(1, dt * PITCH.follow);
 }
 
 /** Holding the blade starts a timed push once the cooldown allows; the blade stays down for the push. */
@@ -142,6 +156,9 @@ function applyDozerImpulse(d: Dozer, nx: number, ny: number, depth: number, boun
   d.vx *= 1 - DOZER.impactLoss * 0.15;
   d.vy *= 1 - DOZER.impactLoss * 0.15;
   d.lastImpact = Math.max(d.lastImpact, Math.min(0.36, 0.07 + impact * 0.09));
+  // A head-on hit throws the nose down; a hit from behind rocks it back.
+  const head = -(nx * Math.cos(d.heading) + ny * Math.sin(d.heading));
+  d.pitch = Math.max(-PITCH.max, Math.min(PITCH.max, d.pitch + head * impact * PITCH.impact));
   return impact;
 }
 

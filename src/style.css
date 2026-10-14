@@ -44,14 +44,19 @@ html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background:
 .instrument-deck:before { left: 14px; } .instrument-deck:after { right: 14px; }
 .gauge-module { display: flex; flex-direction: column; align-items: center; gap: 4px; }
 .gauge { width: 86px; height: 86px; position: relative; border: 4px solid #73796a; border-radius: 50%; background: radial-gradient(circle at 45% 35%, #282d27, #10170f); box-shadow: 0 0 0 2px #101710, 0 3px 4px #0008, inset 0 1px 7px #000; }
-.gauge-ticks { position: absolute; inset: 7px; border-radius: 50%; background: repeating-conic-gradient(from 240deg, #d7d3b6 0deg 2deg, transparent 2deg 24deg); mask: radial-gradient(transparent 56%, #000 58% 72%, transparent 74%); clip-path: polygon(0 0, 100% 0, 100% 90%, 50% 53%, 0 90%); }
+.gauge-ticks { position: absolute; inset: 7px; border-radius: 50%; background: repeating-conic-gradient(from 240deg, #fbf6dc 0deg 2.4deg, transparent 2.4deg 24deg); filter: drop-shadow(0 0 2px #fff3c088); mask: radial-gradient(transparent 56%, #000 58% 72%, transparent 74%); clip-path: polygon(0 0, 100% 0, 100% 90%, 50% 53%, 0 90%); }
 .gauge:after { content: ''; position: absolute; inset: 3px; border-radius: 50%; border: 3px solid transparent; border-right-color: #b76640; transform: rotate(-15deg); opacity: .8; }
 .gauge-min, .gauge-max { position: absolute; bottom: 17px; font: 9px var(--mono); color: var(--muted); }
 .gauge-min { left: 8px; } .gauge-max { right: 3px; }
-.gauge-needle { position: absolute; bottom: 50%; left: calc(50% - 1px); width: 2px; height: 34%; background: #e4c98b; transform-origin: 50% 100%; transform: rotate(var(--needle, -120deg)); transition: transform .14s linear; box-shadow: 1px 1px #000; }
-.gauge-pin { position: absolute; top: calc(50% - 5px); left: calc(50% - 5px); width: 10px; height: 10px; border-radius: 50%; background: #a69e7c; border: 2px solid #ded6ae; }
+.gauge-needle { position: absolute; bottom: 50%; left: calc(50% - 1.5px); width: 3px; height: 36%; border-radius: 2px 2px 0 0; background: linear-gradient(#fff4c8, #ffc75a); transform-origin: 50% 100%; transform: rotate(var(--needle, -120deg)); transition: transform .14s linear; box-shadow: 0 0 5px #ffb84aaa, 1px 1px #000; }
+.gauge-pin { position: absolute; top: calc(50% - 5px); left: calc(50% - 5px); width: 10px; height: 10px; border-radius: 50%; background: #c9bf95; border: 2px solid #fff1c4; }
 .gauge output { position: absolute; bottom: 5px; width: 100%; text-align: center; font: bold 13px var(--mono); }
-.gauge.warning { border-color: var(--red); } .gauge.warning output { color: var(--red); }
+.gauge output { color: #f6f0d6; text-shadow: 0 0 4px #000; }
+/* Amber from 65, red from 85: the rim glows and pulses faster the closer the machine is to failing. */
+.gauge.warning { border-color: #e8a63a; --rim-glow: #f0a83a; animation: gauge-rim 1.1s ease-in-out infinite; } .gauge.warning output { color: #ffc35c; }
+.gauge.critical { border-color: #ff5a3c; --rim-glow: #ff4a2a; animation-duration: .45s; } .gauge.critical output { color: #ff7a5c; }
+@keyframes gauge-rim { 0%, 100% { box-shadow: 0 0 0 2px #101710, 0 0 4px 1px var(--rim-glow), inset 0 1px 7px #000; } 50% { box-shadow: 0 0 0 2px #101710, 0 0 16px 5px var(--rim-glow), inset 0 0 10px color-mix(in srgb, var(--rim-glow) 45%, transparent); } }
+@media (prefers-reduced-motion: reduce) { .gauge.warning { animation: none; box-shadow: 0 0 0 2px #101710, 0 0 10px 3px var(--rim-glow), inset 0 1px 7px #000; } }
 .blade-module { width: 188px; border-left: 1px solid var(--line); padding-left: 18px; }
 .blade { margin-top: 6px; background: #131b14; border: 2px solid #0a100b; padding: 8px 10px; color: #cad1b4; font: bold 12px var(--mono); box-shadow: inset 0 1px 4px #000; }
 .blade:before { content: ''; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #6e7c53; margin-right: 10px; }
