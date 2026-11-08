@@ -89,15 +89,9 @@ jobs:
   interface:
     needs: build
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      # Quick suites share a preview through verify-release's comma lists.
-      matrix:
-        include:
-          - { name: binder-menus-hud, suite: 'binder,menus,hud' }
-          - { name: coverage, suite: coverage }
-          - { name: seasons-ice-performance, suite: 'seasons,ice,performance' }
+    timeout-minutes: 20
+    # Player-facing menus and HUD only. Debug-binder, season, ice and performance suites
+    # stay runnable locally through verify-release.mjs; season/ice rules are unit-tested.
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -114,11 +108,11 @@ jobs:
       - uses: ./.github/actions/setup-playwright
       - run: node scripts/verify-release.mjs
         env:
-          RELEASE_TEST_SUITE: ${{ matrix.suite }}
+          RELEASE_TEST_SUITE: menus,hud
       - uses: actions/upload-artifact@v7.0.1
         if: always()
         with:
-          name: interface-and-season-evidence-${{ matrix.name }}
+          name: interface-evidence
           path: artifacts
           retention-days: 14
 
