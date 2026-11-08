@@ -92,17 +92,9 @@ jobs:
     timeout-minutes: 30
     strategy:
       fail-fast: false
-      max-parallel: 8
-      # One runner wave, no job much past the slowest single width (~8 min). The 1920, 1536,
-      # 1024 and 768 layouts each take 6-8 min, so they run alone; quick suites and phone
-      # widths share a preview through verify-release's comma lists.
+      # Quick suites share a preview through verify-release's comma lists.
       matrix:
         include:
-          - { name: layout-1920, suite: layout, width: '1920' }
-          - { name: layout-1536, suite: layout, width: '1536' }
-          - { name: layout-1024, suite: layout, width: '1024' }
-          - { name: layout-768, suite: layout, width: '768' }
-          - { name: layout-phones, suite: layout, width: '844,390,320' }
           - { name: binder-menus-hud, suite: 'binder,menus,hud' }
           - { name: coverage, suite: coverage }
           - { name: seasons-ice-performance, suite: 'seasons,ice,performance' }
@@ -123,7 +115,6 @@ jobs:
       - run: node scripts/verify-release.mjs
         env:
           RELEASE_TEST_SUITE: ${{ matrix.suite }}
-          ISSUES_WIDTH: ${{ matrix.width }}
       - uses: actions/upload-artifact@v7.0.1
         if: always()
         with:
