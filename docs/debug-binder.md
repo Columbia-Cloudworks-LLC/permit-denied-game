@@ -42,8 +42,6 @@ node scripts/verify-debug-binder.mjs
 $env:MOBILE_TEST_URL='http://127.0.0.1:5178'
 node scripts/verify-mobile.mjs artifacts/debug-binder/mobile-hud
 node scripts/verify-vehicles.mjs --controls-only
-node --test scripts/catalog.test.mjs
-node scripts/verify-catalog.mjs
 ```
 
 The binder script defaults to the local server on port 5178; set `DEBUG_TEST_URL` for another origin. Generated screenshots and `browser-report.json` are under `artifacts/debug-binder/` and remain untracked. Generated evidence stays out of Git; releases follow the protected main-branch CI workflow.

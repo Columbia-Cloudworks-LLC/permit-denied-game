@@ -13,7 +13,6 @@ npm run dev
 
 Open the URL Vite prints (http://localhost:5173). Separate Vite entries, not imported by the game:
 
-- `/catalog/` — published still gallery (R2). Permit chrome, search, cards, dialog.
 - `/designer/` — building JSON preview only. File tabs, isolate-lot Pixi view, export/copy. Drafts are never added to the town.
 
 Sandbox and campaign levels can be opened directly:
@@ -60,7 +59,7 @@ GitHub Actions repository variables are the source of truth for `FACEBOOK_APP_ID
 
 Actions builds with the repository's configuration, checks the generated metadata, and uploads only the compiled static site through Vercel's Build Output API. The API path avoids a Vercel CLI user-profile lookup that fails for the current team token. Older commits skip deployment when the branch has advanced. To redeploy after a variable or token update, dispatch the CI workflow on `main` (production) or the relevant internal branch (preview). Changing GitHub configuration alone does not change an already deployed page. The workflow verifies the production metadata after deployment. Test the build helper with `node --test scripts/*.test.mjs`.
 
-IONOS is only the registrar. Authoritative nameservers are Cloudflare (`dee.ns.cloudflare.com`, `elliott.ns.cloudflare.com`). Game apex and `www` stay DNS-only at Vercel. A wildcard `*.permitdenied.app` CNAME also points at Vercel, so `github.permitdenied.app` already resolves and presents the existing wildcard certificate. Production deploys attach that hostname to the `permit-denied` project; the Build Output API then issues a 308 to `https://github.com/Columbia-Cloudworks-LLC/permit-denied-game` for every path on that host. Catalog objects stay on `assets.permitdenied.app` (Cloudflare R2). The original Vercel DNS zone is retained for rollback. No backend, accounts, or API keys. Entirely client-side.
+IONOS is only the registrar. Authoritative nameservers are Cloudflare (`dee.ns.cloudflare.com`, `elliott.ns.cloudflare.com`). Game apex and `www` stay DNS-only at Vercel. A wildcard `*.permitdenied.app` CNAME also points at Vercel, so `github.permitdenied.app` already resolves and presents the existing wildcard certificate. Production deploys attach that hostname to the `permit-denied` project; the Build Output API then issues a 308 to `https://github.com/Columbia-Cloudworks-LLC/permit-denied-game` for every path on that host. The original Vercel DNS zone is retained for rollback. No backend, accounts, or API keys. Entirely client-side.
 
 ## Automated title screenshot
 

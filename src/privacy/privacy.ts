@@ -26,7 +26,7 @@ function activate(): void {
   } });
   pageview({ path: new URL(analyticsPage(location.href)!).pathname });
 }
-export function analyticsEvent(name: 'game_started' | 'game_engaged' | 'game_finished' | 'game_restarted' | 'catalog_asset_opened', data: Record<string, string | number>): void {
+export function analyticsEvent(name: 'game_started' | 'game_engaged' | 'game_finished' | 'game_restarted', data: Record<string, string | number>): void {
   if (!allowed()) return;
   activate();
   track(name, data);

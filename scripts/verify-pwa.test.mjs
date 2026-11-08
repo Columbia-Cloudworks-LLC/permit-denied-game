@@ -73,12 +73,10 @@ test('built PWA check fails when the service worker is missing', async () => {
   try {
     await mkdir(path.join(root, 'assets'), { recursive: true });
     await mkdir(path.join(root, 'pwa'), { recursive: true });
-    await mkdir(path.join(root, 'catalog'), { recursive: true });
     await mkdir(path.join(root, 'designer'), { recursive: true });
     await mkdir(path.join(root, 'privacy'), { recursive: true });
     await mkdir(path.join(root, 'terms'), { recursive: true });
     await writeFile(path.join(root, 'index.html'), '<link rel="icon" type="image/x-icon" href="/brand/favicon.ico"><link rel="icon" type="image/png" href="/pwa/icon-192.png"><link rel="apple-touch-icon" href="/pwa/apple-touch-icon.png"><link rel="manifest" href="/manifest.webmanifest"><script src="/assets/game.js"></script>');
-    await writeFile(path.join(root, 'catalog/index.html'), '<title>catalog</title>');
     await writeFile(path.join(root, 'designer/index.html'), '<title>designer</title>');
     await writeFile(path.join(root, 'privacy/index.html'), '<title>privacy</title>');
     await writeFile(path.join(root, 'terms/index.html'), '<title>terms</title>');
@@ -89,13 +87,13 @@ test('built PWA check fails when the service worker is missing', async () => {
     }
     await assert.rejects(() => verifyPwaBuild(root), /ENOENT|no such file|service worker/i);
 
-    await writeFile(path.join(root, 'sw.js'), 'precacheAndRoute([]); const denylist = [/catalog/, /designer/, /privacy/, /terms/];');
+    await writeFile(path.join(root, 'sw.js'), 'precacheAndRoute([]); const denylist = [/designer/, /privacy/, /terms/];');
     await verifyPwaBuild(root);
 
-    await writeFile(path.join(root, 'catalog/index.html'), '<script src="/assets/catalog.js"></script>');
-    await writeFile(path.join(root, 'assets/catalog.js'), 'navigator.serviceWorker.register("/sw.js")');
-    await assert.rejects(() => verifyPwaBuild(root), /catalog\/index\.html must not register the game service worker/);
+    await writeFile(path.join(root, 'designer/index.html'), '<script src="/assets/designer.js"></script>');
+    await writeFile(path.join(root, 'assets/designer.js'), 'navigator.serviceWorker.register("/sw.js")');
+    await assert.rejects(() => verifyPwaBuild(root), /designer\/index\.html must not register the game service worker/);
     await writeFile(path.join(root, 'sw.js'), 'precacheAndRoute([]);');
-    await assert.rejects(() => verifyPwaBuild(root), /keep catalog, designer, privacy, and terms off/);
+    await assert.rejects(() => verifyPwaBuild(root), /keep designer, privacy, and terms off/);
   } finally { await rm(root, { recursive: true, force: true }); }
 });

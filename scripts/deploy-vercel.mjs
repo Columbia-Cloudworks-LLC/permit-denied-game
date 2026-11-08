@@ -15,9 +15,6 @@ export async function staticDeploymentFiles(directory) {
       { src: '/privacy/?', dest: '/privacy/index.html', headers: { 'cache-control': 'no-cache' } },
       { src: '/terms/?', dest: '/terms/index.html', headers: { 'cache-control': 'no-cache' } },
       { src: '/assets/(.*)', headers: { 'cache-control': 'public, max-age=31536000, immutable' }, continue: true },
-      { src: '/catalog', status: 308, headers: { Location: '/catalog/' } },
-      { src: '/catalog/', dest: '/catalog/index.html', headers: { 'cache-control': 'no-cache' } },
-      { src: '/catalog/release.json', headers: { 'cache-control': 'no-store' }, continue: true },
       { src: '/designer', status: 308, headers: { Location: '/designer/' } },
       { src: '/designer/', dest: '/designer/index.html', headers: { 'cache-control': 'no-cache' } },
       { src: '/build.json', headers: { 'cache-control': 'no-store' }, continue: true },
@@ -25,7 +22,6 @@ export async function staticDeploymentFiles(directory) {
       { src: '/workbox-(.*)\\.js', headers: { 'cache-control': 'public, max-age=31536000, immutable' }, continue: true },
       { src: '/manifest.webmanifest', headers: { 'cache-control': 'no-cache', 'content-type': 'application/manifest+json' }, continue: true },
       { handle: 'filesystem' },
-      { src: '/catalog/(.*)', status: 404 },
       { src: '/designer/(.*)', status: 404 },
       { src: '/(.*)', dest: '/index.html' },
     ],
@@ -40,13 +36,11 @@ export async function staticDeploymentFiles(directory) {
   }
   await visit('');
   if (!files.some(file => file.file === '.vercel/output/static/index.html')) throw new Error('Missing built index.html');
-  if (files.some(file => file.file === '.vercel/output/static/catalog/index.html') && !files.some(file => file.file === '.vercel/output/static/catalog/release.json')) throw new Error('Missing catalog release pointer');
   return files;
 }
 
 export async function deploy() {
   const { token, teamId, projectId, target } = deploymentConfig(process.env);
-  await assertCatalogRelease(process.env.DEPLOY_SHA || '');
   const vercel = vercelApi({ token, teamId });
   const api = async (endpoint, body) => (await vercel(endpoint, { method: body ? 'POST' : 'GET', body })).data;
   const project = await api(`/v9/projects/${projectId}`);
@@ -71,15 +65,6 @@ function deploymentConfig(env) {
   const { VERCEL_TOKEN: token, VERCEL_ORG_ID: teamId, VERCEL_PROJECT_ID: projectId, DEPLOY_TARGET: target } = env;
   if (![token, teamId, projectId].every(Boolean) || !['production', 'preview'].includes(target)) throw new Error('Missing or invalid deployment configuration');
   return { token, teamId, projectId, target };
-}
-
-/** The build must point at a published R2 catalog release made for this very commit. */
-async function assertCatalogRelease(sha) {
-  const pointer = JSON.parse(await readFile('dist/catalog/release.json', 'utf8'));
-  const published = /^https:\/\/assets\.permitdenied\.app\/releases\/[a-f0-9]{64}\.json$/.test(pointer.url);
-  if (!published || !/^[a-f0-9]{40}$/.test(sha) || pointer.commit !== sha) {
-    throw new Error('Deployment requires a verified R2 catalog release for this commit');
-  }
 }
 
 /** Report a ready deployment's URL to the console and, in Actions, to the step output and summary. */

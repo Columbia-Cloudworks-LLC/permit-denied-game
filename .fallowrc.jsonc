@@ -11,10 +11,8 @@
   "ignorePatterns": [
     "!.claude/hooks/**"
   ],
-  // cloudflare-status.mjs spawns node_modules/wrangler/bin/wrangler.js by path;
   // fallow-health.mjs runs c8 through npx to cover the node --test suites.
   "ignoreDependencies": [
-    "wrangler",
     "c8"
   ],
   "rules": {

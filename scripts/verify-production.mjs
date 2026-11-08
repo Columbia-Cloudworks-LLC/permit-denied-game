@@ -1,6 +1,5 @@
 import { facebookPageUrl } from './facebook-metadata.mjs';
 import { readFile } from 'node:fs/promises';
-import { verifyCatalogProduction } from './verify-catalog-production.mjs';
 import { assertGithubVanityRedirect, GITHUB_VANITY_HOST } from './github-redirect.mjs';
 
 const { version } = JSON.parse(await readFile('package.json', 'utf8'));
@@ -27,8 +26,6 @@ for (let attempt = 0; attempt < 12; attempt++) {
     const client = await script.text();
     if (!client.includes(pageUrl)) throw new Error("Production Facebook page URL does not match the repository variable");
     if (!script.ok || !client.includes(`"${version}"`)) throw new Error('Production version does not match this release');
-    if (!process.env.DEPLOY_SHA) throw new Error('DEPLOY_SHA is required to verify the catalog release');
-    await verifyCatalogProduction('https://permitdenied.app', { version, commit: process.env.DEPLOY_SHA });
     for (const [path, title] of [['privacy', 'Privacy Policy'], ['terms', 'Terms of Use']]) {
       const policy = await fetch(`https://permitdenied.app/${path}`, { cache: 'no-store', signal: AbortSignal.timeout(15000) });
       const body = await policy.text();

@@ -9,7 +9,7 @@ describe('analytics privacy boundary', () => {
     expect(parseChoice('declined')).toBe('declined');
   });
   it('reports only authored paths and never query strings or fragments', () => {
-    expect(analyticsPage('https://permitdenied.app/catalog/?q=email@example.com&asset=x#secret')).toBe('https://permitdenied.app/catalog/');
+    expect(analyticsPage('https://permitdenied.app/catalog/?q=email@example.com&asset=x#secret')).toBeNull();
     expect(analyticsPage('https://permitdenied.app/designer/?id=porch-house#draft')).toBe('https://permitdenied.app/designer/');
     expect(analyticsPage('https://permitdenied.app/?mode=challenge&district=d30&seed=120')).toBe('https://permitdenied.app/');
     expect(analyticsPage('https://www.permitdenied.app/privacy/')).toBe('https://permitdenied.app/privacy');

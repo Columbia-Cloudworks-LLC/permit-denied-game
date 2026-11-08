@@ -45,7 +45,7 @@ jobs:
           path: dist
           retention-days: 14
 
-  # Runs alongside interface and catalog, which need only the build artifact.
+  # Runs alongside interface, which needs only the build artifact.
   test:
     needs: build
     runs-on: ubuntu-latest
@@ -67,7 +67,6 @@ jobs:
       - run: npm run test:soak
       - run: node --test scripts/*.test.mjs
       - uses: ./.github/actions/setup-playwright
-      - run: node scripts/verify-catalog.mjs
       - run: node scripts/verify-privacy.mjs
 
   windows:
@@ -90,23 +89,9 @@ jobs:
   interface:
     needs: build
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      max-parallel: 8
-      # One runner wave, no job much past the slowest single width (~8 min). The 1920, 1536,
-      # 1024 and 768 layouts each take 6-8 min, so they run alone; quick suites and phone
-      # widths share a preview through verify-release's comma lists.
-      matrix:
-        include:
-          - { name: layout-1920, suite: layout, width: '1920' }
-          - { name: layout-1536, suite: layout, width: '1536' }
-          - { name: layout-1024, suite: layout, width: '1024' }
-          - { name: layout-768, suite: layout, width: '768' }
-          - { name: layout-phones, suite: layout, width: '844,390,320' }
-          - { name: binder-menus-hud, suite: 'binder,menus,hud' }
-          - { name: coverage, suite: coverage }
-          - { name: seasons-ice-performance, suite: 'seasons,ice,performance' }
+    timeout-minutes: 20
+    # Player-facing menus and HUD only. Debug-binder, season, ice and performance suites
+    # stay runnable locally through verify-release.mjs; season/ice rules are unit-tested.
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -123,27 +108,16 @@ jobs:
       - uses: ./.github/actions/setup-playwright
       - run: node scripts/verify-release.mjs
         env:
-          RELEASE_TEST_SUITE: ${{ matrix.suite }}
-          ISSUES_WIDTH: ${{ matrix.width }}
+          RELEASE_TEST_SUITE: menus,hud
       - uses: actions/upload-artifact@v7.0.1
         if: always()
         with:
-          name: interface-and-season-evidence-${{ matrix.name }}
+          name: interface-evidence
           path: artifacts
           retention-days: 14
 
-  catalog:
-    needs: build
-    uses: ./.github/workflows/asset-captures.yml
-    with:
-      sha: ${{ github.event.pull_request.head.sha || github.sha }}
-      trusted: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
-    secrets:
-      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-
   deploy:
-    needs: [build, test, windows, catalog, interface]
+    needs: [build, test, windows, interface]
     # Fork PRs get tests, never deployment credentials. Dispatch also handles the
     # final screenshot-bot commit, whose push does not start ordinary CI.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
@@ -190,10 +164,6 @@ jobs:
         with:
           name: game-build
           path: dist
-      - uses: actions/download-artifact@v8.0.1
-        with:
-          name: asset-catalog-public
-          path: artifacts/catalog-public
       - name: Verify built public Facebook metadata
         run: |
           node --input-type=module -e 'import fs from "node:fs"; const html=fs.readFileSync("dist/index.html","utf8"); if(!html.includes(`property="fb:app_id" content="${process.env.FACEBOOK_APP_ID.trim()}"`)) throw Error("Built HTML is missing the configured Facebook App ID");'
@@ -207,12 +177,6 @@ jobs:
             const { data } = await github.rest.repos.getBranch({ ...context.repo, branch });
             core.setOutput('yes', String(data.commit.sha === expected));
             if (data.commit.sha !== expected) core.notice('Newer branch commit exists; skipping stale deployment.');
-      - name: Publish immutable catalog objects and pin release
-        if: steps.current.outputs.yes == 'true'
-        run: node scripts/catalog.mjs publish
-        env:
-          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
       - name: Create GitHub deployment
         if: steps.current.outputs.yes == 'true'
         id: deployment

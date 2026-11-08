@@ -1,11 +1,10 @@
 import { TAGLINE, TITLE } from '../game/constants';
 import { permitDocument } from '../render/permitIntro';
 
-export type SitePage = 'play' | 'catalog' | 'designer';
+export type SitePage = 'play' | 'designer';
 
 const PAGES: { id: SitePage; href: string; label: string }[] = [
   { id: 'play', href: '/', label: 'Play' },
-  { id: 'catalog', href: '/catalog/', label: 'Catalog' },
   { id: 'designer', href: '/designer/', label: 'Designer' },
 ];
 
