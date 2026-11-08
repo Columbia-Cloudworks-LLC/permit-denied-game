@@ -10,7 +10,7 @@ Ship the current worktree to production as **one** pull request into `main`. Pro
 
 This skill is not a PR stack. Several commits on the release branch are stacked commits, not stacked pull requests. A request for a stacked PR, a PR stack, a stacked release, or multiple dependent pull requests follows `/stacked-pr` (`.claude/skills/stacked-pr/SKILL.md`) instead. Do not fold those layers into this single ship pull request.
 
-Every ship **must** bump the game version. About & Credits, `build.json`, and the catalog pin read `package.json`. Prior ships bumped `package.json` / `package-lock.json` in the same PR and used the title `Release 1.0.N: …`. Do not invent another versioning scheme. Stay on `1.0.N`.
+Every ship **must** bump the game version. About & Credits and `build.json` read `package.json`. Prior ships bumped `package.json` / `package-lock.json` in the same PR and used the title `Release 1.0.N: …`. Do not invent another versioning scheme. Stay on `1.0.N`.
 
 ## Do
 

@@ -8,7 +8,7 @@
 | `npm run test:integration` | `integration` | d30/d100 and campaign generation matrices, renderer draw cache | Linux |
 | `npm run test:soak` | `soak` | Accelerated 20-minute sandbox wreckage | Linux |
 | `npm run test:bench` | `bench` | District sim timings and dense-city render samples | Manual / dispatch, not a merge gate |
-| `node --test scripts/*.test.mjs` | — | Operational script tests (paths, deploy helpers, capture harness, catalog planning, and a regeneration of every authored building package into a temp directory) | Linux + Windows |
+| `node --test scripts/*.test.mjs` | — | Operational script tests (paths, deploy helpers, capture harness, and a regeneration of every authored building package into a temp directory) | Linux + Windows |
 | `npm run check` | — | `tsc` for `src` and `checkJs` for operational scripts | Linux + Windows |
 | `npm run build` | — | Typecheck, production bundle, initial-JS budget (`npm run build:dist` skips the typecheck when `check` already ran) | Linux + Windows |
 | `npx fallow dead-code` / `npx fallow dupes` | — | Unused files/exports, import cycles, copy-paste clones (should report none) | Manual |
@@ -18,7 +18,7 @@ CI and the title-screenshot workflow run on every pull request, not only pull re
 
 Windows keeps the required check name `windows`. It is a representative smoke: unit tests, script tests, production build, PWA verification. That still catches numerical drift on the classic/d10 lots, path separators in Node scripts, and filesystem layout of `dist/`. It does not rerun d100 campaign matrices or the soak.
 
-Linux `build` only typechecks, packages, verifies the PWA, and uploads `game-build`. Everything else starts from that artifact in parallel: `test` (unit, integration, soak, script tests, catalog and privacy verifiers), the eight `interface` jobs, and Linux-only catalog capture. Deployment waits for all of them. A newer push to a pull request cancels that PR's running CI; pushes to `main` always finish.
+Linux `build` only typechecks, packages, verifies the PWA, and uploads `game-build`. Everything else starts from that artifact in parallel: `test` (unit, integration, soak, script tests, privacy verifier) and the eight `interface` jobs. Deployment waits for all of them. A newer push to a pull request cancels that PR's running CI; pushes to `main` always finish.
 
 `scripts/verify-release.mjs` takes comma lists so one runner shares a single preview: `RELEASE_TEST_SUITE=binder,menus,hud` runs suites in order, and `ISSUES_WIDTH=844,390,320` runs the layout suite two widths at a time, writing each width's evidence to `artifacts/open-issues/<width>/`. A single suite or width behaves as before. Playwright Chromium comes from the Actions cache through `.github/actions/setup-playwright`, keyed on the installed Playwright version. Benchmarks print timing lines and are excluded from ordinary correctness jobs; run `npm run test:bench` when investigating frame or debris cost.
 
@@ -28,7 +28,7 @@ Expected local budgets: unit cases finish in seconds; integration can take a few
 
 `npm run health` collects V8 coverage (Vitest for `src/`, c8 for `scripts/` and `.claude/hooks/`), merges it into `coverage/coverage-final.json`, and runs `fallow health --coverage` on it. Without coverage, fallow estimates it and flags any untested function at cyclomatic 5 or more. A full run takes about 15 minutes; `-- --quick` collects unit coverage only, and `-- --reuse` rescores the last coverage after an edit. A few timing-bounded generation tests time out under instrumentation; that does not affect the scores, and `npm test` stays the correctness gate.
 
-DOM code (HUD, menus, binder panels, the catalog page, privacy dialogs, and the game shell) is tested in happy-dom: start the test file with `// @vitest-environment happy-dom` and import `src/render/domTestShims.ts` for the browser APIs happy-dom lacks. The game shell test stands in for the Pixi `Application` and the ticker, then drives `frame()` by hand.
+DOM code (HUD, menus, binder panels, privacy dialogs, and the game shell) is tested in happy-dom: start the test file with `// @vitest-environment happy-dom` and import `src/render/domTestShims.ts` for the browser APIs happy-dom lacks. The game shell test stands in for the Pixi `Application` and the ticker, then drives `frame()` by hand.
 
 `.fallowrc.jsonc` tells fallow which files run directly (`scripts/*.mjs`, `.claude/hooks/*.mjs`) so their exports count as used. When a new operational script is only invoked by path, it is covered by that glob; a script in a subdirectory needs its own entry.
 

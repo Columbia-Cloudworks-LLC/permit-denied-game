@@ -24,5 +24,5 @@ npm run test:bench     # performance measurements (not a merge gate)
 npm run build          # typecheck, production bundle, JS budget
 ```
 
-Linux CI runs unit, integration, soak, script tests, build, PWA, catalog, and privacy checks. Windows CI (`windows`, the required check) runs unit tests, script tests, build, and PWA so path/filesystem regressions still surface without duplicating multi-minute generation. Benchmarks stay on `npm run test:bench`. See [`docs/testing.md`](../docs/testing.md).
+Linux CI runs unit, integration, soak, script tests, build, PWA, and privacy checks. Windows CI (`windows`, the required check) runs unit tests, script tests, build, and PWA so path/filesystem regressions still surface without duplicating multi-minute generation. Benchmarks stay on `npm run test:bench`. See [`docs/testing.md`](../docs/testing.md).
 

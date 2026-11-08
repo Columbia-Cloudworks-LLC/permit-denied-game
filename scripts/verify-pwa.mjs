@@ -12,7 +12,7 @@ import {
   htmlKeepsIcoFavicon,
 } from './pwa.mjs';
 
-const OTHER_PAGES = ['catalog/index.html', 'designer/index.html', 'privacy/index.html', 'terms/index.html'];
+const OTHER_PAGES = ['designer/index.html', 'privacy/index.html', 'terms/index.html'];
 
 export async function verifyPwaBuild(root = 'dist') {
   const html = await readFile(path.join(root, 'index.html'), 'utf8');
@@ -64,8 +64,8 @@ async function verifyServiceWorker(root) {
   if (!/precacheAndRoute|createHandlerBoundToURL/.test(sw)) {
     throw new Error('Service worker does not precache the application shell');
   }
-  if (!['catalog', 'designer', 'privacy', 'terms'].every(page => sw.includes(page))) {
-    throw new Error('Service worker must keep catalog, designer, privacy, and terms off the game navigation fallback');
+  if (!['designer', 'privacy', 'terms'].every(page => sw.includes(page))) {
+    throw new Error('Service worker must keep designer, privacy, and terms off the game navigation fallback');
   }
 }
 

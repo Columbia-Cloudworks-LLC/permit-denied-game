@@ -1,10 +1,8 @@
 import { TERMS_VERSION } from './terms-version.mjs';
-import sharp from 'sharp';
 import assert from 'node:assert/strict';
 import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { chromium } from 'playwright';
-import { buildIndexes, buildTree, digest } from './catalog/core.mjs';
 
 // Exercise the actual production bundle and current vendor script at a routed
 // production origin. All collection requests are intercepted, never ingested.
@@ -17,14 +15,6 @@ assert.ok(vendor.includes('beforeSend'));
 const browser = await chromium.launch({ headless: true });
 const errors = [], evidence = [];
 const origin = 'https://permitdenied.app';
-const files = new Map();
-const put = async data => { const bytes = Buffer.from(JSON.stringify(data)), key = `objects/${digest(bytes)}.json`; files.set(key, bytes); return key; };
-const thumbnail = await sharp({ create: { width: 360, height: 270, channels: 3, background: '#48543a' } }).webp().toBuffer();
-const thumbnailKey = `objects/${digest(thumbnail)}.webp`; files.set(thumbnailKey, thumbnail);
-const frame = { file: thumbnailKey, label: 'Intact', width: 360, height: 270, seconds: 0 };
-const card = { id: 'vehicle:bus', name: 'Bus', category: 'vehicle', variants: 1, thumbnail: thumbnailKey, detail: await put({ id: 'vehicle:bus', name: 'Bus', variants: [{ variant: 0, series: [{ id: 'model', name: 'Model', frames: [frame] }] }] }) };
-const release = { schema: 1, version: 'test', commit: 'test', assetCount: 1, indexes: await buildIndexes([card], put), byId: await buildTree([{ key: card.id, card }], put) };
-files.set('release.json', Buffer.from(JSON.stringify(release)));
 async function shoot(page, path, options = {}) {
   let last;
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -67,22 +57,17 @@ async function serveDist(route, pathname) {
 function distPath(pathname) {
   if (pathname === '/') return 'index.html';
   const relative = pathname.replace(/^\//, '');
-  return /^(privacy|terms|catalog)\/?$/.test(relative) ? relative.replace(/\/$/, '') + '/index.html' : relative;
+  return /^(privacy|terms)\/?$/.test(relative) ? relative.replace(/\/$/, '') + '/index.html' : relative;
 }
 
 async function context(options = {}) {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 }, userAgent: 'Mozilla/5.0 Chrome/130.0.0.0 Safari/537.36', ...options });
   await ctx.addInitScript(() => Object.defineProperty(navigator, 'webdriver', { get: () => false }));
   const events = [], scripts = [];
-  await ctx.route('https://assets.permitdenied.app/**', async route => {
-    const name = new URL(route.request().url()).pathname.slice(1);
-    await route.fulfill({ status: files.has(name) ? 200 : 404, body: files.get(name) || '', contentType: name.endsWith('webp') ? 'image/webp' : 'application/json', headers: { 'access-control-allow-origin': '*' } });
-  });
   await ctx.route('https://permitdenied.app/**', async route => {
     const url = new URL(route.request().url());
     if (url.pathname.startsWith('/_vercel/insights/')) await serveInsights(route, url, events, scripts);
     else if (url.pathname === '/sw.js') await route.fulfill({ status: 404, body: '' });
-    else if (url.pathname === '/catalog/release.json') await route.fulfill({ json: { url: 'https://assets.permitdenied.app/release.json', commit: 'test', version: 'test' } });
     else await serveDist(route, url.pathname);
   });
   ctx.on('page', page => page.on('pageerror', error => errors.push(error.message)));
@@ -139,18 +124,13 @@ try {
   assert.ok(events.some(e => e.en === 'game_finished'));
   await page.evaluate(() => window.__pd.reset('same')); await page.waitForTimeout(200);
   assert.ok(events.some(e => e.en === 'game_restarted'));
-  const catalog = await ctx.newPage(); await catalog.goto(origin + '/catalog/?q=private@example.com');
-  await catalog.waitForFunction(() => document.querySelector('#release').textContent.includes('assets ·'));
-  await catalog.locator('#search').fill(''); await catalog.locator('#filters button').click();
-  await catalog.locator('.card').first().click(); await catalog.waitForTimeout(200);
-  assert.ok(events.some(e => e.en === 'catalog_asset_opened' && e.ed.asset === 'vehicle:bus'));
   for (const e of events) { assert.ok(!e.o.includes('?') && !e.o.includes('#')); assert.ok(!JSON.stringify(e).includes('private@example.com')); assert.ok(!e.r); }
   await settings.bringToFront(); await settings.getByRole('button', { name: 'Privacy Settings', exact: true }).first().click();
   await settings.locator('#analytics-decline').click(); await page.waitForTimeout(200);
   const count = events.length;
   await page.bringToFront(); await page.evaluate(() => { window.__pd.reset('same'); window.__pd.analyticsStep(100, 'sandbox', 'd10'); });
   await page.waitForTimeout(250); assert.equal(events.length, count);
-  evidence.push('First-play acknowledgment, keyboard isolation, refusal persistence, adult-only consent, five events, query redaction, cross-tab withdrawal.');
+  evidence.push('First-play acknowledgment, keyboard isolation, refusal persistence, adult-only consent, four events, query redaction, cross-tab withdrawal.');
   // Mobile geometry and disclosure pages are checked without loading the game.
   for (const [width, height] of [[390, 844], [844, 390], [360, 640]]) {
     const { ctx: mobile, scripts: mobileScripts } = await context({ viewport: { width, height }, isMobile: true, hasTouch: true });

@@ -32,8 +32,8 @@ Copy: `BLADE UP` / `BLADE DOWN`; deaths `ENGINE COOKED` / `TRACK THROWN` / `COUN
 - `src/render/` – Pixi rendering, isometric drawing, building surfaces, lighting, LOD. Never mutates simulation state.
 - `src/vehicle/` – dozer and road vehicles. `src/fx/` – particles, camera shake, season weather. `src/audio/` – synth.
 - `src/debug/` – debug binder, `window.__pd` bridge, perf overlay, asset capture.
-- Separate Vite entries not imported by the game: `src/catalog/` (`/catalog/`), `src/designer/` (`/designer/`), `src/privacy/`, `src/site/`. `src/pwa/` – service worker registration and update prompts.
-- `scripts/` – operational Node scripts (deploy, captures, catalog, preflight) with `*.test.mjs` tests.
+- Separate Vite entries not imported by the game: `src/designer/` (`/designer/`), `src/privacy/`, `src/site/`. `src/pwa/` – service worker registration and update prompts.
+- `scripts/` – operational Node scripts (deploy, captures, preflight) with `*.test.mjs` tests.
 
 Deeper docs in `docs/`: `architecture.md` (structure, roofs, debris layers), `testing.md`, `campaign.md`, `city-map-fabric.md`, `construction-authoring.md`, `vehicle-system.md`, `bundle-budget.md`, and the `*-authoring.md` guides.
 
@@ -48,7 +48,7 @@ npm run test:integration  # d30/d100 and campaign generation matrices (Linux CI)
 node --test scripts/*.test.mjs  # operational script tests
 ```
 
-Linux CI runs unit, integration, soak, script tests, build, PWA, catalog, and privacy. Windows CI (required check `windows`) runs unit, script tests, build, and PWA. `npm run test:bench` is measurement only. Match checks to the diff: `npm test` for behavior, `npm run check` when types change, `npm run build` when packaging or entries change, and play a run when the change is visible.
+Linux CI runs unit, integration, soak, script tests, build, PWA, and privacy. Windows CI (required check `windows`) runs unit, script tests, build, and PWA. `npm run test:bench` is measurement only. Match checks to the diff: `npm test` for behavior, `npm run check` when types change, `npm run build` when packaging or entries change, and play a run when the change is visible.
 
 ## Working rules
 
@@ -64,5 +64,4 @@ Linux CI runs unit, integration, soak, script tests, build, PWA, catalog, and pr
 - GitHub: `Columbia-Cloudworks-LLC/permit-denied-game`, default branch `main`. Use the `gh` CLI. `github.permitdenied.app` 308s to the repository.
 - Hosting: Vercel project `permit-denied` (Columbia Cloudworks LLC). GitHub Actions deploys prebuilt output after Linux/Windows checks: `main` to production, internal PRs to previews. Vercel Git builds are disabled in `vercel.json`. `.vercel/` stays gitignored.
 - Repository variables: `FACEBOOK_APP_ID`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`; secret `VERCEL_TOKEN`. Never pass `FACEBOOK_APP_SECRET` to a browser build.
-- DNS: IONOS is registrar only; nameservers are Cloudflare. Catalog assets are on Cloudflare R2 at `assets.permitdenied.app`.
-- `scripts/configure-catalog-ci.mjs` installs the R2 publishing secrets. It requires `COLUMBIA_GITHUB_TOKEN` (an organization token) and deliberately never falls back to the personal `gh` login.
+- DNS: IONOS is registrar only; nameservers are Cloudflare.

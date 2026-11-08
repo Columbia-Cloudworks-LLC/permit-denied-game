@@ -69,10 +69,6 @@ Use the local Node entry points on Windows:
 node node_modules/typescript/bin/tsc --noEmit
 node node_modules/vitest/vitest.mjs run
 node node_modules/vite/bin/vite.js build --configLoader runner
-node scripts/capture-assets.mjs --filter=vehicle: --output=artifacts/vehicle-catalog-final
-node scripts/verify-asset-captures.mjs artifacts/vehicle-catalog-final --vehicles
-node --test scripts/catalog.test.mjs
-node scripts/verify-catalog.mjs
 ```
 
 Browser verification uses the development server because the test harness imports
@@ -93,11 +89,9 @@ active-body limits, height separation, direct collisions, blocked routes, overhe
 loads, bay restoration and a 120-wreck/12-active scene. The full suite also runs
 the existing accelerated twenty-minute simulation benchmark.
 
-The capture catalog records all paints, four headings, front/side/rear/overhead
-contact sequences, travel, settling and pushing a wreck. Damage comes through
-the production contact function rather than assigning health to zero. Each record
-includes state and image hashes, and verifies deterministic intact restoration.
-Catalog series expose the new vehicle sequences alongside existing asset studies.
+The `?capture=1` route's `vehicleScenario` stages front/side/rear/overhead
+contact, travel, settling and pushing a wreck. Damage comes through the
+production contact function rather than assigning health to zero.
 
 The browser report at `artifacts/vehicle-verification/report.json` records the
 test machine, browser, desktop/mobile controls, simulation and render submission

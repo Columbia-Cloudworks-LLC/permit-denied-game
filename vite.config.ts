@@ -29,7 +29,7 @@ const INTEGRATION_TESTS = [
 
 const SOAK_TESTS = ["src/sim/soak.test.ts"];
 const BENCH_TESTS = ["src/sim/bench.test.ts", "src/render/denseCityBench.test.ts", "src/render/chugBench.test.ts"];
-const NON_GAME_PAGES = ["/catalog/", "/designer/", "/privacy/", "/terms/"];
+const NON_GAME_PAGES = ["/designer/", "/privacy/", "/terms/"];
 /** Vendor and data chunks, by the module paths that belong in each. */
 const VENDOR_CHUNKS: [string, string[]][] = [
   ["pixi", ["node_modules/pixi.js", "node_modules/@pixi/"]],
@@ -64,12 +64,10 @@ export default defineConfig({
     workbox: {
       globPatterns: ['index.html', 'assets/**/*.{js,css}', 'pwa/*.png', 'brand/favicon.ico', 'manifest.webmanifest', 'build.json'],
       globIgnores: [
-        '**/catalog/**',
         '**/designer/**',
         '**/privacy/**',
         '**/terms/**',
         '**/social/**',
-        '**/assets/catalog-*',
         '**/assets/designer-*',
         '**/assets/privacy-*',
         '**/assets/legal-*',
@@ -79,7 +77,7 @@ export default defineConfig({
       ],
       navigateFallback: 'index.html',
       navigateFallbackAllowlist: [/^\/($|\?)/],
-      navigateFallbackDenylist: [/^\/catalog(?:\/|$)/, /^\/designer(?:\/|$)/, /^\/privacy(?:\/|$)/, /^\/terms(?:\/|$)/],
+      navigateFallbackDenylist: [/^\/designer(?:\/|$)/, /^\/privacy(?:\/|$)/, /^\/terms(?:\/|$)/],
       cleanupOutdatedCaches: true,
       skipWaiting: false,
       clientsClaim: false,
@@ -105,7 +103,7 @@ export default defineConfig({
     // oversized-chunk exceptions; other application splits stay smaller.
     chunkSizeWarningLimit: 650,
     rollupOptions: {
-      input: { game: 'index.html', catalog: 'catalog/index.html', designer: 'designer/index.html', privacy: 'privacy/index.html', terms: 'terms/index.html' },
+      input: { game: 'index.html', designer: 'designer/index.html', privacy: 'privacy/index.html', terms: 'terms/index.html' },
       output: {
         manualChunks(id) {
           const normalized = id.replaceAll("\\", "/");
