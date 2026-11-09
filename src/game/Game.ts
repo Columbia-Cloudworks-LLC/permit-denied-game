@@ -264,9 +264,26 @@ class Game {
       if (this.rules.biomeId) this.campaign.biomeId = this.rules.biomeId;
       this.rules.season = this.campaign.season;
       this.rules.biomeId = this.campaign.biomeId;
+      this.carryCounty(this.campaign);
     }
     this.reset("same");
     this.syncSessionUrl();
+  }
+
+  /**
+   * A Debug → Mode switch keeps an overworld county a county: the new campaign takes its identity,
+   * current weather and map roll, and plays the county's own seed (Sandbox's New Layout may have
+   * rerolled it), so a win records the county being played and Next Level stays in the region.
+   */
+  private carryCounty(campaign: CampaignRun): void {
+    const { regionId, countyIndex } = this.rules;
+    const county = regionId && countyIndex ? this.overworld?.countyAt(regionId, countyIndex) : undefined;
+    if (!regionId || !countyIndex || !county) return;
+    const weather = this.rules.weather ?? this.town.weather.condition;
+    const mapSeed = this.rules.mapSeed ?? county.seed;
+    Object.assign(this.rules, { seed: county.seed, weather, mapSeed });
+    campaign.levelSeed = county.seed;
+    campaign.county = { regionId, index: countyIndex, weather, mapSeed };
   }
 
   setDistrict(district: DistrictId): void {

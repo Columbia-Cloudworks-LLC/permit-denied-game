@@ -280,6 +280,26 @@ describe('time challenge', () => {
     expect(internal.town.seed).toBe(countySeed('US-IA', 4));
   });
 
+  it('keeps an overworld county when Debug switches Sandbox to Time Challenge', async () => {
+    await internal.hud.onStart!({ kind: 'sandbox', season: 'winter', regionId: 'US-OR', countyIndex: 3, weather: 'fog', effects: 'on', mapSeed: 21 });
+    key('n'); frames(1);
+    expect(internal.town.seed).not.toBe(countySeed('US-OR', 3));
+    game.setSession('challenge');
+    expect(internal.campaign?.levelIndex).toBe(2);
+    expect(internal.campaign?.county).toEqual({ regionId: 'US-OR', index: 3, weather: 'fog', mapSeed: 21 });
+    expect(internal.campaign?.season).toBe('winter');
+    expect(internal.town.seed).toBe(countySeed('US-OR', 3));
+    expect(internal.town.weather).toMatchObject({ condition: 'fog' });
+    const progress = (internal as unknown as { countyProgress: { isCleared(region: string, index: number): boolean } }).countyProgress;
+    internal.campaign!.complete = true;
+    (internal as unknown as { judgeCampaign(run: unknown): void }).judgeCampaign(internal.campaign);
+    expect(progress.isCleared('US-OR', 3)).toBe(true);
+    game.setSession('sandbox');
+    expect(internal.campaign).toBeNull();
+    expect(location.search).toContain('region=US-OR');
+    expect(location.search).toContain('county=3');
+  });
+
   it('jumps between levels from the debug session bar', () => {
     game.jumpCampaignLevel('village');
     expect(internal.campaign?.levelIndex).toBe(CAMPAIGN_LEVELS.findIndex(level => level.id === 'village'));
