@@ -20,3 +20,18 @@ export function safeReferrer(referrer: string, origin: string): boolean {
   try { const url = new URL(referrer); return url.origin === origin || (url.pathname === '/' && !url.search && !url.hash); }
   catch { return false; }
 }
+
+/**
+ * What the analytics vendor may send for one event: the authored page path only, and nothing
+ * at all once consent is gone. `permitted` is read at send time, so a withdrawal applies to
+ * events already queued.
+ */
+export function sendableEvent<T extends { url: string }>(event: T, permitted: boolean): T | null {
+  const url = analyticsPage(event.url);
+  return permitted && url ? { ...event, url } : null;
+}
+
+/** On any consent change, drop events still waiting for the vendor script; keep only its beforeSend hook. */
+export function withoutQueuedEvents<Q extends [string, unknown?]>(queue: Q[]): Q[] {
+  return queue.filter(([kind]) => kind === 'beforeSend');
+}
