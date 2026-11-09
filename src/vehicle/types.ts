@@ -17,7 +17,7 @@ export interface VehiclePart {
     strength: number;
     mount: number;
     deform: number;
-    color: 'paint' | 'dark' | 'glass' | 'steel';
+    color: 'paint' | 'dark' | 'glass' | 'steel' | 'beacon' | 'siren';
     shape: 'box' | 'slope' | 'wheel' | 'track';
 }
 export interface VehicleDefinition {
@@ -94,6 +94,51 @@ export interface VehicleState extends RoadVehicle {
     rest: number;
     revision: number;
     debugParts: boolean;
+    /** Direct drive from an AI driver: signed target speed and front-wheel angle. Bypasses waypoints. */
+    control?: VehicleControl;
+    /** Heavy vehicles that wreck on a hit count instead of accumulated part damage. */
+    wreckAfterHits?: number;
+    hits?: number;
+    /** Traffic driver state; absent for parked and yard vehicles. */
+    traffic?: TrafficAgent;
+}
+export interface VehicleControl {
+    speed: number;
+    steer: number;
+    /** Acceleration toward the target speed, world units/s². */
+    accel: number;
+}
+export type TrafficRole = 'civilian' | 'police';
+export type TrafficMode = 'cruise' | 'flee' | 'turn-forward' | 'turn-reverse' | 'pursue' | 'ram' | 'recoil';
+export interface TrafficAgent {
+    role: TrafficRole;
+    mode: TrafficMode;
+    /** Lane ids of the current route and the sampled points along them. */
+    lanes: string[];
+    path: { x: number; y: number; lane: number }[];
+    pathIndex: number;
+    exitLane: string;
+    cruise: number;
+    modeT: number;
+    turnStartHeading: number;
+    /** Where and when the driver last saw the dozer, in simulation seconds. */
+    sawX: number;
+    sawY: number;
+    sawAt: number;
+    repathAt: number;
+    stuckT: number;
+    /** Seconds spent pressing on without moving. */
+    jamT: number;
+    hitCd: number;
+    /** Strongest dozer contact speed since the driver last read it. */
+    dozerContact: number;
+    bladeContact: number;
+    /** Police: closing speed of its own nose striking the dozer this step. */
+    ramContact: number;
+    /** Police: no direct charge before this time, after getting stuck on the way in. */
+    ramAfter: number;
+    ramFails: number;
+    swerve: number;
 }
 export interface VehicleContact {
     x: number;

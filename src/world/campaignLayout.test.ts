@@ -8,6 +8,7 @@ import { campaignFamily, evaluateCampaignComposition } from './campaignCompositi
 import { generateCampaignLayout } from './campaignLayout';
 import { getAsset } from './catalog';
 import { createTown } from './town';
+import { edgeExitNodes } from './edgeRoads';
 import { validateTown } from './districts';
 import { ARCHETYPES } from './archetypes';
 import { lotAllowsAgriculture } from './lotUse';
@@ -146,8 +147,11 @@ describe('campaign generation', () => {
       const level = campaignLevelById(id);
       const town = createTown({ district: 'd30', seed: 19, campaign: level });
       const pad = 16;
+      // Edge roads run out to the map boundary on purpose so traffic can enter and leave.
+      const exits = new Set(edgeExitNodes(town.network, town).map(n => n.id));
       const far = town.network.segments.filter((seg) => {
         if (seg.roadClass === 'driveway' || seg.roadClass === 'ramp') return false;
+        if (exits.has(seg.startId) || exits.has(seg.endId)) return false;
         return [0, 0.25, 0.5, 0.75, 1].every((t) => {
           const i = Math.min(seg.points.length - 1, Math.round(t * (seg.points.length - 1)));
           const p = seg.points[i]!;
@@ -163,10 +167,11 @@ describe('campaign generation', () => {
       const bMinY = Math.min(...town.buildings.map((building) => building.y));
       const bMaxX = Math.max(...town.buildings.map((building) => building.x + building.w * building.cellSize));
       const bMaxY = Math.max(...town.buildings.map((building) => building.y + building.d * building.cellSize));
-      const rMinX = Math.min(...town.network.nodes.map((node) => node.x));
-      const rMinY = Math.min(...town.network.nodes.map((node) => node.y));
-      const rMaxX = Math.max(...town.network.nodes.map((node) => node.x));
-      const rMaxY = Math.max(...town.network.nodes.map((node) => node.y));
+      const inner = town.network.nodes.filter((node) => !exits.has(node.id));
+      const rMinX = Math.min(...inner.map((node) => node.x));
+      const rMinY = Math.min(...inner.map((node) => node.y));
+      const rMaxX = Math.max(...inner.map((node) => node.x));
+      const rMaxY = Math.max(...inner.map((node) => node.y));
       expect(rMinX, id).toBeGreaterThan(bMinX - 40);
       expect(rMinY, id).toBeGreaterThan(bMinY - 40);
       expect(rMaxX, id).toBeLessThan(bMaxX + 40);

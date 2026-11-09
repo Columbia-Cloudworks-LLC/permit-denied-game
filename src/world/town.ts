@@ -1,4 +1,5 @@
 import type { VehicleState } from '../vehicle/types';
+import type { TrafficState } from '../vehicle/traffic';
 import { migrateVehicles } from '../vehicle/world';
 import { resetVehicleIds } from '../vehicle/runtime';
 import { populateTowerTest } from './towerTest';
@@ -50,6 +51,8 @@ export interface Town {
   marks: GroundMark[];
   pile: PileField;
   vehicles: VehicleState[];
+  /** Through traffic and police; set by the session, absent in tests, yards and captures. */
+  traffic?: TrafficState | null;
   /** Camera/road-demo reference only; simulation membership is vehicles. */
   roadCar: VehicleState | null;
   spawnX: number;

@@ -15,6 +15,8 @@ interface Source {
     ];
     speed: number;
     steering: 'front' | 'rear' | 'tracks';
+    /** Roof beacon pair for emergency vehicles. */
+    lightbar?: boolean;
 }
 /** Mass share, strength, mount strength and deformation by role, before scaling to the vehicle's mass. */
 function roleStats(role: PartRole): Pick<VehiclePart, 'mass' | 'strength' | 'mount' | 'deform'> {
@@ -198,9 +200,15 @@ function addPassengerShell({ s, l, w }: Chassis, list: PartList): void {
     list.add('body-shell','panel',0,0,.24,l*.92,w*.76,.3);
     list.add('rear-deck','panel',-.34*l,0,.52,l*.25,w*.72,s.body==='hatchback'?.25:.13);
 }
+function addLightbar({ s, cabX, cabW, h }: Chassis, list: PartList): void {
+    if (!s.lightbar)
+        return;
+    for (const side of [-1, 1])
+        list.add(`beacon-${side}`, 'equipment', cabX, side * cabW * .22, h, .22, cabW * .4, .12, 'roof', 'box', side < 0 ? 'beacon' : 'siren');
+}
 /** Body-plan attachments, in the order their parts are numbered. */
 const BODY_ATTACHMENTS: ((c: Chassis, list: PartList) => void)[] = [
-    addHood, addCargo, addSideSkins, addCombine, addForklift, addArm, addTrailer, addExcavatorBucket, raiseTractorFenders, addPassengerShell,
+    addHood, addCargo, addSideSkins, addCombine, addForklift, addArm, addTrailer, addExcavatorBucket, raiseTractorFenders, addPassengerShell, addLightbar,
 ];
 export function validateVehicle(d: VehicleDefinition): void {
     const fail = (reason: string): never => { throw new Error(`Vehicle ${d.id}: ${reason}`); };

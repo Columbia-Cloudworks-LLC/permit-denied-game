@@ -101,7 +101,7 @@ const staticCache = new WeakMap<Town, {
     stamp: string;
     hash: SpatialHash<VehicleBox>;
 }>();
-export function stepVehicleWorld(town: Town, dozer: Dozer, particles: ParticlePool, events: WorldEvent[], dt: number, bladeMul = 1): number {
+export function stepVehicleWorld(town: Town, dozer: Dozer, particles: ParticlePool, events: WorldEvent[], dt: number, bladeMul = 1, engineMul = 1): number {
     migrateVehicles(town);
     if (town.yard?.loads)
         town.yard.loads = town.yard.loads.filter(l => !dropYardLoad(town, l, dt));
@@ -111,7 +111,7 @@ export function stepVehicleWorld(town: Town, dozer: Dozer, particles: ParticlePo
     // At most .12 world units of predicted travel per substep, capped to bound work.
     const maxSpeed = Math.max(Math.hypot(dozer.vx, dozer.vy), ...town.vehicles.map(v => Math.hypot(v.vx, v.vy)));
     const steps = Math.min(8, Math.max(1, Math.ceil(maxSpeed * dt / .12))), sub = dt / steps;
-    const ctx: SubstepContext = { town, dozer, fixed, dynamic: new SpatialHash<VehicleBox>(4), candidates: [], pending: new Map(), solvedPairs: new Set(), sub, bladeMul };
+    const ctx: SubstepContext = { town, dozer, fixed, dynamic: new SpatialHash<VehicleBox>(4), candidates: [], pending: new Map(), solvedPairs: new Set(), sub, bladeMul, engineMul };
     for (let step = 0; step < steps; step++)
         runSubstep(ctx, particles);
     for (const v of town.vehicles) {
@@ -207,6 +207,7 @@ interface SubstepContext {
     solvedPairs: Set<string>;
     sub: number;
     bladeMul: number;
+    engineMul: number;
 }
 function queueContact(ctx: SubstepContext, v: VehicleState, c: VehicleContact): void {
     let list = ctx.pending.get(v);
@@ -318,19 +319,30 @@ function dozerContact(ctx: SubstepContext, v: VehicleState, a: VehicleBox): void
         return;
     const root = detachedRoot(v, a.part!), body = contactBody(v, root), mass = assemblyMass(v, root);
     const speed = Math.max(0, (dozer.vx - body.vx) * hit.nx + (dozer.vy - body.vy) * hit.ny);
-    dozer.x -= hit.nx * Math.min(.08, hit.depth) * mass / (mass + 8);
-    dozer.y -= hit.ny * Math.min(.08, hit.depth) * mass / (mass + 8);
-    body.x += hit.nx * Math.min(.12, hit.depth) * 8 / (mass + 8);
-    body.y += hit.ny * Math.min(.12, hit.depth) * 8 / (mass + 8);
+    const push = dozerPushMass(dozer, ctx.engineMul, ctx.bladeMul), give = mass / (mass + push);
+    dozer.x -= hit.nx * Math.min(.08, hit.depth) * give;
+    dozer.y -= hit.ny * Math.min(.08, hit.depth) * give;
+    body.x += hit.nx * Math.min(.12, hit.depth) * (1 - give);
+    body.y += hit.ny * Math.min(.12, hit.depth) * (1 - give);
+    if (root === undefined && v.traffic)
+        v.traffic.dozerContact = Math.max(v.traffic.dozerContact, speed);
     queueContact(ctx, v, { x: a.x - hit.nx * a.w * .4, y: a.y - hit.ny * a.d * .4, z: a.z + .2, nx: hit.nx, ny: hit.ny, nz: 0, impulse: speed * 1.4, source: 'dozer' });
+}
+/** How hard the dozer is to shove: engine, a lowered blade and speed all add heft. */
+export function dozerPushMass(dozer: Dozer, engineMul: number, bladeMul: number): number {
+    const speed = Math.min(1, Math.hypot(dozer.vx, dozer.vy) / DOZER.maxSpeed);
+    return 8 * engineMul * (dozer.bladeDown ? bladeMul : 1) * (1 + speed * .5);
 }
 /** Each blade point touching the part applies a crushing load for this substep. */
 function bladeContacts(ctx: SubstepContext, v: VehicleState, a: VehicleBox): void {
     const { dozer } = ctx;
     for (const pt of bladePoints(dozer)) {
         const point: VehicleBox = { x: pt.x, y: pt.y, w: .16, d: .16, z: dozer.bladeDown ? .05 : .4, h: .5, heading: dozer.heading };
-        if (boxContact(point, a))
-            queueContact(ctx, v, { x: pt.x, y: pt.y, z: point.z + .22, nx: Math.cos(dozer.heading), ny: Math.sin(dozer.heading), nz: 0, impulse: 0, load: 24 * ctx.bladeMul, dt: ctx.sub, source: 'blade' });
+        if (!boxContact(point, a))
+            continue;
+        if (v.traffic && detachedRoot(v, a.part!) === undefined)
+            v.traffic.bladeContact += ctx.sub;
+        queueContact(ctx, v, { x: pt.x, y: pt.y, z: point.z + .22, nx: Math.cos(dozer.heading), ny: Math.sin(dozer.heading), nz: 0, impulse: 0, load: 24 * ctx.bladeMul, dt: ctx.sub, source: 'blade' });
     }
 }
 /** Moving debris strikes the first part it touches and bounces off it. */

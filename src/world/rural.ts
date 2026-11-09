@@ -10,6 +10,7 @@ import type { SeasonId } from "./season";
 import { getAsset, spawnAsset } from "./catalog";
 import { buildingOccupy, dressLots } from "./dressing";
 import { deriveTerrainFeatures, type TerrainFeature } from "./terrainFeatures";
+import { addEdgeRoads, type EdgeBounds } from "./edgeRoads";
 import {
   PARCEL,
   allocateFrontage,
@@ -51,6 +52,7 @@ import {
   polylineLength,
   pt,
   RoadBuilder,
+  roadSurfaceAt,
   samplePolyline,
   type RoadNetwork,
   type RoadNode,
@@ -201,10 +203,10 @@ function generateRuralLayoutInner(
   };
   const { pool, urban } = ruralLotPool(run, seed);
   placeRuralBuildings(run, pool, seed);
-  const network = finishRuralNetwork(run, urban);
+  const { network, bounds } = finishRuralNetwork(run, urban, originX, originY);
   const kept = run.kept;
   const { props, ground } = dressRuralLots(run, network);
-  const { minX, minY, maxX, maxY } = ruralBounds(originX, originY, network, kept, surface);
+  const { minX, minY, maxX, maxY } = bounds;
 
   const terrain = emptyTerrain(minX - 2, minY - 2, maxX - minX + 4, maxY - minY + 4);
   applyTerrain(terrain, topology, minX, maxX);
@@ -376,7 +378,7 @@ function placeExtraFrontage(run: RuralPlacement, seed: number): void {
 }
 
 /** Trim the network to the kept lots, re-home their accesses, and push campaign buildings off the pavement. */
-function finishRuralNetwork(run: RuralPlacement, urban: UrbanGeographyReport | undefined): RoadNetwork {
+function finishRuralNetwork(run: RuralPlacement, urban: UrbanGeographyReport | undefined, originX: number, originY: number): { network: RoadNetwork; bounds: EdgeBounds } {
   const { b, kept, campaign } = run;
   b.dropAccessesForLots(new Set(kept.map((l) => l.id)));
   if (campaign?.composition) {
@@ -386,6 +388,13 @@ function finishRuralNetwork(run: RuralPlacement, urban: UrbanGeographyReport | u
     ];
     b.dropPublicRoadsAwayFromLots(keepPads, 12);
   }
+  // Bounds come from the town before its edge roads, which then run out to them.
+  const bounds = ruralBounds(originX, originY, b, kept, run.surface);
+  addEdgeRoads(b, bounds, [
+    ...kept,
+    ...run.buildings.flatMap(buildingOccupy),
+    ...(urban?.openSpaces ?? []).map(space => ({ x: space.x, y: space.y, w: space.w, d: space.d })),
+  ]);
   const network = b.finish({ normalize: false });
   for (const lot of kept) {
     const acc = network.accesses.find((a) => a.id === lot.accessId || a.lotId === lot.id);
@@ -395,7 +404,7 @@ function finishRuralNetwork(run: RuralPlacement, urban: UrbanGeographyReport | u
     }
   }
   if (campaign) nudgeBuildingsOffStreets(run.buildings, kept, network);
-  return network;
+  return { network, bounds };
 }
 
 function dressRuralLots(run: RuralPlacement, network: RoadNetwork): { props: Prop[]; ground: GroundPatch[] } {
@@ -418,11 +427,21 @@ function dressRuralLots(run: RuralPlacement, network: RoadNetwork): { props: Pro
 function propAllowed(p: Prop, network: RoadNetwork, campaign: CampaignLevelDef | undefined): boolean {
   const def = getAsset(p.assetId);
   if (campaign && !campaignEligible(def.campaign, campaign.id)) return false;
+  if (propInTravelLane(network, p)) return false;
   return def.roadsideOk || !propTouchesPavement(network, p);
 }
 
+/** Roadside dressing may sit on the shoulder, never in a public travel lane where traffic drives. */
+function propInTravelLane(network: RoadNetwork, p: Prop): boolean {
+  const hit = roadSurfaceAt(network, p.x + p.w * 0.5, p.y + p.d * 0.5);
+  if (!hit.on || !hit.segmentId) return false;
+  const seg = network.segments.find(s => s.id === hit.segmentId);
+  if (!seg || seg.roadClass === "driveway") return false;
+  return hit.dist - Math.max(p.w, p.d) * 0.5 < seg.width * 0.5 - 0.1;
+}
+
 /** World bounds: the origin pad, every node and lot with margin, and the whole surface grid. */
-function ruralBounds(originX: number, originY: number, network: RoadNetwork, kept: readonly Lot[], surface: SurfaceGrid): { minX: number; minY: number; maxX: number; maxY: number } {
+function ruralBounds(originX: number, originY: number, network: { nodes: readonly RoadNode[] }, kept: readonly Lot[], surface: SurfaceGrid): { minX: number; minY: number; maxX: number; maxY: number } {
   let minX = originX - 2;
   let minY = originY - 2;
   let maxX = originX + 20;

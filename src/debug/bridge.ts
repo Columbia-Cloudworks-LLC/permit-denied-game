@@ -136,6 +136,11 @@ export interface VehiclePerfReport {
   renderStats: Record<string, number>;
 }
 
+export interface TrafficSnapshot {
+  exits: { x: number; y: number }[];
+  vehicles: { id: number; definitionId: string; role: string; mode: string; status: string; x: number; y: number; heading: number; speed: number; hits: number }[];
+}
+
 export interface DebugBridge {
   readonly version: typeof DEBUG_BRIDGE_VERSION;
   ready(): boolean;
@@ -154,6 +159,9 @@ export interface DebugBridge {
   reset(kind?: "same" | "new"): void;
   setDozerPose(pose: Partial<DozerPose>): void;
   spawnRoadVehicle(): void;
+  /** Sandbox: queue one police cruiser at a map edge. */
+  spawnPolice(): void;
+  trafficSnapshot(): TrafficSnapshot;
   jumpCampaignLevel(id: CampaignLevelId): void;
   analyticsStep(seconds: number, mode: string, district: string): void;
   finish(death: string, won: boolean): void;

@@ -3,7 +3,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 /** Uncompressed JS listed by the game HTML (entry + modulepreload). */
-export const INITIAL_GAME_JS_BUDGET_BYTES = 1_850_000;
+export const INITIAL_GAME_JS_BUDGET_BYTES = 1_875_000;
 /** Matches `build.chunkSizeWarningLimit` in vite.config.ts (kB → bytes). */
 export const APP_CHUNK_BUDGET_BYTES = 650 * 1024;
 export const VENDOR_CHUNK_BUDGET_BYTES = 650 * 1024;

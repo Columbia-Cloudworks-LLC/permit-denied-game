@@ -36,8 +36,8 @@ describe('modular vehicle contract', () => {
         for(let i=0;i<90;i++)stepVehicleWorld(t,createDozer(2,2,0),pool,[],SIM_DT);
         expect(moving.x).toBeLessThan(wreck.x-1);expect(wreck.x).toBeGreaterThan(14);
     });
-    it('discovers twelve configurations with two paints and validated mass budgets', () => {
-        expect(VEHICLES).toHaveLength(12);
+    it('discovers thirteen configurations with two paints and validated mass budgets', () => {
+        expect(VEHICLES).toHaveLength(13);
         for (const d of VEHICLES) {
             expect(() => validateVehicle(d)).not.toThrow();
             expect(d.paints).toHaveLength(2);

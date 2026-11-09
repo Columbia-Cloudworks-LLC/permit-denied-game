@@ -44,7 +44,7 @@ const shade = (c: number, m: number) => ((Math.min(255, ((c >> 16) & 255) * m) |
 const vertex = (x: number, y: number, z: number): Vertex => ({ x, y, z });
 type VehicleDef = ReturnType<typeof vehicleDefinition>;
 type PartDef = VehicleDef['parts'][number];
-const PART_COLORS: Record<string, number> = { glass: 0x588695, dark: 0x292e2b };
+const PART_COLORS: Record<string, number> = { glass: 0x588695, dark: 0x292e2b, beacon: 0xd2352b, siren: 0x2f63d8 };
 const frontNormal = vertex(1, 0, 0), topNormal = vertex(0, 0, 1);
 /** Faces of one part in its posed, deformed frame: a along its length, b across, z up. */
 class PartSkin {
