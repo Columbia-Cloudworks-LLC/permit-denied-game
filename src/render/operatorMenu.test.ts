@@ -3,6 +3,9 @@ import { beforeEach, expect, it, vi } from 'vitest';
 import { TITLE } from '../game/constants';
 import { MENU_LABELS as L } from '../game/menuLabels';
 import { OperatorMenu, type MenuActions } from './operatorMenu';
+import { resetSharedCountyProgress, sharedCountyProgress, type ProgressStore } from '../game/countyProgress';
+import { countyWeather } from '../world/counties';
+import { loadOverworld } from '../game/overworldLoader';
 
 let parent: HTMLElement;
 let actions: { [K in keyof MenuActions]-?: ReturnType<typeof vi.fn> };
@@ -10,6 +13,12 @@ let menu: OperatorMenu;
 const heading = () => menu.root.querySelector('#operator-heading')!.textContent;
 const button = (selector: string) => menu.root.querySelector<HTMLButtonElement>(selector)!;
 const key = (target: Element, init: KeyboardEventInit) => target.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init }));
+/** The overworld chunk loads on demand; let the import and its continuation run. */
+const openMap = async () => {
+  button('[data-menu-action="open-map"]').click();
+  await loadOverworld();
+  await new Promise(resolve => setTimeout(resolve, 0));
+};
 const select = (id: string, value: string) => {
   const el = menu.root.querySelector<HTMLSelectElement>(`#${id}`)!;
   el.value = value;
@@ -17,36 +26,122 @@ const select = (id: string, value: string) => {
 };
 
 beforeEach(() => {
+  localStorage.clear();
+  resetSharedCountyProgress();
   document.body.innerHTML = '<div id="game-root"><canvas tabindex="0"></canvas></div><div id="host"></div>';
   parent = document.querySelector<HTMLElement>('#host')!;
   actions = {
-    page: vi.fn(), resume: vi.fn(), start: vi.fn(), restart: vi.fn(), debug: vi.fn(), title: vi.fn(), mute: vi.fn(),
+    page: vi.fn(), resume: vi.fn(), start: vi.fn(), mapSeed: vi.fn(() => 1234), restart: vi.fn(), debug: vi.fn(), title: vi.fn(), mute: vi.fn(),
     click: vi.fn(), unlockSound: vi.fn(() => Promise.resolve()), titleSound: vi.fn(), pwaUpdate: vi.fn(),
   };
   menu = new OperatorMenu(parent, actions);
 });
 
-it('opens on the title page and starts a new game with the chosen setup', () => {
-  menu.show('title', 'challenge', 'classic');
+it('asks only for mode and season, then opens the overworld map', async () => {
+  menu.show('title');
   expect(menu.root.hidden).toBe(false);
   expect(heading()).toBe(TITLE);
   button('[data-nav="dispatch"]').click();
   expect(heading()).toBe(L.newGame);
   expect(actions.click).toHaveBeenCalled();
+  expect([...menu.root.querySelectorAll('.dispatch-fields select')].map(el => el.id)).toEqual(['dispatch-mode', 'dispatch-season']);
+  expect(menu.root.querySelector('#dispatch-lot')).toBeNull();
+  expect(menu.root.querySelector('#dispatch-effects')).toBeNull();
+  expect([...menu.root.querySelectorAll<HTMLOptionElement>('#dispatch-season option')].map(o => o.value)).toEqual(['spring', 'summer', 'autumn', 'winter']);
   select('dispatch-mode', 'challenge');
-  expect(menu.root.querySelector<HTMLElement>('#dispatch-season-field')!.hidden).toBe(true);
-  expect(menu.root.querySelector('#season-note')!.textContent).toBe('One randomly chosen season lasts for the whole campaign.');
-  select('dispatch-mode', 'sandbox');
-  expect(menu.root.querySelector<HTMLElement>('#dispatch-season-field')!.hidden).toBe(false);
-  select('dispatch-lot', 'village');
   select('dispatch-season', 'winter');
-  select('dispatch-effects', 'reduced');
-  button('[data-menu-action="start"]').click();
-  expect(actions.start).toHaveBeenCalledWith('sandbox', 'village', 'winter', 'reduced');
+  expect(menu.root.querySelector('#mode-description')!.textContent).toMatch(/capitol/);
+  await openMap();
+  expect(heading()).toBe('North America');
+  expect(menu.root.querySelectorAll('.overworld-map [data-region]')).toHaveLength(63);
+  expect(menu.root.querySelector('.map-chips')!.textContent).toContain('Winter · locked');
+  expect(menu.root.querySelector('#county-weather')).toBeNull();
+  expect(actions.start).not.toHaveBeenCalled();
+});
+
+it('filters the region list by name, code, or capitol', async () => {
+  menu.show('title');
+  button('[data-nav="dispatch"]').click();
+  await openMap();
+  const search = menu.root.querySelector<HTMLInputElement>('#region-search')!;
+  const listed = () => [...menu.root.querySelectorAll<HTMLElement>('.region-list [data-region]')].map(el => el.dataset.region);
+  expect(listed()).toHaveLength(63);
+  for (const [query, expected] of [['rhode', ['US-RI']], ['YT', ['CA-YT']], ['springfield', ['US-IL']]] as const) {
+    search.value = query;
+    search.dispatchEvent(new Event('input', { bubbles: true }));
+    expect(listed()).toEqual(expected);
+  }
+});
+
+it('deploys a sandbox county with its rolled weather, and only the county card changes weather', async () => {
+  menu.show('title');
+  button('[data-nav="dispatch"]').click();
+  select('dispatch-season', 'autumn');
+  await openMap();
+  button('.region-list [data-region="US-TX"]').click();
+  expect(heading()).toBe('Texas');
+  expect(menu.root.querySelectorAll('.county-map [data-county]')).toHaveLength(7);
+  expect(menu.root.querySelector('#county-card-title')!.textContent).toBe('Texas Farmstead County');
+  menu.root.querySelector<SVGElement>('.county-map [data-county="7"]')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  expect(menu.root.querySelector('#county-card-title')!.textContent).toBe("Austin Capitol District — Governor's Mansion");
+  expect(button('[data-menu-action="deploy"]').disabled).toBe(false);
+  const rolled = menu.root.querySelector<HTMLSelectElement>('#county-weather')!.value;
+  expect(rolled).toBe(countyWeather(1234, 'autumn', 'US-TX', 7));
+  button('[data-menu-action="deploy"]').click();
+  expect(actions.start).toHaveBeenLastCalledWith({ kind: 'sandbox', season: 'autumn', regionId: 'US-TX', countyIndex: 7, weather: rolled, effects: 'on', mapSeed: 1234 });
+  select('county-weather', 'fog');
+  select('county-effects', 'reduced');
+  button('[data-menu-action="deploy"]').click();
+  expect(actions.start).toHaveBeenLastCalledWith(expect.objectContaining({ countyIndex: 7, weather: 'fog', effects: 'reduced' }));
+  key(menu.root, { key: 'Escape' });
+  expect(heading()).toBe('North America');
+  key(menu.root, { key: 'Escape' });
+  expect(heading()).toBe(L.newGame);
+});
+
+it('locks the capitol in Time Challenge until Counties 1–6 are cleared', async () => {
+  menu.show('title');
+  button('[data-nav="dispatch"]').click();
+  select('dispatch-mode', 'challenge');
+  await openMap();
+  button('.region-list [data-region="CA-ON"]').click();
+  button('.county-list [data-county="7"]').click();
+  expect(button('[data-menu-action="deploy"]').disabled).toBe(true);
+  expect(menu.root.querySelector('#county-lock-note')!.textContent).toContain('Ontario');
+  button('[data-menu-action="deploy"]').click();
+  expect(actions.start).not.toHaveBeenCalled();
+  const progress = sharedCountyProgress();
+  for (let index = 1; index <= 6; index++) progress.markCleared('CA-ON', index);
+  key(menu.root, { key: 'Escape' });
+  expect(menu.root.querySelector('[data-region="CA-ON"]')!.getAttribute('aria-label')).toContain('6/7');
+  menu.root.querySelector<SVGElement>('.overworld-map [data-region="CA-ON"]')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  expect(heading()).toBe('Ontario');
+  button('.county-list [data-county="7"]').click();
+  button('[data-menu-action="deploy"]').click();
+  expect(actions.start).toHaveBeenCalledWith(expect.objectContaining({ kind: 'challenge', regionId: 'CA-ON', countyIndex: 7 }));
+});
+
+it('keeps same-session clears on the map when storage writes fail', async () => {
+  const blocked: ProgressStore = { getItem: () => null, setItem: () => { throw new Error('QuotaExceededError'); } };
+  const progress = resetSharedCountyProgress(blocked);
+  menu.show('title');
+  button('[data-nav="dispatch"]').click();
+  select('dispatch-mode', 'challenge');
+  await openMap();
+  button('.region-list [data-region="US-GA"]').click();
+  button('.county-list [data-county="7"]').click();
+  expect(button('[data-menu-action="deploy"]').disabled).toBe(true);
+  // The game clears 1–6 through the shared record while storage refuses every write.
+  for (let index = 1; index <= 6; index++) progress.markCleared('US-GA', index);
+  key(menu.root, { key: 'Escape' });
+  expect(menu.root.querySelector('.overworld-map [data-region="US-GA"]')!.getAttribute('aria-label')).toContain('6/7');
+  button('.region-list [data-region="US-GA"]').click();
+  button('.county-list [data-county="7"]').click();
+  expect(button('[data-menu-action="deploy"]').disabled).toBe(false);
 });
 
 it('pauses on the running setup and routes each action', () => {
-  menu.show('pause', 'challenge', 'classic', false, 'suburb', 'spring', 'off');
+  menu.show('pause', { session: 'challenge', season: 'spring', effects: 'off', regionId: 'US-IL' });
   expect(heading()).toBe('Paused');
   for (const action of ['resume', 'restart', 'debug', 'title', 'mute'] as const) {
     button(`[data-menu-action="${action}"]`).click();
@@ -54,13 +149,95 @@ it('pauses on the running setup and routes each action', () => {
   }
   button('[data-nav="dispatch"]').click();
   expect(menu.root.querySelector<HTMLSelectElement>('#dispatch-mode')!.value).toBe('challenge');
-  expect(menu.root.querySelector<HTMLSelectElement>('#dispatch-lot')!.value).toBe('suburb');
-  expect(menu.root.querySelector<HTMLSelectElement>('#dispatch-effects')!.value).toBe('off');
+  expect(menu.root.querySelector<HTMLSelectElement>('#dispatch-season')!.value).toBe('spring');
   expect(menu.root.querySelector('.caution')).not.toBeNull();
 });
 
+/** Pause-menu map buttons load the chunk the same way Open Map does. */
+const pauseMap = async (action: 'state-map' | 'world-map') => {
+  button(`[data-menu-action="${action}"]`).click();
+  await loadOverworld();
+  await new Promise(resolve => setTimeout(resolve, 0));
+};
+const running = { session: 'challenge', season: 'winter', effects: 'reduced', regionId: 'US-MI', countyIndex: 3, weather: 'fog', mapSeed: 42 } as const;
+
+it('opens the state map over a paused run without ending it, and resumes from the running county', async () => {
+  menu.show('pause', running);
+  expect(button('[data-menu-action="state-map"]').textContent).toBe(L.stateMap);
+  await pauseMap('state-map');
+  expect(heading()).toBe('Michigan');
+  expect(menu.root.querySelector('.map-chips')!.textContent).toContain('Winter · locked');
+  expect(menu.root.querySelector('.county-map [data-county="3"]')!.classList.contains('current')).toBe(true);
+  expect(menu.root.querySelector('.county-list [data-county="3"]')!.textContent).toContain('Playing');
+  expect(menu.root.querySelector<HTMLSelectElement>('#county-weather')!.value).toBe('fog');
+  expect(actions.start).not.toHaveBeenCalled();
+  expect(actions.title).not.toHaveBeenCalled();
+  button('.county-card [data-menu-action="resume"]').click();
+  expect(actions.resume).toHaveBeenCalledOnce();
+  expect(actions.start).not.toHaveBeenCalled();
+});
+
+it('browses the world map from pause, warns before replacing the run, and steps back to the pause menu', async () => {
+  menu.show('pause', running);
+  await pauseMap('world-map');
+  expect(heading()).toBe('North America');
+  button('.region-list [data-region="US-OH"]').click();
+  expect(menu.root.querySelector('#deploy-replace-note')!.textContent).toMatch(/ends your current county run/);
+  expect(menu.root.querySelector('.county-card [data-menu-action="resume"]')).toBeNull();
+  key(menu.root, { key: 'Escape' });
+  expect(heading()).toBe('North America');
+  key(menu.root, { key: 'Escape' });
+  expect(heading()).toBe('Paused');
+  expect(actions.resume).not.toHaveBeenCalled();
+  await pauseMap('world-map');
+  button('.region-list [data-region="US-OH"]').click();
+  button('.county-list [data-county="2"]').click();
+  button('[data-menu-action="deploy"]').click();
+  expect(actions.start).toHaveBeenCalledWith(expect.objectContaining({ kind: 'challenge', season: 'winter', regionId: 'US-OH', countyIndex: 2, mapSeed: 42 }));
+});
+
+it('restarts the running county from its card with the chosen weather', async () => {
+  menu.show('pause', running);
+  await pauseMap('state-map');
+  select('county-weather', 'clear');
+  button('.county-card [data-menu-action="deploy"]').click();
+  expect(actions.start).toHaveBeenCalledWith(expect.objectContaining({ regionId: 'US-MI', countyIndex: 3, weather: 'clear', effects: 'reduced' }));
+});
+
+it('opens run maps on the running setup after a canceled New Game draft', async () => {
+  menu.show('pause', running);
+  button('[data-nav="dispatch"]').click();
+  select('dispatch-mode', 'sandbox');
+  select('dispatch-season', 'summer');
+  key(menu.root, { key: 'Escape' });
+  expect(heading()).toBe('Paused');
+  await pauseMap('state-map');
+  expect(menu.root.querySelector('.map-chips')!.textContent).toContain('Time Challenge');
+  expect(menu.root.querySelector('.map-chips')!.textContent).toContain('Winter · locked');
+  button('.county-list [data-county="7"]').click();
+  expect(button('[data-menu-action="deploy"]').disabled).toBe(true);
+  button('.county-list [data-county="3"]').click();
+  button('.county-card [data-menu-action="deploy"]').click();
+  expect(actions.start).toHaveBeenLastCalledWith(expect.objectContaining({ kind: 'challenge', season: 'winter', effects: 'reduced', regionId: 'US-MI', countyIndex: 3, weather: 'fog' }));
+  // A deliberate New Game map still uses the draft.
+  key(menu.root, { key: 'Escape' });
+  key(menu.root, { key: 'Escape' });
+  button('[data-nav="dispatch"]').click();
+  select('dispatch-mode', 'sandbox');
+  select('dispatch-season', 'summer');
+  await openMap();
+  expect(menu.root.querySelector('.map-chips')!.textContent).toContain('Sandbox');
+  expect(menu.root.querySelector('.map-chips')!.textContent).toContain('Summer · locked');
+});
+
+it('offers only the world map when the paused run is not an overworld county', () => {
+  menu.show('pause', { session: 'sandbox' });
+  expect(menu.root.querySelector('[data-menu-action="state-map"]')).toBeNull();
+  expect(menu.root.querySelector('[data-menu-action="world-map"]')).not.toBeNull();
+});
+
 it('walks the info pages, and Escape steps back before it resumes', () => {
-  menu.show('pause', 'sandbox', 'classic');
+  menu.show('pause', { session: 'sandbox' });
   button('[data-nav="controls"]').click();
   expect(heading()).toBe(L.controls);
   expect(menu.root.querySelector('.control-list')).not.toBeNull();
@@ -81,7 +258,7 @@ it('walks the info pages, and Escape steps back before it resumes', () => {
 });
 
 it('toggles sound with M except while typing in a field', () => {
-  menu.show('title', 'sandbox', 'classic');
+  menu.show('title', { session: 'sandbox' });
   key(menu.root, { key: 'm' });
   expect(actions.mute).toHaveBeenCalledOnce();
   key(menu.root, { key: 'M', repeat: true });
@@ -92,7 +269,7 @@ it('toggles sound with M except while typing in a field', () => {
 });
 
 it('reflects mute state and the pending build on the home page', () => {
-  menu.show('pause', 'sandbox', 'classic');
+  menu.show('pause', { session: 'sandbox' });
   menu.syncMuted(true);
   expect(button('[data-menu-action="mute"]').getAttribute('aria-label')).toBe(L.soundOff);
   expect(button('[data-menu-action="mute"]').getAttribute('aria-pressed')).toBe('false');
@@ -104,15 +281,15 @@ it('reflects mute state and the pending build on the home page', () => {
 });
 
 it('hands focus back to the game when it closes', () => {
-  menu.show('pause', 'sandbox', 'classic');
-  menu.show(null, 'sandbox', 'classic');
+  menu.show('pause', { session: 'sandbox' });
+  menu.show(null);
   expect(menu.root.hidden).toBe(true);
   expect(actions.page).toHaveBeenLastCalledWith(null);
   expect(document.activeElement).toBe(document.querySelector('#game-root canvas'));
 });
 
 it('wraps Tab within the visible controls, and parks focus on the heading when none are laid out', () => {
-  menu.show('pause', 'sandbox', 'classic');
+  menu.show('pause', { session: 'sandbox' });
   const rects = vi.spyOn(HTMLElement.prototype, 'getClientRects').mockReturnValue([{}] as unknown as DOMRectList);
   const controls = [...menu.root.querySelectorAll<HTMLElement>('button, a[href], input, select, summary, [tabindex="0"]')]
     .filter(el => !el.closest('[hidden]') && !el.matches(':disabled'));

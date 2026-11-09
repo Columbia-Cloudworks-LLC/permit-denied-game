@@ -7,6 +7,7 @@ The game HTML's module graph (entry script plus `modulepreload` links) is the in
 | Initial game JS | 1,875,000 bytes uncompressed | Ordinary startup path: Pixi, authored buildings, town/sim, HUD, traffic. Raised from 1,850,000 when traffic joined the sim: it runs from the first fixed step, so lazy loading would desync recorded replays |
 | Per chunk | 650 KiB | Vite `chunkSizeWarningLimit`; Pixi and building JSON sit just under it |
 | Test-yard / debug binder | lazy `import("./yardBindings")` | Not in the ordinary player graph |
+| Overworld map and region data | lazy `loadOverworld()` → `src/game/overworld.ts` | Loads when setup opens or a link names a region. Never import it statically from the startup graph. Generation-time bias lives in the small `src/world/regionalPlacement.ts` |
 
 `npm run build` runs `scripts/analyze-bundle.mjs`, which fails CI when those limits are exceeded. `vite.config.ts` splits `pixi`, `analytics`, and `src/world/data/` (`buildings`) through `manualChunks` so Rollup no longer emits an oversized-chunk warning.
 

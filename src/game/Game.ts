@@ -98,6 +98,10 @@ import { PlaythroughRun, playthroughDigest } from "./playthroughRun";
 import type { Playthrough, PlaythroughAction } from "../debug/playthrough";
 import { downloadPlaythrough, PlaythroughPanel } from "../render/playthroughPanel";
 import { version as buildVersion } from "../../package.json";
+import { SIGNATURE_BONUS, type RegionalPlacement } from "../world/regionalPlacement";
+import { loadOverworld, type OverworldModule } from "./overworldLoader";
+import type { CountyProgress } from "./countyProgress";
+import type { CountyDeployment } from "./session";
 
 class Game {
   private readonly analytics = new RunAnalytics();
@@ -132,6 +136,9 @@ class Game {
   private birds: Bird[] = [];
   private cash = 0;
   private campaign: CampaignRun | null = null;
+  /** Lazily loaded overworld: present once the map opened, a county deployed, or a county link booted. */
+  private overworld?: OverworldModule;
+  private countyProgress?: CountyProgress;
   private resubmission = new Resubmission();
   private timeLeft = MATCH_SECONDS;
   private elapsed = 0;
@@ -198,9 +205,16 @@ class Game {
     this.renderer.debug.graph = graph;
     this.renderer.debug.perf = this.perf.enabled;
     this.syncDebug();
+    // A county link needs the overworld manifest before the first town is built.
+    if (this.rules.regionId) (await this.ensureOverworld()).resolveCountyLink(this.rules, window.location.search);
     bootOpenedSession({
       rules: this.rules,
-      applyCampaign: (run) => { this.campaign = run; },
+      applyCampaign: (run) => {
+        const { regionId, countyIndex } = this.rules;
+        if (run && regionId && countyIndex) run.county = { regionId, index: countyIndex, weather: this.rules.weather ?? "clear", mapSeed: this.rules.seed };
+        if (run?.county) this.rules.weather = run.county.weather;
+        this.campaign = run;
+      },
       applyMode: (mode) => { this.mode = mode; },
       openDebug: () => this.hud.openDebug(),
       reset: (kind) => this.reset(kind),
@@ -250,9 +264,26 @@ class Game {
       if (this.rules.biomeId) this.campaign.biomeId = this.rules.biomeId;
       this.rules.season = this.campaign.season;
       this.rules.biomeId = this.campaign.biomeId;
+      this.carryCounty(this.campaign);
     }
     this.reset("same");
     this.syncSessionUrl();
+  }
+
+  /**
+   * A Debug → Mode switch keeps an overworld county a county: the new campaign takes its identity,
+   * current weather and map roll, and plays the county's own seed (Sandbox's New Layout may have
+   * rerolled it), so a win records the county being played and Next Level stays in the region.
+   */
+  private carryCounty(campaign: CampaignRun): void {
+    const { regionId, countyIndex } = this.rules;
+    const county = regionId && countyIndex ? this.overworld?.countyAt(regionId, countyIndex) : undefined;
+    if (!regionId || !countyIndex || !county) return;
+    const weather = this.rules.weather ?? this.town.weather.condition;
+    const mapSeed = this.rules.mapSeed ?? county.seed;
+    Object.assign(this.rules, { seed: county.seed, weather, mapSeed });
+    campaign.levelSeed = county.seed;
+    campaign.county = { regionId, index: countyIndex, weather, mapSeed };
   }
 
   setDistrict(district: DistrictId): void {
@@ -310,6 +341,13 @@ class Game {
       this.rules.seed = this.campaign.levelSeed;
       this.rules.season = this.campaign.season;
       this.rules.biomeId = this.campaign.biomeId;
+      const county = this.campaign.county;
+      if (county) {
+        this.rules.regionId = county.regionId;
+        this.rules.countyIndex = county.index;
+        this.rules.weather = county.weather;
+        this.rules.level = currentLevel(this.campaign).id;
+      }
     }
   }
 
@@ -327,6 +365,8 @@ class Game {
       season: this.rules.season,
       biome: biomeById(this.rules.biomeId),
       weatherDetail: this.rules.weatherDetail,
+      weather: this.rules.weather,
+      regional: this.regionalPlacement(),
     });
     const ranch = this.rules.demo || this.rules.ranchFocus
       ? this.town.buildings.find((b) => b.archetypeId === (this.rules.demo ?? "ranch"))
@@ -342,6 +382,81 @@ class Game {
     this.particles.ownerAt = this.town.debrisOwnerAt;
     this.attachTraffic();
     return ranch;
+  }
+
+  /**
+   * Regional flavor for an overworld county; legacy level links have none. A county town must
+   * never be built without it: the bias and signature tags change the layout, so skipping them
+   * would quietly build a different town (and drift any replay). Every path that sets county
+   * rules loads the overworld first.
+   */
+  private regionalPlacement(): RegionalPlacement | undefined {
+    if (!this.rules.regionId || !this.rules.countyIndex) return undefined;
+    if (!this.overworld) throw new Error(`County ${this.rules.regionId}#${this.rules.countyIndex} built before the overworld loaded`);
+    return this.overworld.placementForRules(this.rules);
+  }
+
+  private async ensureOverworld(): Promise<OverworldModule> {
+    this.overworld ??= await loadOverworld();
+    this.countyProgress ??= this.overworld.sharedCountyProgress();
+    return this.overworld;
+  }
+
+  /**
+   * County N always runs level N, so a level jump in an overworld run moves to that level's county
+   * in the same region: its index, seed and rolled weather. Progress, Next Level and the pause map
+   * then follow the county actually being played. Legacy level runs have no county to move.
+   */
+  private retargetCounty(id: CampaignLevelId): void {
+    const regionId = this.rules.regionId;
+    const overworld = this.overworld;
+    if (!regionId || !overworld) return;
+    const index = CAMPAIGN_LEVELS.findIndex(level => level.id === id) + 1;
+    const county = overworld.countyAt(regionId, index);
+    if (!county) return;
+    const mapSeed = this.campaign?.county?.mapSeed ?? this.rules.mapSeed ?? this.rules.seed;
+    const weather = overworld.countyWeather(mapSeed, this.rules.season, regionId, index);
+    Object.assign(this.rules, { countyIndex: index, seed: county.seed, weather, mapSeed });
+    if (!this.campaign) return;
+    this.campaign.levelSeed = county.seed;
+    this.campaign.county = { regionId, index, weather, mapSeed };
+  }
+
+  /** Start the county the map's detail card deployed, in Sandbox or as a Time Challenge run. */
+  private async deployCounty(deploy: CountyDeployment): Promise<void> {
+    const { countyAt, regionById, regionBiome } = await this.ensureOverworld();
+    const county = countyAt(deploy.regionId, deploy.countyIndex);
+    const region = regionById(deploy.regionId);
+    if (!county || !region) return;
+    this.rules = gameSetupRules(deploy.kind, "d10", this.rules.seed, county.level.id);
+    Object.assign(this.rules, {
+      seed: county.seed, season: deploy.season, seasonSelection: deploy.season, seasonExplicit: true,
+      weatherDetail: deploy.effects, weather: deploy.weather, mapSeed: deploy.mapSeed,
+      regionId: region.id, countyIndex: county.index, biomeId: regionBiome(region),
+    });
+    this.campaign = null;
+    if (deploy.kind === "challenge") {
+      const run = startCampaign(county.seed);
+      run.levelIndex = county.level.index - 1;
+      run.season = deploy.season;
+      run.biomeId = regionBiome(region);
+      run.county = { regionId: region.id, index: county.index, weather: deploy.weather, mapSeed: deploy.mapSeed };
+      this.campaign = run;
+    }
+    this.reset("same");
+    this.syncSessionUrl();
+  }
+
+  /** Next Level on an overworld run: the next open county in the region, carrying upgrades. */
+  private advanceCounty(campaign: CampaignRun): CampaignRun {
+    const county = campaign.county;
+    const overworld = this.overworld;
+    if (!county || !overworld || !this.countyProgress) return advanceCampaignLevel(campaign, nextSeed(campaign.levelSeed));
+    const nextIndex = this.countyProgress.nextChallengeCounty(county.regionId, county.index);
+    const next = nextIndex ? overworld.countyAt(county.regionId, nextIndex) : undefined;
+    if (!next) return advanceCampaignLevel(campaign, nextSeed(campaign.levelSeed));
+    const weather = overworld.countyWeather(county.mapSeed, campaign.season, county.regionId, next.index);
+    return advanceCampaignLevel(campaign, next.seed, { levelIndex: next.level.index - 1, county: { ...county, index: next.index, weather } });
   }
 
   /** Through traffic on real maps; police dispatch only when the county clock is running. */
@@ -408,6 +523,11 @@ class Game {
       params.set('season', this.rules.season);
       if (this.rules.biomeId) params.set('biome', this.rules.biomeId);
       if (this.rules.weatherDetail !== 'on') params.set('effects', this.rules.weatherDetail);
+      if (this.rules.weather) params.set('weather', this.rules.weather);
+      if (this.rules.regionId && this.rules.countyIndex) {
+        params.set('region', this.rules.regionId);
+        params.set('county', String(this.rules.countyIndex));
+      }
     }
     const previous = new URLSearchParams(location.search);
     carryDebugQuery(previous, params);
@@ -689,6 +809,7 @@ class Game {
       alreadyComplete: campaign.complete,
     });
     const death = applyCampaignOutcome(campaign, outcome);
+    if (outcome === 'win' && campaign.county) this.countyProgress?.markCleared(campaign.county.regionId, campaign.county.index);
     if (outcome !== 'continue') this.finish(death ?? '', outcome === 'win');
   }
 
@@ -710,7 +831,25 @@ class Game {
   private syncFieldNotice(dt: number): void {
     this.fieldNoticeUntil = Math.max(0, this.fieldNoticeUntil - dt);
     for (const feature of this.town.features) if (feature.kind === "field") this.noticeField(feature as FieldFeature);
+    for (const building of this.town.buildings) if (building.regionalSignature) this.noticeSignature(building);
     if (this.fieldNoticeUntil <= 0) this.fieldNotice = "";
+  }
+
+  /** Call out a regional signature on its first hit, and its bonus when it comes down. */
+  private noticeSignature(building: Town["buildings"][number]): void {
+    const label = building.regionalSignature!;
+    const bonus = `$${SIGNATURE_BONUS.toLocaleString("en-US")}`;
+    if (building.collapseBonusPaid && building.signatureNoticed !== "down") {
+      building.signatureNoticed = "down";
+      this.fieldNotice = `${label.toUpperCase()} DOWN · SIGNATURE BONUS +${bonus}`;
+      this.fieldNoticeUntil = FIELD_CLEARED_SECONDS;
+      return;
+    }
+    if (!building.signatureNoticed && building.cells.some(cell => cell.state !== "intact")) {
+      building.signatureNoticed = "hit";
+      this.fieldNotice = `REGIONAL SIGNATURE · ${label} · +${bonus} when it falls`;
+      this.fieldNoticeUntil = FIELD_NOTICE_SECONDS;
+    }
   }
 
   /** Announce a field once when it is first damaged, and once more when it is cleared. */
@@ -835,7 +974,20 @@ class Game {
   }
 
   /** Rebuild a recording's site and drive it from the recorded steps; no live input reaches the dozer. */
-  startReplay(playthrough: Playthrough): void {
+  /**
+   * A county recording needs the overworld's regional placement to rebuild the recorded town,
+   * so it waits for that chunk first. Other recordings start at once, as before.
+   */
+  startReplay(playthrough: Playthrough): Promise<void> | void {
+    if (!playthrough.rules.regionId || this.overworld) return this.beginReplay(playthrough);
+    this.playthrough.note = "Loading county map data for the replay…";
+    return this.ensureOverworld().then(
+      () => { this.playthrough.note = ""; this.beginReplay(playthrough); },
+      (error: unknown) => { this.playthrough.note = `Could not load replay: ${error instanceof Error ? error.message : String(error)}`; },
+    );
+  }
+
+  private beginReplay(playthrough: Playthrough): void {
     this.prepareCleanRun();
     const setup = structuredClone({ rules: playthrough.rules, campaign: playthrough.campaign, upgrades: playthrough.upgrades });
     this.rules = setup.rules;
@@ -860,7 +1012,7 @@ class Game {
 
   private loadReplay(text: string): void {
     try {
-      this.startReplay(this.playthrough.load(text));
+      void this.startReplay(this.playthrough.load(text));
     } catch (error) {
       this.playthrough.note = `Could not load replay: ${error instanceof Error ? error.message : String(error)}`;
     }
@@ -874,7 +1026,7 @@ class Game {
   private playthroughControl(command: "replay" | "play" | "pause" | "restart" | "exit"): void {
     const target = command === "restart" ? this.playthrough.replayed ?? this.playthrough.last : this.playthrough.last;
     if (command === "exit") this.stopPlaythrough();
-    else if (command === "replay" || command === "restart") { if (target) this.startReplay(target); }
+    else if (command === "replay" || command === "restart") { if (target) void this.startReplay(target); }
     else if (this.playthrough.replaying && this.playthrough.status().paused !== (command === "pause")) this.playthrough.togglePause();
   }
 
@@ -890,6 +1042,7 @@ class Game {
     this.rules.testMap = undefined;
     this.rules.job = false;
     this.rules.level = id;
+    this.retargetCounty(id);
     if (this.rules.kind === "sandbox") {
       this.campaign = null;
       this.reset("same");
@@ -902,6 +1055,7 @@ class Game {
     if (index < 0) return;
     this.campaign.levelIndex = index;
     this.campaign.briefing = false;
+    this.retargetCounty(id);
     this.reset('same');
     this.syncSessionUrl();
   }
@@ -1064,6 +1218,10 @@ class Game {
       fieldNotice: this.fieldNotice,
       season: this.town.season,
       weatherDetail: this.town.weatherDetail,
+      regionId: this.rules.regionId,
+      countyIndex: this.rules.countyIndex,
+      weather: this.town.weather.condition,
+      mapSeed: this.campaign?.county?.mapSeed ?? this.rules.mapSeed ?? this.rules.seed,
       seed: this.rules.seed,
       levelId: this.rules.level,
       levelCard: this.levelCard(),
@@ -1094,9 +1252,15 @@ class Game {
   private campaignHud(campaign: CampaignRun): CampaignHud {
     const level = currentLevel(campaign);
     const landmark = landmarkDemolitionStatus(this.town.buildings, level);
+    const county = campaign.county ? this.overworld?.countyAt(campaign.county.regionId, campaign.county.index) : undefined;
+    const briefingCounty = county && campaign.county ? { name: county.name, weather: campaign.county.weather } : undefined;
+    const signatures = this.town.buildings.filter(building => building.regionalSignature).map(building => building.regionalSignature!);
+    const signatureLine = signatures.length
+      ? `\nRegional signatures: ${signatures.join(", ")} (+$${SIGNATURE_BONUS.toLocaleString("en-US")} each).`
+      : "";
     return {
       levelIndex: level.index,
-      levelName: level.name,
+      levelName: county?.shortName ?? level.name,
       levelId: level.id,
       landmarkName: level.landmark.label,
       dollarTarget: level.dollarTarget,
@@ -1105,7 +1269,7 @@ class Game {
       landmarkProgress: landmark.progress,
       landmarkReady: landmark.ready,
       dollarsReady: dollarsReady(campaign, level),
-      briefing: campaignBriefingText(level, campaign.season),
+      briefing: campaignBriefingText(level, campaign.season, briefingCounty) + signatureLine,
       victory: campaign.victory,
       complete: campaign.complete,
       buildingCount: level.generation.buildingCount,
@@ -1176,30 +1340,14 @@ class Game {
       },
       onMenu: () => { this.releaseControls(); if (this.mode === "play") this.mode = "pause"; },
       onTitle: () => { this.releaseControls(); this.campaign = null; this.mode = "title"; },
-      onStart: (kind, level, season, effects) => {
-        this.rules = gameSetupRules(kind, "d10", this.rules.seed, level);
-        this.rules.weatherDetail = effects;
-        this.rules.seasonSelection = kind === "sandbox" ? season : undefined;
-        this.rules.seasonExplicit = true;
-        if (kind === "sandbox") {
-          this.rules.season = season === "random" ? resolveSeason(this.rules.seed) : season;
-          this.campaign = null;
-        } else {
-          this.campaign = startCampaign(this.rules.seed);
-          this.campaign.levelIndex = CAMPAIGN_LEVELS.findIndex((entry) => entry.id === level);
-          this.rules.season = this.campaign.season;
-          this.rules.biomeId = this.campaign.biomeId;
-        }
-        this.reset("same");
-        this.syncSessionUrl();
-      },
+      onStart: (deploy) => this.deployCounty(deploy),
       onBeginLevel: () => {
         if (this.campaign) this.campaign.briefing = false;
         if (this.mode === "briefing") this.mode = "play";
       },
       onNextLevel: () => {
         if (!this.campaign || !this.campaign.complete) return;
-        this.campaign = advanceCampaignLevel(this.campaign, nextSeed(this.campaign.levelSeed));
+        this.campaign = this.advanceCounty(this.campaign);
         this.rules.seed = this.campaign.levelSeed;
         this.reset("same");
       },
@@ -1210,6 +1358,14 @@ class Game {
         this.reset("same");
       },
       onNewCampaign: () => {
+        // An overworld run starts its region over from County 1 with fresh upgrades.
+        const county = this.campaign?.county;
+        if (county && this.campaign && this.overworld) {
+          const season = this.campaign.season;
+          void this.deployCounty({ kind: "challenge", season, regionId: county.regionId, countyIndex: 1,
+            weather: this.overworld.countyWeather(county.mapSeed, season, county.regionId, 1), effects: this.rules.weatherDetail, mapSeed: county.mapSeed });
+          return;
+        }
         this.rules = gameSetupRules("challenge", this.rules.district, this.rules.seed);
         this.campaign = startCampaign(this.rules.seed);
         this.rules.season = this.campaign.season;

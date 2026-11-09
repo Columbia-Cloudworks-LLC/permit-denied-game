@@ -123,6 +123,8 @@ export class WorldRenderer {
   jobTarget?: Building;
   landmarkTarget?: Building;
   readonly hudOverlay = new Container();
+  /** Screen-space haze for fog and storms. Presentation only, never touches simulation. */
+  private readonly hazeVeil = new Graphics();
   private readonly landmarkPin = new Graphics();
   private readonly landmarkArrow = new Graphics();
   private readonly fades = new VisibilityFades();
@@ -161,7 +163,7 @@ export class WorldRenderer {
     this.nhood.addChild(this.nhoodGfx);
     this.root.addChild(this.terrainLayer, this.ground, this.sites, this.overlay, this.pileHints.root, this.groundOverlays, this.drawing.root, this.world, this.nhood, this.debugOverlay);
     this.root.addChild(this.cashPopups.root, this.bowlingStrikes.root, this.landmarkPin);
-    this.hudOverlay.addChild(this.landmarkArrow);
+    this.hudOverlay.addChild(this.hazeVeil, this.landmarkArrow);
     this.root.sortableChildren = false;
   }
 
@@ -185,6 +187,15 @@ export class WorldRenderer {
     this.viewH = viewH;
     this.root.position.set(viewW / 2 - this.camX + shakeX, viewH / 2 - this.camY + shakeY);
     this.root.scale.set(this.zoom);
+  }
+
+  /** Only heavy haze (fog, storms) gets a veil; reduced effects halve it and Off removes it. */
+  private drawHaze(town: Town): void {
+    this.hazeVeil.clear();
+    const strength = town.weatherDetail === "off" ? 0 : town.weatherDetail === "reduced" ? 0.5 : 1;
+    const alpha = town.weather.haze >= 0.1 ? town.weather.haze * 0.9 * strength : 0;
+    if (alpha <= 0) return;
+    this.hazeVeil.rect(0, 0, this.viewW, this.viewH).fill({ color: town.weather.light, alpha });
   }
 
   private visibleBox(x: number, y: number, w: number, d: number, z0: number, z1: number): boolean {
@@ -253,6 +264,7 @@ export class WorldRenderer {
     this.root.setChildIndex(this.cashPopups.root, this.root.children.length - 1);
     this.root.setChildIndex(this.bowlingStrikes.root, this.root.children.length - 1);
     this.root.tint = presentationTint(town.weather.light, town.weatherDetail);
+    this.drawHaze(town);
     this.fades.begin();
     const view = this.debug;
     this.sites.visible = view.sites;
@@ -850,6 +862,7 @@ export class WorldRenderer {
     this.weather.step({
       dt: frame.dt,
       kind: town.weather.kind,
+      intensity: town.weather.intensity,
       detail: view.effects ? town.weatherDetail : "off",
       camX: dozer.x,
       camY: dozer.y,

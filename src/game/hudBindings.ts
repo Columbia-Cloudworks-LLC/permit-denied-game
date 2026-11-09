@@ -2,8 +2,7 @@ import type { Hud } from "../render/hud";
 import type { PermitSound } from "../render/permitIntro";
 import type { DebugToggle } from "../debug/view";
 import type { CampaignLevelId } from "./campaign";
-import type { DistrictId, SessionKind } from "./session";
-import type { SeasonSelection, WeatherDetail } from "../world/season";
+import type { CountyDeployment, DistrictId, SessionKind } from "./session";
 
 /** HUD callbacks owned by session setup, not by the HUD template. */
 export interface HudSessionBindings {
@@ -14,7 +13,7 @@ export interface HudSessionBindings {
   onTitleSound: (kind: PermitSound, index: number) => void;
   onMenu: () => void;
   onTitle: () => void;
-  onStart: (kind: SessionKind, level: CampaignLevelId, season: SeasonSelection, effects: WeatherDetail) => void;
+  onStart: (deploy: CountyDeployment) => void | Promise<void>;
   onBeginLevel: () => void;
   onNextLevel: () => void;
   onRetryLevel: () => void;

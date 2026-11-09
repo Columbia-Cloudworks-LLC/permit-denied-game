@@ -12,8 +12,8 @@ import { PermitLogo } from './permitLogo';
 import { OperatorMenu } from './operatorMenu';
 import type { PermitSound } from './permitIntro';
 import { DEBUG_GROUPS, type DebugView, type DebugToggle } from "../debug/view";
-import { type DistrictId, type SessionKind } from "../game/session";
-import type { SeasonId, SeasonSelection, WeatherDetail } from "../world/season";
+import { type CountyDeployment, type DistrictId, type SessionKind } from "../game/session";
+import type { SeasonId, WeatherConditionId, WeatherDetail } from "../world/season";
 import { createDebugBinderState, type BinderTab } from '../debug/binderState';
 import { applyPwaUpdate, onPwaUpdate } from '../pwa/update';
 
@@ -73,6 +73,11 @@ export interface HudState {
   fieldNotice?: string;
   season?: SeasonId;
   weatherDetail?: WeatherDetail;
+  /** Overworld region of the running county, so New Game reopens near it. */
+  regionId?: string;
+  countyIndex?: number;
+  weather?: WeatherConditionId;
+  mapSeed?: number;
 }
 
 export class Hud {
@@ -100,7 +105,7 @@ export class Hud {
   onMute?: () => void;
   onMenu?: () => void;
   onTitle?: () => void;
-  onStart?: (kind: SessionKind, level: CampaignLevelId, season: SeasonSelection, effects: WeatherDetail) => void;
+  onStart?: (deploy: CountyDeployment) => void | Promise<void>;
   onBeginLevel?: () => void;
   onNextLevel?: () => void;
   onRetryLevel?: () => void;
@@ -202,7 +207,7 @@ export class Hud {
         root.querySelector('#hud-permit')!.append(this.permitLogo.root);
         if (page === 'equipment') host!.querySelector('.menu-permit-host')!.append(this.permitLogo.root);
       },
-      resume: () => this.onResume?.(), start: (kind, level, season, effects) => this.onStart?.(kind, level, season, effects),
+      resume: () => this.onResume?.(), start: (deploy) => { void this.onStart?.(deploy); },
       restart: () => this.onRestart?.(),
       debug: () => { this.onDebugToggle?.("freeze", true); this.onResume?.(); this.openDebug(); },
       title: () => this.onTitle?.(), mute: () => this.onMute?.(), click: () => this.onClick?.(),
@@ -501,7 +506,7 @@ export class Hud {
     this.binderBlocked = modal; this.syncBinder();
     this.renderTestControls(s);
     this.setModal(modal);
-    this.menu.show(s.overlay === 'title' || s.overlay === 'pause' ? s.overlay : null, s.session, s.district, s.developmentScenario, s.campaign?.levelId ?? s.levelId, s.season, s.weatherDetail);
+    this.menu.show(s.overlay === 'title' || s.overlay === 'pause' ? s.overlay : null, { session: s.session, season: s.season, effects: s.weatherDetail, regionId: s.regionId, countyIndex: s.countyIndex, weather: s.weather, mapSeed: s.mapSeed });
     this.menu.syncMuted(s.muted);
     this.renderMobile(s, elapsedClock, advisory);
     this.renderOverlay(s);

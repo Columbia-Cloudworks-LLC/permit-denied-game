@@ -28,6 +28,7 @@ export function generateCampaignLayout(level: CampaignLevelDef, seed: number, en
   const resolved: LayoutEnvironment = {
     season: environment?.season ?? "summer",
     biome: environment?.biome ?? selectCampaignBiome(seed),
+    regional: environment?.regional,
   };
   if (level.generation.topology === 'estate') return generateEstateLayout(level, seed, resolved);
   return generateRuralLayout('d30', seed, level.generation.topology, level, resolved);

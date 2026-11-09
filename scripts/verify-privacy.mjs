@@ -4,6 +4,13 @@ import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { chromium } from 'playwright';
 
+/** Setup → Open Map → a county → Deploy: the menu path that starts a game since the overworld. */
+async function deployFirstCounty(page) {
+  await page.getByRole('button', { name: 'Open Map', exact: true }).click();
+  await page.locator('.region-list [data-region="US-IL"]').click();
+  await page.locator('[data-menu-action=deploy]').click();
+}
+
 // Exercise the actual production bundle and current vendor script at a routed
 // production origin. All collection requests are intercepted, never ingested.
 const output = process.env.PRIVACY_OUTPUT || 'artifacts/privacy';
@@ -80,7 +87,7 @@ try {
     await prodPage.goto(origin);
     await prodPage.getByRole('button', { name: 'Play', exact: true }).waitFor();
     await prodPage.getByRole('button', { name: 'Play', exact: true }).click();
-    await prodPage.getByRole('button', { name: 'Start Game', exact: true }).click();
+    await deployFirstCounty(prodPage);
     await prodPage.locator('#terms-agree').waitFor();
     const exposed = await prodPage.evaluate(() => {
       const pd = window.__pd;
@@ -94,7 +101,7 @@ try {
   const page = await ctx.newPage(); await page.goto(origin + '/?debug=1'); await page.getByRole('button', { name: 'Play', exact: true }).waitFor();
   assert.equal(scripts.length, 0);
   await page.getByRole('button', { name: 'Play', exact: true }).click();
-  await page.getByRole('button', { name: 'Start Game', exact: true }).click();
+  await deployFirstCounty(page);
   await page.locator('#terms-agree').waitFor();
   assert.equal(await page.locator('#terms-continue').isDisabled(), true);
   const before = await page.evaluate(() => window.__pd.snapshot());

@@ -1,5 +1,7 @@
 import { MODE_LABELS, SITE_LABELS } from './menuLabels';
 import { describe, expect, it } from 'vitest';
+import { countySeed } from '../world/counties';
+import { resolveCountyLink } from './overworld';
 import { DEFAULT_DISTRICT_SEEDS, gameSetupRules, nextSeed, parseSessionFromSearch, playableDistrict, startsAtTitle } from './session';
 
 describe('operator menu entry', () => {
@@ -25,6 +27,26 @@ describe('operator menu entry', () => {
     expect(parseSessionFromSearch('?yard=1')).toMatchObject({kind:'sandbox',district:'classic'});
     expect(startsAtTitle('?yard=1')).toBe(false);
   });
+  it('opens an overworld county link on its level, seed, biome, and weather', () => {
+    const link = (search: string) => { const rules = parseSessionFromSearch(search); resolveCountyLink(rules, search); return rules; };
+    const rules = link('?mode=challenge&region=US-IL&county=3&season=winter&weather=storm');
+    expect(rules).toMatchObject({ kind: 'challenge', regionId: 'US-IL', countyIndex: 3, level: 'township', seed: countySeed('US-IL', 3), season: 'winter', weather: 'storm', biomeId: 'agricultural-plain' });
+    expect(link('?region=US-IL&county=3&seed=5&level=suburb')).toMatchObject({ seed: 5, level: 'suburb', countyIndex: 3 });
+    expect(link('?region=US-ZZ&county=3')).not.toHaveProperty('regionId');
+    expect(link('?region=illinois&county=3')).not.toHaveProperty('regionId');
+    expect(link('?region=US-IL&county=9')).not.toHaveProperty('regionId');
+    expect(parseSessionFromSearch('?yard=1&region=US-IL&county=2')).not.toHaveProperty('regionId');
+    expect(parseSessionFromSearch('?weather=hail')).not.toHaveProperty('weather');
+    expect(startsAtTitle('?region=US-IL&county=1')).toBe(false);
+  });
+
+  it('keeps legacy level links free of county flavor', () => {
+    const rules = parseSessionFromSearch('?mode=challenge&level=city-downtown&nhood=1');
+    expect(rules.level).toBe('city-downtown');
+    expect(rules).not.toHaveProperty('regionId');
+    expect(rules).not.toHaveProperty('weather');
+  });
+
   it('shows the title on normal visits, including touch previews and tracking links', () => {
     for (const query of ['', '?controls=1', '?utm_source=friend']) expect(startsAtTitle(query)).toBe(true);
   });

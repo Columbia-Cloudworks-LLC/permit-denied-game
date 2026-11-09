@@ -4,10 +4,12 @@ import type { BiomeId } from '../world/biomes';
 import { biomeById } from '../world/biomes';
 import {
   isSeasonId,
+  isWeatherCondition,
   isWeatherDetail,
   resolveSeason,
   type SeasonId,
   type SeasonSelection,
+  type WeatherConditionId,
   type WeatherDetail,
 } from '../world/season';
 export type SessionKind = "challenge" | "sandbox";
@@ -84,6 +86,26 @@ export interface SessionRules {
   seasonExplicit: boolean;
   biomeId?: BiomeId;
   weatherDetail: WeatherDetail;
+  /** Overworld region, e.g. `US-IL`. Present only with a county. */
+  regionId?: string;
+  /** County 1–7 within the region. */
+  countyIndex?: number;
+  /** The overworld weather roll the county was deployed from; the paused map reuses it. */
+  mapSeed?: number;
+  /** County weather condition; absent keeps the legacy seasonal roll from the seed. */
+  weather?: WeatherConditionId;
+}
+
+/** What the county card hands the game: mode, the locked season, and the chosen county and sky. */
+export interface CountyDeployment {
+  kind: SessionKind;
+  season: SeasonId;
+  regionId: string;
+  countyIndex: number;
+  weather: WeatherConditionId;
+  effects: WeatherDetail;
+  /** The overworld's weather roll, so later counties in a run keep the sky the map showed. */
+  mapSeed: number;
 }
 
 function defaultSessionRules(): SessionRules {
@@ -112,6 +134,7 @@ export function parseSessionFromSearch(search: string): SessionRules {
   if (TOPOLOGIES.has(topology as SessionTopology)) rules.topology = topology as SessionTopology;
   applySeasonLink(rules, params.get("season"));
   applyLookLinks(rules, params);
+  applyCountyLink(rules, params);
   if (params.get("job") === "brick") applyBrickJob(rules);
   return rules;
 }
@@ -135,6 +158,22 @@ function applyLookLinks(rules: SessionRules, params: URLSearchParams): void {
   if (biome) rules.biomeId = biome.id;
   const effects = params.get("effects");
   if (effects && isWeatherDetail(effects)) rules.weatherDetail = effects;
+}
+
+/**
+ * `region=US-IL&county=3` names an overworld county. Parsing only checks the shape; the
+ * lazily loaded overworld (`resolveCountyLink`) checks the manifest and fills in the county's
+ * level, seed, and biome before boot. Diagnostic links (yard, asset, job) ignore it.
+ */
+function applyCountyLink(rules: SessionRules, params: URLSearchParams): void {
+  const weather = params.get("weather");
+  if (weather && isWeatherCondition(weather)) rules.weather = weather;
+  if (rules.testMap || params.get("job")) return;
+  const region = params.get("region") ?? "";
+  const county = Number(params.get("county"));
+  if (!/^(US|CA)-[A-Z]{2}$/.test(region) || !Number.isInteger(county) || county < 1 || county > 7) return;
+  rules.regionId = region;
+  rules.countyIndex = county;
 }
 
 const DISTRICT_IDS = new Set<DistrictId>(["classic", "d10", "d30", "d100"]);
@@ -217,5 +256,5 @@ export function canPickUpgrade(rules: SessionRules, mode: PlayMode, earned: bool
 /** Explicit scenario links retain their immediate-play behavior. */
 export function startsAtTitle(search: string): boolean {
   const params = new URLSearchParams(search);
-  return !['testAsset', 'yard', 'sandbox', 'mode', 'district', 'level', 'seed', 'ranch', 'demo', 'tower', 'job', 'perf', 'nhood'].some(key => params.has(key));
+  return !['testAsset', 'yard', 'sandbox', 'mode', 'district', 'level', 'seed', 'ranch', 'demo', 'tower', 'job', 'perf', 'nhood', 'region'].some(key => params.has(key));
 }

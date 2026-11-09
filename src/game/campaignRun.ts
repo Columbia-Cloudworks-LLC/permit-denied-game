@@ -1,7 +1,7 @@
 import type { Building } from '../structure/types';
 import type { BiomeId } from '../world/biomes';
 import { selectCampaignBiome } from '../world/biomes';
-import { resolveSeason, seasonLabel, type SeasonId } from '../world/season';
+import { resolveSeason, seasonLabel, weatherConditionLabel, type SeasonId, type WeatherConditionId } from '../world/season';
 import type { Upgrades } from './upgrades';
 import { COPY } from './constants';
 import {
@@ -34,6 +34,16 @@ export interface CampaignRun {
   entry: CampaignSnapshot;
   season: SeasonId;
   biomeId: BiomeId;
+  /** Overworld county this level runs; absent on legacy seven-level links. */
+  county?: CampaignCounty;
+}
+
+export interface CampaignCounty {
+  regionId: string;
+  index: number;
+  weather: WeatherConditionId;
+  /** Map-load weather seed, so Next Level rolls the next county's sky the way the map showed it. */
+  mapSeed: number;
 }
 
 function emptyUpgrades(): Upgrades {
@@ -158,13 +168,18 @@ export function retryCampaignLevel(run: CampaignRun): CampaignRun {
   };
 }
 
-export function advanceCampaignLevel(run: CampaignRun, nextSeed: number): CampaignRun {
-  if (run.levelIndex >= CAMPAIGN_LEVEL_COUNT - 1) {
+/**
+ * Next level of the run. `target` jumps to a chosen level index (the next overworld county);
+ * without it the run steps forward one level.
+ */
+export function advanceCampaignLevel(run: CampaignRun, nextSeed: number, target?: { levelIndex: number; county?: CampaignCounty }): CampaignRun {
+  if (!target && run.levelIndex >= CAMPAIGN_LEVEL_COUNT - 1) {
     return { ...run, victory: true, briefing: false };
   }
   const next: CampaignRun = {
     ...run,
-    levelIndex: run.levelIndex + 1,
+    levelIndex: target?.levelIndex ?? run.levelIndex + 1,
+    county: target ? target.county : run.county,
     levelSeed: nextSeed >>> 0,
     levelEarned: 0,
     spendable: 0,
@@ -179,13 +194,14 @@ export function advanceCampaignLevel(run: CampaignRun, nextSeed: number): Campai
   return next;
 }
 
-export function campaignBriefingText(level: CampaignLevelDef, season: SeasonId = 'summer'): string {
+export function campaignBriefingText(level: CampaignLevelDef, season: SeasonId = 'summer', county?: { name: string; weather: WeatherConditionId }): string {
   const minutes = Math.floor(level.timeLimit / 60);
   const seconds = level.timeLimit % 60;
   const clock = seconds ? `${minutes}:${String(seconds).padStart(2, '0')}` : `${minutes}:00`;
   const lines = [
-    `Level ${level.index} · ${level.name}`,
-    `Season: ${seasonLabel(season)}. Chosen once for this campaign.`,
+    county ? `County ${level.index} · ${county.name}` : `Level ${level.index} · ${level.name}`,
+    `Season: ${seasonLabel(season)}. Locked for this run.`,
+    ...(county ? [`Weather: ${weatherConditionLabel(season, county.weather)}.`] : []),
     `Landmark: ${level.landmark.label}`,
     `Earn $${level.dollarTarget.toLocaleString('en-US')} and demolish the landmark.`,
     `County clock: ${clock}.`,

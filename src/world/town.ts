@@ -26,11 +26,14 @@ import { type GroundCondition } from "./groundCondition";
 import {
   groundConditionForSeason,
   resolveWeather,
+  weatherPresetFor,
+  type WeatherConditionId,
   type SeasonId,
   type WeatherDetail,
   type WeatherPreset,
 } from "./season";
 import type { LayoutEnvironment } from "./rural";
+import { tagRegionalSignatures, type RegionalPlacement } from "./regionalPlacement";
 import type { TopologyFamily } from "./rural";
 import { deriveTerrainFeatures, type TerrainFeature } from "./terrainFeatures";
 import {
@@ -101,6 +104,10 @@ export interface TownOptions {
   season?: SeasonId;
   biome?: BiomeProfile;
   weatherDetail?: WeatherDetail;
+  /** County weather chosen on the map; absent rolls the legacy seasonal preset from the seed. */
+  weather?: WeatherConditionId;
+  /** County flavor for campaign layouts: placement bias and signature tags. */
+  regional?: RegionalPlacement;
 }
 
 export function createTown(options: TownOptions = {}): Town {
@@ -121,8 +128,12 @@ function createTownLayout(options: TownOptions = {}): Town {
     return town;
   }
 
-  const environment: LayoutEnvironment = { season: options.season ?? "summer", biome: options.biome };
+  const season = options.season ?? "summer";
+  const regional = options.campaign ? options.regional : undefined;
+  const environment: LayoutEnvironment = { season, biome: options.biome, regional };
   const layout = generateDistrictLayout(district, seed, options.topology, options.campaign, environment, options.weatherDetail ?? "on");
+  if (options.weather) layout.weather = weatherPresetFor(season, options.weather);
+  tagRegionalSignatures(layout.buildings, regional);
   const pileW = layout.maxX - layout.minX + 4;
   const pileD = layout.maxY - layout.minY + 4;
   return {

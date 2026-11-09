@@ -3,6 +3,7 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import '../render/domTestShims';
 import { TERMS_KEY, TERMS_VERSION } from '../privacy/state';
 import { CAMPAIGN_LEVELS } from './campaign';
+import { countySeed, countyWeather } from '../world/counties';
 import { COPY, MATCH_SECONDS, SIM_DT } from './constants';
 
 // The game boots against a stand-in Pixi application: no GPU, no ticker. Frames are driven by hand.
@@ -54,9 +55,9 @@ interface GameInternals {
   cash: number;
   timeLeft: number;
   death: string | null;
-  campaign: { complete: boolean; levelIndex: number } | null;
+  campaign: { complete: boolean; levelIndex: number; season?: string; county?: unknown } | null;
   dozer: { x: number; y: number; heat: number; track: number; bladeDown: boolean };
-  town: { buildings: unknown[]; yard?: unknown; roadCar: unknown; season: string };
+  town: { buildings: unknown[]; yard?: unknown; roadCar: unknown; season: string; seed?: number; weather?: unknown; biome: { id: string } };
   renderer: { camX: number; zoom: number; debug: { freeze: boolean; perf: boolean; walls: boolean; maxFloor: number }; showNhood: boolean };
   hud: import('../render/hud').Hud;
 }
@@ -150,13 +151,46 @@ describe('sandbox play', () => {
     expect(internal.hud.onResubmit!()).toBeNull();
   });
 
-  it('starts a new game from the menu with the chosen season and effects', () => {
-    internal.hud.onStart!('sandbox', 'village', 'winter', 'reduced');
+  it('deploys a map county with its locked season, county weather, and regional biome', async () => {
+    await internal.hud.onStart!({ kind: 'sandbox', season: 'winter', regionId: 'US-IA', countyIndex: 2, weather: 'storm', effects: 'reduced', mapSeed: 7 });
     expect(internal.town.season).toBe('winter');
+    expect(internal.town.weather).toMatchObject({ condition: 'storm', kind: 'flurries' });
+    expect(internal.town.biome.id).toBe('agricultural-plain');
+    expect(internal.town.seed).toBe(countySeed('US-IA', 2));
     expect(internal.campaign).toBeNull();
-    expect(location.search).toContain('effects=reduced');
-    internal.hud.onStart!('challenge', 'suburb', 'random', 'on');
+    for (const part of ['effects=reduced', 'weather=storm', 'region=US-IA', 'county=2', 'level=village']) expect(location.search).toContain(part);
+    await internal.hud.onStart!({ kind: 'challenge', season: 'summer', regionId: 'US-IA', countyIndex: 4, weather: 'clear', effects: 'on', mapSeed: 7 });
     expect(internal.campaign?.levelIndex).toBe(CAMPAIGN_LEVELS.findIndex(level => level.id === 'suburb'));
+    expect(internal.campaign?.county).toEqual({ regionId: 'US-IA', index: 4, weather: 'clear', mapSeed: 7 });
+    expect(internal.campaign?.season).toBe('summer');
+  });
+
+  it('browses the state and world maps from pause without leaving the county run', async () => {
+    await internal.hud.onStart!({ kind: 'challenge', season: 'autumn', regionId: 'US-WI', countyIndex: 2, weather: 'fog', effects: 'on', mapSeed: 11 });
+    internal.hud.onBeginLevel!();
+    frames(5);
+    const town = internal.town, campaign = internal.campaign, elapsed = (game.snapshot() as { elapsed: number }).elapsed;
+    key('Escape');
+    frames(1);
+    expect(internal.mode).toBe('pause');
+    const menu = document.querySelector('.operator-menu')!;
+    const click = (selector: string) => menu.querySelector<HTMLElement>(selector)!.click();
+    click('[data-menu-action="state-map"]');
+    await new Promise(resolve => setTimeout(resolve, 0));
+    frames(1);
+    expect(menu.querySelector('#operator-heading')!.textContent).toBe('Wisconsin');
+    expect(menu.querySelector('.county-list [data-county="2"]')!.textContent).toContain('Playing');
+    click('.county-list [data-county="5"]');
+    frames(10);
+    expect(internal.town).toBe(town);
+    expect(internal.campaign).toBe(campaign);
+    expect((game.snapshot() as { elapsed: number }).elapsed).toBe(elapsed);
+    expect(internal.mode).toBe('pause');
+    click('.county-list [data-county="2"]');
+    click('.county-card [data-menu-action="resume"]');
+    frames(1);
+    expect(internal.mode).toBe('play');
+    expect(internal.town).toBe(town);
   });
 
   it('applies debug binder switches to the renderer and steps a frozen world on request', () => {
@@ -225,6 +259,45 @@ describe('time challenge', () => {
     expect(internal.campaign?.levelIndex).toBe(1);
     internal.hud.onNewCampaign!();
     expect(internal.campaign?.levelIndex).toBe(0);
+  });
+
+  it('moves an overworld run to the matching county when the debug bar jumps levels', async () => {
+    await internal.hud.onStart!({ kind: 'challenge', season: 'spring', regionId: 'US-IA', countyIndex: 2, weather: 'storm', effects: 'on', mapSeed: 9 });
+    game.jumpCampaignLevel('city-downtown');
+    expect(internal.campaign?.levelIndex).toBe(5);
+    expect(internal.campaign?.county).toEqual({ regionId: 'US-IA', index: 6, weather: countyWeather(9, 'spring', 'US-IA', 6), mapSeed: 9 });
+    expect(internal.town.seed).toBe(countySeed('US-IA', 6));
+    expect(location.search).toContain('county=6');
+    // Winning the jumped-to level clears County 6, never the county the run started on.
+    const progress = (internal as unknown as { countyProgress: { isCleared(region: string, index: number): boolean } }).countyProgress;
+    internal.campaign!.complete = true;
+    (internal as unknown as { judgeCampaign(run: unknown): void }).judgeCampaign(internal.campaign);
+    expect(progress.isCleared('US-IA', 6)).toBe(true);
+    expect(progress.isCleared('US-IA', 2)).toBe(false);
+    await internal.hud.onStart!({ kind: 'sandbox', season: 'spring', regionId: 'US-IA', countyIndex: 2, weather: 'storm', effects: 'on', mapSeed: 9 });
+    game.jumpCampaignLevel('suburb');
+    expect(location.search).toContain('county=4');
+    expect(internal.town.seed).toBe(countySeed('US-IA', 4));
+  });
+
+  it('keeps an overworld county when Debug switches Sandbox to Time Challenge', async () => {
+    await internal.hud.onStart!({ kind: 'sandbox', season: 'winter', regionId: 'US-OR', countyIndex: 3, weather: 'fog', effects: 'on', mapSeed: 21 });
+    key('n'); frames(1);
+    expect(internal.town.seed).not.toBe(countySeed('US-OR', 3));
+    game.setSession('challenge');
+    expect(internal.campaign?.levelIndex).toBe(2);
+    expect(internal.campaign?.county).toEqual({ regionId: 'US-OR', index: 3, weather: 'fog', mapSeed: 21 });
+    expect(internal.campaign?.season).toBe('winter');
+    expect(internal.town.seed).toBe(countySeed('US-OR', 3));
+    expect(internal.town.weather).toMatchObject({ condition: 'fog' });
+    const progress = (internal as unknown as { countyProgress: { isCleared(region: string, index: number): boolean } }).countyProgress;
+    internal.campaign!.complete = true;
+    (internal as unknown as { judgeCampaign(run: unknown): void }).judgeCampaign(internal.campaign);
+    expect(progress.isCleared('US-OR', 3)).toBe(true);
+    game.setSession('sandbox');
+    expect(internal.campaign).toBeNull();
+    expect(location.search).toContain('region=US-OR');
+    expect(location.search).toContain('county=3');
   });
 
   it('jumps between levels from the debug session bar', () => {
@@ -402,6 +475,28 @@ describe('playthrough record and replay', () => {
     pd().replayPlaythrough(JSON.stringify(recorded));
     expect(internal.campaign?.levelIndex).toBe(0);
     expect(internal.mode).toBe('play');
+    finishReplay();
+    expect(status().drift).toEqual([]);
+  });
+
+  it('rebuilds a county recording with its regional flavor in a fresh game on a legacy level link', async () => {
+    await internal.hud.onStart!({ kind: 'sandbox', season: 'summer', regionId: 'US-IA', countyIndex: 1, weather: 'clear', effects: 'on', mapSeed: 5 });
+    pd().startRecording();
+    frames(1);
+    const recorded = pd().stopRecording()!;
+    expect(recorded.rules).toMatchObject({ regionId: 'US-IA', countyIndex: 1 });
+    const signatures = internal.town.buildings.filter(building => (building as { regionalSignature?: string }).regionalSignature).length;
+    expect(signatures).toBeGreaterThan(0);
+    // A new page on an old link: the overworld chunk has not been loaded by this game.
+    history.replaceState(null, '', '/?mode=challenge&level=county');
+    document.body.innerHTML = '<div id="game-root"></div><div id="hud-root"></div>';
+    game.destroy();
+    game = await boot();
+    internal = game as unknown as GameInternals;
+    expect((internal as unknown as { overworld?: unknown }).overworld).toBeUndefined();
+    pd().replayPlaythrough(JSON.stringify(recorded));
+    await vi.waitFor(() => expect(status().state).toBe('replaying'));
+    expect(internal.town.buildings.filter(building => (building as { regionalSignature?: string }).regionalSignature)).toHaveLength(signatures);
     finishReplay();
     expect(status().drift).toEqual([]);
   });

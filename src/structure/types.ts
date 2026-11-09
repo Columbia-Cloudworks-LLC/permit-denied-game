@@ -185,6 +185,10 @@ export interface Building {
   layout: import("./construction").LayoutDef;
   lotId: string | null;
   campaignLandmark?: boolean;
+  /** Regional signature label; pays SIGNATURE_BONUS on top of the collapse bonus. */
+  regionalSignature?: string;
+  /** How far the HUD has called the signature out: first hit, then collapse. */
+  signatureNoticed?: 'hit' | 'down';
   floorTiles: FloorTile[];
   id: number;
   kind: BuildingKind;
