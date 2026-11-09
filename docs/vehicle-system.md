@@ -1,8 +1,10 @@
 # Modular vehicles
 
-The vehicle proving yard contains twelve configurations with two paint variants each:
+The vehicle proving yard contains thirteen configurations with two paint variants each:
 sedan (`car`), hatchback, pickup, panel van, box truck, bus, tractor, combine,
-forklift, tracked skid steer, tracked excavator, and tractor with farm trailer.
+forklift, tracked skid steer, tracked excavator, tractor with farm trailer, and the
+heavier police cruiser (a sedan body with `"lightbar": true`). Through traffic and
+police driving are described in [traffic.md](traffic.md).
 
 Open `?yard=1`, then **Debug → Assets → Category: vehicle**. Choose a vehicle and
 use **Jump to baseline** or **View whole example**. The proving controls provide

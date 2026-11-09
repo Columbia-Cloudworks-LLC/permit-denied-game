@@ -21,6 +21,8 @@ import { DRESSING } from '../game/constants';
 import { enforceOpenCorridors, finalizeStampedSurface, generateSurfaceGrid, stampDeveloped } from './terrain';
 import { deriveTerrainFeatures } from './terrainFeatures';
 import { generateRuralLayout, type LayoutEnvironment, type RuralLayout } from './rural';
+import { addEdgeRoads } from './edgeRoads';
+import { buildingOccupy } from './dressing';
 
 export function generateCampaignLayout(level: CampaignLevelDef, seed: number, environment?: LayoutEnvironment): RuralLayout {
   const resolved: LayoutEnvironment = {
@@ -92,6 +94,8 @@ function generateEstateLayout(level: CampaignLevelDef, seed: number, environment
   }
   placeEstateOutbuildings(b, level.generation.buildingCount, { left, top, right, bottom }, buildings, lots);
 
+  const bounds = estateBounds(buildings, { minX: left - 4, minY: top - 4, maxX: right + 4, maxY: bottom + 20 });
+  addEdgeRoads(b, bounds, [...lots, ...buildings.flatMap(buildingOccupy)]);
   const network = b.finish({ normalize: false });
   for (const lot of lots) {
     const acc = network.accesses.find(access => access.id === lot.accessId || access.lotId === lot.id);
@@ -100,7 +104,7 @@ function generateEstateLayout(level: CampaignLevelDef, seed: number, environment
       lot.frontage.segmentId = acc.segmentId;
     }
   }
-  const { minX, minY, maxX, maxY } = estateBounds(buildings, { minX: left - 4, minY: top - 4, maxX: right + 4, maxY: bottom + 20 });
+  const { minX, minY, maxX, maxY } = bounds;
 
   const ground: GroundPatch[] = [];
   enforceOpenCorridors(surface, network, lots, buildings);

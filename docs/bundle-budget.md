@@ -4,7 +4,7 @@ The game HTML's module graph (entry script plus `modulepreload` links) is the in
 
 | Limit | Value | Why |
 | --- | --- | --- |
-| Initial game JS | 1,850,000 bytes uncompressed | Ordinary startup path: Pixi, authored buildings, town/sim, HUD |
+| Initial game JS | 1,875,000 bytes uncompressed | Ordinary startup path: Pixi, authored buildings, town/sim, HUD, traffic. Raised from 1,850,000 when traffic joined the sim: it runs from the first fixed step, so lazy loading would desync recorded replays |
 | Per chunk | 650 KiB | Vite `chunkSizeWarningLimit`; Pixi and building JSON sit just under it |
 | Test-yard / debug binder | lazy `import("./yardBindings")` | Not in the ordinary player graph |
 

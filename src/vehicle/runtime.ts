@@ -179,6 +179,12 @@ function pushAssembly(v: VehicleState, d: VehicleDef, nearest: number, c: Vehicl
 }
 /** A wrecked frame or mostly ruined mass wrecks the vehicle; a dead engine or half the running gear disables it. */
 function updateVehicleStatus(v: VehicleState, d: VehicleDef): void {
+    if (v.wreckAfterHits !== undefined) {
+        if ((v.hits ?? 0) >= v.wreckAfterHits)
+            v.status = 'wreck';
+        settleStatus(v, d);
+        return;
+    }
     const frame = v.parts[0]!.damage, engine = v.parts[d.parts.findIndex(p => p.role === 'engine')]!.damage;
     const supports = d.parts.map((p, i) => ({ p, s: v.parts[i]! })).filter(({ p }) => (p.role === 'wheel' || p.role === 'track') && !p.id.startsWith('trailer'));
     const lost = supports.filter(({ s }) => s.detached || s.damage > .85).length;
@@ -186,7 +192,12 @@ function updateVehicleStatus(v: VehicleState, d: VehicleDef): void {
         v.status = 'wreck';
     else if (engine >= .9 || lost >= Math.ceil(supports.length / 2))
         v.status = 'disabled';
+    settleStatus(v, d);
+}
+/** A vehicle out of operation parks; a wreck pays its bounty once. */
+function settleStatus(v: VehicleState, d: VehicleDef): void {
     if (v.status !== 'operational') {
+        v.control = undefined;
         v.autonomous = false;
         v.routeStatus = 'parked';
     }
@@ -194,6 +205,25 @@ function updateVehicleStatus(v: VehicleState, d: VehicleDef): void {
         v.paid = true;
         v.pendingCash += d.cash;
     }
+}
+/** Count one heavy hit against a hit-rated vehicle; true when that hit wrecks it. */
+export function countVehicleHit(v: VehicleState): boolean {
+    if (v.wreckAfterHits === undefined || v.status === 'wreck')
+        return false;
+    v.hits = (v.hits ?? 0) + 1;
+    const d = vehicleDefinition(v.definitionId), share = 1 / v.wreckAfterHits;
+    // Show the count on the body: skin and glass dent and crush a step per hit.
+    d.parts.forEach((p, i) => {
+        if (p.role !== 'panel' && p.role !== 'glass' && p.role !== 'cab')
+            return;
+        const s = v.parts[i]!;
+        s.damage = clamp(s.damage + share * .9, 0, 1);
+        s.crush = clamp(s.crush + share * .35, 0, 1);
+        s.bendY = clamp(s.bendY + (i % 2 ? 1 : -1) * share * .25 * p.deform, -p.deform, p.deform);
+    });
+    v.revision++;
+    updateVehicleStatus(v, d);
+    return (v.status as VehicleState['status']) === 'wreck';
 }
 export function runVehicle(v: VehicleState, waypoints: {
     x: number;
@@ -221,7 +251,9 @@ export function stepVehicle(v: VehicleState, dt: number, obstacle = false): void
         v.routeStatus = 'waiting';
         return;
     }
-    if (v.autonomous && v.status === 'operational' && v.waypoints.length) {
+    if (v.control && v.status === 'operational')
+        driveControlled(v, d, v.control, dt, f, g);
+    else if (v.autonomous && v.status === 'operational' && v.waypoints.length) {
         if (!driveRoute(v, d, dt, obstacle, f, g))
             return;
     }
@@ -262,6 +294,21 @@ function driveRoute(v: VehicleState, d: VehicleDef, dt: number, obstacle: boolea
     v.vy = next * Math.sin(v.heading) + (v.vy - along * g) * damping;
     v.sleeping = false;
     return true;
+}
+/** Bicycle model under an AI driver: approach the target speed, turn by steer angle over wheelbase. */
+function driveControlled(v: VehicleState, d: VehicleDef, c: NonNullable<VehicleState['control']>, dt: number, f: number, g: number): void {
+    const running = d.parts.flatMap((p, i) => (p.role === 'wheel' || p.role === 'track') && !p.id.startsWith('trailer') ? [v.parts[i]!.damage] : []);
+    const health = Math.max(.15, 1 - running.reduce((a, b) => a + b, 0) / Math.max(1, running.length));
+    const along = v.vx * f + v.vy * g;
+    const next = approach(along, c.speed * health, c.accel * dt);
+    v.steer = approach(v.steer, clamp(c.steer, -.65, .65), dt * 3.2);
+    const turn = Math.tan(v.steer) * next / (d.drive.wheelbase * v.scale);
+    v.heading = wrapAngle(v.heading + turn * dt);
+    const damping = Math.exp(-d.drive.traction * health * 10 * dt);
+    v.vx = next * Math.cos(v.heading) + (v.vx - along * f) * damping;
+    v.vy = next * Math.sin(v.heading) + (v.vy - along * g) * damping;
+    v.sleeping = false;
+    v.routeStatus = c.speed < 0 ? 'reversing' : Math.abs(c.speed) < .05 ? 'waiting' : 'driving';
 }
 /** Steer toward the waypoint; tracks turn in place, wheels turn by speed over wheelbase. Trailers lag the turn. */
 function turnToward(v: VehicleState, d: VehicleDef, angle: number, speed: number, runningHealth: number, dt: number): void {

@@ -20,6 +20,7 @@ import { cellPresent, cellWorldBox, type Building, type Cell, type InteriorFixtu
 import { MATERIALS, type Material } from "../structure/materials";
 import { bladePoints, clampDozer, dozerForward, dozerSpeed, resolveCircleSolid, type Dozer } from "../vehicle/dozer";
 import { stepRoadVehicle } from "../vehicle/roadVehicle";
+import { settleTraffic, stepTraffic } from "../vehicle/traffic";
 import type { Town } from "../world/town";
 import { applyAssetHit, destroyProp, trackFromAsset } from "./assets";
 import { addDebrisBody, depositSettledParticles, spawnCollapseDebris, stepDebris } from "./debris";
@@ -219,7 +220,9 @@ export function stepWorld(
 
   const roadCar = town.roadCar;
   if(roadCar?.roadDemo && roadCar.autonomous && !roadCar.waypoints.length && roadCar.status==='operational') stepRoadVehicle(roadCar,town,0);
-  cash += stepVehicleWorld(town,dozer,particles,events,dt,bladeMul);
+  stepTraffic(town, dozer, dt);
+  cash += stepVehicleWorld(town,dozer,particles,events,dt,bladeMul,engineMul);
+  settleTraffic(town, dozer, events);
 
   clampDozer(dozer, town.minX + 0.8, town.minY + 0.8, town.maxX - 0.8, town.maxY - 0.8);
   if (town.surface || town.features.length) cash = dozerOnTerrain(town, dozer, particles, events, dt, cash);

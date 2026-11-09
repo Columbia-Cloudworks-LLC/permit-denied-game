@@ -1,0 +1,18 @@
+{
+  "id": "police-cruiser",
+  "name": "Police Cruiser",
+  "family": "passenger",
+  "body": "sedan",
+  "length": 2.4,
+  "width": 1.15,
+  "height": 1.15,
+  "mass": 5,
+  "cash": 150,
+  "paints": [
+    1316890,
+    15724527
+  ],
+  "speed": 8,
+  "steering": "front",
+  "lightbar": true
+}

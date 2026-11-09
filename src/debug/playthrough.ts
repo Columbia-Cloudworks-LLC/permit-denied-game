@@ -22,7 +22,8 @@ export type UpgradeId = "blade" | "engine" | "push";
 export type PlaythroughAction =
   | { at: number; kind: "upgrade"; id: UpgradeId }
   | { at: number; kind: "resubmit"; fee: number }
-  | { at: number; kind: "road-vehicle" };
+  | { at: number; kind: "road-vehicle" }
+  | { at: number; kind: "police" };
 
 type WithoutAt<A> = A extends unknown ? Omit<A, "at"> : never;
 export type PlaythroughActionInput = WithoutAt<PlaythroughAction>;

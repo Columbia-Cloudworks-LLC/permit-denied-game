@@ -35,7 +35,7 @@ Copy: `BLADE UP` / `BLADE DOWN`; deaths `ENGINE COOKED` / `TRACK THROWN` / `COUN
 - Separate Vite entries not imported by the game: `src/designer/` (`/designer/`), `src/privacy/`, `src/site/`. `src/pwa/` – service worker registration and update prompts.
 - `scripts/` – operational Node scripts (deploy, captures, preflight) with `*.test.mjs` tests.
 
-Deeper docs in `docs/`: `architecture.md` (structure, roofs, debris layers), `testing.md`, `campaign.md`, `city-map-fabric.md`, `construction-authoring.md`, `vehicle-system.md`, `bundle-budget.md`, and the `*-authoring.md` guides.
+Deeper docs in `docs/`: `architecture.md` (structure, roofs, debris layers), `testing.md`, `campaign.md`, `city-map-fabric.md`, `construction-authoring.md`, `vehicle-system.md`, `traffic.md`, `bundle-budget.md`, and the `*-authoring.md` guides.
 
 ## Commands
 

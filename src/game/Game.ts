@@ -33,6 +33,7 @@ import { stepWorld, type Upgrades } from "../sim/worldSim";
 import type { Bird, WorldEvent } from "../structure/types";
 import { createDozer, dozerForward, dozerSpeed, stepDozer } from "../vehicle/dozer";
 import { createRoadVehicle, replaceRoadVehicle } from "../vehicle/roadVehicle";
+import { createTraffic, requestPolice, trafficConfigFor } from "../vehicle/traffic";
 import { pickVerificationRoute } from "../world/routing";
 import { worldBoundsToScreen, worldToScreen } from "../world/iso";
 import { createTown, type Town } from "../world/town";
@@ -339,7 +340,14 @@ class Game {
       : createDozer(this.town.spawnX, this.town.spawnY, this.town.spawnHeading);
     this.particles.reseed(this.rules.seed ^ 0x51f00d);
     this.particles.ownerAt = this.town.debrisOwnerAt;
+    this.attachTraffic();
     return ranch;
+  }
+
+  /** Through traffic on real maps; police dispatch only when the county clock is running. */
+  private attachTraffic(): void {
+    if (this.rules.testMap || this.rules.towerTest || this.rules.demo || this.rules.job) return;
+    this.town.traffic = createTraffic(this.town, trafficConfigFor(this.town, this.rules.kind === "challenge"));
   }
 
   /** Cash, clock, upgrades, job and landmark for a fresh run; a campaign carries its upgrades. */
@@ -487,6 +495,7 @@ class Game {
     if (this.consumeKey("r")) this.reset("same");
     if (this.consumeKey("n")) this.reset("new");
     if (this.consumeKey("v") && !this.rules.testMap) this.spawnRoadVehicle();
+    if (this.consumeKey("p")) this.spawnPolice();
     if (this.consumeKey("g")) { this.renderer.showNhood = !this.renderer.showNhood; this.syncDebug(); }
     if (this.input.consume("`")) {
       this.renderer.debug.perf = !this.renderer.debug.perf;
@@ -769,6 +778,18 @@ class Game {
     this.playthrough.noteAction({ kind: "road-vehicle" });
   }
 
+  /** Sandbox: send one police car in from an edge. */
+  spawnPolice(): void {
+    if (this.playthrough.replaying || !this.placePolice()) return;
+    this.playthrough.noteAction({ kind: "police" });
+  }
+
+  private placePolice(): boolean {
+    if (this.rules.kind !== "sandbox" || !this.town.traffic) return false;
+    requestPolice(this.town.traffic);
+    return true;
+  }
+
   private placeRoadVehicle(): boolean {
     if (this.rules.kind !== "sandbox") return false;
     this.followRoadCamera = true;
@@ -790,6 +811,7 @@ class Game {
   private replayAction(action: PlaythroughAction): void {
     if (action.kind === "upgrade") this.applyUpgrade(action.id);
     else if (action.kind === "resubmit") this.spendResubmission(action.fee);
+    else if (action.kind === "police") this.placePolice();
     else this.placeRoadVehicle();
   }
 
@@ -1309,6 +1331,14 @@ class Game {
         if (pose.motionStartY !== undefined) this.dozer.motionStartY = pose.motionStartY;
       },
       spawnRoadVehicle: () => this.spawnRoadVehicle(),
+      spawnPolice: () => this.spawnPolice(),
+      trafficSnapshot: () => ({
+        exits: this.town.traffic?.exits.map(e => ({ x: e.x, y: e.y })) ?? [],
+        vehicles: this.town.vehicles.filter(v => v.traffic).map(v => ({
+          id: v.id, definitionId: v.definitionId, role: v.traffic!.role, mode: v.traffic!.mode, status: v.status,
+          x: v.x, y: v.y, heading: v.heading, speed: Math.hypot(v.vx, v.vy), hits: v.hits ?? 0,
+        })),
+      }),
       jumpCampaignLevel: (id) => this.jumpCampaignLevel(id),
       analyticsStep: (seconds, mode, district) => this.analytics.step(seconds, mode, district),
       finish: (death, won) => this.finish(death, won),
