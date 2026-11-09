@@ -729,44 +729,149 @@ dt { color: #d9b96f; font: bold 11px/1.5 var(--mono); } dd { margin: 0; color: #
   .touch-ui:not(.touch-portrait) #hud-root:not([data-hud-mode=text])[data-hud-mode=full]:has(#hud-campaign:not([hidden])) #mobile-job { display:none; }
 }
 
-/* Overworld: tile cartogram + county hexes beside a searchable list. */
-.map-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 12px; }
-.map-chips span { padding: 4px 10px; border: 1px solid var(--line); border-radius: 999px; color: #e2d6b0; font: bold 10px/1.6 var(--mono); letter-spacing: .06em; }
-.overworld { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 14px; align-items: start; }
-.overworld-map-wrap { background: #141c15; border: 1px solid #49533f; border-radius: 4px; padding: 8px; }
-.overworld-map, .county-map { display: block; width: 100%; height: auto; }
-.region-tile rect:first-of-type { fill: #39403a; stroke: #5d6656; stroke-width: 1; }
-.region-tile.ca rect:first-of-type { fill: #2c3a3c; stroke: #567072; }
-.region-tile.done rect:first-of-type { fill: #6d5a24; stroke: var(--yellow); }
-.region-tile text, .county-hex text { fill: var(--cream); font: bold 11px var(--mono); text-anchor: middle; dominant-baseline: central; pointer-events: none; }
-.region-tile .bar { fill: var(--yellow); }
-.region-tile, .county-hex { cursor: pointer; outline: none; }
-.region-tile:is(:hover, :focus-visible) rect:first-of-type, .county-hex:is(:hover, :focus-visible) polygon { stroke: var(--yellow); stroke-width: 2.5; }
-.county-hex polygon { fill: #39403a; stroke: #6d7263; stroke-width: 1.5; }
-.county-hex.cleared polygon { fill: #4d5a2d; }
-.county-hex.locked polygon { fill: #232823; stroke-dasharray: 4 3; }
-.county-hex.locked text { fill: #8a8f80; }
-.county-hex.selected polygon { stroke: var(--yellow); stroke-width: 3; }
-.county-hex text { font-size: 15px; }
-.region-search-label { display: block; color: #cccbb0; font: 10px/1.5 var(--mono); letter-spacing: .08em; }
-#region-search { display: block; width: 100%; margin-top: 6px; min-height: 40px; padding: 8px 10px; background: #141c15; color: var(--cream); border: 1px solid #6d7263; border-radius: 4px; font: 13px Arial, sans-serif; }
-.region-list, .county-list { display: grid; gap: 6px; margin-top: 8px; max-height: 300px; overflow-y: auto; overscroll-behavior: contain; }
-#hud-root .region-list button, #hud-root .county-list button { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center; min-height: 40px; padding: 8px 10px; text-align: left; font-size: 11px; }
-#hud-root .county-list button { grid-template-columns: 1fr auto; }
-#hud-root .county-list button[aria-pressed="true"] { border-color: var(--yellow); }
-#hud-root .county-list button.locked { color: #8a8f80; }
-.region-code, .region-progress, .county-status { color: #b8c0ae; font-weight: normal; }
-.county-card { margin-top: 16px; padding: 14px 16px; background: #141c15; border-left: 3px solid var(--yellow); }
-.county-card h2 { margin: 0 0 8px; color: var(--yellow); font: 900 20px/1.15 Arial, sans-serif; }
-.county-card .credits-list { margin-bottom: 12px; }
-.county-card .credits-list > div { grid-template-columns: 110px 1fr; padding: 8px 0; }
-.county-card .primary { width: 100%; margin-top: 12px; min-height: 52px; }
-@media (max-width: 640px) {
-  .overworld { grid-template-columns: 1fr; }
-  .region-list, .county-list { max-height: 220px; }
-  .county-card .credits-list > div { grid-template-columns: 1fr; gap: 2px; }
+/* Overworld: a full-viewport road atlas of North America, and a state sheet laid over it. */
+.map-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 0; }
+.map-chips span { padding: 2px 8px; border: 1px solid #2c252066; border-radius: 999px; color: #2c2520; font: bold 10px/1.6 var(--mono); letter-spacing: .06em; background: #f4ead566; }
+.operator-menu.map-open { padding: 0; background: #2c2520; }
+.map-open .console-panel { --paper: #e8dcc4; --atlas-ink: #2c2520; --pencil: #c4241c; position: relative; width: 100vw; max-width: none; height: 100vh; height: 100dvh; max-height: none; padding: 0; border: 0; border-radius: 0; box-shadow: none; overflow: hidden; display: flex; flex-direction: column; background: var(--paper); }
+.map-open .menu-heading { position: absolute; width: 1px; height: 1px; padding: 0; margin: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.map-open .menu-body { position: relative; flex: 1; min-height: 0; }
+.atlas { position: absolute; inset: 0; color: var(--atlas-ink); font-family: Georgia, "Times New Roman", serif; }
+/*
+ * Paper grain and accordion fold creases: plain gradients over the map, no SVG filters and no
+ * blend modes. Filters (feTurbulence, drop-shadow, blur) and mix-blend-mode over two stacked
+ * full-viewport SVGs made Chromium's GPU compositor bleed tiles of the continental map through
+ * the state sheet, so nothing in the atlas stack may use them.
+ */
+.atlas-macro::after, .atlas-sheet::after { content: ''; position: absolute; inset: 0; pointer-events: none; z-index: 3;
+  background:
+    linear-gradient(90deg, transparent calc(33.3% - 1px), #0000001a calc(33.3% - 1px), #ffffff2e 33.3%, transparent calc(33.3% + 3px)),
+    linear-gradient(90deg, transparent calc(66.6% - 1px), #0000001a calc(66.6% - 1px), #ffffff2e 66.6%, transparent calc(66.6% + 3px)),
+    linear-gradient(transparent calc(50% - 1px), #00000014 calc(50% - 1px), #ffffff28 50%, transparent calc(50% + 3px)),
+    repeating-linear-gradient(37deg, #5a462d08 0 1px, transparent 1px 3px),
+    repeating-linear-gradient(-53deg, #5a462d06 0 1px, transparent 1px 4px),
+    radial-gradient(ellipse at center, transparent 60%, #5a462d1f); }
+.atlas-macro { position: absolute; inset: 0; display: grid; grid-template-rows: minmax(0, 1fr) auto; background: var(--paper); }
+/* Under the sheet: a flat dim (no filter) and none of the macro chrome, so no buttons peek out. */
+.atlas.sheet-open .atlas-macro::after { background: #1d1712a8; }
+.atlas.sheet-open :is(.atlas-cartouche, .atlas-macro > .atlas-bar, .atlas-macro .atlas-zoom) { visibility: hidden; pointer-events: none; }
+.atlas-viewport { position: relative; min-height: 0; overflow: hidden; touch-action: none; cursor: grab; user-select: none; -webkit-user-select: none; }
+.atlas-viewport.panning { cursor: grabbing; }
+.atlas-viewport > svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.atlas-cartouche { position: absolute; z-index: 4; top: max(12px, env(safe-area-inset-top)); left: max(12px, env(safe-area-inset-left)); max-width: min(330px, calc(100% - 24px)); padding: 10px 14px 10px; background: #f3e9d3ee; border: 2px solid var(--atlas-ink); outline: 1px solid var(--atlas-ink); outline-offset: 3px; box-shadow: 0 3px 10px #0003; pointer-events: none; }
+.atlas-title { margin: 0; font: 900 clamp(18px, 2.6vw, 28px)/1 Georgia, serif; letter-spacing: .08em; text-transform: uppercase; }
+.atlas-subtitle { margin: 3px 0 0; font: italic 12px/1.3 Georgia, serif; }
+.atlas-note { margin: 6px 0 0; font: 11px/1.4 Georgia, serif; color: #4a3f35; }
+/* Map layers. Strokes stay hairline at any zoom. */
+.atlas-map path, .atlas-map rect, .atlas-map circle, .atlas-map use { vector-effect: non-scaling-stroke; }
+.atlas-ocean { fill: #c4d8d2; }
+.atlas-graticule { fill: none; stroke: #7b9fa0; stroke-width: .6px; stroke-dasharray: 3 3; opacity: .7; pointer-events: none; }
+.atlas-context, .atlas-neighbors path { fill: #d9ccae; stroke: #6d5f50; stroke-width: .6px; pointer-events: none; }
+.atlas-neighbors path { fill: #e3d8bf; }
+.atlas-lakes { fill: #a8c6cd; stroke: var(--atlas-ink); stroke-width: .5px; pointer-events: none; }
+.atlas-hwy { fill: none; pointer-events: none; stroke-linecap: round; stroke-linejoin: round; }
+.atlas-hwy.major { stroke: #c0302a; stroke-width: 1.2px; }
+.atlas-hwy.minor { stroke: #31579a; stroke-width: .9px; }
+.atlas-region { stroke: var(--atlas-ink); stroke-width: 1px; cursor: pointer; outline: none; transition: fill .12s; }
+.tint-0 { fill: #efd8a2; } .tint-1 { fill: #cfdaaa; } .tint-2 { fill: #edc0a8; } .tint-3 { fill: #d8c8de; }
+.atlas-region:is(:hover, :focus-visible) { fill: #fbf1d9; }
+.atlas-region:focus-visible { stroke: var(--pencil); stroke-width: 2px; }
+.atlas-region.selected { fill: #fff5dc; }
+.atlas-selection { fill: none; stroke: #b83227; stroke-width: 2.5px; stroke-linejoin: round; pointer-events: none; }
+.atlas-selection-shadow { fill: none; stroke: #2c252066; stroke-width: 4.5px; stroke-linejoin: round; pointer-events: none; }
+.atlas-capitols circle { vector-effect: none; fill: #b0241b; stroke: #f6ecd6; stroke-width: .8px; pointer-events: none; }
+.atlas-map .ls { transform: scale(var(--label-scale, 1)); }
+.atlas-labels text { fill: var(--atlas-ink); stroke: #f6ecd6; stroke-linejoin: round; paint-order: stroke fill; font-family: Georgia, serif; font-weight: bold; text-anchor: middle; dominant-baseline: central; letter-spacing: .04em; pointer-events: none; }
+.atlas-insets rect { fill: none; stroke: var(--atlas-ink); stroke-width: 1.4px; }
+.atlas-insets text { fill: var(--atlas-ink); font: bold 6px Georgia, serif; letter-spacing: .1em; }
+.schematic .atlas-region { stroke-width: 1.5px; }
+/* Corner zoom controls. */
+.atlas-zoom { position: absolute; z-index: 4; right: max(12px, env(safe-area-inset-right)); bottom: 12px; display: flex; flex-direction: column; gap: 6px; align-items: stretch; }
+#hud-root .atlas-zoom button { min-height: 40px; min-width: 40px; padding: 6px 10px; color: var(--atlas-ink); background: #f3e9d3; border: 2px solid var(--atlas-ink); border-bottom-width: 3px; border-radius: 4px; font: bold 18px/1 Georgia, serif; box-shadow: 0 2px 6px #0003; }
+#hud-root .atlas-zoom button[data-zoom="reset"] { font: bold 10px/1.2 var(--mono); letter-spacing: .04em; }
+#hud-root .atlas-zoom button:hover { background: #fff8e6; border-color: var(--pencil); }
+/* Bottom action bars: Back · county stamps · Go. */
+.atlas-bar { position: relative; z-index: 4; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "back center go"; gap: 14px; align-items: center; padding: 10px max(14px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left)); background: linear-gradient(#352d27, #241e1a); border-top: 3px solid #8a6a3c; color: var(--cream); }
+.atlas-back { grid-area: back; }
+.atlas-go { grid-area: go; min-width: 200px; }
+#hud-root .atlas-go:disabled { opacity: .55; }
+.atlas-bar-center { grid-area: center; display: flex; align-items: center; justify-content: center; gap: 12px; min-width: 0; flex-wrap: wrap; }
+.atlas-bar-title { margin: 0; font: bold 13px/1.2 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: #f6dfa4; }
+.atlas-bar-hint { margin: 0; font: 12px/1.4 Georgia, serif; color: #d9cfb6; text-align: center; }
+.county-badges { display: flex; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.county-badge { position: relative; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; background: #f1e5c9; color: var(--atlas-ink); border: 2px solid #f1e5c9; box-shadow: inset 0 0 0 2px #2c2520, 0 2px 3px #0005; font: bold 13px/1 Georgia, serif; }
+.county-badge svg { width: 16px; height: 16px; fill: currentColor; stroke: currentColor; }
+.county-badge.capitol { box-shadow: inset 0 0 0 2px #2c2520, inset 0 0 0 4px #f1e5c9, inset 0 0 0 5px var(--pencil), 0 2px 3px #0005; color: var(--pencil); }
+.county-badge.locked { background: #9c958a; border-color: #9c958a; color: #3b352f; }
+.county-badge.cleared { background: #e9c8b6; border-color: #e9c8b6; }
+.county-badge .stamp { position: absolute; inset: -4px; display: grid; place-items: center; color: var(--pencil); font: 900 30px/1 Arial, sans-serif; transform: rotate(-14deg); text-shadow: 0 0 1px #fff8; pointer-events: none; }
+.county-badge.selected { outline: 2px solid #f6dfa4; outline-offset: 2px; }
+.atlas-bar-intel { display: flex; align-items: center; gap: 10px; min-width: 0; flex-wrap: wrap; }
+.atlas-weather { display: flex; align-items: center; gap: 8px; color: #d9cfb6; font: 10px/1.4 var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+#hud-root .atlas-weather select { width: auto; min-width: 140px; padding: 8px 10px; min-height: 40px; }
+#hud-root .weather-cycle { min-height: 40px; min-width: 40px; padding: 6px 10px; font-size: 16px; }
+/* The state sheet: a second unfolded page dropped onto the continental map. */
+.atlas-sheet { position: absolute; z-index: 6; inset: 3vh 4vw; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; overflow: hidden; background: var(--paper); border: 1px solid var(--atlas-ink); outline: 6px solid #f3e9d3; box-shadow: 0 40px 90px #000a, 0 12px 24px #0008; animation: atlas-sheet-in .3s cubic-bezier(.2, .8, .3, 1); }
+@keyframes atlas-sheet-in { from { opacity: 0; transform: translateY(24px) rotate(-.6deg) scale(.97); } }
+@media (prefers-reduced-motion: reduce) { .atlas-sheet { animation: none; } }
+.atlas-sheet-head { position: relative; z-index: 4; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px; padding: 10px 16px 8px; border-bottom: 2px solid var(--atlas-ink); }
+.atlas-sheet-head h2 { margin: 0; font: 900 clamp(15px, 2.2vw, 24px)/1.15 Georgia, serif; letter-spacing: .07em; text-transform: uppercase; color: var(--atlas-ink); }
+.atlas-sheet-head .region-summary { margin: 0; color: #4a3f35; font: 11px/1.4 var(--mono); }
+.atlas-sheet-head .map-chips { margin: 0; }
+.atlas-sheet-body { position: relative; min-height: 0; display: grid; }
+.atlas-county { stroke: #b3261e; stroke-width: 1.6px; stroke-dasharray: 7 4; cursor: pointer; outline: none; transition: fill .12s; }
+.atlas-county.open.tint-0 { fill: #f2dfae; } .atlas-county.open.tint-1 { fill: #d6dfb4; } .atlas-county.open.tint-2 { fill: #f0cbb4; } .atlas-county.open.tint-3 { fill: #ddd0e2; }
+.atlas-county.cleared { fill: #e2b4a2; }
+.atlas-county.locked { fill: #bdb5a6; cursor: not-allowed; }
+.atlas-county:is(:hover, :focus-visible) { fill: #fff6df; }
+.atlas-county.locked:is(:hover, :focus-visible) { fill: #cbc4b6; }
+.atlas-county.selected { fill: #fff3d4; stroke: var(--pencil); stroke-width: 4px; stroke-dasharray: none; }
+.atlas-county.current { stroke: #2f6b3a; stroke-width: 3px; stroke-dasharray: none; }
+.atlas-county.current.selected { stroke: var(--pencil); }
+.atlas-outline { fill: none; stroke: var(--atlas-ink); stroke-width: 2.5px; pointer-events: none; }
+.atlas-county-labels { pointer-events: none; }
+.county-label text { fill: var(--atlas-ink); stroke: #f8eed8; stroke-linejoin: round; paint-order: stroke fill; text-anchor: middle; dominant-baseline: central; font-family: Georgia, serif; }
+.county-label .num { font-weight: 900; }
+.county-label .name { font-style: italic; }
+.county-label.locked text { fill: #4d463e; }
+.county-label .county-stamp { fill: var(--pencil); stroke: none; font-weight: 900; letter-spacing: .12em; opacity: .85; }
+.county-label .county-lock { fill: #3b352f; stroke: none; font-weight: bold; letter-spacing: .14em; }
+.capitol-bullseye circle { fill: none; stroke: var(--pencil); stroke-width: 2px; }
+.capitol-bullseye .dot { fill: var(--pencil); }
+.county-card-host:empty { display: none; }
+/* The county dossier: an index card pinned over the sheet's top-right corner, styled like the cartouche. */
+.county-card-host { position: absolute; z-index: 4; top: 12px; right: 12px; width: min(330px, calc(100% - 24px)); max-height: calc(100% - 150px); overflow-y: auto; overscroll-behavior: contain; background: #f3e9d3f2; border: 2px solid var(--atlas-ink); outline: 1px solid var(--atlas-ink); outline-offset: 3px; box-shadow: 0 4px 12px #0003; }
+.county-card { padding: 12px 14px; color: var(--atlas-ink); }
+.county-card.hint { padding: 8px 12px; }
+.county-card.hint p { margin: 0; font: italic 13px/1.4 Georgia, serif; }
+.county-card h3 { margin: 0 0 4px; font: 900 17px/1.2 Georgia, serif; color: #7d1f17; }
+.dossier-status { margin: 0 0 6px; font: 11px/1.4 var(--mono); color: #4a3f35; }
+.county-card.cleared .dossier-status strong { color: #9a2a1e; }
+.dossier-facts summary { cursor: pointer; font: bold 10px/2 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: #7d1f17; }
+.county-card .credits-list { margin: 2px 0 6px; }
+.county-card .credits-list > div { display: grid; grid-template-columns: 1fr; gap: 1px; padding: 5px 0; border-bottom: 1px dashed #2c252040; }
+.county-card dt { color: #7d1f17; } .county-card dd { color: var(--atlas-ink); font-size: 13px; }
+.county-card .fine-print, .county-card .caution { color: #5a3a20; margin: 6px 0 0; }
+.county-card .caution { color: #9a2a1e; }
+.county-card button { width: 100%; margin-top: 8px; }
+@media (max-width: 760px) {
+  .atlas-bar { grid-template-columns: auto minmax(0, 1fr); grid-template-areas: "center center" "back go"; gap: 8px 10px; padding-top: 8px; }
+  .atlas-go { min-width: 0; }
+  .atlas-sheet { inset: 1.5vh 2vw; }
+  /* Never more than ~40% of the sheet, even when the facts are unfolded or the window shrinks. */
+  .county-card-host { top: 8px; right: 8px; width: calc(100% - 16px); max-height: 42%; }
+  .county-badge { width: 28px; height: 28px; font-size: 12px; }
+  .county-badges { gap: 4px; }
+  .atlas-cartouche { padding: 6px 10px; }
+  .atlas-cartouche .atlas-note { display: none; }
+  .atlas-bar-center { gap: 6px; }
+  .atlas-zoom { flex-direction: row; bottom: 8px; }
+  #hud-root .atlas-zoom button { min-height: 36px; min-width: 36px; padding: 4px 8px; }
+  .atlas-sheet .atlas-bar-title, .atlas-sheet-head .map-chips { display: none; }
+  .atlas-sheet-head { padding: 8px 12px 6px; }
+  .county-card { padding: 8px 10px; }
 }
-.map-open .console-panel { width: min(100%, 900px); }
-.county-hex.current polygon { stroke: #9fd18b; stroke-width: 3; }
-.county-hex.current.selected polygon { stroke: var(--yellow); }
-.county-card button:not(.primary) { width: 100%; margin-top: 8px; }
+@media (max-height: 500px) {
+  .county-card-host { width: min(300px, 45%); }
+  .atlas-cartouche .atlas-note, .atlas-cartouche .atlas-subtitle { display: none; }
+}

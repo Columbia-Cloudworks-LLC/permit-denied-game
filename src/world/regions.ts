@@ -1,7 +1,7 @@
 /**
  * North American overworld: 50 US states and 13 Canadian provinces and territories.
- * Each region holds seven counties. Tiles are a schematic cartogram, not geography:
- * one square per region on a 12 × 9 grid, so the map costs a few hundred bytes of SVG.
+ * Each region holds seven counties. The overworld draws real outlines from the lazily fetched
+ * road atlas (`atlas.ts`); `tile` is the schematic 12 × 9 grid it falls back to offline.
  */
 
 export type RegionCountry = 'US' | 'CA';
@@ -122,16 +122,4 @@ export function regionById(id: string | null | undefined): RegionDef | undefined
 
 export function isRegionId(id: string | null | undefined): boolean {
   return !!id && BY_ID.has(id);
-}
-
-/** Case-insensitive match on name, postal code, full code, or capitol. */
-export function searchRegions(query: string, regions: readonly RegionDef[] = REGIONS): RegionDef[] {
-  const q = query.trim().toLowerCase();
-  if (!q) return [...regions];
-  return regions.filter(region =>
-    region.name.toLowerCase().includes(q) ||
-    region.postal.toLowerCase() === q ||
-    region.id.toLowerCase() === q ||
-    region.capitol.toLowerCase().includes(q),
-  );
 }

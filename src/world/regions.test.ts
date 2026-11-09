@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { REGION_GRID, REGIONS, regionById, searchRegions } from './regions';
+import { REGION_GRID, REGIONS, regionById } from './regions';
 
 const US_CAPITALS: Record<string, string> = {
   AL: 'Montgomery', AK: 'Juneau', AZ: 'Phoenix', AR: 'Little Rock', CA: 'Sacramento', CO: 'Denver', CT: 'Hartford',
@@ -52,13 +52,5 @@ describe('North American region manifest', () => {
       expect(row, id).toBeGreaterThanOrEqual(0);
       expect(row, id).toBeLessThan(REGION_GRID.rows);
     }
-  });
-
-  it('finds regions by name, postal code, full code, or capitol', () => {
-    expect(searchRegions('').length).toBe(63);
-    expect(searchRegions('ri').map(region => region.id)).toContain('US-RI');
-    expect(searchRegions('ca-on').map(region => region.id)).toEqual(['CA-ON']);
-    expect(searchRegions('Whitehorse').map(region => region.id)).toEqual(['CA-YT']);
-    expect(searchRegions('new').map(region => region.postal).sort()).toEqual(['NB', 'NH', 'NJ', 'NL', 'NM', 'NY']);
   });
 });

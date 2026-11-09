@@ -175,19 +175,22 @@ describe('sandbox play', () => {
     expect(internal.mode).toBe('pause');
     const menu = document.querySelector('.operator-menu')!;
     const click = (selector: string) => menu.querySelector<HTMLElement>(selector)!.click();
+    const tap = (selector: string) => menu.querySelector(selector)!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    // No network here: the map opens on the schematic atlas.
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('offline'))));
     click('[data-menu-action="state-map"]');
-    await new Promise(resolve => setTimeout(resolve, 0));
+    await vi.waitFor(() => expect(menu.querySelector('#operator-heading')!.textContent).toBe('Wisconsin'));
     frames(1);
-    expect(menu.querySelector('#operator-heading')!.textContent).toBe('Wisconsin');
-    expect(menu.querySelector('.county-list [data-county="2"]')!.textContent).toContain('Playing');
-    click('.county-list [data-county="5"]');
+    expect(menu.querySelector('.atlas-sheet [data-county-index="2"]')!.classList.contains('current')).toBe(true);
+    tap('.atlas-sheet [data-county-index="5"]');
     frames(10);
     expect(internal.town).toBe(town);
     expect(internal.campaign).toBe(campaign);
     expect((game.snapshot() as { elapsed: number }).elapsed).toBe(elapsed);
     expect(internal.mode).toBe('pause');
-    click('.county-list [data-county="2"]');
-    click('.county-card [data-menu-action="resume"]');
+    tap('.atlas-sheet [data-county-index="2"]');
+    click('.atlas-sheet [data-menu-action="resume"]');
+    vi.unstubAllGlobals();
     frames(1);
     expect(internal.mode).toBe('play');
     expect(internal.town).toBe(town);
