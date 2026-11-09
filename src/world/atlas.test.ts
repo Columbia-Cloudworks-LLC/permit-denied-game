@@ -85,10 +85,16 @@ describe('atlas data', () => {
       const pad = Math.max(x1 - x0, y1 - y0) * 0.05 + 0.5;
       const [cx, cy] = shape.capitol;
       expect(cx > x0 - pad && cx < x1 + pad && cy > y0 - pad && cy < y1 + pad, `${region.id} capitol`).toBe(true);
-      shape.counties.slice(0, 6).forEach((county, i) => {
+      // Labels let clicks through to the cell, so every number, County 7 included, must sit
+      // inside the outline and its own cell or tapping it selects nothing.
+      shape.counties.forEach((county, i) => {
         expect(pointInRings(county.label, rings), `${region.id} county ${i + 1} label`).toBe(true);
         expect(pointInRings(county.label, parsePath(county.d)), `${region.id} county ${i + 1} cell`).toBe(true);
       });
+      // County 7's number clears the bullseye drawn at the capitol.
+      const unit = Math.max(x1 - x0 + 2 * (Math.max(x1 - x0, y1 - y0) * 0.08 + 1), (y1 - y0) * 1.12 + 2 * (Math.max(x1 - x0, y1 - y0) * 0.08 + 1)) / 100;
+      const [lx, ly] = shape.counties[6]!.label;
+      expect(Math.hypot(lx - cx, ly - cy), `${region.id} capitol label clearance`).toBeGreaterThan(unit * 3);
       expect(shape.tint).toBeGreaterThanOrEqual(0);
       expect(shape.tint).toBeLessThan(4);
     }

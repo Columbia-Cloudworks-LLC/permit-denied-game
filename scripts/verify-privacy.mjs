@@ -4,11 +4,21 @@ import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { chromium } from 'playwright';
 
-/** Setup → Open Map → a county → Deploy: the menu path that starts a game since the overworld. */
+/**
+ * Setup → Open Map → Illinois → Go → County 1 → Go: the menu path that starts a game since the
+ * road atlas. Works on the real atlas or its schematic fallback.
+ */
 async function deployFirstCounty(page) {
   await page.getByRole('button', { name: 'Open Map', exact: true }).click();
-  await page.locator('.region-list [data-region="US-IL"]').click();
-  await page.locator('[data-menu-action=deploy]').click();
+  await page.locator('[data-region-id="US-IL"]').click();
+  const go = page.locator('.atlas-go').last();
+  await go.click();
+  await page.locator('.atlas-sheet').waitFor();
+  await page.waitForFunction(() => document.querySelector('.atlas-sheet').getAnimations().every(a => a.playState === 'finished'));
+  // County labels let clicks through to the county cell underneath.
+  const label = await page.locator('[data-county-label="1"] .num').boundingBox();
+  await page.mouse.click(label.x + label.width / 2, label.y + label.height / 2);
+  await go.click();
 }
 
 // Exercise the production bundle at a routed production origin. The checks are about our page:

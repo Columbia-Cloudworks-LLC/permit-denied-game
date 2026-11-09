@@ -130,7 +130,25 @@ export interface CountyLayout {
  * are spread over the interior by farthest-point picks then Lloyd relaxation, all deterministic.
  * Counties 1–6 are numbered clockwise from north around the region's middle.
  */
-export function countyLayout(rings: readonly Ring[], capitol: Point, count = 7): CountyLayout {
+/**
+ * The capitol county's label: an interior sample of its own cell, at least `clearance` from the
+ * capitol so the number clears the bullseye drawn there, as near as possible to `clearance`
+ * straight south of it. Labels let clicks through to the cell, so the point must be inside it.
+ */
+function capitolLabel(group: readonly [number, number][], capitol: Point, clearance: number): [number, number] {
+  const target: Point = [capitol[0], capitol[1] + clearance];
+  let best: [number, number] | undefined, bestD = Infinity, far: [number, number] | undefined, farD = -1;
+  for (const p of group) {
+    const fromCapitol = Math.hypot(p[0] - capitol[0], p[1] - capitol[1]);
+    if (fromCapitol > farD) { farD = fromCapitol; far = p; }
+    if (fromCapitol < clearance) continue;
+    const d = Math.hypot(p[0] - target[0], p[1] - target[1]);
+    if (d < bestD) { bestD = d; best = p; }
+  }
+  return best ?? far ?? [capitol[0], capitol[1]];
+}
+
+export function countyLayout(rings: readonly Ring[], capitol: Point, count = 7, capitolClearance = 0): CountyLayout {
   const samples = interiorSamples(rings);
   if (samples.length < count) {
     const [minX, minY, maxX, maxY] = ringsBBox(rings);
@@ -198,7 +216,7 @@ export function countyLayout(rings: readonly Ring[], capitol: Point, count = 7):
   const order = free.map((_, i) => i).sort((a, b) => clockwise(free[a]!) - clockwise(free[b]!));
   return {
     seeds: [...order.map(i => free[i]!), fixed],
-    labels: [...order.map(i => labelOf(groups[i]!, free[i]!)), labelOf(groups[free.length]!, fixed)],
+    labels: [...order.map(i => labelOf(groups[i]!, free[i]!)), capitolClearance > 0 ? capitolLabel(groups[free.length]!, fixed, capitolClearance) : labelOf(groups[free.length]!, fixed)],
   };
 }
 

@@ -109,6 +109,8 @@ try {
   await page.screenshot({ path: `${out}/atlas-macro.png` });
   await page.locator('[data-region-id="US-RI"]').dblclick();
   await page.locator('.atlas-sheet').waitFor();
+  // The sheet slides in; measure label positions only once it has settled.
+  await page.waitForFunction(() => document.querySelector('.atlas-sheet').getAnimations().every(a => a.playState === 'finished'));
   assert.equal(await page.locator('#operator-heading').innerText(), 'Rhode Island');
   assert.match(await page.locator('#atlas-sheet-title').innerText(), /RHODE ISLAND — CAPITOL: PROVIDENCE/i);
   assert.equal(await page.locator('.atlas-sheet [data-county-index]').count(), 7);

@@ -177,17 +177,19 @@ function sheetSvg(atlas: AtlasData, region: RegionDef, regions: readonly RegionD
   }).join('');
   const labels = counties.map(county => {
     const status = countyStatus(county, progress, view.kind);
-    const [x, y] = county.index === CAPITOL_COUNTY_INDEX ? shape.capitol : shape.counties[county.index - 1]!.label;
+    // Every county, the capitol included, labels at its precomputed interior point: labels let
+    // clicks through to the clipped cell, so a label outside the outline would be untappable.
+    // The bullseye alone marks the actual capitol.
+    const [x, y] = shape.counties[county.index - 1]!.label;
     const capitol = county.index === CAPITOL_COUNTY_INDEX;
     const name = capitol ? region.capitol : county.archetype.label;
     // Laid out around (0, 0) so the group can counter-scale with zoom. Stamps sit above a
     // county's number; the capitol's goes under its name, clear of the bullseye.
-    const top = capitol ? unit * 5.2 : 0;
-    const sy = capitol ? top + unit * 6.6 : -unit * 3.4;
+    const sy = capitol ? unit * 6.6 : -unit * 3.4;
     const stamp = status === 'cleared'
       ? `<text class="county-stamp" y="${n(sy)}" font-size="${n(unit * 3)}" transform="rotate(-12 0 ${n(sy)})">CONDEMNED</text>`
       : status === 'locked' ? `<text class="county-lock" y="${n(sy)}" font-size="${n(unit * 2.4)}">LOCKED</text>` : '';
-    return `<g class="county-label ${status}" data-county-label="${county.index}" transform="translate(${n(x)} ${n(y)})"><g class="ls"><text class="num" y="${n(top)}" font-size="${n(unit * 4.2)}">${county.index}</text><text class="name" y="${n(top + unit * 3.4)}" font-size="${n(unit * 2.3)}">${escapeHtml(name)}</text>${stamp}</g></g>`;
+    return `<g class="county-label ${status}" data-county-label="${county.index}" transform="translate(${n(x)} ${n(y)})"><g class="ls"><text class="num" font-size="${n(unit * 4.2)}">${county.index}</text><text class="name" y="${n(unit * 3.4)}" font-size="${n(unit * 2.3)}">${escapeHtml(name)}</text>${stamp}</g></g>`;
   }).join('');
   const [cx, cy] = shape.capitol;
   const bullseye = `<g class="capitol-bullseye" transform="translate(${n(cx)} ${n(cy)})"><g class="ls"><circle r="${n(unit * 2.6)}"/><circle r="${n(unit * 1.5)}"/><circle class="dot" r="${n(unit * 0.55)}"/></g></g>`;

@@ -32,6 +32,8 @@ async function deployFirstCounty(page) {
   await page.screenshot({ path: `${output}/atlas-macro.png` });
   await go.tap();
   await page.locator('.atlas-sheet').waitFor();
+  // The sheet slides in; measure label positions only once it has settled.
+  await page.waitForFunction(() => document.querySelector('.atlas-sheet').getAnimations().every(a => a.playState === 'finished'));
   assert.equal(await go.isDisabled(), true);
   assert.equal(await go.innerText(), 'Select a County');
   // Labels let taps through to the county cell underneath, as on a real phone.

@@ -208,7 +208,12 @@ export async function buildAtlas(cache) {
       .map(ring => simplifyRing(ring, TOLERANCE))
       .filter(ring => ring.length >= 3);
     const bbox = ringsBBox(kept);
-    const layout = countyLayout(kept, cap);
+    // The sheet's label unit (see sheetViewBox in src/render/overworldMap.ts); County 7's number
+    // sits clear of the capitol bullseye but inside its own cell, so tapping it selects it.
+    const [bx0, by0, bx1, by1] = ringsBBox(kept);
+    const sheetPad = Math.max(bx1 - bx0, by1 - by0) * 0.08 + 1;
+    const unit = Math.max(bx1 - bx0 + sheetPad * 2, (by1 - by0) * 1.12 + sheetPad * 2) / 100;
+    const layout = countyLayout(kept, cap, 7, unit * 5.2);
     // Busy cells get the urban archetypes, quiet ones the farmland (Hawaii has no mapped roads,
     // so its ranking falls back to distance from the capitol).
     const major = cellLineDensity(layout.seeds, kept, region.id === 'US-HI' ? [] : majorLines);

@@ -102,7 +102,8 @@ export function schematicAtlas(regions: readonly RegionDef[] = REGIONS): AtlasDa
       bbox,
       capitol: [cx, cy],
       tint: (col + row * 2) % 4,
-      counties: cells.map((cell, i) => ({ d: ringsToPath([cell]), label: [seeds[i]![0], seeds[i]![1]] })),
+      // The capitol's number sits just south of the bullseye, still inside its middle cell.
+      counties: cells.map((cell, i) => ({ d: ringsToPath([cell]), label: [seeds[i]![0], seeds[i]![1] + (i === 6 ? ring * 0.3 : 0)] })),
     };
     return [region.id, atlasRegion] as const;
   });
