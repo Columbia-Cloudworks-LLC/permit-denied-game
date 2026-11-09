@@ -13,7 +13,7 @@ Fixes #
 
 ## Scope
 
-- [ ] Same town every run (seven-level Time Challenge campaign is in-scope; no second map or between-run metagame)
+- [ ] One town generator (overworld counties are seeded variants of the seven levels; county clears and the capitol unlock are the only between-run state, with no second generator or other progression)
 - [ ] No secrets, backend, or `dist/` artifacts in the diff
 - [ ] Copy stays on-spec (`PERMIT DENIED`, no Heemeyer / Granby / wanted stars)
 

@@ -253,6 +253,9 @@ test('session context names the TypeScript stack and omits Go/Ebitengine guidanc
   assert.match(context, /npm run build/);
   assert.match(context, /npm run dev/);
   assert.match(context, /Time Challenge campaign/);
+  assert.match(context, /overworld counties/);
+  assert.match(context, /county clears and the capitol unlock/);
+  assert.doesNotMatch(context, /no between-run metagame/i);
   assert.doesNotMatch(context, /Ebitengine/i);
   assert.doesNotMatch(context, /go test/i);
   assert.doesNotMatch(context, /build\.bat/i);

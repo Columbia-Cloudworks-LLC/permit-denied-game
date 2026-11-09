@@ -1,6 +1,6 @@
 # PERMIT DENIED
 
-Browser demolition arcade. Title `PERMIT DENIED`, tagline “The County Said No.” You drive a bulldozer through one compact isometric town, grind buildings apart, and cash out before the county clock runs out. Time Challenge is a seven-level campaign on that town; Sandbox plays the same levels without the clock. Production: https://permitdenied.app.
+Browser demolition arcade. Title `PERMIT DENIED`, tagline “The County Said No.” You drive a bulldozer through compact isometric towns from one town generator, grind buildings apart, and cash out before the county clock runs out. A North American overworld (50 US states, 13 Canadian provinces and territories, seven counties each) picks which town: every county is a seeded variant of one of the seven campaign levels. Time Challenge clears counties against the clock; Sandbox plays the same counties without it. Production: https://permitdenied.app.
 
 `README.md` is the source of truth for running, controls, current scope, and hosting.
 
@@ -17,7 +17,7 @@ Run `npm run repo:preflight` before any code-dependent review, diagnosis, or imp
 
 TypeScript + Vite + PixiJS v8, entirely client-side. Simulation runs in world coordinates on a fixed 60 Hz step; isometric projection is render-only. No React on the game canvas, no backend, accounts, or API keys.
 
-Stay on the lot. Out of scope: a second town or map, between-run unlocks or metagame, JSON schema or plugin systems, ECS, React wrappers around the canvas. The seven-level campaign on this town is in scope.
+Stay on the lot: one town generator. In scope: the seven campaign levels; the overworld that maps 63 regions × 7 counties onto those levels as seeded variants with regional building bias (`docs/campaign.md#overworld-and-counties`); and its only persistence, per-browser county clears with the capitol unlocking after Counties 1–6. Out of scope: a second town generator or hand-built maps, any other between-run progression (cash, shops, upgrades, or XP carried between runs), backend, accounts, or cloud saves, JSON schema or plugin systems, ECS, React wrappers around the canvas.
 
 Buildings are per-cell destructible with a support/collapse model. Visual debris is garnish; rubble collides and matches the wreck. Collapse is inexpensive controlled animation, not a general physics engine (a Three.js + Rapier prototype was tried and discarded as unscalable to city-wide demolition).
 
@@ -28,7 +28,8 @@ Copy: `BLADE UP` / `BLADE DOWN`; deaths `ENGINE COOKED` / `TRACK THROWN` / `COUN
 - `src/main.ts` – game entry. `src/game/` – `Game`, fixed step, input, camera, HUD bindings, campaign runs.
 - `src/sim/` – world simulation: impacts, debris, pile field, cleanup, dozer cues, benchmarks.
 - `src/structure/` – buildings, construction, cells, support and collapse, roofs, materials.
-- `src/world/` – town generation: terrain, roads, parcels, biomes, archetypes, campaign layout. Building definitions are JSON packages under `src/world/data/`.
+- `src/world/` – town generation: terrain, roads, parcels, biomes, archetypes, campaign layout. Building definitions are JSON packages under `src/world/data/`. Overworld data: `regions.ts` (63-region manifest), `counties.ts`, `regionalCatalog.ts` (flavor bias); `regionalPlacement.ts` is the startup-bundle slice generation uses.
+- `src/game/overworld.ts` – lazy overworld chunk, loaded via `overworldLoader.ts`; never import it statically from the startup graph. `countyProgress.ts` – the per-browser county clears.
 - `src/render/` – Pixi rendering, isometric drawing, building surfaces, lighting, LOD. Never mutates simulation state.
 - `src/vehicle/` – dozer and road vehicles. `src/fx/` – particles, camera shake, season weather. `src/audio/` – synth.
 - `src/debug/` – debug binder, `window.__pd` bridge, perf overlay, asset capture.
