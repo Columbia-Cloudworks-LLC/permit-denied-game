@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { ANALYTICS_KEY, TERMS_KEY, TERMS_VERSION } from './state';
 
 type Privacy = typeof import('./privacy');
@@ -48,6 +48,23 @@ describe('privacy choices', () => {
     document.querySelector<HTMLElement>('[data-privacy-settings]')!.click();
     button('privacy-close').click();
     expect(dialog()).toBeNull();
+  });
+
+  it('applies a withdrawal from another tab: queued events dropped and the current run never reports again', () => {
+    const emit = vi.fn();
+    const run = new privacy.RunAnalytics(emit, () => true);
+    run.step(1, 'sandbox', 'd10');
+    expect(emit).toHaveBeenCalledWith('game_started', { mode: 'sandbox', district: 'd10' });
+    const hook = () => null;
+    window.vaq = [['beforeSend', hook], ['event', { name: 'game_engaged' }]];
+    localStorage.setItem(ANALYTICS_KEY, 'declined');
+    window.dispatchEvent(new StorageEvent('storage', { key: ANALYTICS_KEY, newValue: 'declined' }));
+    expect(window.vaq).toEqual([['beforeSend', hook]]);
+    emit.mockClear();
+    run.finish(true);
+    run.reset(true);
+    expect(emit).not.toHaveBeenCalled();
+    delete window.vaq;
   });
 
   it('keeps analytics off outside production whatever the choice', () => {

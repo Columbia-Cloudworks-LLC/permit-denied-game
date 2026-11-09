@@ -1,5 +1,5 @@
 import { inject, pageview, track } from '@vercel/analytics';
-import { ANALYTICS_KEY, TERMS_KEY, TERMS_VERSION, analyticsPage, parseChoice, safeReferrer, type AnalyticsChoice } from './state';
+import { ANALYTICS_KEY, TERMS_KEY, TERMS_VERSION, analyticsPage, parseChoice, safeReferrer, sendableEvent, withoutQueuedEvents, type AnalyticsChoice } from './state';
 import './style.css';
 
 function read(key: string): string | null { try { return localStorage.getItem(key); } catch { return null; } }
@@ -20,10 +20,7 @@ function allowed(): boolean {
 function activate(): void {
   if (!allowed() || injected) return;
   injected = true;
-  inject({ mode: 'production', disableAutoTrack: true, beforeSend: event => {
-    const url = analyticsPage(event.url);
-    return allowed() && url ? { ...event, url } : null;
-  } });
+  inject({ mode: 'production', disableAutoTrack: true, beforeSend: event => sendableEvent(event, allowed()) });
   pageview({ path: new URL(analyticsPage(location.href)!).pathname });
 }
 export function analyticsEvent(name: 'game_started' | 'game_engaged' | 'game_finished' | 'game_restarted', data: Record<string, string | number>): void {
@@ -35,7 +32,7 @@ function choose(value: Exclude<AnalyticsChoice, null>): void {
   choice = value; consentEpoch++; write(ANALYTICS_KEY, value);
   // Drop anything waiting for the external script, including events from a
   // previously allowed period. beforeSend also checks consent at send time.
-  if (window.vaq) window.vaq = window.vaq.filter(([kind]) => kind === 'beforeSend');
+  if (window.vaq) window.vaq = withoutQueuedEvents(window.vaq);
   activate();
 }
 function modal(title: string, content: string): { dialog: HTMLDialogElement; close: () => void } {
@@ -77,7 +74,7 @@ export function initPrivacy(prompt = false): void {
   if (initialized) return; initialized = true;
   document.addEventListener('click', e => { if ((e.target as Element).closest('[data-privacy-settings]')) { e.preventDefault(); openPrivacySettings(); } });
   window.addEventListener('storage', e => {
-    if (e.key === ANALYTICS_KEY || e.key === null) { choice = parseChoice(read(ANALYTICS_KEY)); consentEpoch++; if (window.vaq) window.vaq = window.vaq.filter(([kind]) => kind === 'beforeSend'); activate(); }
+    if (e.key === ANALYTICS_KEY || e.key === null) { choice = parseChoice(read(ANALYTICS_KEY)); consentEpoch++; if (window.vaq) window.vaq = withoutQueuedEvents(window.vaq); activate(); }
     if (e.key === TERMS_KEY || e.key === null) accepted = read(TERMS_KEY) === TERMS_VERSION;
   });
   activate();
