@@ -3,8 +3,10 @@ import { PermitIntro, permitDocument, type PermitSound } from './permitIntro';
 import { type CountyDeployment, type SessionKind } from '../game/session';
 import type { CountyProgress } from '../game/countyProgress';
 import { loadOverworld, type OverworldModule } from '../game/overworldLoader';
-import { isWeatherCondition, isWeatherDetail, seasonLabel, SEASONS, type SeasonId, type WeatherConditionId, type WeatherDetail } from '../world/season';
+import { isWeatherCondition, isWeatherDetail, seasonLabel, SEASONS, WEATHER_CONDITIONS, type SeasonId, type WeatherConditionId, type WeatherDetail } from '../world/season';
 import type { CountyViewState } from './overworldMap';
+import type { AtlasData } from '../world/atlas';
+import type { AtlasState, AtlasView } from './atlasView';
 import { MENU_LABELS as L, MODE_LABELS, MODE_DESCRIPTIONS } from '../game/menuLabels';
 import { labeledMenuButton, MENU_ICONS, soundButtonContent } from './menuIcons';
 import { version } from '../../package.json';
@@ -55,6 +57,9 @@ const copyright = '<span>© 2026</span>' + publisher + '<span>All rights reserve
 const CONTROLS_HTML = `<dl class="control-list"><div><dt>W / S or ↑ / ↓</dt><dd>Drive forward / reverse</dd></div><div><dt>A / D or ← / →</dt><dd>Steer left / right</dd></div><div><dt>Hold SPACE</dt><dd>Power the blade</dd></div><div><dt>Esc / Pause</dt><dd>Pause / Resume</dd></div><div><dt>R</dt><dd>${L.restart}</dd></div><div><dt>N</dt><dd>${L.newLayout}</dd></div><div><dt>1 / 2 / 3</dt><dd>${L.blade} / ${L.engine} / ${L.push} upgrade</dd></div><div><dt>M</dt><dd>Toggle sound</dd></div></dl><div class="instruction-card"><strong>Touch Controls</strong><p>Drag the left stick to drive and steer. Hold the right POWER BLADE button while driving. Release the stick to coast. Release the blade to finish the current push.</p></div><p class="fine-print">Watch ENGINE HEAT and TRACK STRESS. Above 65%, release the blade or back off rubble. In sandbox these gauges remain advisory.</p>`;
 const ABOUT_HTML = `<dl class="credits-list"><div><dt>Publisher</dt><dd>${publisher}</dd></div><div><dt>Website</dt><dd><a href="https://columbiacloudworks.com" target="_blank" rel="noopener noreferrer">columbiacloudworks.com ↗</a></dd></div><div><dt>Contact</dt><dd><a href="mailto:nicholas.king@columbiacloudworks.com">nicholas.king@columbiacloudworks.com</a></dd></div><div><dt>Game</dt><dd><a href="https://permitdenied.app" target="_blank" rel="noopener noreferrer">permitdenied.app ↗</a></dd></div><div><dt>GitHub</dt><dd><a href="https://github.com/Columbia-Cloudworks-LLC/permit-denied-game" target="_blank" rel="noopener noreferrer">permit-denied-game ↗</a></dd></div><div><dt>Version</dt><dd>${version}</dd></div></dl><details class="license-notices"><summary>Third-party software notices</summary><pre></pre></details>`;
 
+/** Two clicks on the same map shape within this many milliseconds open it. */
+const DOUBLE_MS = 450;
+
 const SEASON_NOTE = 'The season stays locked for every county you play from this map. Weather is chosen per county.';
 
 /** One navigation and focus owner for keyboard, mouse and touch menus. */
@@ -73,9 +78,17 @@ export class OperatorMenu {
   /** The overworld chunk: prefetched when setup opens, required before the map pages render. */
   private ow?: OverworldModule;
   private progress?: CountyProgress;
-  private regionId = 'US-IL';
-  private countyIndex = 1;
-  private regionQuery = '';
+  private atlas?: AtlasData;
+  /** The state or province picked on the continental atlas; none until the player picks one. */
+  private regionId?: string;
+  /** The county picked on the state sheet; none until the player picks one. */
+  private countyIndex?: number;
+  /** The atlas DOM, from the overworld chunk. */
+  private atlasView?: AtlasView;
+  /** Bumped by every map-open request, so a late load cannot clobber a newer one. */
+  private mapRequest = 0;
+  /** Last map pick, so a second click on the same shape within DOUBLE_MS opens it. */
+  private lastPick?: { key: string; at: number };
   private running?: RunningCounty;
   /**
    * The paused game's mode, season and effects. New Game edits a draft in `session`/`season`/
@@ -117,20 +130,13 @@ export class OperatorMenu {
       const input = e.target as HTMLSelectElement;
       this.setupFields[input.id]?.(input.value);
     });
-    this.body.addEventListener('input', e => {
-      const input = e.target as HTMLInputElement;
-      if (input.id !== 'region-search') return;
-      this.regionQuery = input.value;
-      const ow = this.world;
-      this.body.querySelector('.region-list')!.innerHTML = ow.regionListHtml(ow.searchRegions(this.regionQuery), this.progress!);
-    });
     // Handle menu navigation before focused controls consume the key.
     this.root.addEventListener('keydown', e => this.onKey(e), true);
   }
 
   private onClick(e: MouseEvent): void {
     if ((e.target as Element).closest('[data-replay-permit]')) { this.replayIntro(); return; }
-    if (this.pickMapTarget(e.target as Element)) { this.actions.click(); return; }
+    if (this.pickMapTarget(e.target as Element, 'click')) { this.actions.click(); return; }
     const button = (e.target as Element).closest<HTMLButtonElement>('button');
     if (!button || button.disabled) return;
     this.actions.click();
@@ -151,40 +157,66 @@ export class OperatorMenu {
     'open-map': () => this.openMap(),
     'world-map': () => this.openRunMap('overworld'),
     'state-map': () => this.openRunMap('region'),
+    'open-region': () => this.openRegion(),
+    'cycle-weather': () => this.cycleWeather(),
     deploy: () => this.deploy(),
   };
 
-  /** Region tiles and county hexes are SVG groups, so clicks and Enter route here, not through buttons. */
-  private pickMapTarget(target: Element): boolean {
-    const region = target.closest<HTMLElement | SVGElement>('[data-region]');
-    if (region?.dataset.region && this.ow?.regionById(region.dataset.region)) {
-      this.regionId = region.dataset.region;
-      this.countyIndex = 1;
-      this.navigate('region');
-      return true;
+  /**
+   * Region and county shapes are SVG paths, so clicks and Enter route here, not through buttons.
+   * A second click on the same shape within DOUBLE_MS (or Enter on the selected one) opens it:
+   * a region opens its state sheet, an unlocked county deploys.
+   */
+  private pickMapTarget(target: Element, via: 'click' | 'key'): boolean {
+    const region = target.closest<SVGElement>('[data-region-id]');
+    const county = target.closest<SVGElement>('[data-county-index]');
+    const key = this.page === 'overworld' && region?.dataset.regionId ? `r:${region.dataset.regionId}`
+      : this.page === 'region' && county?.dataset.countyIndex ? `c:${county.dataset.countyIndex}` : '';
+    if (!key) return false;
+    const now = performance.now();
+    const selected = key === (this.page === 'overworld' ? `r:${this.regionId}` : `c:${this.countyIndex}`);
+    const double = via === 'key' ? selected : !!this.lastPick && this.lastPick.key === key && now - this.lastPick.at < DOUBLE_MS;
+    this.lastPick = double ? undefined : { key, at: now };
+    if (this.page === 'overworld') {
+      if (!this.world.regionById(region!.dataset.regionId)) return false;
+      this.selectRegion(region!.dataset.regionId!);
+      if (double) this.openRegion();
+    } else {
+      this.selectCounty(Number(county!.dataset.countyIndex));
+      if (double) this.isRunningCounty(this.countyIndex) ? this.actions.resume() : this.deploy();
     }
-    const county = target.closest<HTMLElement | SVGElement>('[data-county]');
-    if (county?.dataset.county) {
-      this.countyIndex = Number(county.dataset.county);
-      this.renderRegion(`[data-county="${this.countyIndex}"]`);
-      return true;
-    }
-    return false;
+    return true;
+  }
+
+  /** The overworld chunk and the road atlas, which falls back to the schematic map offline. */
+  private async loadMap(): Promise<OverworldModule> {
+    const ow = this.ow ?? await loadOverworld();
+    this.ow = ow;
+    this.atlas = await ow.loadAtlas();
+    return ow;
+  }
+
+  /** A fresh map visit forgets the previous view and picks. */
+  private resetMapView(): void {
+    this.atlasView?.reset();
+    this.lastPick = undefined;
   }
 
   /** Opening the map rolls fresh county weather; the season chosen on setup is now fixed. */
   private openMap(): void {
-    const open = (ow: OverworldModule) => {
-      this.ow = ow;
+    const request = ++this.mapRequest;
+    void this.loadMap().then(() => {
+      // A double click, or Back and back again while the atlas loads, leaves only the newest
+      // request; and nothing changes unless setup is still showing.
+      if (request !== this.mapRequest || !this.mode || this.page !== 'dispatch') return;
       this.mapSeed = (this.actions.mapSeed?.() ?? Math.floor(Math.random() * 0x100000000)) >>> 0;
       this.weatherOverrides.clear();
-      this.regionQuery = '';
-      if (!ow.regionById(this.regionId)) this.regionId = 'US-IL';
+      this.resetMapView();
+      this.regionId = undefined;
+      this.countyIndex = undefined;
       this.mapOrigin = 'dispatch';
-      if (this.mode && this.page === 'dispatch') this.navigate('overworld');
-    };
-    if (this.ow) open(this.ow);
-    else void loadOverworld().then(open);
+      this.navigate('overworld');
+    });
   }
 
   /**
@@ -192,12 +224,15 @@ export class OperatorMenu {
    * mode, season and weather roll, and the running county shows its actual weather.
    */
   private openRunMap(target: 'overworld' | 'region'): void {
-    const open = (ow: OverworldModule) => {
-      this.ow = ow;
+    const request = ++this.mapRequest;
+    void this.loadMap().then(ow => {
+      // Only if the pause menu's home page is still showing: a late load must not reset a New
+      // Game draft the player moved on to.
+      if (request !== this.mapRequest || this.mode !== 'pause' || this.page !== 'home') return;
       const run = this.running;
       if (this.runningSetup) ({ session: this.session, season: this.season, effects: this.effects } = this.runningSetup);
       this.weatherOverrides.clear();
-      this.regionQuery = '';
+      this.resetMapView();
       if (run) {
         this.mapSeed = run.mapSeed;
         this.regionId = run.regionId;
@@ -205,18 +240,25 @@ export class OperatorMenu {
         this.weatherOverrides.set(ow.countyId(run.regionId, run.countyIndex), run.weather);
       } else {
         this.mapSeed = (this.actions.mapSeed?.() ?? Math.floor(Math.random() * 0x100000000)) >>> 0;
-        if (!ow.regionById(this.regionId)) this.regionId = 'US-IL';
+        this.regionId = undefined;
+        this.countyIndex = undefined;
       }
       this.mapOrigin = 'home';
-      if (this.mode === 'pause' && this.page === 'home') this.navigate(run && target === 'region' ? 'region' : 'overworld');
-    };
-    if (this.ow) open(this.ow);
-    else void loadOverworld().then(open);
+      this.navigate(run && target === 'region' ? 'region' : 'overworld');
+    });
   }
 
-  private isRunningCounty(index: number): boolean {
+  /**
+   * The paused run's county, but only on the run's own maps (from the pause menu). A New Game
+   * map is a fresh setup: its counties can only be deployed, never resumed.
+   */
+  private runCountyHere(): number | undefined {
     const run = this.running;
-    return this.mode === 'pause' && !!run && run.regionId === this.regionId && run.countyIndex === index;
+    return this.mode === 'pause' && this.mapOrigin === 'home' && run && run.regionId === this.regionId ? run.countyIndex : undefined;
+  }
+
+  private isRunningCounty(index: number | undefined): boolean {
+    return index !== undefined && this.runCountyHere() === index;
   }
 
   /** Only the map pages read this; they render after the chunk has loaded. */
@@ -226,17 +268,18 @@ export class OperatorMenu {
   }
 
   private countyWeather(index: number): WeatherConditionId {
-    return this.weatherOverrides.get(this.world.countyId(this.regionId, index))
-      ?? this.world.countyWeather(this.mapSeed, this.season, this.regionId, index);
+    const regionId = this.regionId ?? '';
+    return this.weatherOverrides.get(this.world.countyId(regionId, index))
+      ?? this.world.countyWeather(this.mapSeed, this.season, regionId, index);
   }
 
   private countyView(): CountyViewState {
-    const current = this.mode === 'pause' && this.running?.regionId === this.regionId ? this.running.countyIndex : undefined;
+    const current = this.runCountyHere();
     return { kind: this.session, season: this.season, selected: this.countyIndex, current, weather: index => this.countyWeather(index) };
   }
 
   private deploy(): void {
-    if (!this.progress?.isUnlocked(this.session, this.regionId, this.countyIndex)) return;
+    if (!this.regionId || !this.countyIndex || !this.progress?.isUnlocked(this.session, this.regionId, this.countyIndex)) return;
     this.actions.start({
       kind: this.session, season: this.season, regionId: this.regionId, countyIndex: this.countyIndex,
       weather: this.countyWeather(this.countyIndex), effects: this.effects, mapSeed: this.mapSeed,
@@ -248,8 +291,8 @@ export class OperatorMenu {
     'dispatch-mode': value => { this.session = value as SessionKind; this.syncSetup(); },
     'dispatch-season': value => { this.season = value as SeasonId; },
     'county-weather': value => {
-      if (isWeatherCondition(value)) this.weatherOverrides.set(this.world.countyId(this.regionId, this.countyIndex), value);
-      this.renderRegion('#county-weather');
+      if (isWeatherCondition(value) && this.regionId && this.countyIndex) this.weatherOverrides.set(this.world.countyId(this.regionId, this.countyIndex), value);
+      this.refreshSheet('#county-weather');
     },
     'county-effects': value => { if (isWeatherDetail(value)) this.effects = value; },
   };
@@ -261,9 +304,9 @@ export class OperatorMenu {
       if (!e.repeat) this.replayIntro();
       return;
     }
-    if (['Enter', ' '].includes(e.key) && target.matches('g[data-region], g[data-county]')) {
+    if (['Enter', ' '].includes(e.key) && target.matches('[data-region-id], [data-county-index]')) {
       e.preventDefault();
-      if (!e.repeat && this.pickMapTarget(target)) this.actions.click();
+      if (!e.repeat && this.pickMapTarget(target, 'key')) this.actions.click();
       return;
     }
     if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); this.back(); }
@@ -274,7 +317,7 @@ export class OperatorMenu {
   /** Tab wraps within the visible, enabled controls; with none, focus stays on the heading. */
   private trapFocus(e: KeyboardEvent): void {
     const nodes = [...this.root.querySelectorAll<HTMLElement>('button, a[href], input, select, summary, [tabindex="0"]')]
-      .filter(el => !el.closest('[hidden]') && !el.matches(':disabled') && el.getClientRects().length);
+      .filter(el => !el.closest('[hidden], [inert]') && !el.matches(':disabled') && el.getClientRects().length);
     const first = nodes[0], last = nodes.at(-1);
     if (!first) { e.preventDefault(); this.heading.focus(); return; }
     const from = document.activeElement;
@@ -310,6 +353,7 @@ export class OperatorMenu {
   /** Hand focus back to an open debug binder, else to the game canvas. */
   private close(): void {
     this.actions.page?.(null);
+    this.atlasView?.reset();
     this.introVersion++;
     this.intro.stop();
     const debug = document.querySelector<HTMLElement>('#debug-panel:not([hidden])');
@@ -345,38 +389,44 @@ export class OperatorMenu {
     this.body.querySelector('#mode-description')!.textContent = MODE_DESCRIPTIONS[this.session];
   }
 
-  private overworldHtml(): string {
-    const { escapeHtml, overworldSvg, regionListHtml, REGIONS, searchRegions } = this.world;
-    const progress = this.progress!;
-    return `${this.mapChips()}<div class="overworld"><div class="overworld-map-wrap">${overworldSvg(REGIONS, progress)}</div><div class="region-picker"><label class="region-search-label">Find a state or province<input id="region-search" type="search" autocomplete="off" placeholder="Name, code, or capitol" value="${escapeHtml(this.regionQuery)}"></label><div class="region-list">${regionListHtml(searchRegions(this.regionQuery), progress)}</div></div></div><p class="fine-print">${this.session === 'challenge' ? 'Clear Counties 1–6 in a state or province to open its capitol.' : 'Sandbox: every county is open.'} Weather is set per county on its card.</p>`;
+  private atlasState(): AtlasState {
+    return {
+      atlas: this.atlas!, progress: this.progress!, kind: this.session, chips: { mode: MODE_LABELS[this.session], season: this.season },
+      effects: this.effects, regionId: this.regionId, view: this.countyView(),
+      run: { current: this.isRunningCounty(this.countyIndex), replacing: this.mode === 'pause' },
+    };
   }
 
-  private mapChips(): string {
-    return `<p class="map-chips"><span>${MODE_LABELS[this.session]}</span><span>${seasonLabel(this.season)} · locked</span></p>`;
+  /** Mount the continental atlas (kept across sheet visits) and, for the region page, the sheet over it. */
+  private showAtlas(sheet: boolean): void {
+    this.atlasView ??= new this.world.AtlasView(this.body);
+    this.atlasView.show(sheet, this.atlasState());
   }
 
-  private regionHtml(): string {
-    const { countyCardHtml, countyListHtml, countySvg, escapeHtml, regionById } = this.world;
-    const region = regionById(this.regionId)!;
-    const view = this.countyView();
-    const progress = this.progress!;
-    return `${this.mapChips()}<p class="fine-print region-summary">${escapeHtml(region.id)} · Capitol: ${escapeHtml(region.capitol)} · ${progress.clearedCount(region.id)}/7 counties cleared</p><div class="overworld"><div class="overworld-map-wrap">${countySvg(region, progress, view)}</div><div class="county-list">${countyListHtml(region, progress, view)}</div></div>${countyCardHtml(region, progress, view, this.effects, { current: this.isRunningCounty(this.countyIndex), replacing: this.mode === 'pause' })}`;
+  private selectRegion(id: string): void {
+    if (this.regionId !== id) this.countyIndex = undefined;
+    this.regionId = id;
+    this.atlasView?.selectRegion(this.atlasState());
   }
 
-  /** Set the card's selects from state; markup `selected` alone is not honored by every DOM. */
-  private syncCountyCard(): void {
-    const weather = this.body.querySelector<HTMLSelectElement>('#county-weather');
-    if (weather) weather.value = this.countyWeather(this.countyIndex);
-    const effects = this.body.querySelector<HTMLSelectElement>('#county-effects');
-    if (effects) effects.value = this.effects;
+  private openRegion(): void {
+    if (this.page === 'overworld' && this.world.regionById(this.regionId)) this.navigate('region');
   }
 
-  /** Redraw the region page in place, then put focus back on the control that changed it. */
-  private renderRegion(focusSelector: string): void {
-    if (this.page !== 'region') return;
-    this.body.innerHTML = this.regionHtml();
-    this.syncCountyCard();
-    this.body.querySelector<HTMLElement>(`.county-list ${focusSelector}, ${focusSelector}`)?.focus();
+  private selectCounty(index: number): void {
+    this.countyIndex = index;
+    this.atlasView?.selectCounty(this.atlasState());
+  }
+
+  private cycleWeather(): void {
+    if (!this.regionId || !this.countyIndex) return;
+    const next = WEATHER_CONDITIONS[(WEATHER_CONDITIONS.indexOf(this.countyWeather(this.countyIndex)) + 1) % WEATHER_CONDITIONS.length]!;
+    this.weatherOverrides.set(this.world.countyId(this.regionId, this.countyIndex), next);
+    this.refreshSheet('[data-weather-cycle]');
+  }
+
+  private refreshSheet(focusSelector?: string): void {
+    if (this.page === 'region') this.atlasView?.refreshSheet(this.atlasState(), focusSelector);
   }
 
   private navigate(page: Page): void {
@@ -385,12 +435,16 @@ export class OperatorMenu {
     this.actions.page?.(null);
     this.page = page;
     this.root.classList.toggle('title-open', this.mode === 'title' && page === 'home');
-    this.root.querySelector<HTMLButtonElement>('[data-nav="back"]')!.hidden = page === 'home' || page === 'dispatch';
     const titlePage = this.mode === 'title' && page === 'home';
     const mapPage = page === 'overworld' || page === 'region';
+    // Map pages carry their own Back in the bottom action bar.
+    this.root.querySelector<HTMLButtonElement>('.menu-heading [data-nav="back"]')!.hidden = page === 'home' || page === 'dispatch' || mapPage;
     this.root.classList.toggle('map-open', mapPage);
+    // Any other page replaces the body: let go of the detached map and its pan/zoom listeners.
+    if (!mapPage) this.atlasView?.reset();
     if (mapPage) this.progress = this.world.sharedCountyProgress();
-    if (page === 'dispatch') void loadOverworld().then(ow => { this.ow ??= ow; });
+    // Prefetch the chunk and the atlas while the player picks a mode and season.
+    if (page === 'dispatch') void this.loadMap().catch(() => undefined);
     const titles = { home: this.mode === 'title' ? TITLE : 'Paused', dispatch: L.newGame, overworld: 'North America', region: page === 'region' ? this.world.regionById(this.regionId)!.name : '', controls: L.controls, about: L.about, equipment: 'Equipment & Objective' };
     this.heading.textContent = titles[page];
     this.root.querySelector<HTMLElement>('.nameplate')!.hidden = !titlePage && page !== 'about';
@@ -407,8 +461,8 @@ export class OperatorMenu {
     home: () => { this.body.innerHTML = this.homeHtml(); },
     equipment: () => { this.body.innerHTML = '<div class="equipment-details"></div><h2>Permit Application</h2><p class="fine-print">Resubmitting spends cash on a county processing fee.</p><div class="menu-permit-host"></div>'; },
     dispatch: () => { this.body.innerHTML = this.dispatchHtml(); this.syncSetup(); },
-    overworld: () => { this.body.innerHTML = this.overworldHtml(); },
-    region: () => { this.body.innerHTML = this.regionHtml(); this.syncCountyCard(); },
+    overworld: () => this.showAtlas(false),
+    region: () => this.showAtlas(true),
     controls: () => { this.body.innerHTML = CONTROLS_HTML; },
     about: () => {
       this.body.innerHTML = ABOUT_HTML;

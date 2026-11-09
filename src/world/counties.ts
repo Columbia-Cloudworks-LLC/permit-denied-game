@@ -15,6 +15,8 @@ export interface CountyDef {
   name: string;
   /** HUD-length name: the capitol drops the Governor's Mansion suffix. */
   shortName: string;
+  /** Button-length name on the region's own map: `Highway County`, or the capitol city. */
+  mapName: string;
   archetype: CountyArchetype;
   level: CampaignLevelDef;
   /** Layout seed: the same region and index always build the same town. */
@@ -52,6 +54,7 @@ export function regionCounties(region: RegionDef): CountyDef[] {
     index: archetype.index,
     name: countyName(region, archetype),
     shortName: archetype.id === 'capitol' ? `${region.capitol} Capitol District` : countyName(region, archetype),
+    mapName: archetype.id === 'capitol' ? region.capitol : COUNTY_NAMES[archetype.id],
     archetype,
     level: campaignLevelById(archetype.levelId),
     seed: countySeed(region.id, archetype.index),

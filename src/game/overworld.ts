@@ -1,6 +1,6 @@
 /**
  * The North American overworld, loaded on demand (see `overworldLoader.ts`): region manifest,
- * county generator, regional flavor data, progress store, and map markup. Nothing in the
+ * county generator, regional flavor data, progress store, road atlas loader, and map markup. Nothing in the
  * startup graph may import this module statically, or the chunk folds back into the initial JS.
  */
 import { countyAt, regionBiome } from '../world/counties';
@@ -11,8 +11,10 @@ import type { SessionRules } from './session';
 export { CountyProgress, sharedCountyProgress } from './countyProgress';
 export { countyAt, countyId, countySeed, countyWeather, regionBiome, regionCounties } from '../world/counties';
 export { regionalPlacement } from '../world/regionalCatalog';
-export { regionById, REGIONS, searchRegions } from '../world/regions';
-export { countyCardHtml, countyListHtml, countySvg, escapeHtml, overworldSvg, regionListHtml, type CountyViewState } from '../render/overworldMap';
+export { regionById, REGIONS } from '../world/regions';
+export { loadAtlas, type AtlasData } from '../world/atlas';
+export { AtlasView } from '../render/atlasView';
+export type { CountyViewState } from '../render/overworldMap';
 
 /**
  * Fill a parsed county link from the manifest: its level, seed, and regional biome, unless the

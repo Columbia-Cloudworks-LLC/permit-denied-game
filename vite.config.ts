@@ -62,7 +62,7 @@ export default defineConfig({
     manifest: false,
     includeManifestIcons: false,
     workbox: {
-      globPatterns: ['index.html', 'assets/**/*.{js,css}', 'pwa/*.png', 'brand/favicon.ico', 'manifest.webmanifest', 'build.json'],
+      globPatterns: ['index.html', 'assets/**/*.{js,css}', 'pwa/*.png', 'brand/favicon.ico', 'manifest.webmanifest', 'build.json', 'atlas/*.json'],
       globIgnores: [
         '**/designer/**',
         '**/privacy/**',

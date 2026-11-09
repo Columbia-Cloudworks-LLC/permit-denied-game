@@ -10,11 +10,65 @@ import {
   htmlHasPngFavicon,
   htmlKeepsIcoFavicon,
 } from './pwa.mjs';
-/** Setup → Open Map → a county → Deploy: the menu path that starts a game since the overworld. */
+/**
+ * Setup → Open Map → tap a state → its seven county badges → Go → tap a county → Go: the menu
+ * path that starts a game, checked against the full-viewport road atlas on a phone.
+ */
 async function deployFirstCounty(page) {
   await page.getByRole('button', { name: 'Open Map', exact: true }).click();
-  await page.locator('.region-list [data-region="US-IL"]').click();
-  await page.locator('[data-menu-action=deploy]').click();
+  await page.locator('.atlas-macro').waitFor();
+  const layout = await page.evaluate(() => {
+    const panel = document.querySelector('.map-open .console-panel').getBoundingClientRect();
+    return { panel: [panel.width, panel.height], overflow: document.documentElement.scrollWidth > innerWidth, size: [innerWidth, innerHeight] };
+  });
+  assert.deepEqual(layout.panel, layout.size, 'The atlas fills the viewport edge to edge');
+  assert.equal(layout.overflow, false);
+  assert.equal(await page.locator('#region-search').count(), 0, 'No search sidebar');
+  await assertTouchPan(page);
+  await page.locator('[data-region-id="US-IL"]').tap();
+  const go = page.locator('.atlas-go').last();
+  assert.equal(await go.innerText(), 'Go to Illinois');
+  assert.equal(await page.locator('[data-atlas-bar=macro] [data-county-slot]').count(), 7);
+  await page.screenshot({ path: `${output}/atlas-macro.png` });
+  await go.tap();
+  await page.locator('.atlas-sheet').waitFor();
+  // The sheet slides in; measure label positions only once it has settled.
+  await page.waitForFunction(() => document.querySelector('.atlas-sheet').getAnimations().every(a => a.playState === 'finished'));
+  assert.equal(await go.isDisabled(), true);
+  assert.equal(await go.innerText(), 'Select a County');
+  // Labels let taps through to the county cell underneath, as on a real phone.
+  const label = await page.locator('[data-county-label="1"] .num').boundingBox();
+  await page.touchscreen.tap(label.x + label.width / 2, label.y + label.height / 2);
+  assert.equal(await page.locator('.atlas-sheet [data-county-index="1"]').getAttribute('aria-pressed'), 'true');
+  assert.equal(await go.innerText(), 'Go to Farmstead County');
+  await page.screenshot({ path: `${output}/atlas-sheet.png` });
+  await go.tap();
+}
+
+/**
+ * A one-finger drag that starts on a state must pan the whole distance. Touch pointers are
+ * implicitly captured by the path under the finger; a regression here pans one step and stops.
+ */
+async function assertTouchPan(page) {
+  await page.locator('.atlas-macro [data-zoom=in]').tap();
+  await page.locator('.atlas-macro [data-zoom=in]').tap();
+  const svg = page.locator('.overworld-map');
+  const view = async () => (await svg.getAttribute('viewBox')).split(' ').map(Number);
+  const box = await page.locator('.atlas-macro .atlas-viewport').boundingBox();
+  const x = box.x + box.width / 2, y = box.y + box.height / 2;
+  assert.ok(await page.evaluate(([px, py]) => !!document.elementFromPoint(px, py)?.closest('[data-region-id]'), [x, y]), 'Drag starts on a state');
+  const before = await view();
+  const client = await page.context().newCDPSession(page);
+  await client.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y, id: 7 }] });
+  for (let step = 1; step <= 12; step++) await client.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: x + step * 10, y, id: 7 }] });
+  await client.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  const after = await view();
+  const rect = await svg.boundingBox();
+  const pxPerUnit = Math.min(rect.width / before[2], rect.height / before[3]);
+  const moved = (before[0] - after[0]) * pxPerUnit;
+  assert.ok(moved > 100, `Touch drag of 120px panned only ${moved.toFixed(1)}px`);
+  assert.equal(await page.locator('[data-region-id][aria-pressed=true]').count(), 0, 'A touch pan never selects');
+  await page.locator('.atlas-macro [data-zoom=reset]').tap();
 }
 
 const base = process.env.MOBILE_TEST_URL || 'http://localhost:5173';
