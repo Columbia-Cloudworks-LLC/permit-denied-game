@@ -11,7 +11,14 @@ npm install
 npm run dev
 ```
 
-Open the URL Vite prints (http://localhost:5173). Separate Vite entries, not imported by the game:
+Open the URL Vite prints (http://localhost:5173).
+
+In VS Code, **Terminal → Run Task** offers **Dev server: start**, **stop**, and **restart**. Stop finds the server by its port (5173), whichever terminal started it.
+
+- **Windows:** work in WSL. The workspace recommends the WSL extension; use **WSL: Reopen Folder in WSL**. A Windows window opened on a `\\wsl.localhost\...` folder still runs the tasks inside WSL. A native Windows checkout runs them natively.
+- **GitHub Codespaces:** `.devcontainer/` uses Node 22, like CI, and runs `npm ci`. Start the task and open the forwarded port 5173. Hot reload works through the HTTPS forward.
+
+Separate Vite entries, not imported by the game:
 
 - `/designer/` — building JSON preview only. File tabs, isolate-lot Pixi view, export/copy. Drafts are never added to the town.
 

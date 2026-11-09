@@ -92,6 +92,9 @@ export default defineConfig({
     host: true,
     port: 5173,
     strictPort: true,
+    // Codespaces serves the forwarded port at https://<name>-5173.app.github.dev on 443, so the
+    // HMR websocket must use 443 rather than the dev server's own port.
+    ...(process.env.CODESPACES === "true" ? { hmr: { clientPort: 443 } } : {}),
   },
   preview: {
     host: true,

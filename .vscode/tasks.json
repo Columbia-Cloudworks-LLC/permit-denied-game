@@ -1,0 +1,51 @@
+{
+  // Terminal → Run Task. The dev server always uses port 5173 (strict), so Stop finds it by port
+  // no matter which terminal started it.
+  // - WSL, Codespaces, Linux, macOS: scripts/dev-server.sh.
+  // - VS Code on Windows: scripts/dev-server.ps1, which hands a WSL folder
+  //   (\\wsl.localhost\...) off to WSL and runs a native Windows checkout natively.
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Dev server: start",
+      "type": "shell",
+      "command": "bash scripts/dev-server.sh start",
+      "windows": {
+        "command": "& '${workspaceFolder}\\scripts\\dev-server.ps1' start",
+        "options": {
+          "shell": { "executable": "powershell.exe", "args": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command"] }
+        }
+      },
+      "isBackground": true,
+      "presentation": { "reveal": "always", "panel": "dedicated", "clear": true },
+      "problemMatcher": {
+        "owner": "vite",
+        "pattern": { "regexp": "^__vite_never_matches__$" },
+        "background": {
+          "activesBegin": true,
+          "beginsPattern": "VITE",
+          "endsPattern": "Local:"
+        }
+      }
+    },
+    {
+      "label": "Dev server: stop",
+      "type": "shell",
+      "command": "bash scripts/dev-server.sh stop",
+      "windows": {
+        "command": "& '${workspaceFolder}\\scripts\\dev-server.ps1' stop",
+        "options": {
+          "shell": { "executable": "powershell.exe", "args": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command"] }
+        }
+      },
+      "presentation": { "reveal": "always", "panel": "shared", "clear": true },
+      "problemMatcher": []
+    },
+    {
+      "label": "Dev server: restart",
+      "dependsOrder": "sequence",
+      "dependsOn": ["Dev server: stop", "Dev server: start"],
+      "problemMatcher": []
+    }
+  ]
+}
