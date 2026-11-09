@@ -367,9 +367,16 @@ class Game {
     return ranch;
   }
 
-  /** Regional flavor for an overworld county; legacy level links have none. */
+  /**
+   * Regional flavor for an overworld county; legacy level links have none. A county town must
+   * never be built without it: the bias and signature tags change the layout, so skipping them
+   * would quietly build a different town (and drift any replay). Every path that sets county
+   * rules loads the overworld first.
+   */
   private regionalPlacement(): RegionalPlacement | undefined {
-    return this.overworld?.placementForRules(this.rules);
+    if (!this.rules.regionId || !this.rules.countyIndex) return undefined;
+    if (!this.overworld) throw new Error(`County ${this.rules.regionId}#${this.rules.countyIndex} built before the overworld loaded`);
+    return this.overworld.placementForRules(this.rules);
   }
 
   private async ensureOverworld(): Promise<OverworldModule> {
@@ -930,7 +937,20 @@ class Game {
   }
 
   /** Rebuild a recording's site and drive it from the recorded steps; no live input reaches the dozer. */
-  startReplay(playthrough: Playthrough): void {
+  /**
+   * A county recording needs the overworld's regional placement to rebuild the recorded town,
+   * so it waits for that chunk first. Other recordings start at once, as before.
+   */
+  startReplay(playthrough: Playthrough): Promise<void> | void {
+    if (!playthrough.rules.regionId || this.overworld) return this.beginReplay(playthrough);
+    this.playthrough.note = "Loading county map data for the replay…";
+    return this.ensureOverworld().then(
+      () => { this.playthrough.note = ""; this.beginReplay(playthrough); },
+      (error: unknown) => { this.playthrough.note = `Could not load replay: ${error instanceof Error ? error.message : String(error)}`; },
+    );
+  }
+
+  private beginReplay(playthrough: Playthrough): void {
     this.prepareCleanRun();
     const setup = structuredClone({ rules: playthrough.rules, campaign: playthrough.campaign, upgrades: playthrough.upgrades });
     this.rules = setup.rules;
@@ -955,7 +975,7 @@ class Game {
 
   private loadReplay(text: string): void {
     try {
-      this.startReplay(this.playthrough.load(text));
+      void this.startReplay(this.playthrough.load(text));
     } catch (error) {
       this.playthrough.note = `Could not load replay: ${error instanceof Error ? error.message : String(error)}`;
     }
@@ -969,7 +989,7 @@ class Game {
   private playthroughControl(command: "replay" | "play" | "pause" | "restart" | "exit"): void {
     const target = command === "restart" ? this.playthrough.replayed ?? this.playthrough.last : this.playthrough.last;
     if (command === "exit") this.stopPlaythrough();
-    else if (command === "replay" || command === "restart") { if (target) this.startReplay(target); }
+    else if (command === "replay" || command === "restart") { if (target) void this.startReplay(target); }
     else if (this.playthrough.replaying && this.playthrough.status().paused !== (command === "pause")) this.playthrough.togglePause();
   }
 

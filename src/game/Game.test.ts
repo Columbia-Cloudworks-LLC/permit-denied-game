@@ -440,6 +440,28 @@ describe('playthrough record and replay', () => {
     expect(status().drift).toEqual([]);
   });
 
+  it('rebuilds a county recording with its regional flavor in a fresh game on a legacy level link', async () => {
+    await internal.hud.onStart!({ kind: 'sandbox', season: 'summer', regionId: 'US-IA', countyIndex: 1, weather: 'clear', effects: 'on', mapSeed: 5 });
+    pd().startRecording();
+    frames(1);
+    const recorded = pd().stopRecording()!;
+    expect(recorded.rules).toMatchObject({ regionId: 'US-IA', countyIndex: 1 });
+    const signatures = internal.town.buildings.filter(building => (building as { regionalSignature?: string }).regionalSignature).length;
+    expect(signatures).toBeGreaterThan(0);
+    // A new page on an old link: the overworld chunk has not been loaded by this game.
+    history.replaceState(null, '', '/?mode=challenge&level=county');
+    document.body.innerHTML = '<div id="game-root"></div><div id="hud-root"></div>';
+    game.destroy();
+    game = await boot();
+    internal = game as unknown as GameInternals;
+    expect((internal as unknown as { overworld?: unknown }).overworld).toBeUndefined();
+    pd().replayPlaythrough(JSON.stringify(recorded));
+    await vi.waitFor(() => expect(status().state).toBe('replaying'));
+    expect(internal.town.buildings.filter(building => (building as { regionalSignature?: string }).regionalSignature)).toHaveLength(signatures);
+    finishReplay();
+    expect(status().drift).toEqual([]);
+  });
+
   it('saves a recording when the site is restarted, and reports a malformed replay file', async () => {
     pd().startRecording();
     key('w'); frames(20); key('w', 'keyup');
