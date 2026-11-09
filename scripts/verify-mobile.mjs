@@ -3,12 +3,19 @@ import { chromium } from 'playwright';
 import assert from 'node:assert/strict';
 import { mkdir } from 'node:fs/promises';
 import {
+
   assertWebAppManifest,
   htmlHasAppleTouchIcon,
   htmlHasManifestLink,
   htmlHasPngFavicon,
   htmlKeepsIcoFavicon,
 } from './pwa.mjs';
+/** Setup → Open Map → a county → Deploy: the menu path that starts a game since the overworld. */
+async function deployFirstCounty(page) {
+  await page.getByRole('button', { name: 'Open Map', exact: true }).click();
+  await page.locator('.region-list [data-region="US-IL"]').click();
+  await page.locator('[data-menu-action=deploy]').click();
+}
 
 const base = process.env.MOBILE_TEST_URL || 'http://localhost:5173';
 const output = process.argv[2] || 'docs/visual-verification/mobile-ui';
@@ -58,7 +65,7 @@ try {
   console.log('installed landscape 844x390: PWA manifest and icons available');
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole('button', { name: 'Play', exact: true }).click();
-  await page.getByRole('button', { name: 'Start Game', exact: true }).click();
+  await deployFirstCounty(page);
   await page.locator('.mobile-hud').waitFor({ state: 'visible' });
   for (const [width, height] of [[360,640],[640,360],[390,844],[844,390],[430,932],[932,430],[768,1024],[1024,768]]) {
     await page.setViewportSize({ width, height });
