@@ -11,14 +11,14 @@ async function deployFirstCounty(page) {
   await page.locator('[data-menu-action=deploy]').click();
 }
 
-// Exercise the actual production bundle and current vendor script at a routed
-// production origin. All collection requests are intercepted, never ingested.
+// Exercise the production bundle at a routed production origin. The checks are about our page:
+// the terms gate, consent dialogs, and whether the analytics script is ever requested. What the
+// vendor may send (path redaction, withdrawal, queued events) is unit-tested in src/privacy/, so
+// this script needs no network fetch and no timing-based waits for vendor traffic.
 const output = process.env.PRIVACY_OUTPUT || 'artifacts/privacy';
 await mkdir(output, { recursive: true });
-const vendorResponse = await fetch('https://va.vercel-scripts.com/v1/script.js');
-assert.equal(vendorResponse.status, 200);
-const vendor = await vendorResponse.text();
-assert.ok(vendor.includes('beforeSend'));
+const VENDOR_STUB = '/* analytics vendor stub: requests are counted, nothing is sent */';
+const VENDOR_SCRIPT = /\/_vercel\/insights\/script\.js$/;
 const browser = await chromium.launch({ headless: true });
 const errors = [], evidence = [];
 const origin = 'https://permitdenied.app';
@@ -36,14 +36,13 @@ async function shoot(page, path, options = {}) {
   throw last;
 }
 
-/** The analytics vendor script, or a recorded analytics event. */
-async function serveInsights(route, url, events, scripts) {
+/** The analytics vendor script (a stub, counted) or a collection request (absorbed). */
+async function serveInsights(route, url, scripts) {
   if (url.pathname.endsWith('script.js')) {
     scripts.push(url.pathname);
-    await route.fulfill({ contentType: 'text/javascript', body: vendor });
+    await route.fulfill({ contentType: 'text/javascript', body: VENDOR_STUB });
     return;
   }
-  events.push(JSON.parse(route.request().postData() || '{}'));
   await route.fulfill({ status: 200, body: '{}' });
 }
 
@@ -70,15 +69,15 @@ function distPath(pathname) {
 async function context(options = {}) {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 }, userAgent: 'Mozilla/5.0 Chrome/130.0.0.0 Safari/537.36', ...options });
   await ctx.addInitScript(() => Object.defineProperty(navigator, 'webdriver', { get: () => false }));
-  const events = [], scripts = [];
+  const scripts = [];
   await ctx.route('https://permitdenied.app/**', async route => {
     const url = new URL(route.request().url());
-    if (url.pathname.startsWith('/_vercel/insights/')) await serveInsights(route, url, events, scripts);
+    if (url.pathname.startsWith('/_vercel/insights/')) await serveInsights(route, url, scripts);
     else if (url.pathname === '/sw.js') await route.fulfill({ status: 404, body: '' });
     else await serveDist(route, url.pathname);
   });
   ctx.on('page', page => page.on('pageerror', error => errors.push(error.message)));
-  return { ctx, events, scripts };
+  return { ctx, scripts };
 }
 try {
   {
@@ -97,7 +96,7 @@ try {
     assert.equal(exposed, null);
     await prod.close();
   }
-  const { ctx, events, scripts } = await context();
+  const { ctx, scripts } = await context();
   const page = await ctx.newPage(); await page.goto(origin + '/?debug=1'); await page.getByRole('button', { name: 'Play', exact: true }).waitFor();
   assert.equal(scripts.length, 0);
   await page.getByRole('button', { name: 'Play', exact: true }).click();
@@ -112,32 +111,20 @@ try {
   await page.locator('#terms-agree').check(); await page.locator('#terms-continue').click();
   await page.locator('#analytics-allow').waitFor();
   assert.equal(await page.locator('#analytics-allow').isDisabled(), true);
-  assert.equal(events.length, 0); assert.equal(scripts.length, 0);
+  assert.equal(scripts.length, 0);
   await page.locator('#analytics-decline').click();
   await page.waitForFunction(() => window.__pd?.ready?.() === true && window.__pd.snapshot().elapsed > 0);
   await page.reload(); await page.waitForFunction(() => window.__pd?.version === 1);
   assert.equal(await page.locator('.privacy-dialog').count(), 0);
-  assert.equal(events.length, 0);
-  // A second tab can enable consent, and withdrawal propagates back to the game.
+  assert.equal(scripts.length, 0);
+  // An adult opt-in in a second tab loads analytics there and, through the storage event, in the game tab.
   const settings = await ctx.newPage(); await settings.goto(origin + '/privacy');
   await settings.getByRole('button', { name: 'Privacy Settings', exact: true }).first().click();
-  await settings.locator('#analytics-adult').check(); await settings.locator('#analytics-allow').click();
-  await settings.waitForTimeout(400); assert.ok(scripts.length > 0);
-  await page.bringToFront();
-  await page.evaluate(() => { const game = window.__pd; for (let i = 0; i < 61; i++) game.analyticsStep(1, 'sandbox', 'd10'); game.finish('', true); game.reset('same'); });
-  await page.waitForTimeout(300);
-  assert.ok(events.some(e => e.en === 'game_started'));
-  assert.ok(events.some(e => e.en === 'game_engaged'));
-  assert.ok(events.some(e => e.en === 'game_finished'));
-  await page.evaluate(() => window.__pd.reset('same')); await page.waitForTimeout(200);
-  assert.ok(events.some(e => e.en === 'game_restarted'));
-  for (const e of events) { assert.ok(!e.o.includes('?') && !e.o.includes('#')); assert.ok(!JSON.stringify(e).includes('private@example.com')); assert.ok(!e.r); }
-  await settings.bringToFront(); await settings.getByRole('button', { name: 'Privacy Settings', exact: true }).first().click();
-  await settings.locator('#analytics-decline').click(); await page.waitForTimeout(200);
-  const count = events.length;
-  await page.bringToFront(); await page.evaluate(() => { window.__pd.reset('same'); window.__pd.analyticsStep(100, 'sandbox', 'd10'); });
-  await page.waitForTimeout(250); assert.equal(events.length, count);
-  evidence.push('First-play acknowledgment, keyboard isolation, refusal persistence, adult-only consent, four events, query redaction, cross-tab withdrawal.');
+  await settings.locator('#analytics-adult').check();
+  const loaded = Promise.all([settings.waitForRequest(VENDOR_SCRIPT), page.waitForRequest(VENDOR_SCRIPT)]);
+  await settings.locator('#analytics-allow').click();
+  await loaded;
+  evidence.push('First-play acknowledgment, keyboard isolation, refusal persistence, adult-only consent, cross-tab opt-in loads analytics.');
   // Mobile geometry and disclosure pages are checked without loading the game.
   for (const [width, height] of [[390, 844], [844, 390], [360, 640]]) {
     const { ctx: mobile, scripts: mobileScripts } = await context({ viewport: { width, height }, isMobile: true, hasTouch: true });
@@ -163,17 +150,7 @@ try {
   const yp = await yard.newPage(); await yp.goto(origin + '/?testAsset=vehicle:bus'); await yp.waitForFunction(() => window.__pd?.version === 1);
   await yp.waitForTimeout(300); assert.equal(yardScripts.length, 0); await yard.close();
   evidence.push('Focused test map excluded even with a stored adult opt-in.');
-  const { ctx: slow, events: slowEvents } = await context();
-  let releaseScript;
-  const ready = new Promise(resolve => { releaseScript = resolve; });
-  await slow.route('**/_vercel/insights/script.js', async route => { await ready; await route.fallback(); });
-  const sp = await slow.newPage(); await sp.goto(origin + '/privacy');
-  await sp.getByRole('button', { name: 'Privacy Settings', exact: true }).first().click();
-  await sp.locator('#analytics-adult').check(); await sp.locator('#analytics-allow').click();
-  await sp.getByRole('button', { name: 'Privacy Settings', exact: true }).first().click(); await sp.locator('#analytics-decline').click();
-  releaseScript(); await sp.waitForTimeout(300); assert.equal(slowEvents.length, 0); await slow.close();
-  evidence.push('Withdrawal before a delayed vendor script loads discards queued reporting.');
   assert.deepEqual(errors, []);
-  await writeFile(`${output}/report.json`, JSON.stringify({ evidence, eventNames: [...new Set(events.map(e => e.en).filter(Boolean))], errors, note: 'Browser emulation; collection requests intercepted, no production analytics ingested.' }, null, 2));
+  await writeFile(`${output}/report.json`, JSON.stringify({ evidence, errors, note: 'Browser emulation with a stub analytics script; collection requests intercepted, nothing ingested.' }, null, 2));
   console.log(evidence.join('\n'));
 } finally { await browser.close(); }

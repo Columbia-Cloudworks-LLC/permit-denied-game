@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { analyticsPage, parseChoice, safeReferrer } from './state';
+import { analyticsPage, parseChoice, safeReferrer, sendableEvent, withoutQueuedEvents } from './state';
 import { RunAnalytics } from './privacy';
 
 describe('analytics privacy boundary', () => {
@@ -25,6 +25,28 @@ describe('analytics privacy boundary', () => {
     for (const url of ['https://example.com/private', 'https://example.com/?secret=x', 'https://example.com/#secret', 'bad']) expect(safeReferrer(url, origin)).toBe(false);
   });
 });
+describe('what the analytics vendor may send', () => {
+  it('sends the authored path only, never a query string, fragment, or unauthored page', () => {
+    const event = { type: 'event' as const, url: 'https://permitdenied.app/?mode=challenge&seed=9#private' };
+    expect(sendableEvent(event, true)).toEqual({ type: 'event', url: 'https://permitdenied.app/' });
+    expect(event.url).toContain('?mode=');
+    for (const url of ['https://permitdenied.app/?yard=1', 'https://permitdenied.app/user@example.com', 'http://localhost:5173/']) {
+      expect(sendableEvent({ url }, true)).toBeNull();
+    }
+  });
+
+  it('sends nothing once consent is gone, even for an event queued while it was allowed', () => {
+    expect(sendableEvent({ url: 'https://permitdenied.app/' }, false)).toBeNull();
+  });
+
+  it('drops events still waiting for the vendor script on a consent change, keeping its beforeSend hook', () => {
+    const hook = () => null;
+    const queue: [string, unknown?][] = [['beforeSend', hook], ['event', { name: 'game_started' }], ['pageview', { path: '/' }]];
+    expect(withoutQueuedEvents(queue)).toEqual([['beforeSend', hook]]);
+    expect(withoutQueuedEvents([])).toEqual([]);
+  });
+});
+
 describe('run events', () => {
   it('starts on active play, engages once at 60 active seconds, and finishes once', () => {
     const emit = vi.fn(), run = new RunAnalytics(emit, () => true);
