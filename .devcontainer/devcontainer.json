@@ -1,0 +1,11 @@
+{
+  // GitHub Codespaces (and VS Code Dev Containers). Node 22 matches CI.
+  // Run the "Dev server: start" task; Codespaces forwards port 5173 over HTTPS.
+  "name": "PERMIT DENIED",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:1-22-bookworm",
+  "forwardPorts": [5173],
+  "portsAttributes": {
+    "5173": { "label": "Dev server", "onAutoForward": "openPreview" }
+  },
+  "postCreateCommand": "npm ci"
+}

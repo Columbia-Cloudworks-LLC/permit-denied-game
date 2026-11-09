@@ -1,0 +1,5 @@
+{
+  // On Windows, open this repository in WSL ("WSL: Reopen Folder in WSL") so the dev-server
+  // tasks, Node, and node_modules all run on Linux. Codespaces and Linux need nothing extra.
+  "recommendations": ["ms-vscode-remote.remote-wsl"]
+}
