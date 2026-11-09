@@ -6,7 +6,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Search existing issues first. This is a one-town prototype — read `README.md` before filing.
+        Search existing issues first. This is a one-town-generator prototype — read `README.md` before filing.
 
   - type: checkboxes
     id: searched

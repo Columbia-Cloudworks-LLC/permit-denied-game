@@ -178,12 +178,12 @@ export function formatHumanSummary(report) {
 
 export function formatSessionContext(report, { mode = 'agent' } = {}) {
   const context = [
-    `PERMIT DENIED (${mode} session). TypeScript + Vite + PixiJS v8 client. Same town every run.`,
+    `PERMIT DENIED (${mode} session). TypeScript + Vite + PixiJS v8 client. One town generator; overworld counties are seeded variants of seven levels.`,
     report.summary,
     `branch=${report.branch ?? 'DETACHED'} head=${shortSha(report.headSha)} origin/main=${shortSha(report.originMainSha)} state=${report.state} freshness=${report.freshness} fastForwarded=${report.fastForwarded} worktreePreventedUpdate=${report.worktreePreventedUpdate} ahead=${report.ahead} behind=${report.behind}.`,
     'Commands: `npm test` then `npm run build`. Local play: `npm run dev`. Checkout freshness: `npm run repo:preflight`.',
     'Release: protected main — `/release` only (bump 1.0.N, PR, CI, merge). Do not push to main.',
-    'Stay on the lot: seven-level Time Challenge campaign on this town; no second map, no between-run metagame, no ECS, no React wrappers around the canvas.',
+    'Stay on the lot: one town generator, the seven-level Time Challenge campaign, and the overworld counties built from its levels. Only persistence: per-browser county clears and the capitol unlock. No second town generator or hand-built maps, no other between-run progression, no backend, no ECS, no React wrappers around the canvas.',
     'Do not commit dist/, *.exe, or secrets. Preflight is not part of npm install or the production build.',
   ].join('\n\n');
   if (FORBIDDEN_STACK_HINTS.test(context)) {

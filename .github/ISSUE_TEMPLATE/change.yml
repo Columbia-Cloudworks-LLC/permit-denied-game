@@ -1,14 +1,14 @@
 name: Change
-description: Propose a gameplay, code, or visual change that stays on this one town.
+description: Propose a gameplay, code, or visual change that stays on the one town generator.
 title: "[Change]: "
 labels: ["change"]
 body:
   - type: markdown
     attributes:
       value: |
-        Stay on this town. Time Challenge is a seven-level campaign here; a change that does not affect driving, demolition, or that campaign probably does not ship.
+        Stay on the one town generator. Overworld counties are seeded variants of the seven campaign levels; a change that does not affect driving, demolition, the campaign, or the overworld probably does not ship.
 
-        Out of spec (do not file): second town, between-run unlocks or metagame, backend, title names the copy forbids.
+        Out of spec (do not file): a second town generator or hand-built maps, between-run progression beyond county clears and the capitol unlock, backend, title names the copy forbids.
 
         Campaign bug reports and campaign maintenance (level timing, landmarks, HUD copy) belong here or in Bug.
 
@@ -17,9 +17,9 @@ body:
     attributes:
       label: Scope
       options:
-        - label: This stays on the current town (no second map or between-run metagame)
+        - label: This stays on the one town generator (no second generator, and no between-run progression beyond county clears)
           required: true
-        - label: I read `README.md` and `docs/campaign.md` if this touches Time Challenge
+        - label: I read `README.md` and `docs/campaign.md` if this touches Time Challenge or the overworld
           required: true
 
   - type: textarea

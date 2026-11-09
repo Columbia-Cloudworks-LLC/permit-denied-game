@@ -1,6 +1,6 @@
 # Support
 
-This is a one-town prototype, not a shipped product with player support hours.
+This is a one-town-generator prototype, not a shipped product with player support hours.
 
 Play: https://permitdenied.app
 Source: https://github.permitdenied.app
@@ -11,6 +11,6 @@ Source: https://github.permitdenied.app
 
 File a **Bug**, **Playtest**, or **Change** issue when something is wrong or you have a scoped proposal.
 
-In-scope: driving, demolition, the seven-level Time Challenge campaign on this town, sandbox, HUD, and CI.
+In-scope: driving, demolition, the seven-level Time Challenge campaign, the overworld counties built from it, sandbox, HUD, and CI.
 
-Out of spec: a second town, between-run unlocks or metagame, backend accounts, or names the copy forbids.
+Out of spec: a second town generator, between-run progression beyond county clears and the capitol unlock, backend accounts, or names the copy forbids.
