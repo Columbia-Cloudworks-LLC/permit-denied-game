@@ -374,7 +374,7 @@ class Game {
 
   private async ensureOverworld(): Promise<OverworldModule> {
     this.overworld ??= await loadOverworld();
-    this.countyProgress ??= new this.overworld.CountyProgress();
+    this.countyProgress ??= this.overworld.sharedCountyProgress();
     return this.overworld;
   }
 

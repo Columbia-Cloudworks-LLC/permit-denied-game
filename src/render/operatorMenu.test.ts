@@ -3,7 +3,7 @@ import { beforeEach, expect, it, vi } from 'vitest';
 import { TITLE } from '../game/constants';
 import { MENU_LABELS as L } from '../game/menuLabels';
 import { OperatorMenu, type MenuActions } from './operatorMenu';
-import { CountyProgress } from '../game/countyProgress';
+import { resetSharedCountyProgress, sharedCountyProgress, type ProgressStore } from '../game/countyProgress';
 import { countyWeather } from '../world/counties';
 import { loadOverworld } from '../game/overworldLoader';
 
@@ -27,6 +27,7 @@ const select = (id: string, value: string) => {
 
 beforeEach(() => {
   localStorage.clear();
+  resetSharedCountyProgress();
   document.body.innerHTML = '<div id="game-root"><canvas tabindex="0"></canvas></div><div id="host"></div>';
   parent = document.querySelector<HTMLElement>('#host')!;
   actions = {
@@ -109,7 +110,7 @@ it('locks the capitol in Time Challenge until Counties 1–6 are cleared', async
   expect(menu.root.querySelector('#county-lock-note')!.textContent).toContain('Ontario');
   button('[data-menu-action="deploy"]').click();
   expect(actions.start).not.toHaveBeenCalled();
-  const progress = new CountyProgress();
+  const progress = sharedCountyProgress();
   for (let index = 1; index <= 6; index++) progress.markCleared('CA-ON', index);
   key(menu.root, { key: 'Escape' });
   expect(menu.root.querySelector('[data-region="CA-ON"]')!.getAttribute('aria-label')).toContain('6/7');
@@ -118,6 +119,25 @@ it('locks the capitol in Time Challenge until Counties 1–6 are cleared', async
   button('.county-list [data-county="7"]').click();
   button('[data-menu-action="deploy"]').click();
   expect(actions.start).toHaveBeenCalledWith(expect.objectContaining({ kind: 'challenge', regionId: 'CA-ON', countyIndex: 7 }));
+});
+
+it('keeps same-session clears on the map when storage writes fail', async () => {
+  const blocked: ProgressStore = { getItem: () => null, setItem: () => { throw new Error('QuotaExceededError'); } };
+  const progress = resetSharedCountyProgress(blocked);
+  menu.show('title');
+  button('[data-nav="dispatch"]').click();
+  select('dispatch-mode', 'challenge');
+  await openMap();
+  button('.region-list [data-region="US-GA"]').click();
+  button('.county-list [data-county="7"]').click();
+  expect(button('[data-menu-action="deploy"]').disabled).toBe(true);
+  // The game clears 1–6 through the shared record while storage refuses every write.
+  for (let index = 1; index <= 6; index++) progress.markCleared('US-GA', index);
+  key(menu.root, { key: 'Escape' });
+  expect(menu.root.querySelector('.overworld-map [data-region="US-GA"]')!.getAttribute('aria-label')).toContain('6/7');
+  button('.region-list [data-region="US-GA"]').click();
+  button('.county-list [data-county="7"]').click();
+  expect(button('[data-menu-action="deploy"]').disabled).toBe(false);
 });
 
 it('pauses on the running setup and routes each action', () => {

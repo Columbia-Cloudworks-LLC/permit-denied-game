@@ -21,6 +21,23 @@ function defaultStore(): ProgressStore | undefined {
   }
 }
 
+let shared: CountyProgress | undefined;
+
+/**
+ * The page's one progress record. The game writes clears and the map reads them through this
+ * instance, so a clear survives map navigation even when storage is blocked or a write fails.
+ */
+export function sharedCountyProgress(): CountyProgress {
+  shared ??= new CountyProgress();
+  return shared;
+}
+
+/** Tests only: drop the shared record so the next call reloads from storage. */
+export function resetSharedCountyProgress(store?: ProgressStore): CountyProgress {
+  shared = new CountyProgress(store);
+  return shared;
+}
+
 export class CountyProgress {
   private readonly cleared = new Set<string>();
 

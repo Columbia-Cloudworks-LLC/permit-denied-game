@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CountyProgress, type ProgressStore } from './countyProgress';
+import { CountyProgress, resetSharedCountyProgress, sharedCountyProgress, type ProgressStore } from './countyProgress';
 
 function memoryStore(initial: Record<string, string> = {}): ProgressStore & { data: Record<string, string> } {
   const data = { ...initial };
@@ -35,6 +35,15 @@ describe('county progress', () => {
     progress.markCleared('US-IL', 1);
     expect(progress.isCleared('US-IL', 1)).toBe(true);
     expect(new CountyProgress(undefined).clearedCount('US-IL')).toBe(0);
+  });
+
+  it('shares one page record, so a clear outlives a failed write', () => {
+    const failing: ProgressStore = { getItem: () => null, setItem: () => { throw new Error('blocked'); } };
+    const shared = resetSharedCountyProgress(failing);
+    shared.markCleared('US-GA', 3);
+    expect(sharedCountyProgress()).toBe(shared);
+    expect(sharedCountyProgress().isCleared('US-GA', 3)).toBe(true);
+    resetSharedCountyProgress();
   });
 
   it('sends Next Level to the next uncleared county, then the capitol, then ends', () => {

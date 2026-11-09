@@ -382,7 +382,7 @@ export class OperatorMenu {
     const titlePage = this.mode === 'title' && page === 'home';
     const mapPage = page === 'overworld' || page === 'region';
     this.root.classList.toggle('map-open', mapPage);
-    if (mapPage) this.progress = new this.world.CountyProgress();
+    if (mapPage) this.progress = this.world.sharedCountyProgress();
     if (page === 'dispatch') void loadOverworld().then(ow => { this.ow ??= ow; });
     const titles = { home: this.mode === 'title' ? TITLE : 'Paused', dispatch: L.newGame, overworld: 'North America', region: page === 'region' ? this.world.regionById(this.regionId)!.name : '', controls: L.controls, about: L.about, equipment: 'Equipment & Objective' };
     this.heading.textContent = titles[page];

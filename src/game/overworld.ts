@@ -8,7 +8,7 @@ import { regionalPlacement } from '../world/regionalCatalog';
 import { regionById } from '../world/regions';
 import type { SessionRules } from './session';
 
-export { CountyProgress } from './countyProgress';
+export { CountyProgress, sharedCountyProgress } from './countyProgress';
 export { countyAt, countyId, countySeed, countyWeather, regionBiome, regionCounties } from '../world/counties';
 export { regionalPlacement } from '../world/regionalCatalog';
 export { regionById, REGIONS, searchRegions } from '../world/regions';
