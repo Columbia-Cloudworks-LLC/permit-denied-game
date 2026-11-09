@@ -3,7 +3,7 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import '../render/domTestShims';
 import { TERMS_KEY, TERMS_VERSION } from '../privacy/state';
 import { CAMPAIGN_LEVELS } from './campaign';
-import { countySeed } from '../world/counties';
+import { countySeed, countyWeather } from '../world/counties';
 import { COPY, MATCH_SECONDS, SIM_DT } from './constants';
 
 // The game boots against a stand-in Pixi application: no GPU, no ticker. Frames are driven by hand.
@@ -259,6 +259,25 @@ describe('time challenge', () => {
     expect(internal.campaign?.levelIndex).toBe(1);
     internal.hud.onNewCampaign!();
     expect(internal.campaign?.levelIndex).toBe(0);
+  });
+
+  it('moves an overworld run to the matching county when the debug bar jumps levels', async () => {
+    await internal.hud.onStart!({ kind: 'challenge', season: 'spring', regionId: 'US-IA', countyIndex: 2, weather: 'storm', effects: 'on', mapSeed: 9 });
+    game.jumpCampaignLevel('city-downtown');
+    expect(internal.campaign?.levelIndex).toBe(5);
+    expect(internal.campaign?.county).toEqual({ regionId: 'US-IA', index: 6, weather: countyWeather(9, 'spring', 'US-IA', 6), mapSeed: 9 });
+    expect(internal.town.seed).toBe(countySeed('US-IA', 6));
+    expect(location.search).toContain('county=6');
+    // Winning the jumped-to level clears County 6, never the county the run started on.
+    const progress = (internal as unknown as { countyProgress: { isCleared(region: string, index: number): boolean } }).countyProgress;
+    internal.campaign!.complete = true;
+    (internal as unknown as { judgeCampaign(run: unknown): void }).judgeCampaign(internal.campaign);
+    expect(progress.isCleared('US-IA', 6)).toBe(true);
+    expect(progress.isCleared('US-IA', 2)).toBe(false);
+    await internal.hud.onStart!({ kind: 'sandbox', season: 'spring', regionId: 'US-IA', countyIndex: 2, weather: 'storm', effects: 'on', mapSeed: 9 });
+    game.jumpCampaignLevel('suburb');
+    expect(location.search).toContain('county=4');
+    expect(internal.town.seed).toBe(countySeed('US-IA', 4));
   });
 
   it('jumps between levels from the debug session bar', () => {

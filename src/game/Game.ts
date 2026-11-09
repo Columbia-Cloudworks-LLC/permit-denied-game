@@ -385,6 +385,26 @@ class Game {
     return this.overworld;
   }
 
+  /**
+   * County N always runs level N, so a level jump in an overworld run moves to that level's county
+   * in the same region: its index, seed and rolled weather. Progress, Next Level and the pause map
+   * then follow the county actually being played. Legacy level runs have no county to move.
+   */
+  private retargetCounty(id: CampaignLevelId): void {
+    const regionId = this.rules.regionId;
+    const overworld = this.overworld;
+    if (!regionId || !overworld) return;
+    const index = CAMPAIGN_LEVELS.findIndex(level => level.id === id) + 1;
+    const county = overworld.countyAt(regionId, index);
+    if (!county) return;
+    const mapSeed = this.campaign?.county?.mapSeed ?? this.rules.mapSeed ?? this.rules.seed;
+    const weather = overworld.countyWeather(mapSeed, this.rules.season, regionId, index);
+    Object.assign(this.rules, { countyIndex: index, seed: county.seed, weather, mapSeed });
+    if (!this.campaign) return;
+    this.campaign.levelSeed = county.seed;
+    this.campaign.county = { regionId, index, weather, mapSeed };
+  }
+
   /** Start the county the map's detail card deployed, in Sandbox or as a Time Challenge run. */
   private async deployCounty(deploy: CountyDeployment): Promise<void> {
     const { countyAt, regionById, regionBiome } = await this.ensureOverworld();
@@ -1005,6 +1025,7 @@ class Game {
     this.rules.testMap = undefined;
     this.rules.job = false;
     this.rules.level = id;
+    this.retargetCounty(id);
     if (this.rules.kind === "sandbox") {
       this.campaign = null;
       this.reset("same");
@@ -1017,6 +1038,7 @@ class Game {
     if (index < 0) return;
     this.campaign.levelIndex = index;
     this.campaign.briefing = false;
+    this.retargetCounty(id);
     this.reset('same');
     this.syncSessionUrl();
   }
