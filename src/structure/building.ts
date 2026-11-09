@@ -1,3 +1,4 @@
+import { SIGNATURE_BONUS } from "../world/regionalPlacement";
 import { automaticCore, DETAILED_FLOORS, initializeCore, stepCoreCollapse, type CoreImpact } from './coreCollapse';
 import { initializeElevatedTank, stepElevatedTank } from './elevatedTank';
 import { siloAt, siloSupports, stepSilos } from './silos';
@@ -914,9 +915,10 @@ function stepFloorTiles(building: Building, dt: number, result: StructureStepRes
 }
 
 export function buildingBonus(building: Building): number {
-  if (building.kind === "industrial") return 360;
-  if (building.kind === "shop") return 220;
-  return 140;
+  const signature = building.regionalSignature ? SIGNATURE_BONUS : 0;
+  if (building.kind === "industrial") return 360 + signature;
+  if (building.kind === "shop") return 220 + signature;
+  return 140 + signature;
 }
 
 export function footprintSolid(building: Building, gx: number, gy: number): boolean {

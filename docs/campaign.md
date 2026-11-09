@@ -1,8 +1,38 @@
 # Time Challenge campaign
 
-Time Challenge is a seven-level demolition campaign on the same town. There is no second map, no unlock tree, and no between-run meta. Sandbox, the Asset Test Yard, captures, and development scenarios stay on their own paths.
+Time Challenge is a seven-level demolition campaign on the same town generator. The overworld wraps those seven levels as the seven counties of each state, province, and territory. Each county is a seeded variant of its level, not a new map. Sandbox, the Asset Test Yard, captures, and development scenarios stay on their own paths.
 
-Play: **Play → Time Challenge → Start Game**. Time Challenge does not ask for a site size. The county clock starts after **Begin Level**.
+Play: **Play → Mode + Season → Open Map → state or province → county → Deploy**. The county clock starts after **Begin Level**.
+
+## Overworld and counties
+
+Setup asks only for **Mode** (Sandbox or Time Challenge) and **Season** (Spring, Summer, Autumn, Winter). The season is locked for every county played from that map, including later counties reached by **Next Level**.
+
+**Macro view.** A schematic tile map shows all 63 regions: 50 US states and 13 Canadian provinces and territories (`US-IL`, `CA-ON`, `CA-YT`, …). Each tile shows the region's postal code and its cleared counties (`0/7` to `7/7`). A search list beside it matches name, code, or capitol, so small East Coast states are as easy to reach on a phone as Texas. The manifest is `src/world/regions.ts`.
+
+**Micro view.** Each region has seven counties drawn as hexes, six around the capitol:
+
+| County | Archetype | Level generator |
+| ---: | --- | --- |
+| 1 | Rural / Agricultural | `county` |
+| 2 | Roadside / Highway | `village` |
+| 3 | Industrial / Works | `township` |
+| 4 | Suburban | `suburb` |
+| 5 | Main Street / Town | `city-borough` |
+| 6 | Downtown / Commercial | `city-downtown` |
+| 7 | Capitol: Governor's Mansion | `governors-mansion` |
+
+County 7 is named for the real capitol, for example *Springfield Capitol District — Governor's Mansion*. Each county's layout seed is `hashSeed("<region>#<index>")` (`src/world/counties.ts`), so the same county always builds the same town.
+
+**Unlocks.** Sandbox opens every county. In Time Challenge, Counties 1–6 are open in any order and County 7 opens once all six are cleared. Clears are stored per browser under `permit-denied.county-progress.v1` (`src/game/countyProgress.ts`). Without storage they last for the page session. **Next Level** goes to the next uncleared county in the region, then the capitol. Clearing the capitol ends the run (**COUNTY CLOSED**). **New Campaign** restarts that region from County 1.
+
+**Map from pause.** The pause menu has **State Map** (for an overworld county) and **World Map**. They open the map over the paused run: the clock stays stopped, the season and weather roll stay the run's, and the county you are playing is marked *Playing*. Its card offers **Resume County N**, or **Restart County N** with the weather shown. Any other county's card warns that deploying ends the current run. Nothing changes until you deploy. Back and Esc step from state map to world map to the pause menu.
+
+**Weather.** Weather is a county condition, separate from the season: Clear, Overcast, Rain (Snow in winter), Storm (Blizzard in winter), or Fog. Each county rolls a condition when the map opens, seeded from the map load and the county and weighted by season. The region and state views never change weather. Only the county card can, right before **Deploy**. The card also holds the Weather effects setting (On, Reduced, Off). Weather is presentation only: tint, particles, and a haze veil for fog and storms.
+
+**Regional flavor.** `src/world/regionalCatalog.ts` maps each region to a flavor (Grain Belt, Great Lakes Works, Northeast Rowhouse, Southern Roadside, Southwest Travel Plaza, Mountain West, Pacific Coast, Northern Timber). A flavor sets the biome and multiplies the campaign weight of buildings the level already allows. County archetypes add their own boosts. A boost never makes an ineligible building eligible, so `campaign.levels` stays the opt-in gate. Up to two placed buildings per county are tagged as **regional signatures**, region picks first and then archetype picks. They pay an extra $600 on collapse, and the HUD calls them out on first hit and when they fall.
+
+**Links and bundle.** `?region=US-IL&county=3` opens that county: its level, seed, and biome unless the link names them. `&weather=storm` sets the condition. The overworld (manifest, flavor data, map markup) is a lazy chunk (`src/game/overworld.ts`). It loads when setup opens or when a link names a region. Legacy `?level=` and `?district=` links, the test yard, and job links do not load it.
 
 ## How a level works
 

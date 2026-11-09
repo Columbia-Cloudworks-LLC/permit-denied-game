@@ -26,6 +26,7 @@ import {
 } from "./parcels";
 import { identityFromBuilding } from "./lotUse";
 import { campaignEligible, campaignWeight, pickWeighted } from "./campaignPlacement";
+import { regionalWeight, type RegionalPlacement } from "./regionalPlacement";
 import {
   evaluateCampaignComposition,
   legalOrdinaryCandidates,
@@ -119,6 +120,8 @@ function pickTopology(rng: Rng, count: number): TopologyFamily {
 export interface LayoutEnvironment {
   season?: SeasonId;
   biome?: BiomeProfile;
+  /** County flavor: reweights eligible buildings, never adds ineligible ones. */
+  regional?: RegionalPlacement;
 }
 
 export function generateRuralLayout(
@@ -171,6 +174,7 @@ interface RuralPlacement {
   used: Map<string, number>;
   publicSegs: () => RoadSegment[];
   pick: ArchetypePick | undefined;
+  regional: RegionalPlacement | undefined;
 }
 
 function generateRuralLayoutInner(
@@ -199,7 +203,8 @@ function generateRuralLayoutInner(
     campaign, count, rng, b, surface,
     issues: [], rejected: [], buildings, kept: [], corridors: [], used,
     publicSegs: () => b.segments.filter((s) => s.roadClass !== "driveway" && s.roadClass !== "ramp"),
-    pick: campaign ? campaignPicker(campaign, used, buildings) : undefined,
+    pick: campaign ? campaignPicker(campaign, used, buildings, environment?.regional) : undefined,
+    regional: environment?.regional,
   };
   const { pool, urban } = ruralLotPool(run, seed);
   placeRuralBuildings(run, pool, seed);
@@ -338,7 +343,7 @@ function planOrdinaryLots(run: RuralPlacement, pool: readonly Lot[]): { lots: Lo
   const { campaign, kept } = run;
   const lots = pool.filter(lot => !kept.some(keptLot => keptLot.id === lot.id));
   if (!campaign?.composition) return { lots, assignedId: new Map() };
-  const plan = planCampaignComposition(campaign, lots, run.count - run.buildings.length, ARCHETYPES, run.rng);
+  const plan = planCampaignComposition(campaign, lots, run.count - run.buildings.length, ARCHETYPES, run.rng, run.regional);
   for (const detail of plan.issues.filter(text => !text.includes('planned'))) {
     run.issues.push({ code: 'composition-plan', detail });
   }
@@ -1167,7 +1172,7 @@ function neighborSharesArchetype(buildings: readonly Building[], lot: Lot, id: s
   return false;
 }
 
-function campaignPicker(campaign: CampaignLevelDef, used: Map<string, number>, buildings: readonly Building[]) {
+function campaignPicker(campaign: CampaignLevelDef, used: Map<string, number>, buildings: readonly Building[], regional?: RegionalPlacement) {
   return (lot: Lot, rng: Rng, tried: ReadonlySet<string>) => {
     const ordinaryTarget = campaign.generation.buildingCount - 1;
     const legal = campaign.composition
@@ -1190,7 +1195,7 @@ function campaignPicker(campaign: CampaignLevelDef, used: Map<string, number>, b
     );
     const pickFrom = zoned.length ? zoned : (fitting.length ? fitting : pool);
     return pickWeighted(pickFrom, (a) => {
-      const base = campaignWeight(a.campaign, campaign.id) || 1;
+      const base = (campaignWeight(a.campaign, campaign.id) || 1) * regionalWeight(regional, a.id);
       return neighborSharesArchetype(buildings, lot, a.id) ? base * 0.12 : base;
     }, (min, max) => rng.range(min, max));
   };

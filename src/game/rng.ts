@@ -31,3 +31,18 @@ export class Rng {
     return this.next() < p;
   }
 }
+
+/** FNV-1a over a stable text key, then one LCG step so short keys still spread. */
+export function hashSeed(text: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 16777619);
+  return (Math.imul(h >>> 0, 1664525) + 1013904223) >>> 0;
+}
+
+/** Murmur3 finalizer: spreads nearby seeds before an Rng's first draw, which barely moves for them. */
+export function mixSeed(seed: number): number {
+  let h = seed >>> 0;
+  h = Math.imul(h ^ (h >>> 16), 0x85ebca6b);
+  h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35);
+  return (h ^ (h >>> 16)) >>> 0;
+}

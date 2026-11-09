@@ -5,6 +5,7 @@ import { campaignEligible, campaignWeight, pickWeighted } from './campaignPlacem
 import { archetypeFootprint } from './parcels';
 import type { Rng } from '../game/rng';
 import { bandAllowsArchetype } from './urbanGeography';
+import { regionalWeight, type RegionalPlacement } from './regionalPlacement';
 import type { UrbanBand } from './urbanBands';
 
 const HEIGHT_CLASSES = ['low-rise', 'mid-rise', 'high-rise', 'skyscraper'] as const;
@@ -157,6 +158,7 @@ interface CompositionPlan {
   counts: Map<string, number>;
   familyCounts: Map<string, number>;
   queue: string[];
+  regional?: RegionalPlacement;
 }
 
 function canTake(plan: CompositionPlan, archetype: Archetype): boolean {
@@ -183,7 +185,7 @@ function pickFrom(plan: CompositionPlan, candidates: readonly Archetype[]): Arch
   const unusedFamily = open.filter(archetype => !plan.familyCounts.has(campaignFamily(archetype)));
   const unusedId = open.filter(archetype => !plan.counts.has(archetype.id));
   const prefer = unusedFamily.length ? unusedFamily : unusedId.length ? unusedId : open;
-  return pickWeighted(prefer, a => campaignWeight(a.campaign, plan.levelId) || 1, (min, max) => plan.rng.range(min, max));
+  return pickWeighted(prefer, a => (campaignWeight(a.campaign, plan.levelId) || 1) * regionalWeight(plan.regional, a.id), (min, max) => plan.rng.range(min, max));
 }
 
 /** Take from `candidates` until `have` reaches `want` or the pool runs dry; returns the count reached. */
@@ -334,6 +336,7 @@ export function planCampaignComposition(
   needed: number,
   archetypes: readonly Archetype[],
   rng: Rng,
+  regional?: RegionalPlacement,
 ): { assignments: CompositionAssignment[]; issues: string[] } {
   const rules = level.composition;
   const issues: string[] = [];
@@ -346,7 +349,7 @@ export function planCampaignComposition(
   }
 
   const plan: CompositionPlan = {
-    levelId: level.id, rng,
+    levelId: level.id, rng, regional,
     maxEach: Math.max(1, Math.floor(needed * rules.maxVariantShare)),
     maxFamily: Math.max(1, Math.floor(needed * rules.maxFamilyShare)),
     counts: new Map(), familyCounts: new Map(), queue: [],

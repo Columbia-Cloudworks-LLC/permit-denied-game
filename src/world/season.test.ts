@@ -90,8 +90,20 @@ describe("seasons", () => {
     expect(advanced.biomeId).toBe(run.biomeId);
     expect(advanced.levelSeed).toBe(99);
     const briefing = campaignBriefingText(CAMPAIGN_LEVELS[0]!, "winter");
-    expect(briefing).toContain("Chosen once");
+    expect(briefing).toContain("Locked for this run");
     expect(briefing).toContain("The dozer can cross it.");
+    const county = campaignBriefingText(CAMPAIGN_LEVELS[6]!, "winter", { name: "Juneau Capitol District — Governor's Mansion", weather: "storm" });
+    expect(county).toContain("County 7 · Juneau Capitol District");
+    expect(county).toContain("Weather: Blizzard.");
+  });
+
+  it("keeps the season locked across counties while each county carries its own weather", () => {
+    const run = startCampaign(5);
+    run.season = "autumn";
+    run.county = { regionId: "US-VT", index: 2, weather: "fog", mapSeed: 3 };
+    const next = advanceCampaignLevel(run, 77, { levelIndex: 4, county: { ...run.county, index: 5, weather: "precip" } });
+    expect(next).toMatchObject({ season: "autumn", levelIndex: 4, levelSeed: 77, county: { index: 5, weather: "precip", mapSeed: 3 } });
+    expect(retryCampaignLevel(next).county).toEqual(next.county);
   });
 
   it("keeps roads, parcels, buildings, and water identical across seasons", () => {

@@ -72,9 +72,31 @@ try {
   await page.goto(base + '/?debug=1');
   await page.locator('[data-nav=dispatch]').click();
   assert.equal(await page.locator('#dispatch-mode').evaluate(el => el.parentElement.contains(document.querySelector('#mode-description'))), true);
-  assert.equal(await page.locator('#season-note').innerText(), 'Choose a season, or let the game choose.');
+  assert.match(await page.locator('#season-note').innerText(), /locked for every county/);
+  assert.equal(await page.locator('#dispatch-lot').count(), 0, 'Setup no longer offers a map dropdown');
   await page.locator('#dispatch-mode').selectOption('challenge');
-  assert.match(await page.locator('#mode-description').innerText(), /Seven-level campaign/);
+  await page.locator('#dispatch-season').selectOption('winter');
+  assert.match(await page.locator('#mode-description').innerText(), /Seven counties per state or province/);
+  await page.locator('[data-menu-action=open-map]').click();
+  assert.equal(await page.locator('.overworld-map [data-region]').count(), 63);
+  await page.locator('#region-search').fill('rhode');
+  await page.locator('.region-list [data-region="US-RI"]').click();
+  assert.equal(await page.locator('#operator-heading').innerText(), 'Rhode Island');
+  await page.locator('.county-list [data-county="7"]').click();
+  assert.equal(await page.locator('[data-menu-action=deploy]').isDisabled(), true, 'Capitol stays locked until Counties 1-6 clear');
+  await page.locator('.county-list [data-county="2"]').click();
+  await page.locator('#county-weather').selectOption('storm');
+  for (const size of [{ width: 1440, height: 900 }, { width: 390, height: 844 }, { width: 320, height: 568 }]) {
+    await page.setViewportSize(size);
+    await assertDebugControlsReachable(page, '.county-card');
+    await page.screenshot({ path: `${out}/county-${size.width}.png` });
+  }
+  await page.locator('[data-menu-action=deploy]').click();
+  await page.waitForFunction(() => /region=US-RI/.test(location.search) && /county=2/.test(location.search));
+  const deployed = new URL(page.url()).searchParams;
+  assert.equal(deployed.get('season'), 'winter');
+  assert.equal(deployed.get('weather'), 'storm');
+  assert.equal(deployed.get('level'), 'village');
   assert.deepEqual(errors, []);
-  console.log('Menu safety, pause/freeze recovery, responsive reachability, dropdown cues, and setup copy passed.');
+  console.log('Menu safety, pause/freeze recovery, responsive reachability, dropdown cues, setup copy, and overworld deploy passed.');
 } finally { await browser.close(); }

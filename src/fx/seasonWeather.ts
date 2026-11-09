@@ -37,14 +37,21 @@ export class SeasonWeather {
     camX: number;
     camY: number;
     seed: number;
+    /** Storms run denser; omitted means one. */
+    intensity?: number;
   }): void {
-    const key = `${input.kind}:${input.detail}:${input.seed}`;
+    const intensity = Math.max(0, input.intensity ?? 1);
+    const key = `${input.kind}:${input.detail}:${input.seed}:${intensity}`;
     this.reset(key);
     if (input.detail !== "on" || input.kind === "clear") {
       this.flakes = [];
       return;
     }
-    if (this.flakes.length < CAP && this.rng.next() < input.dt * 18) this.flakes.push(this.spawnFlake(input));
+    const cap = Math.round(CAP * intensity);
+    const spawns = input.dt * 18 * intensity;
+    // Whole spawns first, then the fractional remainder by chance, so storms fill faster.
+    for (let n = Math.floor(spawns); n > 0 && this.flakes.length < cap; n--) this.flakes.push(this.spawnFlake(input));
+    if (this.flakes.length < cap && this.rng.next() < spawns % 1) this.flakes.push(this.spawnFlake(input));
     const next: WeatherFlake[] = [];
     for (const flake of this.flakes) {
       flake.x += flake.vx * input.dt;
@@ -54,7 +61,7 @@ export class SeasonWeather {
       const far = Math.hypot(flake.x - input.camX, flake.y - input.camY) > 16;
       if (flake.life > 0 && flake.z > 0 && !far) next.push(flake);
     }
-    this.flakes = next.slice(-CAP);
+    this.flakes = next.slice(-cap);
   }
 
   /** A new flake somewhere over the camera, drifting by weather kind. */
