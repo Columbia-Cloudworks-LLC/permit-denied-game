@@ -77,6 +77,11 @@ export class OperatorMenu {
   private countyIndex = 1;
   private regionQuery = '';
   private running?: RunningCounty;
+  /**
+   * The paused game's mode, season and effects. New Game edits a draft in `session`/`season`/
+   * `effects`; the run maps restore from this copy so a canceled draft never leaks into them.
+   */
+  private runningSetup?: { session: SessionKind; season: SeasonId; effects: WeatherDetail };
   /** Where Back leaves the world map: setup for a new game, the pause home for a run in progress. */
   private mapOrigin: 'dispatch' | 'home' = 'dispatch';
   private muted = false;
@@ -190,6 +195,7 @@ export class OperatorMenu {
     const open = (ow: OverworldModule) => {
       this.ow = ow;
       const run = this.running;
+      if (this.runningSetup) ({ session: this.session, season: this.season, effects: this.effects } = this.runningSetup);
       this.weatherOverrides.clear();
       this.regionQuery = '';
       if (run) {
@@ -281,8 +287,8 @@ export class OperatorMenu {
   show(mode: 'title' | 'pause' | null, setup: MenuSetup = { session: 'sandbox' }): void {
     if (this.mode === mode) return;
     // Pause opens on the running game's setup; the title menu starts from the defaults.
-    if (mode === 'pause') this.adoptSetup(setup);
-    if (mode === 'title') this.adoptSetup({ session: 'sandbox', season: 'summer', effects: 'on' });
+    if (mode === 'pause') this.adoptSetup(setup, true);
+    if (mode === 'title') this.adoptSetup({ session: 'sandbox', season: 'summer', effects: 'on' }, false);
     this.mapOrigin = 'dispatch';
     this.mode = mode;
     this.root.hidden = !mode;
@@ -290,12 +296,13 @@ export class OperatorMenu {
     else this.close();
   }
 
-  private adoptSetup(setup: MenuSetup): void {
+  private adoptSetup(setup: MenuSetup, running: boolean): void {
     this.session = setup.session;
     if (setup.season) this.season = setup.season;
     if (setup.effects) this.effects = setup.effects;
     if (setup.regionId) this.regionId = setup.regionId;
-    this.running = setup.regionId && setup.countyIndex && setup.weather
+    this.runningSetup = running ? { session: this.session, season: this.season, effects: this.effects } : undefined;
+    this.running = running && setup.regionId && setup.countyIndex && setup.weather
       ? { regionId: setup.regionId, countyIndex: setup.countyIndex, weather: setup.weather, mapSeed: setup.mapSeed ?? 0 }
       : undefined;
   }

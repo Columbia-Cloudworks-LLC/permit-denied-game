@@ -204,6 +204,32 @@ it('restarts the running county from its card with the chosen weather', async ()
   expect(actions.start).toHaveBeenCalledWith(expect.objectContaining({ regionId: 'US-MI', countyIndex: 3, weather: 'clear', effects: 'reduced' }));
 });
 
+it('opens run maps on the running setup after a canceled New Game draft', async () => {
+  menu.show('pause', running);
+  button('[data-nav="dispatch"]').click();
+  select('dispatch-mode', 'sandbox');
+  select('dispatch-season', 'summer');
+  key(menu.root, { key: 'Escape' });
+  expect(heading()).toBe('Paused');
+  await pauseMap('state-map');
+  expect(menu.root.querySelector('.map-chips')!.textContent).toContain('Time Challenge');
+  expect(menu.root.querySelector('.map-chips')!.textContent).toContain('Winter · locked');
+  button('.county-list [data-county="7"]').click();
+  expect(button('[data-menu-action="deploy"]').disabled).toBe(true);
+  button('.county-list [data-county="3"]').click();
+  button('.county-card [data-menu-action="deploy"]').click();
+  expect(actions.start).toHaveBeenLastCalledWith(expect.objectContaining({ kind: 'challenge', season: 'winter', effects: 'reduced', regionId: 'US-MI', countyIndex: 3, weather: 'fog' }));
+  // A deliberate New Game map still uses the draft.
+  key(menu.root, { key: 'Escape' });
+  key(menu.root, { key: 'Escape' });
+  button('[data-nav="dispatch"]').click();
+  select('dispatch-mode', 'sandbox');
+  select('dispatch-season', 'summer');
+  await openMap();
+  expect(menu.root.querySelector('.map-chips')!.textContent).toContain('Sandbox');
+  expect(menu.root.querySelector('.map-chips')!.textContent).toContain('Summer · locked');
+});
+
 it('offers only the world map when the paused run is not an overworld county', () => {
   menu.show('pause', { session: 'sandbox' });
   expect(menu.root.querySelector('[data-menu-action="state-map"]')).toBeNull();
