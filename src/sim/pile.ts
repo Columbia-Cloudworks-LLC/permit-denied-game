@@ -46,6 +46,8 @@ const TILE_APRON = 2;
 
 /** Spread of added mass over the 3x3 cells around the drop point. */
 const ADD_WEIGHTS = [0.06, 0.12, 0.06, 0.12, 0.28, 0.12, 0.06, 0.12, 0.06] as const;
+/** Their sum in the same order an interior drop adds them, so the fast path matches the edge path bit for bit. */
+const ADD_WEIGHT_SUM = ADD_WEIGHTS.reduce((sum, w) => sum + w, 0);
 
 export class PileField {
   ownerAt?: (x: number, y: number) => string | undefined;
@@ -62,6 +64,7 @@ export class PileField {
     for (const [key, cells] of this.owners) next.owners.set(key, new Map([...cells].map(([i, mass]) => [Math.floor(i / this.cols) * next.cols + i % this.cols, mass])));
     for (const [key, cells] of this.ownerMaterials) next.ownerMaterials.set(key, new Map([...cells].map(([i, composition]) => [Math.floor(i / this.cols) * next.cols + i % this.cols, [...composition]])));
     next.revision = this.revision + 1;
+    next.runningMass = this.runningMass;
     return next;
   }
   clearArea(x: number, y: number, w: number, d: number): void {
@@ -73,6 +76,7 @@ export class PileField {
     this.touch(ix0, iy0, ix1 - 1, iy1 - 1);
   }
   private clearCell(i: number): void {
+    this.runningMass -= this.mass[i]!;
     this.mass[i] = 0; this.height[i] = 0; this.compact[i] = 0;
     for (const mat of this.mats) mat[i] = 0;
     for (const [key, cells] of this.owners) { cells.delete(i); if (!cells.size) this.owners.delete(key); }
@@ -86,8 +90,10 @@ export class PileField {
       const ix = i % this.cols, iy = Math.floor(i / this.cols);
       ix0 = Math.min(ix0, ix); ix1 = Math.max(ix1, ix); iy0 = Math.min(iy0, iy); iy1 = Math.max(iy1, iy);
       const ratio = Math.max(0, 1 - amount / Math.max(1e-9, this.mass[i]!));
+      const before = this.mass[i]!;
       this.mass[i] *= ratio; this.height[i] *= ratio;
       if (this.mass[i]! < 1e-6) { this.mass[i] = 0; this.height[i] = 0; this.compact[i] = 0; }
+      this.runningMass -= before - this.mass[i]!;
       const composition = this.ownerMaterials.get(owner)?.get(i);
       for (let m = 0; m < this.mats.length; m++) this.mats[m]![i] = Math.max(0, this.mats[m]![i]! - (composition?.[m] ?? 0));
     }
@@ -148,46 +154,52 @@ export class PileField {
 
   addMass(x: number, y: number, mass: number, material: Material = "concrete", ownership?: string | Record<string, number>): void {
     if (mass <= 1e-6) return;
-    const { ix, iy } = this.cellOf(x, y);
-    const hits: { i: number; w: number }[] = [];
+    const ix = Math.floor((x - this.ox) / this.cell);
+    const iy = Math.floor((y - this.oy) / this.cell);
+    const inside = ix >= 1 && iy >= 1 && ix < this.cols - 1 && iy < this.rows - 1;
     let wsum = 0;
-    let wi = 0;
-    for (let dy = -1; dy <= 1; dy++) {
-      for (let dx = -1; dx <= 1; dx++) {
-        const i = this.index(ix + dx, iy + dy);
-        const w = ADD_WEIGHTS[wi++]!;
-        if (i < 0) continue;
-        hits.push({ i, w });
-        wsum += w;
+    if (inside) wsum = ADD_WEIGHT_SUM;
+    else {
+      let wi = 0;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const w = ADD_WEIGHTS[wi++]!;
+          if (this.index(ix + dx, iy + dy) >= 0) wsum += w;
+        }
       }
     }
     if (wsum <= 0) return;
     const owner = ownership ?? this.ownerAt?.(x, y);
-    const weightsByOwner = typeof owner === "string" ? { [owner]: 1 } : owner;
     const mi = materialIndex(material);
-    for (const hit of hits) {
-      const add = mass * (hit.w / wsum);
-      if (weightsByOwner) this.creditOwners(hit.i, add, mi, weightsByOwner);
-      this.mass[hit.i] += add;
-      this.mats[mi]![hit.i] += add;
-      const compact = this.compact[hit.i]!;
-      this.height[hit.i] += add * 0.16 * (1 - 0.38 * compact);
+    const mats = this.mats[mi]!;
+    let wi = 0;
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const w = ADD_WEIGHTS[wi++]!;
+        const i = inside ? (iy + dy) * this.cols + ix + dx : this.index(ix + dx, iy + dy);
+        if (i < 0) continue;
+        const add = mass * (w / wsum);
+        if (typeof owner === "string") this.creditOwner(i, add, mi, owner);
+        else if (owner) for (const key in owner) this.creditOwner(i, add * owner[key]!, mi, key);
+        this.mass[i]! += add;
+        this.runningMass += add;
+        mats[i]! += add;
+        this.height[i]! += add * 0.16 * (1 - 0.38 * this.compact[i]!);
+      }
     }
     this.touch(ix - 1, iy - 1, ix + 1, iy + 1);
   }
 
-  /** Record which yard owners put mass into cell i, and of which material. */
-  private creditOwners(i: number, add: number, mi: number, weightsByOwner: Record<string, number>): void {
-    for (const [key, fraction] of Object.entries(weightsByOwner)) {
-      let cells = this.owners.get(key);
-      if (!cells) { cells = new Map(); this.owners.set(key, cells); }
-      cells.set(i, (cells.get(i) ?? 0) + add * fraction);
-      let materials = this.ownerMaterials.get(key);
-      if (!materials) { materials = new Map(); this.ownerMaterials.set(key, materials); }
-      let composition = materials.get(i);
-      if (!composition) { composition = [0, 0, 0, 0, 0]; materials.set(i, composition); }
-      composition[mi] += add * fraction;
-    }
+  /** Record that a yard owner put `amount` of material `mi` into cell i. */
+  private creditOwner(i: number, amount: number, mi: number, key: string): void {
+    let cells = this.owners.get(key);
+    if (!cells) { cells = new Map(); this.owners.set(key, cells); }
+    cells.set(i, (cells.get(i) ?? 0) + amount);
+    let materials = this.ownerMaterials.get(key);
+    if (!materials) { materials = new Map(); this.ownerMaterials.set(key, materials); }
+    let composition = materials.get(i);
+    if (!composition) { composition = [0, 0, 0, 0, 0]; materials.set(i, composition); }
+    composition[mi]! += amount;
   }
 
   compactPoint(x: number, y: number, amount: number): void {
@@ -235,6 +247,7 @@ export class PileField {
       const ratio = share / hit.mass;
       this.releaseOwners(hit.i, ratio, take, owners);
       this.mass[hit.i] = Math.max(0, this.mass[hit.i]! - share);
+      this.runningMass -= hit.mass - this.mass[hit.i]!;
       this.height[hit.i] = Math.max(0, this.height[hit.i]! * (1 - ratio));
       for (let mi = 0; mi < this.mats.length; mi++) {
         const part = this.mats[mi]![hit.i]! * ratio;
@@ -297,41 +310,68 @@ export class PileField {
   }
 
   sample(x: number, y: number): { height: number; mass: number; compact: number; material: Material } {
+    return {
+      height: this.bilinear(this.height, x, y),
+      mass: this.bilinear(this.mass, x, y),
+      compact: this.bilinear(this.compact, x, y),
+      material: this.materialAt(x, y),
+    };
+  }
+
+  /** Bilinear read of one field between cell centres; outside the field reads zero. No allocation. */
+  private bilinear(field: Float32Array, x: number, y: number): number {
     const fx = (x - this.ox) / this.cell - 0.5;
     const fy = (y - this.oy) / this.cell - 0.5;
     const x0 = Math.floor(fx);
     const y0 = Math.floor(fy);
     const tx = fx - x0;
     const ty = fy - y0;
-    const h00 = this.heightAtCell(x0, y0);
-    const h10 = this.heightAtCell(x0 + 1, y0);
-    const h01 = this.heightAtCell(x0, y0 + 1);
-    const h11 = this.heightAtCell(x0 + 1, y0 + 1);
-    const m00 = this.massAtCell(x0, y0);
-    const m10 = this.massAtCell(x0 + 1, y0);
-    const m01 = this.massAtCell(x0, y0 + 1);
-    const m11 = this.massAtCell(x0 + 1, y0 + 1);
-    const c00 = this.compactAtCell(x0, y0);
-    const c10 = this.compactAtCell(x0 + 1, y0);
-    const c01 = this.compactAtCell(x0, y0 + 1);
-    const c11 = this.compactAtCell(x0 + 1, y0 + 1);
-    return {
-      height: bilerp(h00, h10, h01, h11, tx, ty),
-      mass: bilerp(m00, m10, m01, m11, tx, ty),
-      compact: bilerp(c00, c10, c01, c11, tx, ty),
-      material: this.materialAt(x, y),
-    };
+    const cols = this.cols;
+    if (x0 >= 0 && y0 >= 0 && x0 < cols - 1 && y0 < this.rows - 1) {
+      const i = y0 * cols + x0;
+      return bilerp(field[i]!, field[i + 1]!, field[i + cols]!, field[i + cols + 1]!, tx, ty);
+    }
+    return bilerp(this.at(field, x0, y0), this.at(field, x0 + 1, y0), this.at(field, x0, y0 + 1), this.at(field, x0 + 1, y0 + 1), tx, ty);
+  }
+
+  private at(field: Float32Array, ix: number, iy: number): number {
+    const i = this.index(ix, iy);
+    return i < 0 ? 0 : field[i]!;
   }
 
   heightAt(x: number, y: number): number {
-    return this.sample(x, y).height;
+    return this.bilinear(this.height, x, y);
+  }
+
+  compactAt(x: number, y: number): number {
+    return this.bilinear(this.compact, x, y);
+  }
+
+  massAt(x: number, y: number): number {
+    return this.bilinear(this.mass, x, y);
   }
 
   slope(x: number, y: number): { dx: number; dy: number } {
+    return { dx: this.slopeX(x, y), dy: this.slopeY(x, y) };
+  }
+
+  slopeX(x: number, y: number): number {
     const e = this.cell * 0.85;
-    const dx = (this.heightAt(x + e, y) - this.heightAt(x - e, y)) / (e * 2);
-    const dy = (this.heightAt(x, y + e) - this.heightAt(x, y - e)) / (e * 2);
-    return { dx, dy };
+    return (this.heightAt(x + e, y) - this.heightAt(x - e, y)) / (e * 2);
+  }
+
+  slopeY(x: number, y: number): number {
+    const e = this.cell * 0.85;
+    return (this.heightAt(x, y + e) - this.heightAt(x, y - e)) / (e * 2);
+  }
+
+  private runningMass = 0;
+  /**
+   * Total mass kept as a running sum, for per-tick readouts. Cells store 32-bit floats, so it
+   * drifts from the exact `totalMass()` by rounding only; never below zero.
+   */
+  massEstimate(): number {
+    return Math.max(0, this.runningMass);
   }
 
   private massRevision = -1;
@@ -346,26 +386,18 @@ export class PileField {
   }
 
   materialAt(x: number, y: number): Material {
-    const { ix, iy } = this.cellOf(x, y);
-    const i = this.index(ix, iy);
+    const i = this.index(Math.floor((x - this.ox) / this.cell), Math.floor((y - this.oy) / this.cell));
     if (i < 0) return "concrete";
-    const composition = this.mats.map((m) => m[i]!);
-    return dominantMaterial(composition);
-  }
-
-  private heightAtCell(ix: number, iy: number): number {
-    const i = this.index(ix, iy);
-    return i < 0 ? 0 : this.height[i]!;
-  }
-
-  private massAtCell(ix: number, iy: number): number {
-    const i = this.index(ix, iy);
-    return i < 0 ? 0 : this.mass[i]!;
-  }
-
-  private compactAtCell(ix: number, iy: number): number {
-    const i = this.index(ix, iy);
-    return i < 0 ? 0 : this.compact[i]!;
+    let best = 0;
+    let idx = 2;
+    for (let m = 0; m < this.mats.length; m++) {
+      const amount = this.mats[m]![i]!;
+      if (amount > best) {
+        best = amount;
+        idx = m;
+      }
+    }
+    return PILE_MATERIALS[idx] ?? "concrete";
   }
 }
 

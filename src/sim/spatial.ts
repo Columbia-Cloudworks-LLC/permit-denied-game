@@ -1,5 +1,11 @@
+/** Cell index bias, so negative cells pack into one non-negative integer key. */
+const BIAS = 0x80000;
+const SPAN = 0x100000;
+
 export class SpatialHash<T> {
-  private readonly cells = new Map<string, T[]>();
+  private readonly cells = new Map<number, T[]>();
+  /** Reused per query: items spanning several cells are reported once. */
+  private readonly seen = new Set<T>();
 
   constructor(private readonly cellSize: number) {}
 
@@ -7,42 +13,44 @@ export class SpatialHash<T> {
     this.cells.clear();
   }
 
-  private key(ix: number, iy: number): string {
-    return `${ix},${iy}`;
-  }
-
-  /** Visit the key of every cell the box touches. */
-  private forCells(x: number, y: number, w: number, d: number, visit: (key: string) => void): void {
-    const x0 = Math.floor(x / this.cellSize);
-    const y0 = Math.floor(y / this.cellSize);
-    const x1 = Math.floor((x + w) / this.cellSize);
-    const y1 = Math.floor((y + d) / this.cellSize);
-    for (let iy = y0; iy <= y1; iy++) {
-      for (let ix = x0; ix <= x1; ix++) visit(this.key(ix, iy));
-    }
-  }
-
   insert(x: number, y: number, w: number, d: number, item: T): void {
-    this.forCells(x, y, w, d, (k) => {
-      let bucket = this.cells.get(k);
-      if (!bucket) {
-        bucket = [];
-        this.cells.set(k, bucket);
+    const size = this.cellSize;
+    const x0 = Math.floor(x / size), x1 = Math.floor((x + w) / size);
+    const y0 = Math.floor(y / size), y1 = Math.floor((y + d) / size);
+    for (let iy = y0; iy <= y1; iy++) {
+      for (let ix = x0; ix <= x1; ix++) {
+        const key = (ix + BIAS) * SPAN + (iy + BIAS);
+        const bucket = this.cells.get(key);
+        if (bucket) bucket.push(item);
+        else this.cells.set(key, [item]);
       }
-      bucket.push(item);
-    });
+    }
   }
 
   query(x: number, y: number, w: number, d: number, out: T[]): T[] {
     out.length = 0;
-    const seen = new Set<T>();
-    this.forCells(x, y, w, d, (k) => {
-      for (const item of this.cells.get(k) ?? []) {
-        if (seen.has(item)) continue;
-        seen.add(item);
-        out.push(item);
+    const size = this.cellSize;
+    const x0 = Math.floor(x / size), x1 = Math.floor((x + w) / size);
+    const y0 = Math.floor(y / size), y1 = Math.floor((y + d) / size);
+    if (x0 === x1 && y0 === y1) {
+      const bucket = this.cells.get((x0 + BIAS) * SPAN + (y0 + BIAS));
+      if (bucket) for (let i = 0; i < bucket.length; i++) out.push(bucket[i]!);
+      return out;
+    }
+    const seen = this.seen;
+    for (let iy = y0; iy <= y1; iy++) {
+      for (let ix = x0; ix <= x1; ix++) {
+        const bucket = this.cells.get((ix + BIAS) * SPAN + (iy + BIAS));
+        if (!bucket) continue;
+        for (let i = 0; i < bucket.length; i++) {
+          const item = bucket[i]!;
+          if (seen.has(item)) continue;
+          seen.add(item);
+          out.push(item);
+        }
       }
-    });
+    }
+    seen.clear();
     return out;
   }
 }

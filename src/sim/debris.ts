@@ -85,8 +85,13 @@ export function resetDebrisSim(seed = 0xdeb415): void {
   stepStats = emptyDebrisStats();
 }
 
+/** Half-size of the square that bounds a body at any heading. */
+function rubbleExtent(r: Rubble): number {
+  return 0.5 * Math.hypot(r.w, r.d) + 0.06;
+}
+
 export function rubbleAabb(r: Rubble): { x: number; y: number; w: number; d: number } {
-  const ext = 0.5 * Math.hypot(r.w, r.d) + 0.06;
+  const ext = rubbleExtent(r);
   return { x: r.x - ext, y: r.y - ext, w: ext * 2, d: ext * 2 };
 }
 
@@ -494,9 +499,13 @@ function materialSeed(material: Material): number {
 }
 
 function absorbBody(town: Town, r: Rubble): void {
+  absorbBodyAt(town, town.rubble.indexOf(r), r);
+}
+
+/** Absorb the body at a known index (or a body no longer listed, with i < 0). */
+function absorbBodyAt(town: Town, i: number, r: Rubble = town.rubble[i]!): void {
   town.pile.addMass(r.x, r.y, r.mass, r.material, r.yardOwner);
   addMark(town, r.x, r.y, r.material === "wood" ? "splinter" : "chip", r.material, r.heading, r.yardOwner);
-  const i = town.rubble.indexOf(r);
   if (i >= 0) town.rubble.splice(i, 1);
   stepStats.conversions++;
 }
@@ -571,11 +580,22 @@ export function enforceDistanceCleanup(
   return result;
 }
 
+type RoadCar = Town["vehicles"][number];
+/** Cars that protect the debris around them this step: alive, and autonomous or moving. */
+const guardCars: RoadCar[] = [];
+
+function collectGuardCars(town: Town): void {
+  guardCars.length = 0;
+  for (const car of town.vehicles) {
+    if (car.alive && (car.autonomous || Math.hypot(car.vx, car.vy) > .05)) guardCars.push(car);
+  }
+}
+
 /** Near the dozer, freshly touched, or near a moving or autonomous vehicle. */
-function debrisProtected(town: Town, r: Rubble, dozerX: number, dozerY: number, touching: ReadonlySet<number>): boolean {
-  return touchingDozer(r, dozerX, dozerY, touching)
-    || Math.hypot(r.x - dozerX, r.y - dozerY) <= DEBRIS.retireRadius
-    || town.vehicles.some(car=>car.alive&&(car.autonomous||Math.hypot(car.vx,car.vy)>.05)&&Math.hypot(r.x-car.x,r.y-car.y)<=DEBRIS.protectRadius);
+function debrisProtected(r: Rubble, dozerX: number, dozerY: number, touching: ReadonlySet<number>): boolean {
+  if (touchingDozer(r, dozerX, dozerY, touching) || Math.hypot(r.x - dozerX, r.y - dozerY) <= DEBRIS.retireRadius) return true;
+  for (const car of guardCars) if (Math.hypot(r.x - car.x, r.y - car.y) <= DEBRIS.protectRadius) return true;
+  return false;
 }
 
 /** Unattended chunks on pavement outlast the usual grace before joining the pile. */
@@ -587,14 +607,17 @@ function lingersOnRoad(town: Town, r: Rubble, since: number): boolean {
 /** Unattended destruction becomes the editable pile after a bounded grace; returns bodies absorbed. */
 function retireUnattended(town: Town, dozerX: number, dozerY: number, touching: ReadonlySet<number>): number {
   let distance = 0;
+  collectGuardCars(town);
+  const bodies = town.rubble;
   // Contact jitter must not keep distant bodies in the solver indefinitely.
-  for (const r of [...town.rubble]) {
-    if (debrisProtected(town, r, dozerX, dozerY, touching)) { unattendedSince.delete(r); continue; }
+  // Absorbing removes bodies[i], so the index only advances past survivors.
+  for (let i = 0; i < bodies.length;) {
+    const r = bodies[i]!;
+    if (debrisProtected(r, dozerX, dozerY, touching)) { unattendedSince.delete(r); i++; continue; }
     const since = unattendedSince.get(r);
-    if (since === undefined) { unattendedSince.set(r, debrisClock); continue; }
-    if (debrisClock - since < DEBRIS.retireDelay || debrisClock - r.touchedAt < DEBRIS.retireDelay) continue;
-    if (lingersOnRoad(town, r, since)) continue;
-    absorbBody(town, r);
+    if (since === undefined) { unattendedSince.set(r, debrisClock); i++; continue; }
+    if (debrisClock - since < DEBRIS.retireDelay || debrisClock - r.touchedAt < DEBRIS.retireDelay || lingersOnRoad(town, r, since)) { i++; continue; }
+    absorbBodyAt(town, i);
     unattendedSince.delete(r);
     distance++;
   }
@@ -610,9 +633,11 @@ function trimLayer(
   touching: ReadonlySet<number>,
   result: { distance: number; emergency: number },
 ): void {
-  const layerBodies = town.rubble.filter((r) => r.layer === layer);
   const cap = layerCap(layer);
-  if (layerBodies.length <= cap) return;
+  let inLayer = 0;
+  for (const r of town.rubble) if (r.layer === layer) inLayer++;
+  if (inLayer <= cap) return;
+  const layerBodies = town.rubble.filter((r) => r.layer === layer);
   const candidates = collectCleanupCandidates(layerBodies, dozerX, dozerY, touching);
   const absorbed = new Set<number>();
   let count = layerBodies.length;
@@ -704,40 +729,47 @@ function asObb(r: Rubble): Obb {
   return { x: r.x, y: r.y, heading: r.heading, hl: r.w * 0.5, hw: r.d * 0.5 };
 }
 
-function projectObb(o: Obb, ax: number, ay: number): [number, number] {
-  const fx = Math.cos(o.heading);
-  const fy = Math.sin(o.heading);
-  const c = o.x * ax + o.y * ay;
-  const extent = o.hl * Math.abs(fx * ax + fy * ay) + o.hw * Math.abs(-fy * ax + fx * ay);
-  return [c - extent, c + extent];
-}
+/** Result of the last obbOverlap call; read it before the next call. */
+const overlap = { nx: 0, ny: 0, depth: 0, px: 0, py: 0 };
 
-function obbOverlap(a: Obb, b: Obb): { hit: boolean; nx: number; ny: number; depth: number; px: number; py: number } {
-  const axes = [
-    [Math.cos(a.heading), Math.sin(a.heading)],
-    [-Math.sin(a.heading), Math.cos(a.heading)],
-    [Math.cos(b.heading), Math.sin(b.heading)],
-    [-Math.sin(b.heading), Math.cos(b.heading)],
-  ] as const;
+/**
+ * Separating-axis test of two oriented boxes. On a hit, fills `overlap` with the
+ * minimum-depth axis (pointing from a to b) and the midpoint, and returns true.
+ */
+function obbOverlap(
+  ax: number, ay: number, aHeading: number, ahl: number, ahw: number,
+  bx: number, by: number, bHeading: number, bhl: number, bhw: number,
+): boolean {
+  const afx = Math.cos(aHeading), afy = Math.sin(aHeading);
+  const bfx = Math.cos(bHeading), bfy = Math.sin(bHeading);
   let minDepth = Infinity;
   let nx = 1;
   let ny = 0;
-  for (const [ax, ay] of axes) {
-    const [a0, a1] = projectObb(a, ax, ay);
-    const [b0, b1] = projectObb(b, ax, ay);
-    const o = Math.min(a1, b1) - Math.max(a0, b0);
-    if (o <= 0) return { hit: false, nx: 0, ny: 0, depth: 0, px: 0, py: 0 };
+  for (let k = 0; k < 4; k++) {
+    const x = k === 0 ? afx : k === 1 ? -afy : k === 2 ? bfx : -bfy;
+    const y = k === 0 ? afy : k === 1 ? afx : k === 2 ? bfy : bfx;
+    const ca = ax * x + ay * y;
+    const ea = ahl * Math.abs(afx * x + afy * y) + ahw * Math.abs(-afy * x + afx * y);
+    const cb = bx * x + by * y;
+    const eb = bhl * Math.abs(bfx * x + bfy * y) + bhw * Math.abs(-bfy * x + bfx * y);
+    const o = Math.min(ca + ea, cb + eb) - Math.max(ca - ea, cb - eb);
+    if (o <= 0) return false;
     if (o < minDepth) {
       minDepth = o;
-      nx = ax;
-      ny = ay;
+      nx = x;
+      ny = y;
     }
   }
-  if ((b.x - a.x) * nx + (b.y - a.y) * ny < 0) {
+  if ((bx - ax) * nx + (by - ay) * ny < 0) {
     nx = -nx;
     ny = -ny;
   }
-  return { hit: true, nx, ny, depth: minDepth, px: (a.x + b.x) * 0.5, py: (a.y + b.y) * 0.5 };
+  overlap.nx = nx;
+  overlap.ny = ny;
+  overlap.depth = minDepth;
+  overlap.px = (ax + bx) * 0.5;
+  overlap.py = (ay + by) * 0.5;
+  return true;
 }
 
 function closestOnObb(px: number, py: number, o: Obb): { x: number; y: number; along: number; across: number } {
@@ -803,8 +835,11 @@ function applyImpulse(
 }
 
 function resolveBodies(a: Rubble, b: Rubble): number {
-  const hit = obbOverlap(asObb(a), asObb(b));
-  if (!hit.hit) return 0;
+  // Boxes whose bounding circles are apart cannot touch; most hash neighbours stop here.
+  const dx = b.x - a.x, dy = b.y - a.y, reach = (Math.hypot(a.w, a.d) + Math.hypot(b.w, b.d)) * 0.5;
+  if (dx * dx + dy * dy > reach * reach) return 0;
+  if (!obbOverlap(a.x, a.y, a.heading, a.w * 0.5, a.d * 0.5, b.x, b.y, b.heading, b.w * 0.5, b.d * 0.5)) return 0;
+  const hit = overlap;
   const imA = invMass(a);
   const imB = invMass(b);
   const invSum = imA + imB;
@@ -885,8 +920,8 @@ function resolveVehicleBody(
       hl: v.blade.hl,
       hw: v.blade.hw,
     };
-    const hit = obbOverlap(bladeObb, asObb(r));
-    if (!hit.hit) return 0;
+    if (!obbOverlap(bladeObb.x, bladeObb.y, bladeObb.heading, bladeObb.hl, bladeObb.hw, r.x, r.y, r.heading, r.w * 0.5, r.d * 0.5)) return 0;
+    const depth = overlap.depth;
     const fx = Math.cos(bladeObb.heading);
     const fy = Math.sin(bladeObb.heading);
     const rx = -fy;
@@ -902,7 +937,7 @@ function resolveVehicleBody(
     const nl = Math.hypot(nx, ny);
     const nnx = nl > 1e-5 ? nx / nl : fx;
     const nny = nl > 1e-5 ? ny / nl : fy;
-    return finishVehicleHit(v, r, nnx, nny, onDebris.x, onDebris.y, hit.depth, across, v.blade.hw, events, particles);
+    return finishVehicleHit(v, r, nnx, nny, onDebris.x, onDebris.y, depth, across, v.blade.hw, events, particles);
   }
   if (top < v.profile.clearance && r.layer === "fragment") return 0;
   const hit = circleObb(v.x, v.y, v.radius, asObb(r));
@@ -1010,11 +1045,9 @@ function settleVertically(r: Rubble, support: number, dt: number): void {
 
 /** Loose fragments slide down soft pile slopes; drag, spin decay and movement inside the town. */
 function slideBody(town: Town, r: Rubble, dt: number): void {
-  const slope = town.pile.slope(r.x, r.y);
-  const compact = town.pile.sample(r.x, r.y).compact;
-  if (r.layer === "fragment" && compact < 0.72) {
-    r.vx -= slope.dx * 2.4 * dt;
-    r.vy -= slope.dy * 2.4 * dt;
+  if (r.layer === "fragment" && town.pile.compactAt(r.x, r.y) < 0.72) {
+    r.vx -= town.pile.slopeX(r.x, r.y) * 2.4 * dt;
+    r.vy -= town.pile.slopeY(r.x, r.y) * 2.4 * dt;
   }
 
   const drag = r.layer === "fragment" ? 2.6 : 2.1;
@@ -1056,14 +1089,16 @@ function supportHeight(town: Town, r: Rubble): number {
   const old = supportCache.get(r);
   if (r.sleeping && old?.pile === town.pile && old.revision === town.pile.revision && old.hash === bodyHashRevision && old.elev === r.elev) return old.height;
   const height = calculateSupportHeight(town, r);
-  supportCache.set(r, { pile: town.pile, revision: town.pile.revision, hash: bodyHashRevision, elev: r.elev, height });
+  if (old) {
+    old.pile = town.pile; old.revision = town.pile.revision; old.hash = bodyHashRevision; old.elev = r.elev; old.height = height;
+  } else supportCache.set(r, { pile: town.pile, revision: town.pile.revision, hash: bodyHashRevision, elev: r.elev, height });
   return height;
 }
 function calculateSupportHeight(town: Town, r: Rubble): number {
   let support = Math.min(0.7, town.pile.heightAt(r.x, r.y));
   if (r.layer === "remnant") return support;
-  const box = rubbleAabb(r);
-  bodyHash.query(box.x, box.y, box.w, box.d, nearbyBodies);
+  const ext = rubbleExtent(r);
+  bodyHash.query(r.x - ext, r.y - ext, ext * 2, ext * 2, nearbyBodies);
   for (const other of nearbyBodies) {
     if (other.id === r.id || other.layer !== "remnant") continue;
     if (other.elev > r.elev + 0.02) continue;
@@ -1079,19 +1114,37 @@ function calculateSupportHeight(town: Town, r: Rubble): number {
 
 let bodyHashTown: Town | null = null;
 let bodyHashRevision = 0;
-let bodySnapshot: { body: Rubble; x: number; y: number; w: number; d: number; heading: number; elev: number }[] = [];
+/** Bodies and poses the hash was built from: six numbers per body. */
+let bodySnapshot: Rubble[] = [];
+let poseSnapshot = new Float64Array(0);
+const POSE = 6;
+
+function hashMatchesBodies(town: Town): boolean {
+  const bodies = town.rubble;
+  if (bodyHashTown !== town || bodySnapshot.length !== bodies.length) return false;
+  for (let i = 0, j = 0; i < bodies.length; i++, j += POSE) {
+    const r = bodies[i]!;
+    if (bodySnapshot[i] !== r || poseSnapshot[j] !== r.x || poseSnapshot[j + 1] !== r.y || poseSnapshot[j + 2] !== r.w || poseSnapshot[j + 3] !== r.d
+      || poseSnapshot[j + 4] !== r.heading || poseSnapshot[j + 5] !== r.elev) return false;
+  }
+  return true;
+}
+
 function rebuildBodyHash(town: Town): void {
-  if (bodyHashTown === town && bodySnapshot.length === town.rubble.length && town.rubble.every((r, i) => {
-    const old = bodySnapshot[i]!;
-    return old.body === r && old.x === r.x && old.y === r.y && old.w === r.w && old.d === r.d && old.heading === r.heading && old.elev === r.elev;
-  })) return;
+  if (hashMatchesBodies(town)) return;
+  const bodies = town.rubble;
   bodyHashTown = town;
   bodyHashRevision++;
-  bodySnapshot = town.rubble.map(r => ({ body: r, x: r.x, y: r.y, w: r.w, d: r.d, heading: r.heading, elev: r.elev }));
+  if (poseSnapshot.length < bodies.length * POSE) poseSnapshot = new Float64Array(Math.max(256, bodies.length * 2) * POSE);
+  bodySnapshot.length = bodies.length;
   bodyHash.clear();
-  for (const r of town.rubble) {
-    const box = rubbleAabb(r);
-    bodyHash.insert(box.x, box.y, box.w, box.d, r);
+  for (let i = 0, j = 0; i < bodies.length; i++, j += POSE) {
+    const r = bodies[i]!;
+    bodySnapshot[i] = r;
+    poseSnapshot[j] = r.x; poseSnapshot[j + 1] = r.y; poseSnapshot[j + 2] = r.w; poseSnapshot[j + 3] = r.d;
+    poseSnapshot[j + 4] = r.heading; poseSnapshot[j + 5] = r.elev;
+    const ext = rubbleExtent(r);
+    bodyHash.insert(r.x - ext, r.y - ext, ext * 2, ext * 2, r);
   }
 }
 
@@ -1205,8 +1258,10 @@ function reactivateScooped(town: Town, v: VehicleContact, x: number, y: number, 
 }
 
 function trimActive(town: Town, focusX: number, focusY: number): void {
+  let awakeCount = 0;
+  for (const r of town.rubble) if (!r.sleeping) awakeCount++;
+  if (awakeCount <= DEBRIS.activeCap) return;
   const awake = town.rubble.filter((r) => !r.sleeping);
-  if (awake.length <= DEBRIS.activeCap) return;
   const ranked = awake
     .map((r) => ({
       r,
@@ -1273,7 +1328,7 @@ export function stepDebris(
   if (load > 0.35) dozer.lastImpact = Math.max(dozer.lastImpact, 0.05);
   rebuildBodyHash(town);
 
-  for (const car of town.vehicles.filter(v=>v.alive&&(v.autonomous||Math.hypot(v.vx,v.vy)>.01))) carDebrisContact(town, car, events, particles, dt);
+  for (const car of town.vehicles) if (car.alive && (car.autonomous || Math.hypot(car.vx, car.vy) > .01)) carDebrisContact(town, car, events, particles, dt);
 
   for (const r of town.rubble) integrateBody(town, r, dt);
   enforceDistanceCleanup(town, dozer.x, dozer.y, contacted);
@@ -1282,26 +1337,38 @@ export function stepDebris(
   return { load };
 }
 
+const activeBodies: Rubble[] = [];
+const activeIds = new Set<number>();
+
 /** Pairwise body contacts over a few solver passes; returns pairs resolved. */
 function solveBodyContacts(town: Town): number {
   let contactPairs = 0;
   for (let iter = 0; iter < DEBRIS.solverIters; iter++) {
     // Query from moving pieces; sleeping pieces remain in the hash as targets.
     // Snapshot membership so a newly woken piece cannot duplicate a pair.
-    const active = town.rubble.filter(r => !r.sleeping);
-    if (!active.length) break;
-    const activeIds = new Set(active.map(r => r.id));
+    activeBodies.length = 0;
+    activeIds.clear();
+    for (const r of town.rubble) {
+      if (r.sleeping) continue;
+      activeBodies.push(r);
+      activeIds.add(r.id);
+    }
+    if (!activeBodies.length) break;
     if (iter > 0) rebuildBodyHash(town);
-    for (const r of active) contactPairs += resolveAgainstNearby(r, activeIds);
+    for (let i = 0; i < activeBodies.length; i++) contactPairs += resolveAgainstNearby(activeBodies[i]!);
   }
+  activeBodies.length = 0;
   return contactPairs;
 }
 
-function resolveAgainstNearby(r: Rubble, activeIds: ReadonlySet<number>): number {
+const contactBodies: Rubble[] = [];
+
+function resolveAgainstNearby(r: Rubble): number {
   let pairs = 0;
-  const box = rubbleAabb(r);
-  bodyHash.query(box.x - 0.05, box.y - 0.05, box.w + 0.1, box.d + 0.1, nearbyBodies);
-  for (const other of nearbyBodies) {
+  const ext = rubbleExtent(r);
+  bodyHash.query(r.x - ext - 0.05, r.y - ext - 0.05, ext * 2 + 0.1, ext * 2 + 0.1, contactBodies);
+  for (let i = 0; i < contactBodies.length; i++) {
+    const other = contactBodies[i]!;
     if (other.id === r.id || (activeIds.has(other.id) && other.id < r.id)) continue;
     pairs++;
     resolveBodies(r, other);
@@ -1377,7 +1444,7 @@ function recordDebrisStats(town: Town, contactPairs: number): void {
     distanceCleanups: stepStats.distanceCleanups,
     emergencyCleanups: stepStats.emergencyCleanups,
     bodyMass,
-    pileMass: town.pile.totalMass(),
+    pileMass: town.pile.massEstimate(),
   };
 }
 

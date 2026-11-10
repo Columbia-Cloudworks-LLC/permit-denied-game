@@ -98,9 +98,25 @@ export function vehicleLoad(town: Town, x: number, y: number, z: number, radius:
 }
 export const vehicleStats = { active: 0, sleeping: 0, detached: 0, contacts: 0 };
 const staticCache = new WeakMap<Town, {
-    stamp: string;
+    /** What the hash was built from: site revision, then id, revision and cell count per building, then id, broken and position per prop. */
+    stamp: unknown[];
     hash: SpatialHash<VehicleBox>;
 }>();
+
+/** Compare the town's solids with a stamp and bring the stamp up to date; false when anything differed. */
+function staticStampCurrent(town: Town, stamp: unknown[]): boolean {
+    let n = 0, same = true;
+    const put = (value: unknown) => {
+        if (stamp[n] !== value) { stamp[n] = value; same = false; }
+        n++;
+    };
+    put(town.siteRevision);
+    put(town.buildings.length);
+    for (const b of town.buildings) { put(b.id); put(b.visualRevision); put(b.cells.length); }
+    for (const p of town.props) { put(p.id); put(p.broken); put(p.x); put(p.y); }
+    if (stamp.length !== n) { stamp.length = n; same = false; }
+    return same;
+}
 export function stepVehicleWorld(town: Town, dozer: Dozer, particles: ParticlePool, events: WorldEvent[], dt: number, bladeMul = 1, engineMul = 1): number {
     migrateVehicles(town);
     if (town.yard?.loads)
@@ -109,7 +125,8 @@ export function stepVehicleWorld(town: Town, dozer: Dozer, particles: ParticlePo
     let cash = 0;
     vehicleStats.contacts = 0;
     // At most .12 world units of predicted travel per substep, capped to bound work.
-    const maxSpeed = Math.max(Math.hypot(dozer.vx, dozer.vy), ...town.vehicles.map(v => Math.hypot(v.vx, v.vy)));
+    let maxSpeed = Math.hypot(dozer.vx, dozer.vy);
+    for (const v of town.vehicles) maxSpeed = Math.max(maxSpeed, Math.hypot(v.vx, v.vy));
     const steps = Math.min(8, Math.max(1, Math.ceil(maxSpeed * dt / .12))), sub = dt / steps;
     const ctx: SubstepContext = { town, dozer, fixed, dynamic: new SpatialHash<VehicleBox>(4), candidates: [], pending: new Map(), solvedPairs: new Set(), sub, bladeMul, engineMul };
     for (let step = 0; step < steps; step++)
@@ -166,9 +183,9 @@ function dropYardLoad(town: Town, l: NonNullable<NonNullable<Town['yard']>['load
 const insertBox = (hash: SpatialHash<VehicleBox>, b: VehicleBox) => { const a = boxBounds(b); hash.insert(a.x, a.y, a.w, a.d, b); };
 /** Ground-floor cells, fixtures and standing props, rebuilt only when any of them change. */
 function staticVehicleHash(town: Town): SpatialHash<VehicleBox> {
-    const stamp = town.siteRevision + ':' + town.buildings.map(b => b.id + ',' + b.visualRevision + ',' + b.cells.length).join(';') + ':' + town.props.map(p => p.id + ',' + p.broken + ',' + p.x + ',' + p.y).join(';');
     const cached = staticCache.get(town);
-    if (cached?.stamp === stamp)
+    const stamp = cached?.stamp ?? [];
+    if (staticStampCurrent(town, stamp) && cached)
         return cached.hash;
     const fixed = new SpatialHash<VehicleBox>(4);
     for (const b of town.buildings)
@@ -347,10 +364,25 @@ function bladeContacts(ctx: SubstepContext, v: VehicleState, a: VehicleBox): voi
 }
 /** Moving debris strikes the first part it touches and bounces off it. */
 function hitByRubble(town: Town, v: VehicleState): void {
+    // Part boxes are costly to pose, so they are built once and again only after a hit deforms the vehicle.
+    let boxes: VehicleBox[] | undefined;
+    let minX = 0, minY = 0, maxX = 0, maxY = 0;
     for (const r of town.rubble) {
         if (r.sleeping)
             continue;
-        for (const b of vehicleBoxes(v)) {
+        if (!boxes) {
+            boxes = vehicleBoxes(v);
+            minX = minY = Infinity; maxX = maxY = -Infinity;
+            for (const b of boxes) {
+                const a = boxBounds(b);
+                minX = Math.min(minX, a.x); minY = Math.min(minY, a.y); maxX = Math.max(maxX, a.x + a.w); maxY = Math.max(maxY, a.y + a.d);
+            }
+        }
+        // A body's corners reach at most half its diagonal from its centre.
+        const reach = Math.hypot(r.w, r.d) * .5 + .01;
+        if (r.x + reach < minX || r.x - reach > maxX || r.y + reach < minY || r.y - reach > maxY)
+            continue;
+        for (const b of boxes) {
             const other = { x: r.x, y: r.y, w: r.w, d: r.d, z: r.elev, h: r.thickness, heading: r.heading }, hit = boxContact(b, other);
             if (!hit)
                 continue;
@@ -359,6 +391,7 @@ function hitByRubble(town: Town, v: VehicleState): void {
             r.vx += hit.nx * .1;
             r.vy += hit.ny * .1;
             r.vz = Math.max(r.vz, 0);
+            boxes = undefined;
             break;
         }
     }
