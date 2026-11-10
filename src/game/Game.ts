@@ -178,6 +178,8 @@ class Game {
   private runCells = 0;
   private runCountyCleared = false;
   private settled = false;
+  /** This run was rebuilt from a recording; it stays non-paying for its whole life. */
+  private replayRun = false;
   private settlement: Settlement | null = null;
   private bankedUntil = 0;
   private abilityQueue: ("blade" | "aux")[] = [];
@@ -538,6 +540,7 @@ class Game {
     this.escrow = 0;
     this.runCells = 0;
     this.settled = false;
+    this.replayRun = false;
     this.abilityQueue = [];
     this.bladeFlash = 0;
     this.homeYard?.reset();
@@ -578,7 +581,7 @@ class Game {
 
   /** A run pays into the career only when it is real play: not the yard, a test map, or a replay. */
   private runPays(): boolean {
-    return !this.rules.home && !this.rules.testMap && !this.rules.job && !this.rules.towerTest && !this.rules.demo && !this.playthrough.replaying;
+    return !this.rules.home && !this.rules.testMap && !this.rules.job && !this.rules.towerTest && !this.rules.demo && !this.replayRun;
   }
 
   /** Settle escrow into the wallet once per run, whichever way the run ends. */
@@ -1231,16 +1234,15 @@ class Game {
    * so it waits for that chunk first. Other recordings start at once, as before.
    */
   startReplay(playthrough: Playthrough): Promise<void> | void {
-    const needsKit = !!(playthrough.loadout?.blade || playthrough.loadout?.aux) && !this.kit;
-    if (needsKit) {
-      return Promise.all([this.ensureKit(), playthrough.rules.regionId ? this.ensureOverworld() : undefined]).then(
-        () => this.beginReplay(playthrough),
-        (error: unknown) => { this.playthrough.note = `Could not load replay: ${error instanceof Error ? error.message : String(error)}`; },
-      );
-    }
-    if (!playthrough.rules.regionId || this.overworld) return this.beginReplay(playthrough);
-    this.playthrough.note = "Loading county map data for the replay…";
-    return this.ensureOverworld().then(
+    // Rebuilding the recorded site may need lazy chunks: the attachment kit for its loadout, the
+    // Home Yard for a yard recording, the overworld for a county's regional placement.
+    const loads: Promise<unknown>[] = [];
+    if ((playthrough.loadout?.blade || playthrough.loadout?.aux) && !this.kit) loads.push(this.ensureKit());
+    if (playthrough.rules.home && !this.homeBase) loads.push(this.ensureHomeBase());
+    else if (playthrough.rules.regionId && !this.overworld) loads.push(this.ensureOverworld());
+    if (!loads.length) return this.beginReplay(playthrough);
+    this.playthrough.note = "Loading map data for the replay…";
+    return Promise.all(loads).then(
       () => { this.playthrough.note = ""; this.beginReplay(playthrough); },
       (error: unknown) => { this.playthrough.note = `Could not load replay: ${error instanceof Error ? error.message : String(error)}`; },
     );
@@ -1256,6 +1258,8 @@ class Game {
     this.reset("same");
     this.syncSessionUrl();
     this.playthrough.replay(playthrough);
+    // Replay earnings never reach the wallet, even after playback is stopped mid-run.
+    this.replayRun = true;
   }
 
   /** Recording and replay start in active play: binder closed, simulation running. */

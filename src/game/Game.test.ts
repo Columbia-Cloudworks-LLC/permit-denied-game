@@ -368,6 +368,52 @@ describe('playthrough record and replay', () => {
     internal = game as unknown as GameInternals;
   });
 
+  type CareerHost = { career: import('./career').CareerStore; goHome(): Promise<void>; town: { home?: unknown } };
+  const careerHost = () => internal as unknown as CareerHost;
+  /** Record a short drive into whatever is ahead, then stop the recording. */
+  const recordDrive = () => {
+    internal.hud.openDebug();
+    hud('.debug-playthrough [data-pt=record]').click();
+    frames(1);
+    key('w'); key(' '); frames(150); key(' ', 'keyup'); key('w', 'keyup'); frames(10);
+    hud('#playthrough-badge [data-pt=stop]').click();
+    return pd().lastPlaythrough()!;
+  };
+
+  it('never banks a replay run, even after playback is exited mid-run', async () => {
+    // A real Sandbox county (the ranch link is a test map, which never pays anyway).
+    history.replaceState(null, '', '/?mode=sandbox&level=county&seed=7');
+    game.destroy();
+    game = await boot();
+    internal = game as unknown as GameInternals;
+    const recorded = recordDrive();
+    pd().replayPlaythrough(recorded);
+    await vi.waitFor(() => expect(status().state).toBe('replaying'));
+    // Starting the replay settled the live run it replaced; nothing after that may pay.
+    const wallet = careerHost().career.profile.walletBalance;
+    finishReplay();
+    (internal as unknown as { earn(amount: number): number }).earn(400);
+    pd().playthroughControl('exit');
+    await careerHost().goHome();
+    expect(careerHost().career.profile.walletBalance).toBe(wallet);
+  });
+
+  it('replays a Home Yard recording in a fresh game that never loaded the yard', async () => {
+    await careerHost().goHome();
+    const recorded = recordDrive();
+    expect(recorded.rules.home).toBe(true);
+    history.replaceState(null, '', '/?sandbox=1');
+    document.body.innerHTML = '<div id="game-root"></div><div id="hud-root"></div>';
+    game.destroy();
+    game = await boot();
+    internal = game as unknown as GameInternals;
+    pd().replayPlaythrough(recorded);
+    await vi.waitFor(() => expect(status().state).toBe('replaying'));
+    expect(careerHost().town.home).toBeDefined();
+    finishReplay();
+    expect(status()).toMatchObject({ done: true, drift: [] });
+  });
+
   it('records from the debug binder, then replays the demolition to the same end state without live input', () => {
     internal.hud.openDebug();
     expect(hud('#debug-panel').hidden).toBe(false);
