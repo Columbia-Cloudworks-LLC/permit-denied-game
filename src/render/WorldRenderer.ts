@@ -2,6 +2,7 @@ import { drawVehicleAssembly, vehicleRenderGroups } from './modularVehicle';
 import { BowlingStrikes } from './bowlingStrikes';
 import { CashPopups } from './cashPopups';
 import { PileHintLayer } from './pileHints';
+import { MarkLayer } from './markLayer';
 import { coreFloorClear, drawCoreFloor } from './coreCollapseDraw';
 import { paintsFloorSlab } from '../structure/coreCollapse';
 import { cellWorldBox, cellPresent } from '../structure/types';
@@ -49,7 +50,7 @@ import {
   type BuildingLod,
 } from "./buildingLod";
 import type { RenderFrame } from "./renderFrame";
-import { drawCollapsedSite, drawCover, drawGroundMark, drawTerrainFeatures } from "./groundDraw";
+import { drawCollapsedSite, drawCover, drawTerrainFeatures } from "./groundDraw";
 import { chimneyWorld, drawChimney, drawRoofBay } from "./roofDraw";
 import {
   debrisVersion,
@@ -106,7 +107,7 @@ export class WorldRenderer {
   private readonly terrainLayer = new Container();
   private readonly ground = new Graphics();
   private readonly sites = new Graphics();
-  private readonly overlay = new Graphics();
+  private readonly marks = new MarkLayer();
   private readonly nhood = new Container();
   private readonly nhoodGfx = new Graphics();
   private readonly world = new Graphics();
@@ -142,7 +143,6 @@ export class WorldRenderer {
   private garnishKey = "";
   private garnish: ForestGarnish[] = [];
   private forestMasses: ForestMass[] = [];
-  private overlayKey = "";
   private readonly pileHints = new PileHintLayer();
   private siteKey = "";
   stats = {
@@ -156,12 +156,13 @@ export class WorldRenderer {
     terrainCells: 0,
     groundRebuilds: 0,
     pileTilesRebuilt: 0,
+    markBucketsRebuilt: 0,
   };
   dozerHidden = false;
 
   constructor() {
     this.nhood.addChild(this.nhoodGfx);
-    this.root.addChild(this.terrainLayer, this.ground, this.sites, this.overlay, this.pileHints.root, this.groundOverlays, this.drawing.root, this.world, this.nhood, this.debugOverlay);
+    this.root.addChild(this.terrainLayer, this.ground, this.sites, this.marks.root, this.pileHints.root, this.groundOverlays, this.drawing.root, this.world, this.nhood, this.debugOverlay);
     this.root.addChild(this.cashPopups.root, this.bowlingStrikes.root, this.landmarkPin);
     this.hudOverlay.addChild(this.hazeVeil, this.landmarkArrow);
     this.root.sortableChildren = false;
@@ -174,7 +175,7 @@ export class WorldRenderer {
     this.garnishKey = "";
     this.garnish = [];
     this.forestMasses = [];
-    this.overlayKey = "";
+    this.marks.invalidate();
     this.pileHints.invalidate();
     this.siteKey = "";
     // Frame-to-frame memory goes too, so a reloaded scene paints exactly as it did fresh.
@@ -371,20 +372,13 @@ export class WorldRenderer {
     }
   }
 
-  /** Ground marks and pile hints on the overlay layer. */
+  /** Ground marks and pile hints on their own layers under the painter-sorted world. */
   private passMarks(frame: RenderFrame): void {
     const { town, view } = frame;
-    const camCell = `${Math.round(this.camX / 28)}:${Math.round(this.camY / 28)}`;
-    const oKey = `${view.effects}:${town.visualRevision}:${camCell}:${town.marks.length}:${town.season}`;
-    if (oKey !== this.overlayKey) {
-      this.overlay.clear();
-      for (const mark of view.effects ? town.marks : []) {
-        frame.total++;
-        if (!this.visibleBox(mark.x - mark.w, mark.y - mark.d, mark.w * 2, mark.d * 2, 0, 0.02)) continue;
-        frame.visible++;
-        drawGroundMark(this.overlay, mark, town.season);
-      }
-      this.overlayKey = oKey;
+    this.marks.root.visible = view.effects;
+    if (view.effects) {
+      frame.total += town.marks.length;
+      frame.visible += this.marks.update(town.marks, town.season, (x, y, w, d) => this.visibleBox(x, y, w, d, 0, 0.02));
     }
     this.pileHints.update(town, view.debris, (x, y, w, d) => this.visibleBox(x, y, w, d, 0, 3.5));
   }
@@ -940,6 +934,7 @@ export class WorldRenderer {
       terrainCells: frame.terrainCounts.cells,
       groundRebuilds: frame.groundRebuilds,
       pileTilesRebuilt: this.pileHints.rebuilt,
+      markBucketsRebuilt: this.marks.rebuilt,
     };
   }
 

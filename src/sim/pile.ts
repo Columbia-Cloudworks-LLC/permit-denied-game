@@ -40,7 +40,7 @@ export function pileBlocked(height: number, resistance: number, bodyMass: number
 }
 
 /** Pile cells per side of one change-tracking tile. */
-export const PILE_TILE = 16;
+export const PILE_TILE = 8;
 /** Views sample up to two cells past a changed one, so a change dirties tiles within this apron. */
 const TILE_APRON = 2;
 
@@ -65,6 +65,8 @@ export class PileField {
     for (const [key, cells] of this.ownerMaterials) next.ownerMaterials.set(key, new Map([...cells].map(([i, composition]) => [Math.floor(i / this.cols) * next.cols + i % this.cols, [...composition]])));
     next.revision = this.revision + 1;
     next.runningMass = this.runningMass;
+    // Carried mass has no tile history in the new field; mark every tile changed.
+    next.tileRevision.fill(1);
     return next;
   }
   clearArea(x: number, y: number, w: number, d: number): void {

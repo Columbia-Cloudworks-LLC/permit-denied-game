@@ -47,7 +47,7 @@ interface Tick {
   renderMs: number; passes: Record<string, number>; corePilesMs: number;
   active: number; sleeping: number; pileCells: number; contactPairs: number;
   commands: number; rebuilt: number; fills: number; polys: number; strokes: number;
-  heapDelta: number; overlayRebuilt: number; addChildMs: number; pileBumps: Record<string, number>;
+  heapDelta: number; overlayRebuilt: number; pileTiles: number; addChildMs: number; pileBumps: Record<string, number>;
 }
 
 function towersWithCores(town: Town, n: number) {
@@ -136,7 +136,6 @@ function injectDebris(town: Town, fx: number, fy: number): void {
   }
 }
 
-const overlayKey = (renderer: WorldRenderer) => (renderer as unknown as { overlayKey: string }).overlayKey;
 
 interface TickContext {
   town: Town; dozer: Dozer; particles: ParticlePool; renderer: WorldRenderer; camera: Camera;
@@ -162,7 +161,6 @@ function benchTick({ town, dozer, particles, renderer, camera, counts, passes, h
   counts.fill = counts.poly = counts.stroke = 0;
   for (const k of Object.keys(pileBumps)) delete pileBumps[k];
   addChildMs.v = 0;
-  const overlayBefore = overlayKey(renderer);
   const r0 = performance.now();
   renderer.draw(town, dozer, particles, [], SIM_DT);
   const renderMs = performance.now() - r0;
@@ -178,7 +176,7 @@ function benchTick({ town, dozer, particles, renderer, camera, counts, passes, h
     active: ds.active, sleeping: ds.sleeping, pileCells, contactPairs: ds.contactPairs,
     commands: renderer.stats.commands, rebuilt: renderer.stats.rebuilt,
     fills: counts.fill, polys: counts.poly, strokes: counts.stroke, heapDelta,
-    overlayRebuilt: overlayKey(renderer) !== overlayBefore ? 1 : 0,
+    overlayRebuilt: renderer.stats.markBucketsRebuilt, pileTiles: renderer.stats.pileTilesRebuilt,
     addChildMs: addChildMs.v, pileBumps: bumps,
   };
 }
@@ -199,23 +197,19 @@ async function runScenario(camera: Camera, counts: ReturnType<typeof patchCounts
   obs.observe({ entryTypes: ["gc"] });
   const ticks: Tick[] = [];
   const kinds: Record<number, Record<string, number>> = {};
-  const keyDiffs: string[] = [];
   const heap0 = process.memoryUsage().heapUsed;
   const heap = { prev: heap0, peak: heap0 };
   const context: TickContext = { town, dozer, particles, renderer, camera, counts, passes, heap };
   for (let i = 0; i < STEPS; i++) {
-    const overlayBefore = overlayKey(renderer);
     ticks.push(benchTick(context));
     if (i === 5 || i === 40 || i === 400) kinds[i] = keyHistogram(renderer);
-    const overlayAfter = overlayKey(renderer);
-    if (i >= 600 && overlayAfter !== overlayBefore && keyDiffs.length < 6) keyDiffs.push(`${overlayBefore} -> ${overlayAfter}`);
     if (i % 60 === 59) await new Promise((r) => setTimeout(r, 0));
   }
   await new Promise((r) => setTimeout(r, 20));
   obs.disconnect();
   renderer.invalidate();
   renderer.root.destroy({ children: true });
-  return { camera, keyDiffs, kinds, ticks, gcPauses, heap: { start: heap0, end: process.memoryUsage().heapUsed, peak: heap.peak }, towers: towers.map((t) => `${t.archetypeId}:${t.floors}f`) };
+  return { camera, kinds, ticks, gcPauses, heap: { start: heap0, end: process.memoryUsage().heapUsed, peak: heap.peak }, towers: towers.map((t) => `${t.archetypeId}:${t.floors}f`) };
 }
 
 const stat = (xs: number[]) => {
@@ -227,7 +221,7 @@ describe("chug bench: overlapping tower collapses with injected debris", () => {
   it("splits sim, render, and allocation cost per tick", { timeout: 600_000 }, async () => {
     const counts = patchCounts();
     const out = [await runScenario("street", counts), await runScenario("overview", counts), await runScenario("near", counts)];
-    const summary = out.map(({ camera, keyDiffs, kinds, ticks, gcPauses, heap, towers }) => {
+    const summary = out.map(({ camera, kinds, ticks, gcPauses, heap, towers }) => {
       const passNames = Object.keys(ticks[0]!.passes);
       const windows = [[0, 60], [60, 180], [180, 360], [360, 600], [600, STEPS]].map(([a, b]) => {
         const w = ticks.slice(a, b);
@@ -247,8 +241,8 @@ describe("chug bench: overlapping tower collapses with injected debris", () => {
         fills: stat(ticks.map((t) => t.fills)), polys: stat(ticks.map((t) => t.polys)), strokes: stat(ticks.map((t) => t.strokes)),
         heapDeltaKb: stat(ticks.map((t) => t.heapDelta / 1024)), heapMb: { start: heap.start / 2 ** 20, end: heap.end / 2 ** 20, peak: heap.peak / 2 ** 20 },
         gc: { count: gcPauses.length, totalMs: gcPauses.reduce((n, v) => n + v, 0), ...stat(gcPauses.length ? gcPauses : [0]) },
-        windows, kinds, keyDiffs,
-        overlayRebuildRate: ticks.filter((t) => t.overlayRebuilt).length / ticks.length,
+        windows, kinds,
+        markBucketsPerTick: stat(ticks.map((t) => t.overlayRebuilt)), pileTilesPerTick: stat(ticks.map((t) => t.pileTiles)),
         addChildMs: stat(ticks.map((t) => t.addChildMs)),
         pileBumpsPerTick: Object.fromEntries([...new Set(ticks.flatMap((t) => Object.keys(t.pileBumps)))].map((k) => [k, ticks.reduce((n, t) => n + (t.pileBumps[k] ?? 0), 0) / ticks.length])),
       };

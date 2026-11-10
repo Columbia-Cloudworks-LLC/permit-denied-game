@@ -4,17 +4,24 @@ import type { Town } from '../world/town';
 import { corePileAreas, drawCorePiles, type PileArea } from './corePileDraw';
 import { drawGroundPoly, drawIsoBox, PAL } from './drawIso';
 
+/** Tiles repainted per frame at most. A tower pulse dirties a whole mound; this spreads it over a few frames. */
+const REDRAW_BUDGET = 8;
+const DIRTY = 0xffffffff;
+
 /**
  * Loose-pile hints and core-collapse pile surfaces, one Graphics per pile tile.
- * A tile redraws only when its pile tile revision moves, so a dozer working one
- * spot no longer repaints the whole field every tick.
+ * A tile redraws only when its pile tile revision moves and it is on screen, so a dozer
+ * working one spot repaints a few small tiles, and a mound growing off screen costs nothing.
  */
 export class PileHintLayer {
   readonly root = new Container();
   private pile?: PileField;
+  private areas: PileArea[] = [];
   private areasKey = '';
   private seen = new Uint32Array(0);
   private tiles: (Graphics | undefined)[] = [];
+  /** Where the last frame's budget ran out, so later tiles are not starved. */
+  private cursor = 0;
   rebuilt = 0;
 
   constructor() {
@@ -30,28 +37,52 @@ export class PileHintLayer {
     this.root.visible = enabled;
     if (!enabled) return;
     const pile = town.pile;
-    const areas = corePileAreas(town);
-    const areasKey = areas.map((a) => `${a.x}:${a.y}:${a.w}:${a.d}`).join('|');
-    const full = pile !== this.pile || areasKey !== this.areasKey;
-    if (full) {
+    const count = pile.tilesX * pile.tilesY;
+    if (pile !== this.pile) {
       for (const g of this.tiles) g?.destroy({ context: true });
-      this.tiles = new Array(pile.tilesX * pile.tilesY);
-      this.seen = new Uint32Array(pile.tilesX * pile.tilesY);
+      this.tiles = new Array(count);
+      // Untouched tiles sit at revision 0 and have nothing to draw.
+      this.seen = new Uint32Array(count);
       this.pile = pile;
-      this.areasKey = areasKey;
+      this.areas = [];
+      this.areasKey = '';
     }
     const span = PILE_TILE * pile.cell;
-    for (let ty = 0; ty < pile.tilesY; ty++) {
-      for (let tx = 0; tx < pile.tilesX; tx++) {
-        const t = ty * pile.tilesX + tx;
-        if (full || pile.tileRevision[t] !== this.seen[t]) {
-          this.seen[t] = pile.tileRevision[t]!;
-          this.redrawTile(town, areas, t, tx, ty);
-        }
-        const g = this.tiles[t];
-        if (g) g.visible = visible(pile.ox + tx * span, pile.oy + ty * span, span, span);
-      }
+    const areas = corePileAreas(town);
+    const areasKey = areas.map((a) => `${a.x}:${a.y}:${a.w}:${a.d}`).join('|');
+    if (areasKey !== this.areasKey) {
+      // A mound starting or settling changes how its tiles draw, not the pile under them.
+      for (const a of [...this.areas, ...areas]) this.dirtyArea(pile, a, span);
+      this.areas = areas;
+      this.areasKey = areasKey;
     }
+    let budget = REDRAW_BUDGET;
+    let resume = -1;
+    const start = this.cursor < count ? this.cursor : 0;
+    for (let n = 0; n < count; n++) {
+      const t = (start + n) % count;
+      const dirty = pile.tileRevision[t] !== this.seen[t];
+      const g = this.tiles[t];
+      if (!dirty && !g) continue;
+      const tx = t % pile.tilesX, ty = (t - tx) / pile.tilesX;
+      const on = visible(pile.ox + tx * span, pile.oy + ty * span, span, span);
+      if (g) g.visible = on;
+      if (!dirty || !on) continue;
+      if (budget === 0) {
+        if (resume < 0) resume = t;
+        continue;
+      }
+      budget--;
+      this.seen[t] = pile.tileRevision[t]!;
+      this.redrawTile(town, areas, t, tx, ty);
+    }
+    this.cursor = Math.max(0, resume);
+  }
+
+  private dirtyArea(pile: PileField, a: PileArea, span: number): void {
+    const tx0 = Math.max(0, Math.floor((a.x - pile.ox) / span)), tx1 = Math.min(pile.tilesX - 1, Math.floor((a.x + a.w - pile.ox) / span));
+    const ty0 = Math.max(0, Math.floor((a.y - pile.oy) / span)), ty1 = Math.min(pile.tilesY - 1, Math.floor((a.y + a.d - pile.oy) / span));
+    for (let ty = ty0; ty <= ty1; ty++) for (let tx = tx0; tx <= tx1; tx++) this.seen[ty * pile.tilesX + tx] = DIRTY;
   }
 
   private redrawTile(town: Town, areas: readonly PileArea[], t: number, tx: number, ty: number): void {

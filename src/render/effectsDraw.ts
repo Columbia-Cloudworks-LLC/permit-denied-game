@@ -99,13 +99,15 @@ export function drawParticle(g: Graphics, p: Particle): void {
     drawSpark(g, p, fade);
     return;
   }
-  const s = worldToScreen(p.x, p.y, 0);
-  g.ellipse(s.x, s.y, 3.2, 1.6);
-  g.fill({ color: PAL.shadow, alpha: 0.2 * fade });
+  // A dust puff is translucent and casts nothing worth drawing.
   if (p.kind === "dust") {
     drawDustSpeck(g, p, fade);
     return;
   }
+  // The contact shadow is a few pixels; a rect tessellates to two triangles where an ellipse takes dozens.
+  const s = worldToScreen(p.x, p.y, 0);
+  g.rect(s.x - 3, s.y - 1.4, 6, 2.8);
+  g.fill({ color: PAL.shadow, alpha: 0.2 * fade });
   const { color, dark, len, wid } = particleChip(p);
   if (p.kind === "crop") {
     drawOrientedIsoBox(g, p.x, p.y, p.rot, len, wid, p.z, Math.max(0.03, p.size * 0.12), color, dark, shade(color, 0.8), 0.88 * fade);
