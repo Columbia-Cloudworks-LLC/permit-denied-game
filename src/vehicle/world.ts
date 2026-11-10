@@ -98,33 +98,41 @@ export function vehicleLoad(town: Town, x: number, y: number, z: number, radius:
 }
 export const vehicleStats = { active: 0, sleeping: 0, detached: 0, contacts: 0 };
 const staticCache = new WeakMap<Town, {
-    /** What the hash was built from: site revision, then id, retired and standing ground solids per building, then id, broken and position per prop. */
+    /** What the hash was built from: site revision, then id, retired and the ground solid counts per building, then id, broken and position per prop. */
     stamp: unknown[];
     hash: SpatialHash<VehicleBox>;
 }>();
 
-const solidCounts = new WeakMap<Town['buildings'][number], { revision: number; cells: number; solids: number }>();
+interface SolidCounts { revision: number; cells: number; standing: number; stripped: number; fixtures: number }
+const solidCounts = new WeakMap<Town['buildings'][number], SolidCounts>();
 
 /**
- * Ground-floor cells and fixtures still standing, which is all the static hash holds. They only
- * ever break, so the count identifies the set; it is recounted when the building's revision moves.
- * A tower dropping its upper floors bumps the revision every step without changing this.
+ * What the static hash holds for one building, as three counts: ground-floor cells standing,
+ * those that are columns with their cladding stripped (a stripped column has a slimmer footprint),
+ * and ground-floor fixtures standing. Cells and fixtures only break and cladding only strips, so
+ * any change to the hashed boxes moves at least one count. They are recounted only when the
+ * building's revision moves; a tower dropping its upper floors bumps it every step without
+ * changing them.
  */
-function buildingSolids(b: Town['buildings'][number]): number {
+export function buildingSolids(b: Town['buildings'][number]): SolidCounts {
     let memo = solidCounts.get(b);
     if (memo && memo.revision === b.visualRevision && memo.cells === b.cells.length)
-        return memo.solids;
-    let solids = 0;
-    for (const c of b.cells)
-        if (c.floor === 0 && c.hp > 0)
-            solids++;
+        return memo;
+    if (!memo)
+        solidCounts.set(b, memo = { revision: 0, cells: 0, standing: 0, stripped: 0, fixtures: 0 });
+    memo.revision = b.visualRevision; memo.cells = b.cells.length;
+    memo.standing = memo.stripped = memo.fixtures = 0;
+    for (const c of b.cells) {
+        if (c.floor !== 0 || c.hp <= 0)
+            continue;
+        memo.standing++;
+        if (c.role === 'column' && c.cladding?.hp === 0)
+            memo.stripped++;
+    }
     for (const f of b.fixtures)
         if (!f.broken && f.floor === 0)
-            solids += 65536;
-    if (!memo)
-        solidCounts.set(b, memo = { revision: 0, cells: 0, solids: 0 });
-    memo.revision = b.visualRevision; memo.cells = b.cells.length; memo.solids = solids;
-    return solids;
+            memo.fixtures++;
+    return memo;
 }
 
 /** Compare the town's solids with a stamp and bring the stamp up to date; false when anything differed. */
@@ -136,7 +144,10 @@ function staticStampCurrent(town: Town, stamp: unknown[]): boolean {
     };
     put(town.siteRevision);
     put(town.buildings.length);
-    for (const b of town.buildings) { put(b.id); put(b.retired); put(buildingSolids(b)); }
+    for (const b of town.buildings) {
+        const solids = buildingSolids(b);
+        put(b.id); put(b.retired); put(solids.standing); put(solids.stripped); put(solids.fixtures);
+    }
     for (const p of town.props) { put(p.id); put(p.broken); put(p.x); put(p.y); }
     if (stamp.length !== n) { stamp.length = n; same = false; }
     return same;
