@@ -104,7 +104,7 @@ export class ParticlePool {
       Object.assign(p, { alive: true, settled: false, kind: 'dust', yardOwner: owner ?? this.ownerAt?.(x, y),
         x: x + Math.cos(a) * radius, y: y + Math.sin(a) * radius, z: this.rng.range(.3, 1.5),
         vx: Math.cos(a) * speed, vy: Math.sin(a) * speed, vz: 2.2,
-        life: 1.1, maxLife: 1.1, size: this.rng.range(.5, 1.1), rot: a, spin: .3 });
+        life: 1.1, maxLife: 1.1, size: this.rng.range(.5, 1.1), rot: a, spin: .3, tint: undefined });
       n++;
     }
   }
@@ -113,11 +113,11 @@ export class ParticlePool {
     const chunks = kind === "dust" || kind === "crop" ? 0 : Math.min(18, 4 + Math.floor(mag * 3));
     const dust = Math.min(22, 6 + Math.floor(mag * 4));
     if (chunks) this.spawn(kind, x, y, z, chunks, 2.4 + mag, 4 + mag, owner);
-    this.spawn("dust", x, y, z, dust, 1.6 + mag * 0.6, 1.8, owner);
+    this.spawn("dust", x, y, z, dust, 1.6 + mag * 0.6, 1.8, owner, DUST_TINT[kind]);
   }
 
-  collapseCloud(x: number, y: number, z: number, dx: number, dy: number): void {
-    this.spawn("dust", x, y, z, 28, 3.4, 2.2);
+  collapseCloud(x: number, y: number, z: number, dx: number, dy: number, kind?: ParticleKind): void {
+    this.spawn("dust", x, y, z, 28, 3.4, 2.2, undefined, kind && DUST_TINT[kind]);
     for (const p of this.items) {
       if (!p.alive || p.kind !== "dust") continue;
       if (Math.hypot(p.x - x, p.y - y) > 0.8) continue;
@@ -138,6 +138,9 @@ export class ParticlePool {
     }
   }
 }
+
+/** Dust takes the colour of what broke: pink mortar, grey cement, pale sawdust, rust, glass frost. */
+const DUST_TINT: Partial<Record<ParticleKind, number>> = { brick: 0xb88f7c, concrete: 0xb2aea2, wood: 0xcdab74, metal: 0x8f8880, glass: 0xdfe9ec };
 
 function particleLife(kind: ParticleKind, rng: Rng): number {
   if (kind === "spark") return rng.range(0.16, 0.38);

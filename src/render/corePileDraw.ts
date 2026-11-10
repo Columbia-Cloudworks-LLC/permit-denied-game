@@ -36,6 +36,28 @@ export function drawCorePiles(g: Graphics, town: Town, areas: readonly PileArea[
 
 type Pile = Town['pile'];
 
+/** Heap colour per pile material, in the pile's own order: wood, brick, concrete, metal, glass. */
+const HEAP = [0xa9743f, 0x93463a, PAL.concrete, 0x646b6e, 0xb4d2da];
+
+/** What a cell's heap is made of, as one colour: its materials mixed by mass. */
+export function pileTint(pile: Pile, i: number): number {
+  let r = 0, g = 0, b = 0, sum = 0;
+  for (let m = 0; m < HEAP.length; m++) {
+    const mass = pile.mats[m]![i]!;
+    if (mass <= 0) continue;
+    const c = HEAP[m]!;
+    r += (c >> 16) * mass; g += ((c >> 8) & 255) * mass; b += (c & 255) * mass; sum += mass;
+  }
+  return sum > 0 ? (Math.round(r / sum) << 16) | (Math.round(g / sum) << 8) | Math.round(b / sum) : PAL.concrete;
+}
+
+/** The material with the most mass in a cell, as an index into the pile's order. */
+export function pileLead(pile: Pile, i: number): number {
+  let lead = 2;
+  for (let m = 0, best = 0; m < HEAP.length; m++) if (pile.mats[m]![i]! > best) { best = pile.mats[m]![i]!; lead = m; }
+  return lead;
+}
+
 /** Even-aligned pile cells covering an area, within the clip and the pile. */
 function areaCells(pile: Pile, a: PileArea, clip: { ix0: number; iy0: number; ix1: number; iy1: number }): { x0: number; y0: number; x1: number; y1: number } {
   const step = pile.cell * 2;
@@ -66,14 +88,14 @@ function drawPileQuad(g: Graphics, pile: Pile, ix: number, iy: number): boolean 
   const seed = (ix * 17 + iy * 13) % 11;
   const vertices = [{ x, y, z: cornerHeight(pile, ix, iy) }, { x: x + step, y, z: cornerHeight(pile, ix + 2, iy) },
     { x: x + step, y: y + step, z: cornerHeight(pile, ix + 2, iy + 2) }, { x, y: y + step, z: cornerHeight(pile, ix, iy + 2) }];
-  const color = shade(PAL.concrete, .94 + (vertices[0]!.z - vertices[2]!.z) * .12);
+  const color = shade(pileTint(pile, i), .94 + (vertices[0]!.z - vertices[2]!.z) * .12);
   drawWorldPoly(g, [vertices[0]!, vertices[1]!, vertices[2]!], color, 1);
   drawWorldPoly(g, [vertices[0]!, vertices[2]!, vertices[3]!], shade(color, .98), 1);
   // A few stationary chips make the surface read as rubble without bodies.
   if (seed < 4 && h > .2) {
     const z = vertices.reduce((n, v) => n + v.z, 0) / 4;
     drawOrientedIsoBox(g, x + step / 2, y + step / 2, seed * .8, .35 + seed * .08, .23, z, .09,
-      shade(color, 1.1), PAL.concreteDark, shade(color, .86));
+      shade(color, 1.1), shade(color, .62), shade(color, .86));
   }
   return true;
 }

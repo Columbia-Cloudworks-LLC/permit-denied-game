@@ -1,8 +1,9 @@
 import { Container, Graphics } from 'pixi.js';
 import { PILE_TILE, type PileField } from '../sim/pile';
 import type { Town } from '../world/town';
-import { corePileAreas, drawCorePiles, type PileArea } from './corePileDraw';
-import { drawGroundPoly, drawIsoBox, PAL } from './drawIso';
+import { corePileAreas, drawCorePiles, pileLead, pileTint, type PileArea } from './corePileDraw';
+import { drawGroundPoly, drawIsoBox, drawOrientedIsoBox } from './drawIso';
+import { shade } from './palette';
 
 /** Tiles repainted per frame at most. A tower pulse dirties a whole mound; this spreads it over a few frames. */
 const REDRAW_BUDGET = 8;
@@ -101,9 +102,15 @@ export class PileHintLayer {
         const y = pile.oy + (iy + 0.12) * pile.cell;
         if (areas.some((a) => x >= a.x && x <= a.x + a.w && y >= a.y && y <= a.y + a.d)) continue;
         const s = pile.cell * 0.76;
-        drawGroundPoly(g, x, y, s, s, PAL.lotDark, Math.min(0.62, 0.16 + h * 0.85));
+        const i = iy * pile.cols + ix;
+        const tint = pileTint(pile, i);
+        // A dark skirt of fines so the heap reads against any ground, then the heap in its own material.
+        drawGroundPoly(g, x, y, s, s, shade(tint, 0.5), Math.min(0.62, 0.16 + h * 0.85));
         if (h > 0.14) {
-          drawIsoBox(g, x + 0.04, y + 0.04, s * 0.72, s * 0.72, 0, Math.min(.42, h * .55), PAL.concrete, PAL.concreteDark, PAL.concrete, Math.min(0.85, 0.35 + h));
+          const hash = (ix * 73 + iy * 151) % 16;
+          const lit = shade(tint, 0.92 + hash * 0.012);
+          drawIsoBox(g, x + 0.04, y + 0.04, s * 0.72, s * 0.72, 0, Math.min(.42, h * .55), lit, shade(lit, 0.6), shade(lit, 0.8), Math.min(0.85, 0.35 + h));
+          if (hash < 6) drawHeapAccent(g, pileLead(pile, i), x + s * 0.4, y + s * 0.4, Math.min(.42, h * .55), hash, lit);
         }
         drawn++;
       }
@@ -119,4 +126,18 @@ export class PileHintLayer {
       this.root.addChild(g);
     }
   }
+}
+
+/** One piece poking out of a heap cell, so its material shows: a board, a brick, a slab edge, a steel bar, a glass glint. */
+const ACCENT: readonly (readonly [length: number, width: number, height: number, color: number])[] = [
+  [0.46, 0.07, 0.05, 0xe2b877],
+  [0.2, 0.1, 0.07, 0xa9523f],
+  [0.3, 0.2, 0.08, 0xa3a08e],
+  [0.5, 0.05, 0.05, 0x3e4240],
+  [0.16, 0.1, 0.02, 0xe6f4f8],
+];
+
+function drawHeapAccent(g: Graphics, lead: number, x: number, y: number, z: number, hash: number, lit: number): void {
+  const [length, width, height, color] = ACCENT[lead]!;
+  drawOrientedIsoBox(g, x, y, hash * 1.1, length, width, z, height, color, shade(lit, 0.55), shade(color, 0.78));
 }
