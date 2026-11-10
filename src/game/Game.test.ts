@@ -398,6 +398,26 @@ describe('playthrough record and replay', () => {
     expect(careerHost().career.profile.walletBalance).toBe(wallet);
   });
 
+  it('records a T range reset as an action and replays it once, ignoring live T during playback', async () => {
+    await careerHost().goHome();
+    internal.hud.openDebug();
+    hud('.debug-playthrough [data-pt=record]').click();
+    frames(1);
+    key('w'); frames(30); key('w', 'keyup');
+    key('t'); frames(5);
+    hud('#playthrough-badge [data-pt=stop]').click();
+    const recorded = pd().lastPlaythrough()!;
+    expect(recorded.actions).toEqual([expect.objectContaining({ kind: 'range-reset' })]);
+    const yard = (internal as unknown as { homeYard: { resetRange(): void } }).homeYard;
+    const resets = vi.spyOn(yard, 'resetRange');
+    pd().replayPlaythrough(recorded);
+    await vi.waitFor(() => expect(status().state).toBe('replaying'));
+    key('t');
+    finishReplay();
+    expect(resets).toHaveBeenCalledTimes(1);
+    expect(status()).toMatchObject({ done: true, drift: [] });
+  });
+
   it('replays a Home Yard recording in a fresh game that never loaded the yard', async () => {
     await careerHost().goHome();
     const recorded = recordDrive();

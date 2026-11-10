@@ -38,7 +38,7 @@ The Debug binder's **Record Playthrough** closes the binder, restarts the curren
 
 - the setup that rebuilds the site: session rules (mode, level, seed, season, biome, effects, test map), the campaign run, and the career loadout (stats and attachments) the run used;
 - the drive control applied on each step (`[step, throttle, steer, blade]`, change entries only), so keyboard and touch record the same way;
-- discrete actions with the step they happened before: attachment presses (**Q** / **Shift**), the resubmission fee that was charged, and **V** road cars;
+- discrete actions with the step they happened before: attachment presses (**Q** / **Shift**), Home Yard range resets (**T**), the resubmission fee that was charged, and **V** road cars;
 - an end-state digest: cash, elapsed, dozer pose, heat and track, rubble count and mass, cell states and total cell HP.
 
 The last capture is kept in `localStorage` (`pd.playthrough.last`); **Save File** downloads it as JSON and **Load Replay…** opens one. **Replay Last** rebuilds the site and feeds the recorded steps. Live keyboard, touch, attachment, resubmission and road-car input are ignored during a replay. Recordings are format version 2; version 1 files (which carried in-run upgrade picks) no longer load. The badge shows progress with **Pause**/**Play**, **Restart**, **Perf** (the timing overlay) and **Exit**. Replay runs at real 60 Hz pacing, so the perf overlay reads like live play. Freeze Simulation and Step One Frame step it one recorded frame at a time. When every step has run, the simulation holds and the badge reports **MATCH** or **DRIFT** with the fields that differ.

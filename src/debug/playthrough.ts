@@ -22,7 +22,8 @@ export type PlaythroughAction =
   | { at: number; kind: "resubmit"; fee: number }
   | { at: number; kind: "road-vehicle" }
   | { at: number; kind: "police" }
-  | { at: number; kind: "ability"; slot: "blade" | "aux" };
+  | { at: number; kind: "ability"; slot: "blade" | "aux" }
+  | { at: number; kind: "range-reset" };
 
 type WithoutAt<A> = A extends unknown ? Omit<A, "at"> : never;
 export type PlaythroughActionInput = WithoutAt<PlaythroughAction>;

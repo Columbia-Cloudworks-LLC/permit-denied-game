@@ -182,7 +182,8 @@ class Game {
   private replayRun = false;
   private settlement: Settlement | null = null;
   private bankedUntil = 0;
-  private abilityQueue: ("blade" | "aux")[] = [];
+  /** Step-level presses: attachment slots, and the yard's T range reset. */
+  private abilityQueue: ("blade" | "aux" | "range")[] = [];
   private bladeFlash = 0;
   private homeBase?: HomeBaseModule;
   private homeYard?: HomeYardController;
@@ -633,13 +634,19 @@ class Game {
     this.syncSessionUrl();
   }
 
-  private queueAbility(slot: "blade" | "aux"): void {
+  private queueAbility(slot: "blade" | "aux" | "range"): void {
     if (this.mode === "play" && !this.playthrough.replaying) this.abilityQueue.push(slot);
   }
 
-  /** Ability presses land at the start of a fixed step, so a recording replays them exactly. */
+  /** Ability presses and range resets land at the start of a fixed step, so a recording replays them exactly. */
   private useAbilities(): void {
     for (const slot of this.abilityQueue.splice(0)) {
+      if (slot === "range") {
+        if (!this.rules.home) continue;
+        this.homeYard?.resetRange();
+        this.playthrough.noteAction({ kind: "range-reset" });
+        continue;
+      }
       this.applyAbility(slot);
       this.playthrough.noteAction({ kind: "ability", slot });
     }
@@ -828,7 +835,7 @@ class Game {
     if (this.mode === "play") {
       if (this.consumeKey("q")) this.queueAbility("blade");
       if (this.input.consume("Shift")) this.queueAbility("aux");
-      if (this.rules.home && this.consumeKey("t")) this.homeYard?.resetRange();
+      if (this.rules.home && this.consumeKey("t")) this.queueAbility("range");
     }
     if (this.input.consume("Escape")) this.escape();
   }
@@ -1216,6 +1223,7 @@ class Game {
     if (action.kind === "resubmit") this.spendResubmission(action.fee);
     else if (action.kind === "police") this.placePolice();
     else if (action.kind === "ability") this.applyAbility(action.slot);
+    else if (action.kind === "range-reset") this.homeYard?.resetRange();
     else this.placeRoadVehicle();
   }
 
