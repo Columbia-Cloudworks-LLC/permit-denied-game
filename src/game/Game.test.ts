@@ -596,6 +596,22 @@ describe('career: escrow settlement and the Home Yard', () => {
     });
   });
 
+  it('never banks test-map, demo or brick-job escrow when the player switches to a real session', async () => {
+    const before = career().profile.walletBalance;
+    game.loadTestMap({ kind: 'asset', assetId: 'building:ranch', variant: 0 });
+    inner().earn(800);
+    game.setSession('sandbox');
+    game.startJob();
+    inner().earn(800);
+    game.setSession('challenge');
+    expect(career().profile.walletBalance).toBe(before);
+    // The fresh real run that follows still pays.
+    internal.mode = 'play';
+    inner().earn(300);
+    await inner().goHome();
+    expect(career().profile.walletBalance - before).toBe(60);
+  });
+
   it('banks 25% of a Sandbox run when the player bails out to the yard', async () => {
     const before = career().profile.walletBalance;
     inner().earn(800);

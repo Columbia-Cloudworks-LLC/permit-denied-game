@@ -180,6 +180,8 @@ class Game {
   private settled = false;
   /** This run was rebuilt from a recording; it stays non-paying for its whole life. */
   private replayRun = false;
+  /** Real play (not the yard, a test map, a demo, the tower test, or the brick job), fixed at run start. */
+  private runEligible = false;
   private settlement: Settlement | null = null;
   private bankedUntil = 0;
   /** Step-level presses: attachment slots, and the yard's T range reset. */
@@ -543,6 +545,7 @@ class Game {
     this.runCells = 0;
     this.settled = false;
     this.replayRun = false;
+    this.runEligible = !this.rules.home && !this.rules.testMap && !this.rules.job && !this.rules.towerTest && !this.rules.demo;
     this.abilityQueue = [];
     this.bladeFlash = 0;
     this.homeYard?.reset();
@@ -582,8 +585,12 @@ class Game {
   }
 
   /** A run pays into the career only when it is real play: not the yard, a test map, or a replay. */
+  /**
+   * Whether this run pays is fixed when it starts. Settlement can run after the next session's
+   * rules are already in place (setSession, deployCounty, a replay), so it must never re-read them.
+   */
   private runPays(): boolean {
-    return !this.rules.home && !this.rules.testMap && !this.rules.job && !this.rules.towerTest && !this.rules.demo && !this.replayRun;
+    return this.runEligible && !this.replayRun;
   }
 
   /** Settle escrow into the wallet once per run, whichever way the run ends. */
