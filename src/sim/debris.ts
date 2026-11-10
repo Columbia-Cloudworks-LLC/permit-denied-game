@@ -920,6 +920,8 @@ interface VehicleContact {
   blade?: { cx: number; cy: number; heading: number; hl: number; hw: number; z0: number };
   /** The blade is being driven into the pile: throttle forward, or still rolling forward. */
   digging?: boolean;
+  /** Standing still: not rolling, turning or pushing. Bodies asleep against it stay asleep. */
+  parked?: boolean;
 }
 
 function bladeOf(dozer: Dozer): VehicleContact["blade"] {
@@ -990,7 +992,10 @@ function finishVehicleHit(
   events: WorldEvent[],
   particles: ParticlePool,
 ): number {
-  wake(r, true);
+  // Contact with a moving vehicle counts as handling; a parked one must not hold a heap awake.
+  // An awake body is still pushed clear of a parked one, without resetting its way to sleep.
+  if (!v.parked) wake(r, true);
+  else if (r.sleeping) return 0;
   const imB = invMass(r);
   const imV = 1 / Math.max(0.4, v.profile.mass * 2.1);
   const invSum = imB + imV;
@@ -1435,6 +1440,7 @@ export function stepDebris(
     profile,
     blade: bladeOf(dozer),
     digging: (dozer.throttle ?? 0) > 0 || dozer.vx * Math.cos(dozer.heading) + dozer.vy * Math.sin(dozer.heading) > 0.1,
+    parked: !dozer.throttle && Math.hypot(dozer.vx, dozer.vy) < 0.05 && Math.abs(dozer.yaw) < 0.05,
   };
 
   let load = dozerBodyLoad(town, dozer, v, events, particles, dt);

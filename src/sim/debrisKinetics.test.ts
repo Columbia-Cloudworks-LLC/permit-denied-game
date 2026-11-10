@@ -198,4 +198,21 @@ describe("blade work in a pile", () => {
     for (let i = 0; i < 10; i++) stepDebris(town, dozer, particles, [], 1, SIM_DT);
     expect(town.rubble.length).toBeGreaterThan(0);
   });
+
+  it("lets rubble resting against a parked dozer go to sleep, and wakes it when the dozer moves", () => {
+    const town = createTown();
+    const dozer = createDozer(12, 18, 0);
+    const bodies = [0.5, 0.7, 0.9].map((dx, i) => addDebrisBody(town, { x: 12 + dx, y: 17.8 + i * 0.2, w: 0.3, d: 0.2, material: "concrete", layer: "remnant", mass: 0.5 }));
+    const particles = new ParticlePool();
+    for (let i = 0; i < 60; i++) stepDebris(town, dozer, particles, [], 1, SIM_DT);
+    // Tall enough for the hull to touch: they were pushed clear of it, then left alone.
+    expect(bodies.every((r) => Math.hypot(r.x - dozer.x, r.y - dozer.y) > DOZER.radius * 0.9)).toBe(true);
+    expect(bodies.every((r) => r.sleeping)).toBe(true);
+    expect(lastDebrisStats().active).toBe(0);
+    // Rolling forward into them counts as handling again.
+    dozer.vx = 2;
+    dozer.x += 0.3;
+    stepDebris(town, dozer, particles, [], 1, SIM_DT);
+    expect(bodies.some((r) => !r.sleeping)).toBe(true);
+  });
 });
