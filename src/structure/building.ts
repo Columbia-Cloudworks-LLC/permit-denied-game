@@ -683,7 +683,7 @@ function startFall(
   building.leanY += lean.dy;
   const c = cellCenter(building, cell);
   particles.burst(debrisKind(cell.material), c.x, c.y, c.z, 1.6);
-  particles.collapseCloud(c.x, c.y, c.z, lean.dx, lean.dy);
+  particles.collapseCloud(c.x, c.y, c.z, lean.dx, lean.dy, debrisKind(cell.material));
   const cash = cashFor(cell, "collapse");
   events.push({
     kind: "collapse",
@@ -877,9 +877,18 @@ function stepUnsupportedCell(building: Building, cell: Cell, dt: number, particl
   if (cell.unsupportedTime > 0.38) {
     result.cash += applyCellDamage(building, cell, 26 * dt, cell.lastHitNx, cell.lastHitNy, particles, events);
   }
-  if (cell.unsupportedTime > (building.construction.failureDelay)) {
+  if (cell.unsupportedTime > building.construction.failureDelay * failureStagger(cell)) {
     result.cash += startFall(building, cell, particles, events);
   }
+}
+
+/**
+ * Each cell lets go at 0.85 to 1.3 of the construction's failure delay, fixed by its place in
+ * the grid, so an unsupported span comes down as a ragged run instead of one flat sheet.
+ */
+function failureStagger(cell: Cell): number {
+  const hash = ((cell.gx * 73856093) ^ (cell.gy * 19349663) ^ (cell.floor * 83492791)) >>> 0;
+  return 0.85 + (hash % 64) / 64 * 0.45;
 }
 
 function buildingStillUnsettled(building: Building): boolean {

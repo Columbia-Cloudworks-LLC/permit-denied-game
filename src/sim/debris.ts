@@ -107,6 +107,19 @@ function materialDensity(material: Material): number { return MATERIALS[material
 function crushabilityOf(material: Material): number { return MATERIALS[material].crushability; }
 function frictionOf(material: Material): number { return MATERIALS[material].friction; }
 
+/** Bodies fall from where they broke off, up to this height; taller drops would float over the wreck. */
+const MAX_AIR = 1.6;
+
+/** Lighter material is thrown further: timber about 1.06, concrete about 0.78. */
+function throwScale(material: Material): number {
+  return 1.25 - materialDensity(material) * 0.35;
+}
+
+/** Height a piece of storey `floor` starts its drop from, above the heap it lands on. */
+function dropHeight(floor: number, rng: Rng): number {
+  return Math.min(MAX_AIR, 0.1 + (floor + rng.range(0.2, 1)) * 0.55);
+}
+
 function cellVolume(cellSize: number): number {
   return cellSize * cellSize * 1.85;
 }
@@ -127,6 +140,7 @@ function makeRubble(init: {
   mass?: number;
   vx?: number;
   vy?: number;
+  vz?: number;
   omega?: number;
   seed?: number;
 }): Rubble {
@@ -140,7 +154,7 @@ function makeRubble(init: {
     y: init.y,
     vx: init.vx ?? 0,
     vy: init.vy ?? 0,
-    vz: 0,
+    vz: init.vz ?? 0,
     heading: init.heading ?? 0,
     omega: init.omega ?? 0,
     w: init.w,
@@ -307,7 +321,7 @@ function spawnRemnants(burst: CollapseBurst): void {
   const { spawn, rng, dx, dy } = burst;
   const remnantPlans = burst.roofing ? roofRemnantPlan(spawn.material, rng, spawn) : remnantPlan(spawn.material, rng);
   const baseHeading = spawn.heading ?? Math.atan2(dy, dx);
-  const startElev = spawn.elev ?? burst.heap + rng.range(0, 0.08 + spawn.floor * 0.06);
+  const startElev = spawn.elev ?? burst.heap + (burst.roofing ? rng.range(0, 0.08 + spawn.floor * 0.06) : dropHeight(spawn.floor, rng));
   for (const plan of remnantPlans) {
     if (burst.remaining < 0.08) break;
     const mass = Math.min(burst.remaining * plan.massShare, burst.remaining);
@@ -332,6 +346,7 @@ function remnantBody(
   const exactPanel = spawn.preservePanelPose && plan.shape === "panel";
   const jitter = exactPanel ? 0 : tune.jitter;
   const scale = roofing ? 0.55 : spawn.cellSize;
+  const fling = roofing ? 1 : throwScale(spawn.material) * (1 + spawn.floor * 0.18);
   const ox = (rng.range(-jitter, jitter) + plan.along * dx) * scale;
   const oy = (rng.range(-jitter, jitter) + plan.along * dy) * scale;
   return {
@@ -347,8 +362,8 @@ function remnantBody(
     elev: Math.max(burst.heap, startElev + (roofing ? plan.along * 0.04 : rng.range(0, 0.08))),
     thickness: plan.thickness,
     mass,
-    vx: dx * rng.range(tune.minSpeed, tune.maxSpeed) + rng.range(-0.28, 0.28),
-    vy: dy * rng.range(tune.minSpeed, tune.maxSpeed) + rng.range(-0.28, 0.28),
+    vx: dx * rng.range(tune.minSpeed, tune.maxSpeed) * fling + rng.range(-0.28, 0.28),
+    vy: dy * rng.range(tune.minSpeed, tune.maxSpeed) * fling + rng.range(-0.28, 0.28),
     omega: exactPanel ? 0 : rng.range(-tune.spin, tune.spin),
     seed: rng.int(1, 0x7fffffff),
   };
@@ -365,26 +380,36 @@ function spawnFragments(burst: CollapseBurst): void {
   }
 }
 
+/** Fragment footprint per material as [length range, width range]: a single brick, a sliver of glass, a splinter, a bar. */
+const FRAGMENT_SIZE: Record<Material, readonly [number, number, number, number]> = {
+  wood: [0.28, 0.55, 0.06, 0.12],
+  brick: [0.17, 0.24, 0.08, 0.12],
+  concrete: [0.12, 0.32, 0.08, 0.2],
+  metal: [0.26, 0.5, 0.04, 0.08],
+  glass: [0.1, 0.26, 0.04, 0.1],
+};
+
 function fragmentBody(burst: CollapseBurst, mass: number): Parameters<typeof makeRubble>[0] {
   const { spawn, rng, dx, dy } = burst;
-  const wood = spawn.material === "wood";
+  const [w0, w1, d0, d1] = FRAGMENT_SIZE[spawn.material];
   const ang = rng.range(0, Math.PI * 2);
   const rad = rng.range(0.12, 0.55) * spawn.cellSize;
-  const fw = wood ? rng.range(0.28, 0.55) : rng.range(0.12, 0.32);
-  const fd = wood ? rng.range(0.06, 0.12) : rng.range(0.08, 0.2);
+  const fling = throwScale(spawn.material) * (1 + spawn.floor * 0.18);
   return {
     x: spawn.x + Math.cos(ang) * rad + dx * 0.12,
     y: spawn.y + Math.sin(ang) * rad + dy * 0.12,
-    w: fw,
-    d: fd,
+    w: rng.range(w0, w1),
+    d: rng.range(d0, d1),
     material: spawn.material,
     layer: "fragment",
-    shape: wood || spawn.material === "metal" ? "beam" : "chunk",
+    shape: spawn.material === "wood" || spawn.material === "metal" ? "beam" : "chunk",
     heading: ang + rng.range(-0.4, 0.4),
-    elev: burst.heap + rng.range(0.02, 0.16 + spawn.floor * 0.05),
+    elev: burst.roofing ? burst.heap + rng.range(0.02, 0.16 + spawn.floor * 0.05) : burst.heap + dropHeight(spawn.floor, rng),
     mass,
-    vx: dx * rng.range(0.8, 2.6) + Math.cos(ang) * rng.range(0.4, 1.8),
-    vy: dy * rng.range(0.8, 2.6) + Math.sin(ang) * rng.range(0.4, 1.8),
+    vx: (dx * rng.range(0.8, 2.6) + Math.cos(ang) * rng.range(0.4, 1.8)) * fling,
+    vy: (dy * rng.range(0.8, 2.6) + Math.sin(ang) * rng.range(0.4, 1.8)) * fling,
+    // Small pieces are kicked up and out; they arc and land after the big ones.
+    vz: rng.range(0.6, 2.4),
     omega: rng.range(-8, 8),
     seed: rng.int(1, 0x7fffffff),
   };
@@ -1004,11 +1029,13 @@ function finishVehicleHit(
 
 let townScratch: Town;
 
-function integrateBody(town: Town, r: Rubble, dt: number): void {
+function integrateBody(town: Town, r: Rubble, particles: ParticlePool, dt: number): void {
   const support = supportHeight(town, r);
   if (r.sleeping && staysAsleep(r, support, dt)) return;
-  settleVertically(r, support, dt);
-  slideBody(town, r, dt);
+  const airborne = r.elev > support + 0.015 || r.vz > 0;
+  const impact = settleVertically(r, support, dt);
+  if (impact > 0) land(town, r, impact, particles);
+  slideBody(town, r, airborne && impact === 0, dt);
   updateSleep(r, support, dt);
 }
 
@@ -1026,39 +1053,73 @@ function staysAsleep(r: Rubble, support: number, dt: number): boolean {
   return true;
 }
 
-/** Fall under gravity onto the support, or ride it within a small clearance. */
-function settleVertically(r: Rubble, support: number, dt: number): void {
+/** Fall under gravity onto the support, or ride it within a small clearance. Returns the landing speed on touchdown. */
+function settleVertically(r: Rubble, support: number, dt: number): number {
   const maxRide = r.layer === "fragment" ? 0.4 : 0.12;
-  if (r.elev > 0.9) {
-    r.elev = Math.min(r.elev, 0.9);
+  if (r.elev > MAX_AIR) {
+    r.elev = MAX_AIR;
     if (r.elev > support + 0.04) wake(r);
   }
-  if (r.elev > support + 0.015) {
+  if (r.elev > support + 0.015 || r.vz > 0) {
     r.vz -= DEBRIS.gravity * dt;
     r.elev += r.vz * dt;
-    if (r.elev < support) {
-      r.elev = support;
-      r.vz *= -0.08;
-      if (Math.abs(r.vz) < 0.6) r.vz = 0;
-    }
-    return;
+    if (r.elev >= support) return 0;
+    const impact = -r.vz;
+    r.elev = support;
+    r.vz *= -BOUNCE[r.material];
+    if (Math.abs(r.vz) < 0.6) r.vz = 0;
+    return impact;
   }
   r.vz *= Math.max(0, 1 - 8 * dt);
   if (r.elev < support) r.elev = approachElev(r.elev, support, 2.8 * dt);
   if (r.elev > support + maxRide) r.elev = support + maxRide;
+  return 0;
 }
 
-/** Loose fragments slide down soft pile slopes; drag, spin decay and movement inside the town. */
-function slideBody(town: Town, r: Rubble, dt: number): void {
-  if (r.layer === "fragment" && town.pile.compactAt(r.x, r.y) < 0.72) {
-    r.vx -= town.pile.slopeX(r.x, r.y) * 2.4 * dt;
-    r.vy -= town.pile.slopeY(r.x, r.y) * 2.4 * dt;
-  }
+/** How much of its landing speed a piece keeps on the bounce: steel rings and hops, masonry thuds. */
+const BOUNCE: Record<Material, number> = { wood: 0.22, brick: 0.12, concrete: 0.08, metal: 0.32, glass: 0.05 };
 
-  const drag = r.layer === "fragment" ? 2.6 : 2.1;
-  r.vx *= 1 - drag * dt;
-  r.vy *= 1 - drag * dt;
-  r.omega *= 1 - 3.4 * dt;
+/** Dust puffs from hard landings this step, so a whole wall coming down is a few puffs, not hundreds. */
+let landingPuffs = 0;
+
+/** Touchdown: the ground grips the piece by its friction and scrubs its spin; a hard hit throws dust. */
+function land(town: Town, r: Rubble, impact: number, particles: ParticlePool): void {
+  const grip = Math.min(0.85, r.friction * clamp(impact / 4, 0.3, 1));
+  r.vx *= 1 - grip;
+  r.vy *= 1 - grip;
+  r.omega *= 0.5;
+  if (impact < 2.4 || r.layer !== "remnant" || landingPuffs >= 3) return;
+  landingPuffs++;
+  particles.spawn("dust", r.x, r.y, r.elev + 0.05, 3, 1.3, 0.9, r.yardOwner);
+  town.pile.compactPoint(r.x, r.y, Math.min(0.12, impact * r.mass * 0.004));
+}
+
+/**
+ * In the air a piece keeps its throw. On the ground it drags by its material's friction, loose
+ * fragments slide down soft pile slopes, and a piece nearly stopped is held by static friction.
+ */
+function slideBody(town: Town, r: Rubble, airborne: boolean, dt: number): void {
+  if (airborne) {
+    r.vx *= 1 - 0.3 * dt;
+    r.vy *= 1 - 0.3 * dt;
+    r.omega *= 1 - 0.6 * dt;
+  } else {
+    if (r.layer === "fragment" && town.pile.compactAt(r.x, r.y) < 0.72) {
+      // Below the angle of repose a fragment stays where it lies.
+      const sx = town.pile.slopeX(r.x, r.y), sy = town.pile.slopeY(r.x, r.y);
+      if (sx * sx + sy * sy > 0.05) {
+        r.vx -= sx * 2.4 * dt;
+        r.vy -= sy * 2.4 * dt;
+      }
+    }
+    const grip = 0.55 + r.friction;
+    let drag = (r.layer === "fragment" ? 2.2 : 1.8) * grip;
+    if (r.vx * r.vx + r.vy * r.vy < 0.09) drag += 5;
+    const keep = Math.max(0, 1 - drag * dt);
+    r.vx *= keep;
+    r.vy *= keep;
+    r.omega *= Math.max(0, 1 - 2.9 * grip * dt);
+  }
   r.x += r.vx * dt;
   r.y += r.vy * dt;
   r.heading += r.omega * dt;
@@ -1223,8 +1284,9 @@ function reactivatePileMass(
       layer: "fragment",
       heading: heading + playRng.range(-0.5, 0.5),
       mass: share,
-      vx: vx * 0.25 + Math.cos(heading) * playRng.range(0.35, 1.4),
-      vy: vy * 0.25 + Math.sin(heading) * playRng.range(0.35, 1.4),
+      // Scooped pieces leave with most of the blade's speed, so they roll ahead of it rather than under it.
+      vx: vx * 0.6 + Math.cos(heading) * playRng.range(0.35, 1.4),
+      vy: vy * 0.6 + Math.sin(heading) * playRng.range(0.35, 1.4),
       omega: playRng.range(-4, 4),
     });
   }
@@ -1256,7 +1318,14 @@ function interactWithPile(
   return load;
 }
 
-/** The blade lifts pile mass: about half is pushed ahead, the rest becomes live debris. Returns the added load. */
+/** Berm height ahead of the blade above which pushed material starts rolling off its ends. */
+const SPILL_HEIGHT = 0.3;
+
+/**
+ * The blade lifts pile mass: about half is pushed ahead as a berm and the rest becomes live
+ * debris. Once the berm stands tall, a growing share rolls off the blade ends into windrows,
+ * and the mound itself pushes back. Returns the added load.
+ */
 function bladeScoop(town: Town, v: VehicleContact, px: number, py: number, available: number, events: WorldEvent[], particles: ParticlePool, dt: number): number {
   const take = Math.min(available, (0.62 + v.profile.pushForce * 0.035) * dt * 7.2);
   if (take <= 0.012) return 0;
@@ -1266,17 +1335,27 @@ function bladeScoop(town: Town, v: VehicleContact, px: number, py: number, avail
   const fy = Math.sin(v.heading);
   const pushed = extracted.mass * 0.52;
   const spawned = extracted.mass - pushed;
+  const berm = town.pile.heightAt(px + fx * 0.9, py + fy * 0.9);
   if (pushed > 0.008) {
-    town.pile.addMass(px + fx * 0.9, py + fy * 0.9, pushed, extracted.material, extracted.owners);
+    const spill = pushed * clamp((berm - SPILL_HEIGHT) / 0.5, 0, 0.6);
+    town.pile.addMass(px + fx * 0.9, py + fy * 0.9, pushed - spill, extracted.material, extracted.owners);
+    const reach = v.blade!.hw + 0.3;
+    for (const side of BLADE_ENDS) {
+      town.pile.addMass(px + fx * 0.15 - fy * reach * side, py + fy * 0.15 + fx * reach * side, spill * 0.5, extracted.material, extracted.owners);
+    }
   }
   reactivateScooped(town, v, px + fx * .32, py + fy * .32, spawned, extracted);
   town.pile.compactPoint(px, py, 0.28 * dt);
-  if (playRng.chance(0.14)) {
+  if (playRng.chance(0.14 + Math.min(0.2, berm * 0.4))) {
+    // The cut throws dust and chips of whatever the heap is made of, more as the berm builds.
     particles.spawn("dust", px, py, 0.1, 2, 0.8, 0.4);
-    events.push({ kind: "scrape", x: px, y: py, z: 0.08, mag: 0.35, material: extracted.material });
+    particles.spawn(extracted.material, px + fx * 0.5, py + fy * 0.5, 0.2 + berm, 1, 1.6, 2.2);
+    events.push({ kind: "scrape", x: px, y: py, z: 0.08, mag: 0.35 + Math.min(0.3, berm * 0.4), material: extracted.material });
   }
-  return extracted.mass * 1.05 * v.profile.resistanceMul;
+  return (extracted.mass * 1.05 + berm * 0.9) * v.profile.resistanceMul;
 }
+
+const BLADE_ENDS = [-1, 1] as const;
 
 /** Scooped mass returns as bodies, split by its yard owners and any unowned share. */
 function reactivateScooped(town: Town, v: VehicleContact, x: number, y: number, spawned: number, extracted: ReturnType<Town['pile']['extractDisk']>): void {
@@ -1361,7 +1440,8 @@ export function stepDebris(
 
   for (const car of town.vehicles) if (car.alive && (car.autonomous || Math.hypot(car.vx, car.vy) > .01)) carDebrisContact(town, car, events, particles, dt);
 
-  for (const r of town.rubble) integrateBody(town, r, dt);
+  landingPuffs = 0;
+  for (const r of town.rubble) integrateBody(town, r, particles, dt);
   enforceDistanceCleanup(town, dozer.x, dozer.y, contacted);
   trimActive(town, dozer.x, dozer.y);
   recordDebrisStats(town, contactPairs);
