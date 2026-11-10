@@ -52,4 +52,37 @@ describe("pile field excavation", () => {
     pile.compactPoint(span * 2 + 0.1, span * 1.5, 0);
     expect(Array.from(pile.tileRevision)).toEqual(quiet);
   });
+
+  it("keeps a running mass close to the exact total through adds, scoops and clears", () => {
+    const pile = new PileField(0, 0, 12, 12, 0.5);
+    for (let i = 0; i < 200; i++) pile.addMass(1 + (i % 20) * 0.5, 1 + (i % 7), 0.37, i % 2 ? "brick" : "wood", i % 5 ? "yard-a" : undefined);
+    for (let i = 0; i < 40; i++) pile.extractDisk(2 + (i % 9), 3, 0.78, 0.25);
+    pile.clearArea(0, 0, 3, 3);
+    pile.removeOwner("yard-a");
+    expect(pile.massEstimate()).toBeCloseTo(pile.totalMass(), 3);
+    const grown = pile.grow(20, 20);
+    expect(grown.massEstimate()).toBeCloseTo(grown.totalMass(), 3);
+    // Carried mass must repaint in the new field.
+    expect(grown.tileRevisionAt(5, 5)).toBeGreaterThan(0);
+  });
+
+  it("reports the tile revision a read at a point depends on", () => {
+    const pile = new PileField(0, 0, 40, 40, 0.5);
+    const span = PILE_TILE * pile.cell;
+    const near = pile.tileRevisionAt(span * 1.5, span * 1.5), far = pile.tileRevisionAt(span * 6.5, span * 6.5);
+    pile.addMass(span * 1.5, span * 1.5, 1, "concrete");
+    expect(pile.tileRevisionAt(span * 1.5, span * 1.5)).toBeGreaterThan(near);
+    expect(pile.tileRevisionAt(span * 6.5, span * 6.5)).toBe(far);
+    expect(pile.tileRevisionAt(-5, 2)).toBe(0);
+    // Field reads without allocation agree with the sampled record.
+    const s = pile.sample(span * 1.5 + 0.2, span * 1.5 - 0.1);
+    expect(pile.heightAt(span * 1.5 + 0.2, span * 1.5 - 0.1)).toBe(s.height);
+    expect(pile.massAt(span * 1.5 + 0.2, span * 1.5 - 0.1)).toBe(s.mass);
+    expect(pile.compactAt(span * 1.5 + 0.2, span * 1.5 - 0.1)).toBe(s.compact);
+    const slope = pile.slope(span * 1.5 + 0.6, span * 1.5);
+    expect(slope.dx).toBe(pile.slopeX(span * 1.5 + 0.6, span * 1.5));
+    expect(slope.dx).toBeLessThan(0);
+    expect(pile.materialAt(span * 1.5, span * 1.5)).toBe("concrete");
+    expect(pile.materialAt(-3, -3)).toBe("concrete");
+  });
 });

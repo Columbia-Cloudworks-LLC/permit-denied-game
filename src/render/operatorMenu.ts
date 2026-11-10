@@ -10,7 +10,6 @@ import type { AtlasState, AtlasView } from './atlasView';
 import { MENU_LABELS as L, MODE_LABELS, MODE_DESCRIPTIONS } from '../game/menuLabels';
 import { labeledMenuButton, MENU_ICONS, soundButtonContent } from './menuIcons';
 import { version } from '../../package.json';
-import notices from './thirdPartyNotices.txt?raw';
 
 type Page = 'home' | 'dispatch' | 'overworld' | 'region' | 'controls' | 'about' | 'equipment';
 
@@ -466,7 +465,9 @@ export class OperatorMenu {
     controls: () => { this.body.innerHTML = CONTROLS_HTML; },
     about: () => {
       this.body.innerHTML = ABOUT_HTML;
-      this.body.querySelector('pre')!.textContent = notices;
+      // The notices are 16 kB of licence text behind a collapsed disclosure; they load with the page, not at startup.
+      const pre = this.body.querySelector('pre')!;
+      void import('./thirdPartyNotices.txt?raw').then((notices) => { pre.textContent = notices.default; });
     },
   };
 

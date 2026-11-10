@@ -388,7 +388,7 @@ it('offers only the world map when the paused run is not an overworld county', (
   expect(menu.root.querySelector('[data-menu-action="world-map"]')).not.toBeNull();
 });
 
-it('walks the info pages, and Escape steps back before it resumes', () => {
+it('walks the info pages, and Escape steps back before it resumes', async () => {
   menu.show('pause', { session: 'sandbox' });
   button('[data-nav="controls"]').click();
   expect(heading()).toBe(L.controls);
@@ -398,7 +398,9 @@ it('walks the info pages, and Escape steps back before it resumes', () => {
   expect(actions.resume).not.toHaveBeenCalled();
   button('[data-nav="about"]').click();
   expect(heading()).toBe(L.about);
-  expect(menu.root.querySelector('pre')!.textContent!.length).toBeGreaterThan(0);
+  // The licence notices load with the page rather than at startup.
+  const notices = menu.root.querySelector('pre')!;
+  await vi.waitFor(() => expect(notices.textContent!.length).toBeGreaterThan(0));
   expect(menu.root.querySelector<HTMLElement>('.nameplate')!.hidden).toBe(false);
   button('[data-nav="back"]').click();
   button('[data-nav="equipment"]').click();

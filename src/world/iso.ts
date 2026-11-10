@@ -36,6 +36,10 @@ export interface ScreenAabb {
   maxY: number;
 }
 
+/**
+ * Screen bounds of an axis-aligned world box. Projection is monotonic in x - y and x + y,
+ * so the extremes come straight from the box's extents with no corner list.
+ */
 export function worldBoundsToScreen(
   x: number,
   y: number,
@@ -44,16 +48,14 @@ export function worldBoundsToScreen(
   z0 = 0,
   z1 = 0,
 ): ScreenAabb {
-  return screenBoundsOf([
-    [x, y, z0],
-    [x + w, y, z0],
-    [x + w, y + d, z0],
-    [x, y + d, z0],
-    [x, y, z1],
-    [x + w, y, z1],
-    [x + w, y + d, z1],
-    [x, y + d, z1],
-  ]);
+  const x0 = Math.min(x, x + w), x1 = Math.max(x, x + w);
+  const y0 = Math.min(y, y + d), y1 = Math.max(y, y + d);
+  return {
+    minX: (x0 - y1) * ISO_W,
+    minY: (x0 + y0) * ISO_H - Math.max(z0, z1) * ISO_Z,
+    maxX: (x1 - y0) * ISO_W,
+    maxY: (x1 + y1) * ISO_H - Math.min(z0, z1) * ISO_Z,
+  };
 }
 
 /** Screen-space bounds of world points given as [x, y, z]. */

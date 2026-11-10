@@ -1,6 +1,7 @@
 import { Graphics } from "pixi.js";
 import { orientedRect } from "../game/math";
 import type { Material } from "../structure/types";
+import { ISO_H, ISO_W, ISO_Z } from "../game/constants";
 import { depthKey, isoQuad, worldToScreen } from "../world/iso";
 import { roofSlopeLight } from "./lighting";
 import { PAL, matColors, shade } from "./palette";
@@ -72,47 +73,53 @@ export function drawOrientedIsoBox(
   const ry = fx;
   const hl = length * 0.5;
   const hw = width * 0.5;
-  const local = [
-    { a: hl, c: -hw },
-    { a: hl, c: hw },
-    { a: -hl, c: hw },
-    { a: -hl, c: -hw },
-  ];
-  const world = local.map((p) => ({
-    x: cx + fx * p.a + rx * p.c,
-    y: cy + fy * p.a + ry * p.c,
-  }));
-  const bot = world.map((p) => worldToScreen(p.x, p.y, z0));
-  const lid = world.map((p, i) => worldToScreen(p.x, p.y, z0 + h * (slope ? (hw - local[i]!.c) / width : 1)));
-
-  const faces: { depth: number; color: number; pts: number[] }[] = [];
-  const edges = [
-    [0, 1],
-    [1, 2],
-    [2, 3],
-    [3, 0],
-  ] as const;
-  for (const [i0, i1] of edges) {
-    const ex = world[i1]!.x - world[i0]!.x;
-    const ey = world[i1]!.y - world[i0]!.y;
-    const nx = ey;
-    const ny = -ex;
-    if (nx + ny <= 0.001) continue;
-    const nl = Math.hypot(nx, ny) || 1;
-    const t = (nx / nl - ny / nl) * 0.5 + 0.5;
-    faces.push({
-      depth: depthKey((world[i0]!.x + world[i1]!.x) * 0.5, (world[i0]!.y + world[i1]!.y) * 0.5, z0 + h * 0.5),
-      color: mixHex(left, right, t),
-      pts: [lid[i0]!.x, lid[i0]!.y, lid[i1]!.x, lid[i1]!.y, bot[i1]!.x, bot[i1]!.y, bot[i0]!.x, bot[i0]!.y],
-    });
+  // Corner k: world x/y, then screen x and bottom/lid y. Scratch is reused across calls.
+  for (let k = 0; k < 4; k++) {
+    const a = k < 2 ? hl : -hl;
+    const c = k === 1 || k === 2 ? hw : -hw;
+    const wx = cx + fx * a + rx * c;
+    const wy = cy + fy * a + ry * c;
+    BOX_WX[k] = wx;
+    BOX_WY[k] = wy;
+    BOX_SX[k] = (wx - wy) * ISO_W;
+    BOX_BOT[k] = (wx + wy) * ISO_H - z0 * ISO_Z;
+    BOX_LID[k] = (wx + wy) * ISO_H - (z0 + h * (slope ? (hw - c) / width : 1)) * ISO_Z;
   }
-  faces.sort((a, b) => a.depth - b.depth);
-  for (const face of faces) {
-    g.poly(face.pts);
-    g.fill({ color: face.color, alpha });
-  }
-  g.poly([lid[0]!.x, lid[0]!.y, lid[1]!.x, lid[1]!.y, lid[2]!.x, lid[2]!.y, lid[3]!.x, lid[3]!.y]);
+  boxSides(g, z0 + h * 0.5, left, right, alpha);
+  g.poly([BOX_SX[0]!, BOX_LID[0]!, BOX_SX[1]!, BOX_LID[1]!, BOX_SX[2]!, BOX_LID[2]!, BOX_SX[3]!, BOX_LID[3]!]);
   g.fill({ color: top, alpha });
+}
+
+/** A box shows at most two side faces; paint the farther one first. */
+function boxSides(g: Graphics, zMid: number, left: number, right: number, alpha: number): void {
+  let first = -1, second = -1, firstDepth = 0;
+  for (let i0 = 0; i0 < 4; i0++) {
+    const i1 = (i0 + 1) & 3;
+    // Outward normal of edge i0 -> i1; only faces turned toward the camera show.
+    if (BOX_WY[i1]! - BOX_WY[i0]! - (BOX_WX[i1]! - BOX_WX[i0]!) <= 0.001) continue;
+    const depth = depthKey((BOX_WX[i0]! + BOX_WX[i1]!) * 0.5, (BOX_WY[i0]! + BOX_WY[i1]!) * 0.5, zMid);
+    if (first >= 0 && depth >= firstDepth) second = i0;
+    else { second = first; first = i0; firstDepth = depth; }
+  }
+  if (first >= 0) boxFace(g, first, left, right, alpha);
+  if (second >= 0) boxFace(g, second, left, right, alpha);
+}
+
+const BOX_WX = new Float64Array(4);
+const BOX_WY = new Float64Array(4);
+const BOX_SX = new Float64Array(4);
+const BOX_BOT = new Float64Array(4);
+const BOX_LID = new Float64Array(4);
+
+/** One side face of the scratch box, from corner i0 to the next, shaded by how far it turns from the light. */
+function boxFace(g: Graphics, i0: number, left: number, right: number, alpha: number): void {
+  const i1 = (i0 + 1) & 3;
+  const nx = BOX_WY[i1]! - BOX_WY[i0]!;
+  const ny = -(BOX_WX[i1]! - BOX_WX[i0]!);
+  const nl = Math.hypot(nx, ny) || 1;
+  const t = (nx / nl - ny / nl) * 0.5 + 0.5;
+  g.poly([BOX_SX[i0]!, BOX_LID[i0]!, BOX_SX[i1]!, BOX_LID[i1]!, BOX_SX[i1]!, BOX_BOT[i1]!, BOX_SX[i0]!, BOX_BOT[i0]!]);
+  g.fill({ color: mixHex(left, right, t), alpha });
 }
 
 export function drawIsoBox(

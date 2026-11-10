@@ -148,7 +148,7 @@ function pivotCue(town: Town, dozer: Dozer, particles: ParticlePool, events: Wor
   if (!cover || PAVED.has(cover) || cover === "tracks" || cover === "water" || pointOnRoad(town.network, x, y)) return;
   const tint = churnTint(town, cover);
   particles.spawn("crop", x, y, 0.08, 3, 1.1, 1.9, undefined, tint);
-  particles.spawn("dust", x, y, 0.1, 1, 0.5, 0.6, undefined, tint);
+  particles.spawn("dust", x, y, 0.1, 1, 0.5, 0.6);
 }
 
 /** Churned mud on bare ground; crushed, greener sod on grass and scrub. */

@@ -98,9 +98,60 @@ export function vehicleLoad(town: Town, x: number, y: number, z: number, radius:
 }
 export const vehicleStats = { active: 0, sleeping: 0, detached: 0, contacts: 0 };
 const staticCache = new WeakMap<Town, {
-    stamp: string;
+    /** What the hash was built from: site revision, then id, retired and the ground solid counts per building, then id, broken and position per prop. */
+    stamp: unknown[];
     hash: SpatialHash<VehicleBox>;
 }>();
+
+interface SolidCounts { revision: number; cells: number; standing: number; stripped: number; fixtures: number }
+const solidCounts = new WeakMap<Town['buildings'][number], SolidCounts>();
+
+/**
+ * What the static hash holds for one building, as three counts: ground-floor cells standing,
+ * those that are columns with their cladding stripped (a stripped column has a slimmer footprint),
+ * and ground-floor fixtures standing. Cells and fixtures only break and cladding only strips, so
+ * any change to the hashed boxes moves at least one count. They are recounted only when the
+ * building's revision moves; a tower dropping its upper floors bumps it every step without
+ * changing them.
+ */
+export function buildingSolids(b: Town['buildings'][number]): SolidCounts {
+    let memo = solidCounts.get(b);
+    if (memo && memo.revision === b.visualRevision && memo.cells === b.cells.length)
+        return memo;
+    if (!memo)
+        solidCounts.set(b, memo = { revision: 0, cells: 0, standing: 0, stripped: 0, fixtures: 0 });
+    memo.revision = b.visualRevision; memo.cells = b.cells.length;
+    memo.standing = memo.stripped = memo.fixtures = 0;
+    for (const c of b.cells) {
+        if (c.floor !== 0 || c.hp <= 0)
+            continue;
+        memo.standing++;
+        if (c.role === 'column' && c.cladding?.hp === 0)
+            memo.stripped++;
+    }
+    for (const f of b.fixtures)
+        if (!f.broken && f.floor === 0)
+            memo.fixtures++;
+    return memo;
+}
+
+/** Compare the town's solids with a stamp and bring the stamp up to date; false when anything differed. */
+function staticStampCurrent(town: Town, stamp: unknown[]): boolean {
+    let n = 0, same = true;
+    const put = (value: unknown) => {
+        if (stamp[n] !== value) { stamp[n] = value; same = false; }
+        n++;
+    };
+    put(town.siteRevision);
+    put(town.buildings.length);
+    for (const b of town.buildings) {
+        const solids = buildingSolids(b);
+        put(b.id); put(b.retired); put(solids.standing); put(solids.stripped); put(solids.fixtures);
+    }
+    for (const p of town.props) { put(p.id); put(p.broken); put(p.x); put(p.y); }
+    if (stamp.length !== n) { stamp.length = n; same = false; }
+    return same;
+}
 export function stepVehicleWorld(town: Town, dozer: Dozer, particles: ParticlePool, events: WorldEvent[], dt: number, bladeMul = 1, engineMul = 1): number {
     migrateVehicles(town);
     if (town.yard?.loads)
@@ -109,7 +160,8 @@ export function stepVehicleWorld(town: Town, dozer: Dozer, particles: ParticlePo
     let cash = 0;
     vehicleStats.contacts = 0;
     // At most .12 world units of predicted travel per substep, capped to bound work.
-    const maxSpeed = Math.max(Math.hypot(dozer.vx, dozer.vy), ...town.vehicles.map(v => Math.hypot(v.vx, v.vy)));
+    let maxSpeed = Math.hypot(dozer.vx, dozer.vy);
+    for (const v of town.vehicles) maxSpeed = Math.max(maxSpeed, Math.hypot(v.vx, v.vy));
     const steps = Math.min(8, Math.max(1, Math.ceil(maxSpeed * dt / .12))), sub = dt / steps;
     const ctx: SubstepContext = { town, dozer, fixed, dynamic: new SpatialHash<VehicleBox>(4), candidates: [], pending: new Map(), solvedPairs: new Set(), sub, bladeMul, engineMul };
     for (let step = 0; step < steps; step++)
@@ -166,9 +218,9 @@ function dropYardLoad(town: Town, l: NonNullable<NonNullable<Town['yard']>['load
 const insertBox = (hash: SpatialHash<VehicleBox>, b: VehicleBox) => { const a = boxBounds(b); hash.insert(a.x, a.y, a.w, a.d, b); };
 /** Ground-floor cells, fixtures and standing props, rebuilt only when any of them change. */
 function staticVehicleHash(town: Town): SpatialHash<VehicleBox> {
-    const stamp = town.siteRevision + ':' + town.buildings.map(b => b.id + ',' + b.visualRevision + ',' + b.cells.length).join(';') + ':' + town.props.map(p => p.id + ',' + p.broken + ',' + p.x + ',' + p.y).join(';');
     const cached = staticCache.get(town);
-    if (cached?.stamp === stamp)
+    const stamp = cached?.stamp ?? [];
+    if (staticStampCurrent(town, stamp) && cached)
         return cached.hash;
     const fixed = new SpatialHash<VehicleBox>(4);
     for (const b of town.buildings)
@@ -347,19 +399,45 @@ function bladeContacts(ctx: SubstepContext, v: VehicleState, a: VehicleBox): voi
 }
 /** Moving debris strikes the first part it touches and bounces off it. */
 function hitByRubble(town: Town, v: VehicleState): void {
+    // Part boxes are costly to pose, so they are built once and again only after a hit deforms the vehicle.
+    let boxes: VehicleBox[] | undefined;
+    const bounds = { minX: 0, minY: 0, maxX: 0, maxY: 0 };
     for (const r of town.rubble) {
         if (r.sleeping)
             continue;
-        for (const b of vehicleBoxes(v)) {
-            const other = { x: r.x, y: r.y, w: r.w, d: r.d, z: r.elev, h: r.thickness, heading: r.heading }, hit = boxContact(b, other);
-            if (!hit)
-                continue;
-            const impulse = Math.max(0, -((r.vx - v.vx) * hit.nx + (r.vy - v.vy) * hit.ny)) + Math.max(0, -r.vz) * r.mass;
-            hitVehicle(v, [{ x: r.x, y: r.y, z: r.elev, nx: -hit.nx, ny: -hit.ny, nz: r.vz < -.5 ? -1 : 0, impulse, source: `debris:${r.id}` }]);
-            r.vx += hit.nx * .1;
-            r.vy += hit.ny * .1;
-            r.vz = Math.max(r.vz, 0);
-            break;
-        }
+        boxes ??= boundBoxes(vehicleBoxes(v), bounds);
+        // A body's corners reach at most half its diagonal from its centre.
+        const reach = Math.hypot(r.w, r.d) * .5 + .01;
+        if (r.x + reach < bounds.minX || r.x - reach > bounds.maxX || r.y + reach < bounds.minY || r.y - reach > bounds.maxY)
+            continue;
+        if (strikeVehicle(v, boxes, r))
+            boxes = undefined;
     }
+}
+/** Fill `bounds` with the world-axis box around every part; returns the parts. */
+function boundBoxes(boxes: VehicleBox[], bounds: { minX: number; minY: number; maxX: number; maxY: number }): VehicleBox[] {
+    bounds.minX = bounds.minY = Infinity;
+    bounds.maxX = bounds.maxY = -Infinity;
+    for (const b of boxes) {
+        const a = boxBounds(b);
+        bounds.minX = Math.min(bounds.minX, a.x); bounds.minY = Math.min(bounds.minY, a.y);
+        bounds.maxX = Math.max(bounds.maxX, a.x + a.w); bounds.maxY = Math.max(bounds.maxY, a.y + a.d);
+    }
+    return boxes;
+}
+/** The first part an awake body overlaps takes the hit and nudges the body off; true when one did. */
+function strikeVehicle(v: VehicleState, boxes: VehicleBox[], r: Town['rubble'][number]): boolean {
+    const other = { x: r.x, y: r.y, w: r.w, d: r.d, z: r.elev, h: r.thickness, heading: r.heading };
+    for (const b of boxes) {
+        const hit = boxContact(b, other);
+        if (!hit)
+            continue;
+        const impulse = Math.max(0, -((r.vx - v.vx) * hit.nx + (r.vy - v.vy) * hit.ny)) + Math.max(0, -r.vz) * r.mass;
+        hitVehicle(v, [{ x: r.x, y: r.y, z: r.elev, nx: -hit.nx, ny: -hit.ny, nz: r.vz < -.5 ? -1 : 0, impulse, source: `debris:${r.id}` }]);
+        r.vx += hit.nx * .1;
+        r.vy += hit.ny * .1;
+        r.vz = Math.max(r.vz, 0);
+        return true;
+    }
+    return false;
 }
