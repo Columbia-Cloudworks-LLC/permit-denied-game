@@ -13,12 +13,12 @@ export function rulesForTestMap(seed: number, testMap: TestMapRequest): SessionR
  * Sandbox, the asset yard, and the brick job never keep countdown targets.
  */
 export function showCampaignHud(rules: SessionRules, campaign: CampaignRun | null): boolean {
-  return rules.kind === "challenge" && !rules.testMap && !rules.job && !!campaign;
+  return rules.kind === "challenge" && !rules.testMap && !rules.job && !rules.home && !!campaign;
 }
 
 /** Shared map generation for Sandbox and Time Challenge. Mode rules stay outside the town. */
 export function generationLevel(rules: SessionRules, campaign: CampaignRun | null): CampaignLevelDef | undefined {
-  if (rules.testMap || rules.job) return undefined;
+  if (rules.testMap || rules.job || rules.home) return undefined;
   if (campaign && rules.kind === "challenge") return currentLevel(campaign);
   if (rules.level) return campaignLevelById(rules.level);
   return undefined;

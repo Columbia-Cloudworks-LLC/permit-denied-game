@@ -1,6 +1,4 @@
 import { stepVehicleWorld, migrateVehicles } from '../vehicle/world';
-import { upgradeModifiers, type Upgrades } from '../game/upgrades';
-export type { Upgrades } from '../game/upgrades';
 import { applyCoreImpact } from './coreImpact';
 import { resistCorePile } from './corePileResistance';
 import { retireStructures } from './retirement';
@@ -183,14 +181,22 @@ interface DozerContact {
   dt: number;
   damaged: Set<Cell>;
   dozerPins: Set<Prop>;
+  /** The hull met a solid this step: Ballast never carries the dozer through a wall. */
+  solid: boolean;
+}
+
+/** Per-step career modifiers; absent runs the stock machine. */
+export interface WorldStepOptions {
+  /** Collision mass multiplier (JATO burn). Scales ram, grind and shove. */
+  hitMul?: number;
 }
 
 export function stepWorld(
   town: Town,
   dozer: Dozer,
   particles: ParticlePool,
-  upgrades: Upgrades,
   dt: number,
+  options: WorldStepOptions = {},
 ): SimFrame {
   const events: WorldEvent[] = [];
   const birds: { x: number; y: number }[] = [];
@@ -202,7 +208,10 @@ export function stepWorld(
   const rebuilt = rebuildHash(town);
   hash.query(dozer.x - 3, dozer.y - 3, 6, 6, nearby);
 
-  const { bladeMul, engineMul } = upgradeModifiers(upgrades);
+  // JATO's collision mass multiplier scales ram, grind and shove alike.
+  const bladeMul = options.hitMul ?? 1, engineMul = bladeMul;
+  const fwd = dozerForward(dozer);
+  const alongBefore = dozer.vx * fwd.x + dozer.vy * fwd.y;
   const contact = prepareContact(town, dozer, particles, events, bladeMul, dt);
   const pts = bladePoints(dozer);
 
@@ -223,6 +232,7 @@ export function stepWorld(
   stepTraffic(town, dozer, dt);
   cash += stepVehicleWorld(town,dozer,particles,events,dt,bladeMul,engineMul);
   settleTraffic(town, dozer, events);
+  shrugOffDrag(dozer, fwd.x, fwd.y, alongBefore, contact.solid);
 
   clampDozer(dozer, town.minX + 0.8, town.minY + 0.8, town.maxX - 0.8, town.maxY - 0.8);
   if (town.surface || town.features.length) cash = dozerOnTerrain(town, dozer, particles, events, dt, cash);
@@ -295,7 +305,7 @@ function roughenOverCollapsedSite(town: Town, dozer: Dozer, dt: number): void {
 }
 
 /** Reused every step so the contact passes allocate nothing beyond the original hit sets. */
-const contactScratch = { bladeMul: 0, grind: 0, speed: 0, dt: 0 } as DozerContact;
+const contactScratch = { bladeMul: 0, grind: 0, speed: 0, dt: 0, solid: false } as DozerContact;
 
 function prepareContact(town: Town, dozer: Dozer, particles: ParticlePool, events: WorldEvent[], bladeMul: number, dt: number): DozerContact {
   const c = contactScratch;
@@ -309,7 +319,21 @@ function prepareContact(town: Town, dozer: Dozer, particles: ParticlePool, event
   c.speed = dozerSpeed(dozer);
   c.damaged = new Set<Cell>();
   c.dozerPins = new Set<Prop>();
+  c.solid = false;
   return c;
+}
+
+/**
+ * Ballast & Torque: give back that share of the forward speed rubble, grinding and vehicles took
+ * this step. Never after a solid hit, so walls, props and fixtures still stop the machine.
+ */
+function shrugOffDrag(dozer: Dozer, fx: number, fy: number, alongBefore: number, solid: boolean): void {
+  const cut = dozer.resistanceCut ?? 0;
+  if (cut <= 0 || solid || alongBefore <= 0) return;
+  const lost = alongBefore - (dozer.vx * fx + dozer.vy * fy);
+  if (lost <= 0) return;
+  dozer.vx += fx * lost * cut;
+  dozer.vy += fy * lost * cut;
 }
 
 /** The dozer body shoves into a nearby solid; returns cash earned. */
@@ -323,6 +347,7 @@ function bodyContact(c: DozerContact, ref: SolidRef): number {
   const host = ref.building;
   if (!fixture || !host || fixture.broken) return 0;
   const impact = resolveCircleSolid(c.dozer, ref.x, ref.y, ref.w, ref.d, 0.04);
+  if (impact > 0) c.solid = true;
   if (impact <= 0.2) return 0;
   const hit = applyFixtureDamage(host, fixture, impact * 7, c.dozer.x - (ref.x + ref.w / 2), c.dozer.y - (ref.y + ref.d / 2), c.particles, c.events, true);
   spawnFixtureFrags(c.town, hit.frags);
@@ -339,6 +364,7 @@ function ramCell(c: DozerContact, ref: SolidRef): number {
   const { dozer } = c;
   if (!ref.building || !ref.cell) return 0;
   const impact = resolveCircleSolid(dozer, ref.x, ref.y, ref.w, ref.d, 0.08);
+  if (impact > 0) c.solid = true;
   if (impact <= 0.4) return 0;
   dozer.heat += impact * DOZER.heatImpact * 0.08;
   dozer.track += impact * 0.35;
@@ -367,6 +393,7 @@ function bumpProp(c: DozerContact, p: Prop | undefined): void {
   const { dozer } = c;
   if (!p || p.broken) return;
   const impact = resolveCircleSolid(dozer, p.x, p.y, p.w, p.d, 0.05);
+  if (impact > 0) c.solid = true;
   if (impact <= 0.25) return;
   if (p.assetId === 'interior-bowling-pins') c.dozerPins.add(p);
   applyAssetHit(p, impact * 6, dozer.x - (p.x + p.w / 2), dozer.y - (p.y + p.d / 2));

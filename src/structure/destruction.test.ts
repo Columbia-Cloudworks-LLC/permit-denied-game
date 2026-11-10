@@ -76,9 +76,8 @@ describe("destruction model", () => {
         applyCellDamage(works, works.grid[0]![gx]![gy]!, 999, 1, 0, particles, []);
       }
     }
-    const upgrades = { blade: 0, engine: 0, push: 0 };
     for (let i = 0; i < 200; i++) {
-      stepWorld(town, dozer, particles, upgrades, SIM_DT);
+      stepWorld(town, dozer, particles, SIM_DT);
     }
     const shopHurt = shop.cells.some((c) => c.state !== "intact");
     expect(shopHurt).toBe(true);

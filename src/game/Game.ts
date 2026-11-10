@@ -1,7 +1,6 @@
 import { ensureTerms, privacyOpen, termsAccepted, setAnalyticsTestSession, RunAnalytics } from '../privacy/privacy';
 import { testMapSearch, type TestMapRequest } from '../world/testMapRequest';
 import { boxBounds, vehicleBoxes } from '../vehicle/world';
-import { upgradeModifiers } from './upgrades';
 import { Resubmission } from './resubmission';
 import { bayBuildings, type YardBay } from '../world/yardCatalog';
 import type { YardPanel } from '../render/yardPanel';
@@ -18,8 +17,7 @@ import {
 import { cameraFocus } from "./camera";
 import { TouchControls } from '../render/touchControls';
 import { DemolitionJob } from "./job";
-import { advanceSimulation } from "./fixedStep";
-import { canPickUpgrade } from "./session";
+import { advanceSimulation, sweepSubsteps } from "./fixedStep";
 import { Application } from "pixi.js";
 import { AudioBus } from "../audio/synth";
 import { emptyPerfSnapshot, formatPerfOverlay, PerfCollector } from "../debug/perf";
@@ -29,7 +27,7 @@ import { Hud, type CampaignHud, type HudState } from "../render/hud";
 import { WorldRenderer } from "../render/WorldRenderer";
 import { cashAnchor } from "../render/cashPopups";
 import { lastDebrisStats, obstructionAt } from "../sim/debris";
-import { stepWorld, type Upgrades } from "../sim/worldSim";
+import { stepWorld } from "../sim/worldSim";
 import type { Bird, WorldEvent } from "../structure/types";
 import { createDozer, dozerForward, dozerSpeed, stepDozer } from "../vehicle/dozer";
 import { createRoadVehicle, replaceRoadVehicle } from "../vehicle/roadVehicle";
@@ -67,6 +65,7 @@ import { urbanDebugDump } from "../world/urbanGeography";
 import { ARCHETYPES } from "../world/archetypes";
 import {
   CASH_TARGET,
+  CELL,
   COPY,
   DOZER,
   MATCH_SECONDS,
@@ -74,7 +73,6 @@ import {
   SIM_MAX_STEPS,
   SIM_STEP_BUDGET_MS,
   TITLE,
-  UPGRADE_MILESTONES,
 } from "./constants";
 import { Input } from "./input";
 import { lerp } from "./math";
@@ -85,7 +83,6 @@ import {
   nextSeed,
   parseSessionFromSearch,
   sessionFailsOn,
-  sessionForcesUpgrade,
   type DistrictId,
   type DemoAsset,
   type PlayMode,
@@ -103,6 +100,16 @@ import { SIGNATURE_BONUS, type RegionalPlacement } from "../world/regionalPlacem
 import { loadOverworld, type OverworldModule } from "./overworldLoader";
 import type { CountyProgress } from "./countyProgress";
 import type { CountyDeployment } from "./session";
+import { homeYardRules, type HomeYardLayoutInputs } from "./session";
+import { sharedCareer, settleRun, SalvageCombo, STOCK_LOADOUT, type DozerLoadout, type Settlement, type SettlementOutcome } from "./career";
+import type { AttachmentRig } from "../vehicle/attachments";
+import type { CareerStrip, CareerStripState } from "../render/careerStrip";
+import type { HomeHost, HomeYardController } from "./homeController";
+
+type HomeBaseModule = typeof import("./homeBase");
+type AttachmentKit = typeof import("./attachmentKit");
+/** County 7 of every region is its capitol. */
+const CAPITOL_INDEX = 7;
 
 class Game {
   private readonly analytics = new RunAnalytics();
@@ -146,9 +153,6 @@ class Game {
   private hint = 1;
   private mode: PlayMode = "play";
   private death: string | null = null;
-  private upgrades: Upgrades = { blade: 0, engine: 0, push: 0 };
-  private nextUpgrade = 0;
-  private earnedChoice = false;
   private job: DemolitionJob | undefined;
   private acc = 0;
   private grindAud = 0;
@@ -160,6 +164,33 @@ class Game {
   private fieldNoticeUntil = 0;
   private readonly playthrough = new PlaythroughRun();
   private playthroughPanel?: PlaythroughPanel;
+  /** Career: the persistent wallet and Heavy Shop purchases, this run's loadout, and its escrow. */
+  private readonly career = sharedCareer();
+  private loadout: DozerLoadout = STOCK_LOADOUT;
+  /** A replay's recorded loadout, used by the next run reset instead of the live career. */
+  private pendingLoadout?: DozerLoadout;
+  /** Present only when the loadout carries an attachment and the Skunkworks chunk has loaded. */
+  private rig: AttachmentRig | null = null;
+  private kit?: AttachmentKit;
+  private readonly combo = new SalvageCombo();
+  private cashCarry = 0;
+  private escrow = 0;
+  private runCells = 0;
+  private runCountyCleared = false;
+  private settled = false;
+  /** This run was rebuilt from a recording; it stays non-paying for its whole life. */
+  private replayRun = false;
+  /** Real play (not the yard, a test map, a demo, the tower test, or the brick job), fixed at run start. */
+  private runEligible = false;
+  private settlement: Settlement | null = null;
+  private bankedUntil = 0;
+  /** Step-level presses: attachment slots, and the yard's T range reset. */
+  private abilityQueue: ("blade" | "aux" | "range")[] = [];
+  private bladeFlash = 0;
+  private homeBase?: HomeBaseModule;
+  private homeYard?: HomeYardController;
+  /** Loaded beside the boot; presentation only, so a frame without it changes nothing. */
+  private careerStrip?: CareerStrip;
 
   async start(root: HTMLElement, hudRoot: HTMLElement): Promise<void> {
     document.title = TITLE;
@@ -180,6 +211,11 @@ class Game {
     this.hudRoot = hudRoot;
     this.hud = new Hud(hudRoot);
     this.bindHud();
+    void import("../render/careerStrip").then(({ CareerStrip }) => {
+      this.careerStrip = new CareerStrip(hudRoot);
+      this.careerStrip.onBlade = () => this.queueAbility("blade");
+      this.careerStrip.onAux = () => this.queueAbility("aux");
+    });
     this.playthroughPanel = new PlaythroughPanel(hudRoot, {
       record: () => this.startRecording(),
       stop: () => { this.stopPlaythrough(); },
@@ -208,6 +244,9 @@ class Game {
     this.syncDebug();
     // A county link needs the overworld manifest before the first town is built.
     if (this.rules.regionId) (await this.ensureOverworld()).resolveCountyLink(this.rules, window.location.search);
+    if (this.rules.home) await this.ensureHomeBase();
+    const startLoadout = this.career.loadout();
+    if (startLoadout.blade || startLoadout.aux) await this.ensureKit();
     bootOpenedSession({
       rules: this.rules,
       applyCampaign: (run) => {
@@ -248,6 +287,8 @@ class Game {
   }
 
   setSession(kind: SessionKind): void {
+    this.settleOpenRun("bailout");
+    this.rules.home = false;
     this.rules.testMap = undefined;
     this.rules.towerTest = false;
     this.rules.job = false;
@@ -300,6 +341,7 @@ class Game {
   }
 
   reset(kind: "same" | "new" = "same"): void {
+    this.settleOpenRun("bailout");
     this.stopPlaythrough();
     setAnalyticsTestSession(!!this.rules.testMap || !!this.rules.towerTest || this.perf.enabled);
     this.analytics.reset(this.elapsed > 0);
@@ -322,7 +364,7 @@ class Game {
     this.renderer.cashPopups.clear();
     this.renderer.invalidate();
     this.birds = [];
-    this.resetRun(keepSetup, ranch);
+    this.resetRun(ranch);
     this.perf.reset();
     const spawn = cameraFocus(this.dozer.x, this.dozer.y, 0.4, this.renderer.zoom);
     this.renderer.camX = spawn.x;
@@ -355,7 +397,10 @@ class Game {
   /** Generate the town for the current rules and place the dozer; returns the focused ranch, if any. */
   private rebuildTown(): Town["buildings"][number] | undefined {
     const level = generationLevel(this.rules, this.campaign);
-    this.town = createTown({
+    const homeBase = this.homeBase;
+    if (this.rules.home && !homeBase) throw new Error("Home Yard built before its chunk loaded");
+    if (this.rules.home) this.rules.homeYard ??= this.liveHomeOptions();
+    this.town = this.rules.home && homeBase ? createTown({ seed: this.rules.seed, populate: town => homeBase.populateHomeYard(town, this.homeOptions()) }) : createTown({
       towerTest: this.rules.towerTest,
       district: this.rules.district,
       seed: this.rules.seed,
@@ -425,6 +470,7 @@ class Game {
 
   /** Start the county the map's detail card deployed, in Sandbox or as a Time Challenge run. */
   private async deployCounty(deploy: CountyDeployment): Promise<void> {
+    this.settleOpenRun("bailout");
     const { countyAt, regionById, regionBiome } = await this.ensureOverworld();
     const county = countyAt(deploy.regionId, deploy.countyIndex);
     const region = regionById(deploy.regionId);
@@ -448,7 +494,7 @@ class Game {
     this.syncSessionUrl();
   }
 
-  /** Next Level on an overworld run: the next open county in the region, carrying upgrades. */
+  /** Next Level on an overworld run: the next open county in the region. */
   private advanceCounty(campaign: CampaignRun): CampaignRun {
     const county = campaign.county;
     const overworld = this.overworld;
@@ -462,12 +508,12 @@ class Game {
 
   /** Through traffic on real maps; police dispatch only when the county clock is running. */
   private attachTraffic(): void {
-    if (this.rules.testMap || this.rules.towerTest || this.rules.demo || this.rules.job) return;
+    if (this.rules.testMap || this.rules.towerTest || this.rules.demo || this.rules.job || this.rules.home) return;
     this.town.traffic = createTraffic(this.town, trafficConfigFor(this.town, this.rules.kind === "challenge"));
   }
 
-  /** Cash, clock, upgrades, job and landmark for a fresh run; a campaign carries its upgrades. */
-  private resetRun(keepSetup: boolean, ranch: Town["buildings"][number] | undefined): void {
+  /** Cash, clock, job and landmark for a fresh run. */
+  private resetRun(ranch: Town["buildings"][number] | undefined): void {
     const campaign = this.campaign;
     this.cash = campaign?.spendable ?? 0;
     this.resubmission = new Resubmission();
@@ -480,14 +526,6 @@ class Game {
     this.fieldNoticeUntil = 0;
     this.mode = campaign?.briefing ? "briefing" : "play";
     this.death = null;
-    if (campaign) {
-      this.upgrades = { ...campaign.upgrades };
-      this.nextUpgrade = campaign.nextUpgrade;
-    } else {
-      if (!keepSetup) this.upgrades = { blade: 0, engine: 0, push: 0 };
-      this.nextUpgrade = 0;
-    }
-    this.earnedChoice = false;
     this.job = this.rules.job && ranch ? new DemolitionJob(ranch) : undefined;
     this.renderer.jobTarget = this.job?.target;
     this.renderer.landmarkTarget = campaign
@@ -498,6 +536,213 @@ class Game {
     this.scrapeCd = 0;
     this.groanCd = 0;
     this.droppedSimSec = 0;
+    this.loadout = this.pendingLoadout ?? this.career.loadout();
+    this.pendingLoadout = undefined;
+    this.applyLoadout();
+    this.combo.reset();
+    this.cashCarry = 0;
+    this.escrow = 0;
+    this.runCells = 0;
+    this.settled = false;
+    this.replayRun = false;
+    this.runEligible = !this.rules.home && !this.rules.testMap && !this.rules.job && !this.rules.towerTest && !this.rules.demo;
+    this.abilityQueue = [];
+    this.bladeFlash = 0;
+    this.homeYard?.reset();
+    const county = campaign?.county;
+    this.runCountyCleared = !!county && !!this.countyProgress?.isCleared(county.regionId, county.index);
+  }
+
+  /** Put this run's career stats and attachments on the machine. */
+  private applyLoadout(): void {
+    const loadout = this.loadout;
+    this.dozer.bladeWidthMul = loadout.bladeWidthMul;
+    this.dozer.resistanceCut = loadout.resistanceCut;
+    const armed = !!(loadout.blade || loadout.aux);
+    this.rig = armed && this.kit ? this.kit.createRig(loadout) : null;
+    // A first attachment bought in the shop loads its chunk; the rig fits on as soon as it lands.
+    if (armed && !this.kit) void this.ensureKit().then(kit => { if (this.loadout === loadout) this.rig = kit.createRig(loadout); });
+    this.syncLook();
+  }
+
+  private async ensureKit(): Promise<AttachmentKit> {
+    this.kit ??= await import("./attachmentKit");
+    return this.kit;
+  }
+
+  private syncLook(): void {
+    const aux = this.rig?.aux;
+    const tether = aux?.tether;
+    this.dozer.look = {
+      livery: this.loadout.livery,
+      wear: this.rules.home ? this.career.profile.wearLevel : Math.min(1, this.runCells / 600),
+      blade: this.rig?.blade?.state,
+      aux: aux?.id,
+      auxActive: !!aux && (aux.burn > 0 || aux.deployed || !!tether),
+      cable: tether ? { x: tether.x, y: tether.y, z: tether.z } : undefined,
+      flicker: Math.floor(this.elapsed * 12) % 2 === 0,
+    };
+  }
+
+  /** A run pays into the career only when it is real play: not the yard, a test map, or a replay. */
+  /**
+   * Whether this run pays is fixed when it starts. Settlement can run after the next session's
+   * rules are already in place (setSession, deployCounty, a replay), so it must never re-read them.
+   */
+  private runPays(): boolean {
+    return this.runEligible && !this.replayRun;
+  }
+
+  /** Settle escrow into the wallet once per run, whichever way the run ends. */
+  private settleOpenRun(outcome: SettlementOutcome): void {
+    if (this.settled || !this.runPays()) return;
+    this.settled = true;
+    if (this.escrow <= 0 && outcome !== "win") return;
+    const challenge = !!this.campaign && showCampaignHud(this.rules, this.campaign);
+    const county = this.campaign?.county;
+    const settlement = settleRun({
+      mode: challenge ? "challenge" : "sandbox",
+      outcome,
+      escrow: this.escrow,
+      timeRemaining: this.timeLeft,
+      replay: this.runCountyCleared,
+      capitolFirstClear: outcome === "win" && !!county && county.index === CAPITOL_INDEX && !this.runCountyCleared,
+    });
+    this.settlement = settlement;
+    this.bankedUntil = performance.now() + 6000;
+    this.career.bank(settlement.payout, this.runCells, Math.min(1, this.runCells / 600));
+  }
+
+  /** The yard's layout inputs: the snapshot taken on entry (and recorded with it), else the live career. */
+  private homeOptions(): HomeYardLayoutInputs {
+    return this.rules.homeYard ?? this.liveHomeOptions();
+  }
+
+  private liveHomeOptions(): HomeYardLayoutInputs {
+    const profile = this.career.profile;
+    return { yardTier: profile.cosmetics.yardTier, countiesCleared: this.countyProgress?.totalCleared() ?? 0, lifetimeEarned: profile.lifetimeEarnedCash };
+  }
+
+  private async ensureHomeBase(): Promise<HomeBaseModule> {
+    const [module] = await Promise.all([import("./homeBase"), this.ensureOverworld()]);
+    this.homeBase = module;
+    this.homeYard ??= new module.HomeYardController(this.homeHost());
+    return module;
+  }
+
+  /** Title, results, or a bailout: bank what the run is owed and roll into the Home Yard. */
+  private async goHome(): Promise<void> {
+    this.releaseControls();
+    this.settleOpenRun("bailout");
+    await this.ensureHomeBase();
+    this.campaign = null;
+    this.rules = homeYardRules(this.rules.seed, this.liveHomeOptions());
+    this.reset("same");
+    this.syncSessionUrl();
+  }
+
+  private queueAbility(slot: "blade" | "aux" | "range"): void {
+    if (this.mode === "play" && !this.playthrough.replaying) this.abilityQueue.push(slot);
+  }
+
+  /** Ability presses and range resets land at the start of a fixed step, so a recording replays them exactly. */
+  private useAbilities(): void {
+    for (const slot of this.abilityQueue.splice(0)) {
+      if (slot === "range") {
+        if (!this.rules.home) continue;
+        this.homeYard?.resetRange();
+        this.playthrough.noteAction({ kind: "range-reset" });
+        continue;
+      }
+      this.applyAbility(slot);
+      this.playthrough.noteAction({ kind: "ability", slot });
+    }
+  }
+
+  private applyAbility(slot: "blade" | "aux"): void {
+    const { rig, kit } = this;
+    if (!rig || !kit) return;
+    if (slot === "blade") {
+      kit.pressBladeAbility(rig, this.dozer.bladeDown);
+      return;
+    }
+    if (kit.pressAuxAbility(rig) === "harpoon-fire") kit.fireHarpoon(this.town, this.dozer, rig);
+  }
+
+  /** One-shot attachment cues become sound and HUD flashes. */
+  private consumeRigCues(): void {
+    for (const cue of this.rig?.cues.splice(0) ?? []) {
+      if (cue === "blade-ready") this.audio.permitStamp();
+      else if (cue === "blade-armed") this.audio.bladeThud(1.2);
+      else if (cue === "blade-rejected") { this.bladeFlash = 0.8; this.audio.trackBind(0.7); }
+      else if (cue === "aux-fired") this.audio.impact(0.9);
+      else if (cue === "aux-rejected") this.audio.switchClick();
+      else if (cue === "harpoon-hit") this.audio.clatter(1, "metal");
+      else if (cue === "harpoon-snap") this.audio.breakMat(1);
+    }
+  }
+
+  private wreckCount(): number {
+    let n = 0;
+    for (const v of this.town.vehicles) if (v.status === "wreck") n++;
+    return n;
+  }
+
+  private homeHost(): HomeHost {
+    return {
+      town: () => this.town,
+      dozer: () => this.dozer,
+      career: this.career,
+      hudRoot: this.hudRoot,
+      particles: this.particles,
+      options: () => this.homeOptions(),
+      // The shop and dispatch change the run outside recorded input: they end a recording, and a
+      // replay never opens them.
+      interactive: () => !this.playthrough.replaying,
+      enterShop: () => {
+        this.stopPlaythrough();
+        this.dozer.vx = 0;
+        this.dozer.vy = 0;
+        this.releaseControls();
+        this.mode = "shop";
+      },
+      leaveShop: (exit) => {
+        if (exit) this.dozer = createDozer(exit.x, exit.y, exit.heading);
+        this.loadout = this.career.loadout();
+        this.applyLoadout();
+        this.mode = "play";
+        this.releaseControls();
+        document.querySelector<HTMLCanvasElement>("#game-root canvas")?.focus();
+      },
+      dispatch: () => {
+        this.stopPlaythrough();
+        this.dozer.vx = 0;
+        this.dozer.vy = 0;
+        this.releaseControls();
+        this.mode = "pause";
+        this.hud.openDispatch();
+      },
+      sound: (kind) => {
+        if (kind === "click") void this.audio.unlock().then(() => this.audio.switchClick());
+        else if (kind === "cash") this.audio.cash();
+        else this.audio.collapse(0.5);
+      },
+      invalidate: () => this.renderer.invalidate(),
+    };
+  }
+
+  private careerStripState(): CareerStripState | null {
+    if (this.mode === "title" || this.mode === "shop" || this.rules.testMap || this.rules.job || this.rules.towerTest) return null;
+    const rig = this.rig && this.kit ? this.kit.rigReadout(this.rig) : {};
+    const s = this.settlement;
+    const banked = s && (this.mode === "results" || performance.now() < this.bankedUntil)
+      ? { payout: s.payout, label: s.label, wallet: this.career.profile.walletBalance } : undefined;
+    if (this.rules.home) return { home: { wallet: this.career.profile.walletBalance, hint: this.homeYard?.hint() ?? "" }, rig, banked, bladeFlash: this.bladeFlash > 0 };
+    const window = this.loadout.comboWindow;
+    return {
+      run: { escrow: this.escrow, multiplier: this.combo.multiplier(this.loadout.salvageMul), comboCells: this.combo.cells, comboFill: window ? this.combo.timer / window : 0 },
+      rig, banked, bladeFlash: this.bladeFlash > 0,
+    };
   }
 
   setDemo(demo: DemoAsset): void {
@@ -505,6 +750,7 @@ class Game {
   }
 
   loadTestMap(testMap: TestMapRequest): void {
+    this.settleOpenRun("bailout");
     this.campaign = null;
     this.rules = rulesForTestMap(this.rules.seed, testMap);
     this.reset('same');
@@ -513,6 +759,12 @@ class Game {
   }
 
   private syncSessionUrl(): void {
+    if (this.rules.home) {
+      const params = new URLSearchParams({ home: "1" });
+      carryDebugQuery(new URLSearchParams(location.search), params);
+      history.replaceState(null, "", "?" + params);
+      return;
+    }
     // Replace the map link without a reload; reload reconstructs this map with fresh UI defaults.
     const params = this.rules.testMap ? new URLSearchParams(testMapSearch(this.rules.testMap, this.rules.seed))
       : new URLSearchParams(this.rules.job ? { job: 'brick', seed: String(this.rules.seed) }
@@ -536,6 +788,7 @@ class Game {
   }
 
   startJob(): void {
+    this.settleOpenRun("bailout");
     this.campaign = null;
     this.rules = { kind: "challenge", district: "classic", seed: DEFAULT_DISTRICT_SEEDS.classic,
       ranchFocus: false, demo: "rivertown", job: true, season: "summer", seasonExplicit: false, weatherDetail: "on" };
@@ -547,23 +800,6 @@ class Game {
     this.perf.enabled = this.renderer.debug.perf;
     if (this.perf.enabled) this.ensurePerfOverlay(); else this.hidePerfOverlay();
     this.hud.syncDebug(this.renderer.debug);
-  }
-
-  /** Live upgrade picks; a replay applies its recorded picks instead. */
-  private pickUpgrade(id: "blade" | "engine" | "push"): void {
-    if (!this.playthrough.replaying) this.applyUpgrade(id);
-  }
-
-  private applyUpgrade(id: "blade" | "engine" | "push"): void {
-    if (!canPickUpgrade(this.rules, this.mode, this.earnedChoice)) return;
-    if (this.job && !this.job.takeChoice()) return;
-    this.earnedChoice = false;
-    this.upgrades[id] += 1;
-    if (this.campaign) {
-      this.campaign.upgrades[id] += 1;
-    }
-    if (this.mode === "upgrade") this.mode = this.campaign?.briefing ? "briefing" : "play";
-    this.playthrough.noteAction({ kind: "upgrade", id });
   }
 
   private frame(realDt: number): void {
@@ -603,10 +839,10 @@ class Game {
       this.audio.toggleMute();
     }
     if (this.mode === "play" || this.mode === "results") this.handleRunKeys();
-    if (this.mode === "play" || this.mode === "upgrade") {
-      if (this.input.consume("1")) this.pickUpgrade("blade");
-      if (this.input.consume("2")) this.pickUpgrade("engine");
-      if (this.input.consume("3")) this.pickUpgrade("push");
+    if (this.mode === "play") {
+      if (this.consumeKey("q")) this.queueAbility("blade");
+      if (this.input.consume("Shift")) this.queueAbility("aux");
+      if (this.rules.home && this.consumeKey("t")) this.queueAbility("range");
     }
     if (this.input.consume("Escape")) this.escape();
   }
@@ -615,8 +851,8 @@ class Game {
   private handleRunKeys(): void {
     if (this.consumeKey("r")) this.reset("same");
     if (this.consumeKey("n")) this.reset("new");
-    if (this.consumeKey("v") && !this.rules.testMap) this.spawnRoadVehicle();
-    if (this.consumeKey("p")) this.spawnPolice();
+    if (this.consumeKey("v") && !this.rules.testMap && !this.rules.home) this.spawnRoadVehicle();
+    if (this.consumeKey("p") && !this.rules.home) this.spawnPolice();
     if (this.consumeKey("g")) { this.renderer.showNhood = !this.renderer.showNhood; this.syncDebug(); }
     if (this.input.consume("`")) {
       this.renderer.debug.perf = !this.renderer.debug.perf;
@@ -627,6 +863,7 @@ class Game {
   /** Escape closes the debug binder first, then toggles pause. */
   private escape(): void {
     this.releaseControls();
+    if (this.mode === "shop") { this.homeYard?.closeShop(); return; }
     if (this.hud.closeDebug(true)) return;
     if (this.mode === "play" || this.mode === "briefing") this.mode = "pause";
     else if (this.mode === "pause") this.mode = this.campaign?.briefing ? "briefing" : "play";
@@ -691,33 +928,66 @@ class Game {
     setAnalyticsTestSession(!!this.rules.testMap || !!this.rules.towerTest || this.perf.enabled || this.renderer.debug.freeze || this.playthrough.replaying);
     this.analytics.step(dt, this.rules.job ? 'brick-job' : this.rules.kind, this.rules.district);
     this.applyReplayActions();
+    this.useAbilities();
     const drive = this.playthrough.control({ ...this.input.axis(), blade: this.input.blade() });
-    stepDozer(
-      this.dozer,
-      {
-        throttle: drive.throttle,
-        steer: drive.steer,
-        blade: drive.blade,
-        ...upgradeModifiers(this.upgrades),
-      },
-      dt,
-    );
+    const { rig, kit } = this;
+    const aux = rig?.aux;
+    const burning = !!kit && aux?.id === "jato_thrusters" && aux.burn > 0;
+    const slow = kit && aux?.id === "seismic_ripper" && aux.deployed ? kit.RIPPER_TIERS[aux.tier].slow : 0;
+    const driveInput = {
+      throttle: drive.throttle,
+      steer: drive.steer,
+      blade: drive.blade,
+      topSpeed: this.loadout.topSpeed * (1 - slow),
+      accel: this.loadout.accel,
+      turnMul: this.loadout.turnMul,
+      boost: burning && aux && kit ? { speed: kit.JATO_TIERS[aux.tier].speed, turn: kit.JATO_TURN } : undefined,
+    };
 
     const beforeHeat = this.dozer.heat;
-    const out = stepWorld(this.town, this.dozer, this.particles, this.upgrades, dt);
-    this.lastMetrics = out.metrics;
-    this.earn(out.cash);
-    this.popCash(out.cash, out.events);
-    this.react(out.events);
+    const wrecksBefore = this.wreckCount();
+    // Anti-tunneling: a step that would carry the hull more than 0.45 of a cell is split, so the
+    // blade sweep never skips a thin wall at Drivetrain or rocket speed.
+    const pace = Math.max(dozerSpeed(this.dozer), driveInput.boost?.speed ?? 0) + this.loadout.accel * dt;
+    const subSteps = sweepSubsteps(pace, dt, CELL);
+    const h = dt / subSteps;
+    let cash = 0, debrisLoad = 0;
+    const events: WorldEvent[] = [], birds: { x: number; y: number }[] = [];
+    for (let i = 0; i < subSteps; i++) {
+      stepDozer(this.dozer, driveInput, h);
+      const out = stepWorld(this.town, this.dozer, this.particles, h, { hitMul: burning && kit ? kit.JATO_HIT_MUL : 1 });
+      cash += out.cash;
+      debrisLoad = Math.max(debrisLoad, out.debrisLoad);
+      for (const e of out.events) events.push(e);
+      for (const b of out.birds) birds.push(b);
+      this.lastMetrics = out.metrics;
+    }
+    if (rig && kit) cash += kit.stepAttachmentEffects(this.town, this.dozer, this.particles, events, rig, dt);
+    let cells = 0;
+    for (const e of events) if (e.kind === "breach") cells++;
+    if (rig && kit) kit.stepRig(rig, dt, { cellsDestroyed: cells, vehiclesWrecked: Math.max(0, this.wreckCount() - wrecksBefore) });
+    this.combo.hit(cells, this.loadout.comboWindow);
+    this.combo.step(dt);
+    this.runCells += cells;
+    const credited = this.earn(cash);
+    this.popCash(credited, events);
+    this.react(events);
+    this.consumeRigCues();
     this.syncFieldNotice(dt);
-    this.stepBirds(out.birds, dt);
+    this.stepBirds(birds, dt);
     this.elapsed += dt;
     this.timeLeft -= dt;
     this.hint = Math.max(0, this.hint - dt * 0.12);
     this.scrapeCd = Math.max(0, this.scrapeCd - dt);
     this.groanCd = Math.max(0, this.groanCd - dt);
-    this.syncMachineAudio(out.debrisLoad, beforeHeat, dt);
-    if (this.offerUpgrade()) return;
+    this.syncMachineAudio(debrisLoad, beforeHeat, dt);
+    this.bladeFlash = Math.max(0, this.bladeFlash - dt);
+    this.syncLook();
+    if (this.rules.home) {
+      this.homeYard?.step();
+      return;
+    }
+    if (this.settleJob()) return;
     if (this.campaign) this.judgeCampaign(this.campaign);
     else this.judgeSession();
   }
@@ -733,11 +1003,23 @@ class Game {
     }
   }
 
-  private earn(amount: number): void {
+  /**
+   * Credit demolition cash to this run's escrow, multiplied live by Salvage Magnetics and the
+   * combo chain. Whole dollars only; the fraction carries to the next credit. The yard pays $0.
+   */
+  private earn(amount: number): number {
+    if (!(amount > 0) || this.rules.home) return 0;
+    if (this.campaign && (this.campaign.expired || this.campaign.complete)) return 0;
+    const total = amount * this.combo.multiplier(this.loadout.salvageMul) + this.cashCarry;
+    const credited = Math.floor(total);
+    this.cashCarry = total - credited;
+    if (credited <= 0) return 0;
+    this.escrow += credited;
     if (this.campaign) {
-      creditCampaignEarnings(this.campaign, amount);
+      creditCampaignEarnings(this.campaign, credited);
       this.cash = this.campaign.spendable;
-    } else this.cash += amount;
+    } else this.cash += credited;
+    return credited;
   }
 
   /** Birds flushed by demolition fly off up and to the right, then expire. */
@@ -777,23 +1059,13 @@ class Game {
     this.audio.syncAmbient(this.town.weather.kind, this.town.weatherDetail);
   }
 
-  /** A paid job or a cash milestone pauses for an upgrade choice. True when it did. */
-  private offerUpgrade(): boolean {
+  /** The brick job pays once its building is down, and that clears the job. True when it did. */
+  private settleJob(): boolean {
     const payout = this.job?.settle() ?? 0;
-    if (payout) {
-      this.earn(payout);
-      this.audio.cash();
-      this.earnedChoice = true;
-      this.mode = "upgrade";
-      return true;
-    }
-    const milestoneCash = this.campaign?.campaignEarned ?? this.cash;
-    if (!sessionForcesUpgrade(this.rules) || this.nextUpgrade >= UPGRADE_MILESTONES.length || milestoneCash < UPGRADE_MILESTONES[this.nextUpgrade]!)
-      return false;
-    this.nextUpgrade += 1;
-    if (this.campaign) this.campaign.nextUpgrade = this.nextUpgrade;
-    this.earnedChoice = true;
-    this.mode = "upgrade";
+    if (!payout) return false;
+    this.earn(payout);
+    this.audio.cash();
+    this.finish("", true);
     return true;
   }
 
@@ -823,6 +1095,7 @@ class Game {
   }
 
   private finish(death: string, won: boolean): void {
+    if (this.campaign) this.settleOpenRun(won ? "win" : "fail");
     this.analytics.finish(won);
     this.mode = "results";
     this.death = won ? null : death;
@@ -894,7 +1167,12 @@ class Game {
       this.audio.crunch(e.mag);
       if (e.mag > 0.9) this.shake.punch(e.mag * 0.45);
     },
-    blast: (e) => { this.shake.punch(e.mag); this.audio.impact(e.mag); },
+    blast: (e) => {
+      this.shake.punch(e.mag);
+      this.audio.impact(e.mag);
+      // Shaped charges carry a collapse-weight boom on top of the impact.
+      if (e.mag >= 2) this.audio.collapse(e.mag * 0.55);
+    },
     spark: (e) => this.audio.clatter(e.mag * 0.6, "metal"),
   };
 
@@ -949,9 +1227,10 @@ class Game {
   }
 
   private replayAction(action: PlaythroughAction): void {
-    if (action.kind === "upgrade") this.applyUpgrade(action.id);
-    else if (action.kind === "resubmit") this.spendResubmission(action.fee);
+    if (action.kind === "resubmit") this.spendResubmission(action.fee);
     else if (action.kind === "police") this.placePolice();
+    else if (action.kind === "ability") this.applyAbility(action.slot);
+    else if (action.kind === "range-reset") this.homeYard?.resetRange();
     else this.placeRoadVehicle();
   }
 
@@ -959,6 +1238,7 @@ class Game {
     this.resubmission.used = true;
     if (this.campaign) spendCampaignCash(this.campaign, fee);
     this.cash -= fee;
+    this.escrow = Math.max(0, this.escrow - fee);
   }
 
   /** Restart the current site and capture every fixed step from its first frame. */
@@ -969,7 +1249,7 @@ class Game {
       this.campaign = { ...retryCampaignLevel(this.campaign), briefing: false };
       this.rules.seed = this.campaign.levelSeed;
     }
-    const setup = structuredClone({ rules: this.rules, campaign: this.campaign, upgrades: this.upgrades });
+    const setup = structuredClone({ rules: this.rules, campaign: this.campaign, loadout: this.career.loadout() });
     this.reset("same");
     this.playthrough.record(setup, buildVersion);
   }
@@ -980,23 +1260,32 @@ class Game {
    * so it waits for that chunk first. Other recordings start at once, as before.
    */
   startReplay(playthrough: Playthrough): Promise<void> | void {
-    if (!playthrough.rules.regionId || this.overworld) return this.beginReplay(playthrough);
-    this.playthrough.note = "Loading county map data for the replay…";
-    return this.ensureOverworld().then(
+    // Rebuilding the recorded site may need lazy chunks: the attachment kit for its loadout, the
+    // Home Yard for a yard recording, the overworld for a county's regional placement.
+    const loads: Promise<unknown>[] = [];
+    if ((playthrough.loadout?.blade || playthrough.loadout?.aux) && !this.kit) loads.push(this.ensureKit());
+    if (playthrough.rules.home && !this.homeBase) loads.push(this.ensureHomeBase());
+    else if (playthrough.rules.regionId && !this.overworld) loads.push(this.ensureOverworld());
+    if (!loads.length) return this.beginReplay(playthrough);
+    this.playthrough.note = "Loading map data for the replay…";
+    return Promise.all(loads).then(
       () => { this.playthrough.note = ""; this.beginReplay(playthrough); },
       (error: unknown) => { this.playthrough.note = `Could not load replay: ${error instanceof Error ? error.message : String(error)}`; },
     );
   }
 
   private beginReplay(playthrough: Playthrough): void {
+    this.settleOpenRun("bailout");
     this.prepareCleanRun();
-    const setup = structuredClone({ rules: playthrough.rules, campaign: playthrough.campaign, upgrades: playthrough.upgrades });
+    const setup = structuredClone({ rules: playthrough.rules, campaign: playthrough.campaign });
     this.rules = setup.rules;
     this.campaign = setup.campaign;
-    this.upgrades = setup.upgrades;
+    this.pendingLoadout = playthrough.loadout ?? STOCK_LOADOUT;
     this.reset("same");
     this.syncSessionUrl();
     this.playthrough.replay(playthrough);
+    // Replay earnings never reach the wallet, even after playback is stopped mid-run.
+    this.replayRun = true;
   }
 
   /** Recording and replay start in active play: binder closed, simulation running. */
@@ -1153,6 +1442,7 @@ class Game {
     this.renderer.camX -= dock / 2;
     this.yardPanel?.tick(dt);
     this.hud.render(this.hudState());
+    this.careerStrip?.update(this.careerStripState());
     this.playthroughPanel?.render(this.playthrough.status());
   }
 
@@ -1197,7 +1487,6 @@ class Game {
   private hudState(): HudState {
     return {
       resubmitted: this.resubmission.used,
-      upgradeModifiers: upgradeModifiers(this.upgrades),
       hasYard: !!this.town.yard,
       focusedTest: this.rules.testMap?.kind === 'asset',
       testMapName: this.testMapName(),
@@ -1213,7 +1502,8 @@ class Game {
       muted: this.audio.muted,
       heat: this.dozer.heat,
       track: this.dozer.track,
-      overlay: this.mode === "play" ? "none" : this.mode,
+      overlay: this.mode === "play" || this.mode === "shop" ? "none" : this.mode,
+      home: !!this.rules.home,
       death: this.death,
       won: this.mode === "results" && (this.campaign ? this.campaign.complete : this.cash >= CASH_TARGET && !this.death),
       fieldNotice: this.fieldNotice,
@@ -1313,8 +1603,8 @@ class Game {
   /** UI map changes must disclose that they replace the current run. */
   private confirmReplacement(action: string): boolean {
     this.releaseControls();
-    const hasProgress = this.elapsed > 0 || this.cash > 0 || this.campaign !== null || Object.values(this.upgrades).some(value => value > 0) || !!this.rules.testMap;
-    return !hasProgress || window.confirm(`${action}? This replaces your current run, including demolition and upgrades. You cannot undo this. Cancel to keep playing.`);
+    const hasProgress = this.elapsed > 0 || this.cash > 0 || this.campaign !== null || !!this.rules.testMap;
+    return !hasProgress || window.confirm(`${action}? This replaces your current run, including its demolition and escrow. You cannot undo this. Cancel to keep playing.`);
   }
 
   private bindHud(): void {
@@ -1340,7 +1630,8 @@ class Game {
         else this.audio.typewriterKey(index);
       },
       onMenu: () => { this.releaseControls(); if (this.mode === "play") this.mode = "pause"; },
-      onTitle: () => { this.releaseControls(); this.campaign = null; this.mode = "title"; },
+      onTitle: () => { this.releaseControls(); this.settleOpenRun("bailout"); this.campaign = null; this.mode = "title"; },
+      onHomeYard: () => { void this.goHome(); },
       onStart: (deploy) => this.deployCounty(deploy),
       onBeginLevel: () => {
         if (this.campaign) this.campaign.briefing = false;
@@ -1359,7 +1650,7 @@ class Game {
         this.reset("same");
       },
       onNewCampaign: () => {
-        // An overworld run starts its region over from County 1 with fresh upgrades.
+        // An overworld run starts its region over from County 1.
         const county = this.campaign?.county;
         if (county && this.campaign && this.overworld) {
           const season = this.campaign.season;
@@ -1377,7 +1668,6 @@ class Game {
       },
       onTestYard: () => { if (this.confirmReplacement("Open All-Assets Test Map")) void this.openTestYard(); },
       onResetTest: () => this.reset("same"),
-      onChoice: (id) => this.pickUpgrade(id),
       onResume: () => {
         this.releaseControls();
         if (this.mode === "pause") this.mode = "play";
@@ -1402,7 +1692,7 @@ class Game {
       onDebugFloor: (floor) => { this.renderer.debug.maxFloor = floor; this.syncDebug(); },
       onDebugReset: () => { Object.assign(this.renderer.debug, defaultDebugView()); this.syncDebug(); },
       onDebugStep: () => {
-        if (this.renderer.debug.freeze && this.mode !== "upgrade" && this.mode !== "results" && !this.playthrough.exhausted) this.step(SIM_DT);
+        if (this.renderer.debug.freeze && this.mode !== "results" && !this.playthrough.exhausted) this.step(SIM_DT);
       },
     });
   }
@@ -1520,7 +1810,6 @@ class Game {
       mode: this.mode,
       seed: this.rules.seed,
       request: this.rules.testMap,
-      upgrades: { ...this.upgrades },
       binder: structuredClone(this.hud.binder),
       debug: { ...this.renderer.debug },
       dozer: { x: this.dozer.x, y: this.dozer.y },
@@ -1544,6 +1833,7 @@ class Game {
       season: this.town.season,
       weather: this.town.weather.kind,
       spawn: { x: this.town.spawnX, y: this.town.spawnY },
+      home: this.town.home,
       lots: this.town.lots.map((lot) => ({
         id: lot.id,
         identity: lot.identity,

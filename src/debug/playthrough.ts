@@ -1,6 +1,6 @@
 import type { CampaignRun } from "../game/campaignRun";
 import type { SessionRules } from "../game/session";
-import type { Upgrades } from "../sim/worldSim";
+import type { DozerLoadout } from "../game/career";
 
 /**
  * A recorded playthrough: the setup that rebuilds the site, then the drive control
@@ -8,7 +8,8 @@ import type { Upgrades } from "../sim/worldSim";
  * same steps on the same build reproduces the run exactly.
  */
 const PLAYTHROUGH_FORMAT = "permit-denied-playthrough" as const;
-const PLAYTHROUGH_VERSION = 1 as const;
+/** Version 2 dropped the in-run upgrade picks; version 1 recordings cannot replay. */
+const PLAYTHROUGH_VERSION = 2 as const;
 
 export interface PlaythroughControl {
   throttle: number;
@@ -16,14 +17,13 @@ export interface PlaythroughControl {
   blade: boolean;
 }
 
-export type UpgradeId = "blade" | "engine" | "push";
-
 /** `at` is the number of fixed steps already run when the action happened. */
 export type PlaythroughAction =
-  | { at: number; kind: "upgrade"; id: UpgradeId }
   | { at: number; kind: "resubmit"; fee: number }
   | { at: number; kind: "road-vehicle" }
-  | { at: number; kind: "police" };
+  | { at: number; kind: "police" }
+  | { at: number; kind: "ability"; slot: "blade" | "aux" }
+  | { at: number; kind: "range-reset" };
 
 type WithoutAt<A> = A extends unknown ? Omit<A, "at"> : never;
 export type PlaythroughActionInput = WithoutAt<PlaythroughAction>;
@@ -43,7 +43,8 @@ export interface PlaythroughDigest {
 export interface PlaythroughSetup {
   rules: SessionRules;
   campaign: CampaignRun | null;
-  upgrades: Upgrades;
+  /** Career stats and attachments the run used; absent on older recordings (the stock machine). */
+  loadout?: DozerLoadout;
 }
 
 export interface Playthrough extends PlaythroughSetup {
@@ -158,7 +159,7 @@ export function parsePlaythrough(input: unknown): Playthrough {
   const p = value as Partial<Playthrough>;
   if (p.format !== PLAYTHROUGH_FORMAT) throw new Error("Not a PERMIT DENIED playthrough file.");
   if (p.version !== PLAYTHROUGH_VERSION) throw new Error(`Unsupported playthrough version ${String(p.version)}.`);
-  if (!p.rules || typeof p.rules.seed !== "number" || !p.upgrades || !p.final) throw new Error("Playthrough is missing its site setup.");
+  if (!p.rules || typeof p.rules.seed !== "number" || !p.final) throw new Error("Playthrough is missing its site setup.");
   if (!Number.isInteger(p.steps) || p.steps! < 0) throw new Error("Playthrough step count is invalid.");
   if (!Array.isArray(p.controls) || !Array.isArray(p.actions)) throw new Error("Playthrough input stream is missing.");
   for (const entry of p.controls) {

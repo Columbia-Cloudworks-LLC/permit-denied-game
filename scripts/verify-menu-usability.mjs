@@ -35,7 +35,7 @@ try {
   await page.waitForFunction(() => document.querySelector('[data-assets]')?.options.length > 100);
   const snapshot = () => page.evaluate(() => {
     const s = window.__pd.inspect();
-    return { seed: s.seed, elapsed: s.elapsed, request: s.request, upgrades: s.upgrades, dozer: s.dozer, url: location.href };
+    return { seed: s.seed, elapsed: s.elapsed, request: s.request, dozer: s.dozer, url: location.href };
   });
   const cancel = async selector => {
     const before = await snapshot();

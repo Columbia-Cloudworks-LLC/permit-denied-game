@@ -56,7 +56,7 @@ export class YardPanel {
         <div class="yard-row"><button data-remove>Remove added instance</button><button data-debris>Clear owned debris</button></div>
         <button data-baseline>Restore complete baseline</button>
       </details>
-      <details data-section="context"><summary>About these tests</summary><p>Buildings keep their contents. Sites include their authored buildings and equipment. Interior fixtures use an open-front support structure. Use Inspector to look through roofs and floors.</p><p>Reset Test restores the asset and dozer while keeping your upgrades and debug settings. Restore Selected Asset leaves your dozer in place.</p></details>
+      <details data-section="context"><summary>About these tests</summary><p>Buildings keep their contents. Sites include their authored buildings and equipment. Interior fixtures use an open-front support structure. Use Inspector to look through roofs and floors.</p><p>Reset Test restores the asset and dozer while keeping your debug settings. Restore Selected Asset leaves your dozer in place.</p></details>
     </div>`;
     parent.append(this.root);
     for (const event of ['pointerdown', 'keydown', 'keyup', 'wheel']) this.root.addEventListener(event, e => { e.stopPropagation(); controls.releaseInput(); });

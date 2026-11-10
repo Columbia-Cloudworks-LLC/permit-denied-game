@@ -68,7 +68,7 @@ it('triggers the celebration through the real dozer collision path', () => {
   const pins=b.fixtures.filter(f=>f.kind==='bowling-pins'), events:WorldEvent[]=[];
   for(const f of pins) {
     const dozer=createDozer(f.x+f.w/2,f.y+f.d+.1,-Math.PI/2);dozer.vy=-7;
-    events.push(...stepWorld(town,dozer,p,{blade:0,engine:0,push:0},1/60).events);
+    events.push(...stepWorld(town,dozer,p,1/60).events);
   }
   expect(pins.every(f=>f.broken)).toBe(true);
   expect(events.filter(e=>e.kind==='bowling-strike')).toHaveLength(6);

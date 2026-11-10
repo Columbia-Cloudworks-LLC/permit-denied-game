@@ -132,7 +132,7 @@ describe("terrain features", () => {
     const dozer = createDozer(cx, cy, 0);
     dozer.motionStartX = cx - 4;
     dozer.motionStartY = cy;
-    stepWorld(town, dozer, new ParticlePool(), { blade: 0, engine: 0, push: 0 }, 1 / 60);
+    stepWorld(town, dozer, new ParticlePool(), 1 / 60);
     expect(terrainTraversalAt(town.features, dozer.x, dozer.y, town.surface)).toBe("open");
   });
 
@@ -176,7 +176,7 @@ describe("terrain features", () => {
     const dozer = createDozer(sample.x, sample.y, live!.heading);
     dozer.bladeDown = true;
     const before = live!.churn.reduce((sum, cell) => sum + cell, 0);
-    stepWorld(town, dozer, new ParticlePool(), { blade: 0, engine: 0, push: 0 }, 1 / 60);
+    stepWorld(town, dozer, new ParticlePool(), 1 / 60);
     expect(live!.churn.reduce((sum, cell) => sum + cell, 0)).toBeGreaterThan(before);
     expect(town.props.every((p) => p.assetId !== "corn" && p.assetId !== "wheat")).toBe(true);
   });

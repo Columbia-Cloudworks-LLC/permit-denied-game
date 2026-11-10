@@ -90,6 +90,8 @@ export interface TownDebugSnapshot {
   season?: string;
   weather?: string;
   spawn: { x: number; y: number };
+  /** Home Yard trigger zones; absent on every other map. */
+  home?: import("../world/town").HomeYardLayout;
   lots: TownLotSnapshot[];
   ground: TownGroundSnapshot[];
   features: TownFeatureSnapshot[];
@@ -105,7 +107,6 @@ export interface BinderInspectSnapshot {
   mode: PlayMode;
   seed: number;
   request: TestMapRequest | undefined;
-  upgrades: { blade: number; engine: number; push: number };
   binder: DebugBinderState;
   debug: DebugView;
   dozer: { x: number; y: number };

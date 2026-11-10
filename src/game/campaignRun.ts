@@ -2,7 +2,6 @@ import type { Building } from '../structure/types';
 import type { BiomeId } from '../world/biomes';
 import { selectCampaignBiome } from '../world/biomes';
 import { resolveSeason, seasonLabel, weatherConditionLabel, type SeasonId, type WeatherConditionId } from '../world/season';
-import type { Upgrades } from './upgrades';
 import { COPY } from './constants';
 import {
   CAMPAIGN_LEVEL_COUNT,
@@ -13,8 +12,6 @@ import {
 export type CampaignOutcome = 'continue' | 'win' | 'engine' | 'track' | 'clock';
 
 export interface CampaignSnapshot {
-  upgrades: Upgrades;
-  nextUpgrade: number;
   campaignEarned: number;
 }
 
@@ -22,8 +19,6 @@ export interface CampaignRun {
   levelIndex: number;
   campaignSeed: number;
   levelSeed: number;
-  upgrades: Upgrades;
-  nextUpgrade: number;
   levelEarned: number;
   campaignEarned: number;
   spendable: number;
@@ -46,16 +41,8 @@ export interface CampaignCounty {
   mapSeed: number;
 }
 
-function emptyUpgrades(): Upgrades {
-  return { blade: 0, engine: 0, push: 0 };
-}
-
-function cloneUpgrades(upgrades: Upgrades): Upgrades {
-  return { blade: upgrades.blade, engine: upgrades.engine, push: upgrades.push };
-}
-
-function snapshot(run: Pick<CampaignRun, 'upgrades' | 'nextUpgrade' | 'campaignEarned'>): CampaignSnapshot {
-  return { upgrades: cloneUpgrades(run.upgrades), nextUpgrade: run.nextUpgrade, campaignEarned: run.campaignEarned };
+function snapshot(run: Pick<CampaignRun, 'campaignEarned'>): CampaignSnapshot {
+  return { campaignEarned: run.campaignEarned };
 }
 
 export function startCampaign(seed: number): CampaignRun {
@@ -63,8 +50,6 @@ export function startCampaign(seed: number): CampaignRun {
     levelIndex: 0,
     campaignSeed: seed >>> 0,
     levelSeed: seed >>> 0,
-    upgrades: emptyUpgrades(),
-    nextUpgrade: 0,
     levelEarned: 0,
     campaignEarned: 0,
     spendable: 0,
@@ -72,7 +57,7 @@ export function startCampaign(seed: number): CampaignRun {
     expired: false,
     complete: false,
     victory: false,
-    entry: { upgrades: emptyUpgrades(), nextUpgrade: 0, campaignEarned: 0 },
+    entry: { campaignEarned: 0 },
     season: resolveSeason(seed),
     biomeId: selectCampaignBiome(seed).id,
   };
@@ -156,8 +141,6 @@ export function applyCampaignOutcome(run: CampaignRun, outcome: CampaignOutcome)
 export function retryCampaignLevel(run: CampaignRun): CampaignRun {
   return {
     ...run,
-    upgrades: cloneUpgrades(run.entry.upgrades),
-    nextUpgrade: run.entry.nextUpgrade,
     levelEarned: 0,
     campaignEarned: run.entry.campaignEarned,
     spendable: 0,
@@ -187,7 +170,6 @@ export function advanceCampaignLevel(run: CampaignRun, nextSeed: number, target?
     expired: false,
     complete: false,
     victory: false,
-    upgrades: cloneUpgrades(run.upgrades),
     entry: snapshot(run),
   };
   next.entry = snapshot(next);

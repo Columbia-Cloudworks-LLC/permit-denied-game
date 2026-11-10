@@ -177,8 +177,8 @@ export class AssetCaptureSession {
     const { bay, town, particles } = this;
     for (let i = 0; i < frames; i++) {
       if (bay.asset.id === 'vehicle:bulldozer') stepDozer(this.dozer, { throttle: .5, steer: .25,
-        blade: bay.variant === 1, engineMul: 1, bladeMul: 1, pushMul: 1 }, SIM_DT);
-      stepWorld(town, this.dozer, particles, { blade: 0, engine: 0, push: 0 }, SIM_DT); this.ticks++;
+        blade: bay.variant === 1}, SIM_DT);
+      stepWorld(town, this.dozer, particles, SIM_DT); this.ticks++;
     }
     return this.snapshot();
   }

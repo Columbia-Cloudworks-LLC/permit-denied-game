@@ -56,7 +56,7 @@ beforeEach(() => {
   parent = document.querySelector<HTMLElement>('#host')!;
   actions = {
     page: vi.fn(), resume: vi.fn(), start: vi.fn(), mapSeed: vi.fn(() => 1234), restart: vi.fn(), debug: vi.fn(), title: vi.fn(), mute: vi.fn(),
-    click: vi.fn(), unlockSound: vi.fn(() => Promise.resolve()), titleSound: vi.fn(), pwaUpdate: vi.fn(),
+    click: vi.fn(), unlockSound: vi.fn(() => Promise.resolve()), titleSound: vi.fn(), pwaUpdate: vi.fn(), homeYard: vi.fn(),
   };
   menu = new OperatorMenu(parent, actions);
 });
@@ -457,4 +457,24 @@ it('wraps Tab within the visible controls, and parks focus on the heading when n
   key(last, { key: 'Tab' });
   expect(document.activeElement).toBe(menu.root.querySelector('#operator-heading'));
   rects.mockRestore();
+});
+
+it('reaches the Home Yard from the world and state maps, not from the title page', async () => {
+  menu.show('title');
+  expect(menu.root.querySelector('[data-menu-action="home-yard"]')).toBeNull();
+  button('[data-nav="dispatch"]').click();
+  await openMap();
+  button('.atlas-back [data-menu-action="home-yard"]').click();
+  expect(actions.homeYard).toHaveBeenCalledTimes(1);
+  tap(region('US-IL'));
+  go().click();
+  await settle();
+  button('.atlas-sheet ~ * [data-menu-action="home-yard"], [data-atlas-bar="sheet"] [data-menu-action="home-yard"]').click();
+  expect(actions.homeYard).toHaveBeenCalledTimes(2);
+});
+
+it('offers Bail Out to Yard from the pause menu during a run', () => {
+  menu.show('pause', running);
+  button('[data-menu-action="home-yard"]').click();
+  expect(actions.homeYard).toHaveBeenCalledTimes(1);
 });

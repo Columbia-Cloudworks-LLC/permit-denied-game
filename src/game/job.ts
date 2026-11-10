@@ -4,7 +4,6 @@ import type { Building } from "../structure/types";
 export class DemolitionJob {
   readonly members;
   paid = false;
-  choiceEarned = false;
   readonly payout = 1200;
 
   constructor(readonly target: Building) {
@@ -36,13 +35,6 @@ export class DemolitionJob {
   settle(): number {
     if (this.paid || !this.status().ready) return 0;
     this.paid = true;
-    this.choiceEarned = true;
     return this.payout;
-  }
-
-  takeChoice(): boolean {
-    if (!this.choiceEarned) return false;
-    this.choiceEarned = false;
-    return true;
   }
 }

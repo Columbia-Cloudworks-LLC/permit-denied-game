@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { SIM_DT } from "../game/constants";
-import { parseSessionFromSearch, sessionFailsOn, sessionForcesUpgrade } from "../game/session";
+import { parseSessionFromSearch, sessionFailsOn } from "../game/session";
 import { ParticlePool } from "../fx/particles";
 import { applyCellDamage } from "../structure/building";
 import { createDozer, stepDozer } from "../vehicle/dozer";
@@ -14,9 +14,8 @@ import {
   spawnCollapseDebris,
   totalDebrisMass,
 } from "./debris";
-import { stepWorld, type Upgrades } from "./worldSim";
+import { stepWorld } from "./worldSim";
 
-const upgrades: Upgrades = { blade: 0, engine: 0, push: 0 };
 
 function driveWorld(
   town: ReturnType<typeof createTown>,
@@ -32,13 +31,10 @@ function driveWorld(
         throttle: drive.throttle,
         steer: drive.steer,
         blade: drive.blade,
-        engineMul: 1.28,
-        bladeMul: 1,
-        pushMul: 1,
-      },
+        },
       SIM_DT,
     );
-    stepWorld(town, dozer, particles, { blade: 0, engine: 1, push: 0 }, SIM_DT);
+    stepWorld(town, dozer, particles, SIM_DT);
   }
 }
 
@@ -63,7 +59,6 @@ describe("sandbox session rules", () => {
   it("does not force clock, heat, or track failure in sandbox", () => {
     const sandbox = sessionFailsOn({ kind: "sandbox", district: "classic", seed: 1, ranchFocus: false, season: "summer", seasonExplicit: false, weatherDetail: "on" });
     expect(sandbox).toEqual({ heat: false, track: false, clock: false });
-    expect(sessionForcesUpgrade({ kind: "sandbox", district: "classic", seed: 1, ranchFocus: false, season: "summer", seasonExplicit: false, weatherDetail: "on" })).toBe(false);
     const challenge = sessionFailsOn({ kind: "challenge", district: "classic", seed: 1, ranchFocus: false, season: "summer", seasonExplicit: false, weatherDetail: "on" });
     expect(challenge).toEqual({ heat: true, track: true, clock: true });
   });
@@ -113,7 +108,7 @@ describe("rubble persistence and excavation", () => {
       r.sleeping = true;
       r.touchedAt = -10;
     }
-    for (let i = 0; i < 4; i++) stepWorld(town, parked, particles, upgrades, SIM_DT);
+    for (let i = 0; i < 4; i++) stepWorld(town, parked, particles, SIM_DT);
     expect(town.rubble.filter((r) => r.layer === "remnant").length).toBeLessThanOrEqual(96);
     expect(town.rubble.filter((r) => r.layer === "fragment").length).toBeLessThanOrEqual(140);
   });
@@ -146,7 +141,7 @@ describe("rubble persistence and excavation", () => {
     }
     const dummy = createDozer(2, 2, 0);
     for (let i = 0; i < 240; i++) {
-      stepWorld(town, dummy, particles, upgrades, SIM_DT);
+      stepWorld(town, dummy, particles, SIM_DT);
     }
     const after = obstructionAt(town, heapX, 17.6, 0.8);
     expect(after.resistance).toBeGreaterThan(1.2);
@@ -175,7 +170,7 @@ describe("rubble persistence and excavation", () => {
     const parked = createDozer(2, 28, 0);
 
     town.roadCar = createRoadVehicle(3.4, 17.6, 0);
-    for (let i = 0; i < 70; i++) stepWorld(town, parked, particles, upgrades, SIM_DT);
+    for (let i = 0; i < 70; i++) stepWorld(town, parked, particles, SIM_DT);
     const openSpeed = roadSpeed(town.roadCar);
     expect(openSpeed).toBeGreaterThan(2.4);
     const openX = town.roadCar.x;
@@ -195,7 +190,7 @@ describe("rubble persistence and excavation", () => {
     }
     town.pile.addMass(8.1, 17.6, 6.2, "concrete");
     expect(obstructionAt(town, 8.1, 17.6, 0.75).blocked).toBe(true);
-    for (let i = 0; i < 90; i++) stepWorld(town, parked, particles, upgrades, SIM_DT);
+    for (let i = 0; i < 90; i++) stepWorld(town, parked, particles, SIM_DT);
     const blockedSpeed = roadSpeed(town.roadCar);
     expect(blockedSpeed).toBeLessThan(openSpeed * 0.85);
     expect(town.roadCar.x).toBeLessThan(openX + 0.4);
@@ -203,7 +198,7 @@ describe("rubble persistence and excavation", () => {
     const dozer = createDozer(5.8, 17.6, 0);
     driveWorld(town, dozer, 180);
     town.roadCar = createRoadVehicle(3.4, 17.6, 0);
-    for (let i = 0; i < 150; i++) stepWorld(town, parked, particles, upgrades, SIM_DT);
+    for (let i = 0; i < 150; i++) stepWorld(town, parked, particles, SIM_DT);
     expect(town.roadCar.x).toBeGreaterThan(8.4);
   });
 
@@ -217,14 +212,14 @@ describe("rubble persistence and excavation", () => {
     const dozer = createDozer(town.maxX - 2, town.maxY - 2, 0);
     let cashEvents = 0;
     for (let i = 0; i < 320; i++) {
-      const out = stepWorld(town, dozer, particles, upgrades, SIM_DT);
+      const out = stepWorld(town, dozer, particles, SIM_DT);
       cashEvents += out.events.filter((e) => e.kind === "cash" && e.cash === 140).length;
     }
     expect(house.fullyDown).toBe(true);
     expect(house.collapseBonusPaid).toBe(true);
     expect(cashEvents).toBe(1);
     expect(totalDebrisMass(town)).toBeGreaterThan(1);
-    const again = stepWorld(town, dozer, particles, upgrades, SIM_DT);
+    const again = stepWorld(town, dozer, particles, SIM_DT);
     expect(again.events.filter((e) => e.kind === "cash" && e.cash === 140)).toHaveLength(0);
   });
 
@@ -233,13 +228,13 @@ describe("rubble persistence and excavation", () => {
     const house = town.buildings[0]!;
     const particles = new ParticlePool();
     const dozer = createDozer(house.x - 0.4, house.y + house.d * house.cellSize * 0.5, 0);
-    stepWorld(town, dozer, particles, upgrades, SIM_DT);
+    stepWorld(town, dozer, particles, SIM_DT);
     expect(house.collisionDirty).toBe(false);
     for (let gx = 0; gx < house.w; gx++) {
       applyCellDamage(house, house.grid[0]![gx]![0]!, 999, 1, 0, particles, []);
     }
     expect(house.collisionDirty).toBe(true);
-    const out = stepWorld(town, dozer, particles, upgrades, SIM_DT);
+    const out = stepWorld(town, dozer, particles, SIM_DT);
     expect(out.metrics.collisionRebuilds).toBe(1);
     expect(house.collisionDirty).toBe(false);
     const fresh = createTown();
@@ -258,7 +253,7 @@ describe("rubble persistence and excavation", () => {
       floor: 0,
       cellSize: 1.15,
     });
-    stepWorld(town, createDozer(2, 2, 0), new ParticlePool(), upgrades, SIM_DT);
+    stepWorld(town, createDozer(2, 2, 0), new ParticlePool(), SIM_DT);
     const stats = lastDebrisStats();
     expect(stats.bodyMass + stats.pileMass).toBeGreaterThan(0.2);
     expect(stats.active + stats.sleeping).toBe(town.rubble.length);

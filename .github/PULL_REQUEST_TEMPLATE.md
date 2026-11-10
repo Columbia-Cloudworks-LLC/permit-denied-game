@@ -13,7 +13,7 @@ Fixes #
 
 ## Scope
 
-- [ ] One town generator (overworld counties are seeded variants of the seven levels; county clears and the capitol unlock are the only between-run state, with no second generator or other progression)
+- [ ] One town generator (overworld counties are seeded variants of the seven levels; the Home Yard is the one hand-built lot; county clears, the capitol unlock, and the career profile are the only between-run state)
 - [ ] No secrets, backend, or `dist/` artifacts in the diff
 - [ ] Copy stays on-spec (`PERMIT DENIED`, no Heemeyer / Granby / wanted stars)
 

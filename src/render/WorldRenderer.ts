@@ -32,7 +32,7 @@ import {
   drawFallingCell,
   drawWallSpan,
 } from "./facadeDraw";
-import { drawDozer } from "./vehicles";
+import { drawDozer, lookKey } from "./vehicles";
 import { facadeDetailCommand } from './facadeDetails';
 import { elevatedTankCommands } from './elevatedTank';
 import { siloCommands } from './silos';
@@ -288,7 +288,8 @@ export class WorldRenderer {
   /** Yard bay labels and placement preview. */
   private passYard(frame: RenderFrame): void {
     const { town } = frame;
-    const yardKey = town.yard ? `${town.seed}:${town.yard.bays.map(b => b.key).join(',')}` : '';
+    const pads = town.home?.pads ?? [];
+    const yardKey = town.yard ? `${town.seed}:${town.yard.bays.map(b => b.key).join(',')}` : pads.length ? `home:${pads.map(p => `${p.label}@${p.x},${p.y}`).join('|')}` : '';
     if (yardKey !== this.yardLabelKey) {
       for (const label of this.yardLabels) label.destroy();
       this.yardLabels = [];
@@ -296,7 +297,17 @@ export class WorldRenderer {
         const label = new Text({ text: `${bay.asset.category} / ${bay.asset.name}`, style: { fontSize: 10, fill: 0xffe7a0, fontFamily: 'monospace' } });
         const p = worldToScreen(bay.x, bay.y); label.position.set(p.x, p.y); this.root.addChild(label); this.yardLabels.push(label);
       }
+      for (const pad of pads) {
+        const label = new Text({ text: pad.label, style: { fontSize: 11, fill: 0xfff1c0, fontFamily: 'monospace', fontWeight: 'bold', stroke: { color: 0x10140f, width: 3 } } });
+        const p = worldToScreen(pad.x + pad.w / 2, pad.y + pad.d / 2, 0.05);
+        label.anchor.set(0.5, 0.5); label.position.set(p.x, p.y); this.root.addChild(label); this.yardLabels.push(label);
+      }
       this.yardLabelKey = yardKey;
+    }
+    // Home Yard pads: a painted border with a lighter fill, under everything that drives over them.
+    for (const pad of pads) {
+      drawOrientedGround(this.groundOverlays, pad.x + pad.w / 2, pad.y + pad.d / 2, 0, pad.w, pad.d, pad.color, .85, .015);
+      drawOrientedGround(this.groundOverlays, pad.x + pad.w / 2, pad.y + pad.d / 2, 0, Math.max(0, pad.w - .5), Math.max(0, pad.d - .5), pad.color, .35, .018);
     }
     for (const b of this.yardPreview) drawOrientedGround(this.groundOverlays, b.x + b.w / 2, b.y + b.d / 2, 0, b.w, b.d, this.yardPreviewValid ? 0x55ff99 : 0xff5555, .3, .03);
   }
@@ -844,7 +855,7 @@ export class WorldRenderer {
     this.cmds.push({
       key: "dozer",
       mobile: true,
-      version: [dozer.x, dozer.y, dozer.heading, dozer.bladeDown, dozer.odo, Math.round(dozer.pitch * 400), Math.round(dozer.roll * 400), Math.round(dozer.lastImpact * 100), emphasis].join(":"),
+      version: [dozer.x, dozer.y, dozer.heading, dozer.bladeDown, dozer.odo, Math.round(dozer.pitch * 400), Math.round(dozer.roll * 400), Math.round(dozer.lastImpact * 100), emphasis, lookKey(dozer)].join(":"),
       depth: depthKey(dozer.x, dozer.y, 0.4),
       run: (g) => drawDozer(g, dozer, emphasis),
     });

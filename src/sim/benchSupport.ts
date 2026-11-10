@@ -4,9 +4,8 @@ import type { Town } from "../world/town";
 import { SIM_DT } from "../game/constants";
 import { applyCellDamage } from "../structure/building";
 import { stepDozer } from "../vehicle/dozer";
-import { stepWorld, type Upgrades } from "./worldSim";
+import { stepWorld } from "./worldSim";
 
-export const BENCH_UPGRADES: Upgrades = { blade: 0, engine: 0, push: 0 };
 
 /** Yield so Vitest's worker RPC can ACK during long CPU-bound loops. */
 export function pumpVitestRpc(): Promise<void> {
@@ -33,12 +32,12 @@ export function timeSteps(
     if (drive) {
       stepDozer(
         dozer,
-        { throttle: 1, steer: 0, blade: true, engineMul: 1, bladeMul: 1, pushMul: 1 },
+        { throttle: 1, steer: 0, blade: true},
         SIM_DT,
       );
     }
     const t0 = performance.now();
-    stepWorld(town, dozer, particles, BENCH_UPGRADES, SIM_DT);
+    stepWorld(town, dozer, particles, SIM_DT);
     samples.push(performance.now() - t0);
   }
   return samples;

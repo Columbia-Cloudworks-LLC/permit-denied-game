@@ -352,31 +352,10 @@ describe('debug bridge', () => {
   });
 });
 
-describe('upgrades', () => {
-  it('stops a campaign for an upgrade at each cash milestone, then resumes on a pick', () => {
-    game.setSession('challenge');
-    frames(1);
-    hud('#hud-panel [data-act="begin"]').click();
-    expect(internal.mode).toBe('play');
-    (internal.campaign as unknown as { campaignEarned: number }).campaignEarned = 1e9;
-    internal.step(SIM_DT);
-    expect(internal.mode).toBe('upgrade');
-    // Below the next milestone, so the pick returns to play.
-    (internal.campaign as unknown as { campaignEarned: number }).campaignEarned = 0;
-    // The first frame in a menu releases held input, as the overlay opens.
-    frames(1);
-    key('2');
-    frames(1);
-    expect((internal as unknown as { upgrades: Record<string, number> }).upgrades.engine).toBe(1);
-    expect(internal.mode).toBe('play');
-  });
-});
-
 describe('playthrough record and replay', () => {
   type Status = ReturnType<NonNullable<typeof window.__pd>['playthroughStatus']>;
   const pd = () => window.__pd!;
   const status = (): Status => pd().playthroughStatus();
-  const upgrades = () => (internal as unknown as { upgrades: Record<string, number> }).upgrades;
   /** Run frames until the replay has run every recorded step. */
   const finishReplay = () => { for (let i = 0; i < 2000 && !status().done; i++) internal.frame(SIM_DT); };
 
@@ -389,6 +368,75 @@ describe('playthrough record and replay', () => {
     internal = game as unknown as GameInternals;
   });
 
+  type CareerHost = { career: import('./career').CareerStore; goHome(): Promise<void>; town: { home?: unknown } };
+  const careerHost = () => internal as unknown as CareerHost;
+  /** Record a short drive into whatever is ahead, then stop the recording. */
+  const recordDrive = () => {
+    internal.hud.openDebug();
+    hud('.debug-playthrough [data-pt=record]').click();
+    frames(1);
+    key('w'); key(' '); frames(150); key(' ', 'keyup'); key('w', 'keyup'); frames(10);
+    hud('#playthrough-badge [data-pt=stop]').click();
+    return pd().lastPlaythrough()!;
+  };
+
+  it('never banks a replay run, even after playback is exited mid-run', async () => {
+    // A real Sandbox county (the ranch link is a test map, which never pays anyway).
+    history.replaceState(null, '', '/?mode=sandbox&level=county&seed=7');
+    game.destroy();
+    game = await boot();
+    internal = game as unknown as GameInternals;
+    const recorded = recordDrive();
+    pd().replayPlaythrough(recorded);
+    await vi.waitFor(() => expect(status().state).toBe('replaying'));
+    // Starting the replay settled the live run it replaced; nothing after that may pay.
+    const wallet = careerHost().career.profile.walletBalance;
+    finishReplay();
+    (internal as unknown as { earn(amount: number): number }).earn(400);
+    pd().playthroughControl('exit');
+    await careerHost().goHome();
+    expect(careerHost().career.profile.walletBalance).toBe(wallet);
+  });
+
+  it('records a T range reset as an action and replays it once, ignoring live T during playback', async () => {
+    await careerHost().goHome();
+    internal.hud.openDebug();
+    hud('.debug-playthrough [data-pt=record]').click();
+    frames(1);
+    key('w'); frames(30); key('w', 'keyup');
+    key('t'); frames(5);
+    hud('#playthrough-badge [data-pt=stop]').click();
+    const recorded = pd().lastPlaythrough()!;
+    expect(recorded.actions).toEqual([expect.objectContaining({ kind: 'range-reset' })]);
+    const yard = (internal as unknown as { homeYard: { resetRange(): void } }).homeYard;
+    const resets = vi.spyOn(yard, 'resetRange');
+    pd().replayPlaythrough(recorded);
+    await vi.waitFor(() => expect(status().state).toBe('replaying'));
+    key('t');
+    finishReplay();
+    expect(resets).toHaveBeenCalledTimes(1);
+    expect(status()).toMatchObject({ done: true, drift: [] });
+  });
+
+  it('replays a Home Yard recording in a fresh game that never loaded the yard', async () => {
+    await careerHost().goHome();
+    const recorded = recordDrive();
+    expect(recorded.rules.home).toBe(true);
+    history.replaceState(null, '', '/?sandbox=1');
+    document.body.innerHTML = '<div id="game-root"></div><div id="hud-root"></div>';
+    game.destroy();
+    game = await boot();
+    internal = game as unknown as GameInternals;
+    // A range upgrade bought since the recording must not change the replayed lot.
+    careerHost().career.profile.cosmetics.yardTier = 2;
+    pd().replayPlaythrough(recorded);
+    await vi.waitFor(() => expect(status().state).toBe('replaying'));
+    expect(careerHost().town.home).toBeDefined();
+    expect((careerHost().town.home as { lanes: unknown[] }).lanes).toHaveLength(4);
+    finishReplay();
+    expect(status()).toMatchObject({ done: true, drift: [] });
+  });
+
   it('records from the debug binder, then replays the demolition to the same end state without live input', () => {
     internal.hud.openDebug();
     expect(hud('#debug-panel').hidden).toBe(false);
@@ -398,7 +446,7 @@ describe('playthrough record and replay', () => {
     expect(hud('#playthrough-badge').hidden).toBe(false);
     expect(hud('#playthrough-badge').textContent).toContain('REC');
     key('w'); frames(150);
-    key('1'); key(' '); frames(20); key(' ', 'keyup');
+    key(' '); frames(20); key(' ', 'keyup');
     key('a'); frames(40); key('a', 'keyup');
     frames(60); key('w', 'keyup'); frames(30);
     expect(internal.cash).toBeGreaterThan(0);
@@ -408,10 +456,7 @@ describe('playthrough record and replay', () => {
     const recorded = pd().lastPlaythrough()!;
     expect(recorded.steps).toBeGreaterThan(250);
     expect(recorded.final.steps).toBe(recorded.steps);
-    expect(recorded.actions).toEqual([
-      expect.objectContaining({ kind: 'upgrade', id: 'blade' }),
-      expect.objectContaining({ kind: 'resubmit', fee }),
-    ]);
+    expect(recorded.actions).toEqual([expect.objectContaining({ kind: 'resubmit', fee })]);
     expect(recorded.final.cells.intact).toBeLessThan(Object.values(recorded.final.cells).reduce((a, b) => a + b, 0));
     expect(JSON.parse(localStorage.getItem('pd.playthrough.last')!).steps).toBe(recorded.steps);
     frames(1);
@@ -420,13 +465,12 @@ describe('playthrough record and replay', () => {
     internal.hud.openDebug();
     hud('.debug-playthrough [data-pt=replay]').click();
     expect(hud('#debug-panel').hidden).toBe(true);
-    // Held keys and upgrade picks during a replay never reach the run.
-    key('s'); key('2');
+    // Held keys and ability presses during a replay never reach the run.
+    key('s'); key('q');
     finishReplay();
     key('s', 'keyup');
     expect(status()).toMatchObject({ state: 'replaying', done: true, drift: [], step: recorded.steps });
     expect(hud('#playthrough-badge').textContent).toContain('MATCH');
-    expect(upgrades()).toMatchObject({ blade: 1, engine: 0 });
     expect(internal.cash).toBe(recorded.final.cash);
     expect(pd().dozerSnapshot()).toMatchObject({ x: recorded.final.dozer.x, y: recorded.final.dozer.y, heading: recorded.final.dozer.heading });
     // A finished replay holds the simulation until it is left.
@@ -517,5 +561,95 @@ describe('playthrough record and replay', () => {
     await vi.waitFor(() => expect(status().note).toMatch(/^Could not load replay/));
     frames(1);
     expect(hud('.debug-playthrough [data-pt-note]').textContent).toMatch(/^Could not load replay/);
+  });
+});
+
+describe('career: escrow settlement and the Home Yard', () => {
+  type Career = import('./career').CareerStore;
+  interface CareerInternals {
+    earn(amount: number): number;
+    goHome(): Promise<void>;
+    career: Career;
+    escrow: number;
+    loadout: { topSpeed: number };
+    town: { home?: import('../world/town').HomeYardLayout };
+  }
+  const career = () => (internal as unknown as CareerInternals).career;
+  const inner = () => internal as unknown as CareerInternals;
+  const park = (zone: { x: number; y: number; w: number; d: number }) => {
+    Object.assign(internal.dozer, { x: zone.x + zone.w / 2, y: zone.y + zone.d / 2, vx: 0, vy: 0 });
+  };
+
+  it('banks 20% of escrow when a Time Challenge run fails', async () => {
+    game.setSession('challenge');
+    internal.mode = 'play';
+    const before = career().profile.walletBalance;
+    expect(inner().earn(300)).toBe(300);
+    internal.dozer.heat = 120;
+    internal.step(SIM_DT);
+    expect(internal.mode).toBe('results');
+    expect(career().profile.walletBalance - before).toBe(60);
+    // The career strip loads beside the boot.
+    await vi.waitFor(() => {
+      frames(1);
+      expect(document.querySelector('.career-banked')?.textContent).toContain('+$60');
+    });
+  });
+
+  it('never banks test-map, demo or brick-job escrow when the player switches to a real session', async () => {
+    const before = career().profile.walletBalance;
+    game.loadTestMap({ kind: 'asset', assetId: 'building:ranch', variant: 0 });
+    inner().earn(800);
+    game.setSession('sandbox');
+    game.startJob();
+    inner().earn(800);
+    game.setSession('challenge');
+    expect(career().profile.walletBalance).toBe(before);
+    // The fresh real run that follows still pays.
+    internal.mode = 'play';
+    inner().earn(300);
+    await inner().goHome();
+    expect(career().profile.walletBalance - before).toBe(60);
+  });
+
+  it('banks 25% of a Sandbox run when the player bails out to the yard', async () => {
+    const before = career().profile.walletBalance;
+    inner().earn(800);
+    await inner().goHome();
+    expect(career().profile.walletBalance - before).toBe(200);
+    expect(inner().town.home).toBeDefined();
+    expect(location.search).toContain('home=1');
+    // Proving-ground wrecks pay nothing.
+    expect(inner().earn(500)).toBe(0);
+    expect(inner().escrow).toBe(0);
+  });
+
+  it('opens the Heavy Shop on the apron, installs a purchase, and rolls out upgraded', async () => {
+    await inner().goHome();
+    career().bank(1_000_000, 0, 0.5);
+    const stock = inner().loadout.topSpeed;
+    park(inner().town.home!.apron);
+    internal.step(SIM_DT);
+    expect(internal.mode).toBe('shop');
+    expect(career().profile.wearLevel).toBe(0);
+    const shop = document.querySelector<HTMLElement>('.heavy-shop')!;
+    expect(shop.hidden).toBe(false);
+    shop.querySelector<HTMLButtonElement>('[data-buy-core="drivetrain"]')!.click();
+    shop.querySelector<HTMLButtonElement>('[data-buy-core="drivetrain"]')!.click();
+    expect(career().profile.coreUpgrades.drivetrain).toBe(2);
+    shop.querySelector<HTMLButtonElement>('[data-shop-close]')!.click();
+    expect(internal.mode).toBe('play');
+    expect(inner().loadout.topSpeed).toBeGreaterThan(stock);
+    // Rolled out clear of the apron: the shop does not reopen.
+    internal.step(SIM_DT);
+    expect(internal.mode).toBe('play');
+  });
+
+  it('opens dispatch from the lowboy ramp', async () => {
+    await inner().goHome();
+    park(inner().town.home!.lowboy);
+    internal.step(SIM_DT);
+    expect(internal.mode).toBe('pause');
+    expect(document.querySelector('#dispatch-mode')).not.toBeNull();
   });
 });

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createBuildingFromArchetype } from "../structure/building";
 import { DemolitionJob } from "./job";
-import { canPickUpgrade, parseSessionFromSearch } from "./session";
+import { parseSessionFromSearch } from "./session";
 import { advanceSimulation } from "./fixedStep";
 import { cameraFocus } from "./camera";
 import { worldToScreen } from "../world/iso";
@@ -13,7 +13,6 @@ describe("brick contract", () => {
     const job = new DemolitionJob(createBuildingFromArchetype("rivertown", "BRICK", 0, 0));
     expect(job.status().progress).toBe(0);
     expect(job.settle()).toBe(0);
-    expect(job.takeChoice()).toBe(false);
   });
   it("pays once at 90%, waits for falls, ignores debris and preserves building bonus ownership", () => {
     const b = createBuildingFromArchetype("rivertown", "BRICK", 0, 0);
@@ -28,18 +27,8 @@ describe("brick contract", () => {
     expect(job.settle()).toBe(1200);
     expect(job.settle()).toBe(0);
     expect(b.collapseBonusPaid).toBe(false);
-    expect(job.takeChoice()).toBe(true);
-    expect(job.takeChoice()).toBe(false);
   });
-  it("does not let toolbar/number shortcuts buy unearned challenge upgrades", () => {
-    const rules = parseSessionFromSearch("?mode=challenge");
-    expect(canPickUpgrade(rules, "play", false)).toBe(false);
-    expect(canPickUpgrade(rules, "pause", true)).toBe(false);
-    expect(canPickUpgrade(rules, "upgrade", false)).toBe(false);
-    expect(canPickUpgrade(rules, "upgrade", true)).toBe(true);
-    expect(canPickUpgrade(parseSessionFromSearch("?sandbox=1"), "play", false)).toBe(true);
-  });
-  it.each(["upgrade", "results"])("stops accumulated simulation at %s", destination => {
+  it.each(["shop", "results"])("stops accumulated simulation at %s", destination => {
     let mode = "play", calls = 0;
     const out = advanceSimulation(.05, 1 / 120, 8, () => mode === "play", () => { calls++; mode = destination; });
     expect(calls).toBe(1);

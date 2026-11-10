@@ -14,9 +14,8 @@ import {
   stepDebris,
   totalDebrisMass,
 } from "./debris";
-import { stepWorld, type Upgrades } from "./worldSim";
+import { stepWorld } from "./worldSim";
 
-const upgrades: Upgrades = { blade: 0, engine: 0, push: 0 };
 
 function stepOnce(town: ReturnType<typeof createTown>, dozer = createDozer(2, 2, 0), dt = SIM_DT) {
   const particles = new ParticlePool();
@@ -146,7 +145,7 @@ describe("debris spawn and mass", () => {
     const dozer = createDozer(22, 14, -Math.PI / 2);
     for (const cell of ranch.cells) applyCellDamage(ranch, cell, 999, 0, 1, particles, []);
     for (let i = 0; i < 240; i++) {
-      stepWorld(town, dozer, particles, upgrades, SIM_DT);
+      stepWorld(town, dozer, particles, SIM_DT);
     }
     expect(ranch.roofs.every((r) => r.state === "gone")).toBe(true);
     expect(town.rubble.filter((r) => r.layer === "remnant").length).toBeLessThanOrEqual(DEBRIS.remnantCap);
@@ -195,7 +194,7 @@ describe("blade and vehicle contact", () => {
     for (let i = 0; i < 50; i++) {
       stepDozer(
         dozer,
-        { throttle: 1, steer: 0, blade: true, engineMul: 1, bladeMul: 1, pushMul: 1 },
+        { throttle: 1, steer: 0, blade: true},
         SIM_DT,
       );
       stepDebris(town, dozer, particles, [], 1, SIM_DT);
@@ -307,7 +306,7 @@ describe("blade and vehicle contact", () => {
     for (let i = 0; i < 140; i++) {
       stepDozer(
         dozer,
-        { throttle: 1, steer: 0, blade: true, engineMul: 1.28, bladeMul: 1, pushMul: 1 },
+        { throttle: 1, steer: 0, blade: true},
         SIM_DT,
       );
       stepDebris(town, dozer, particles, [], 1.28, SIM_DT);
@@ -348,7 +347,7 @@ describe("obstruction query and restart", () => {
     for (let i = 0; i < 160; i++) {
       stepDozer(
         dozer,
-        { throttle: 1, steer: 0, blade: true, engineMul: 1.28, bladeMul: 1, pushMul: 1 },
+        { throttle: 1, steer: 0, blade: true},
         SIM_DT,
       );
       stepDebris(town, dozer, particles, [], 1.28, SIM_DT);
@@ -409,7 +408,7 @@ describe("obstruction query and restart", () => {
     const town = createTown();
     const dozer = createDozer(town.spawnX, town.spawnY, town.spawnHeading);
     const particles = new ParticlePool();
-    const out = stepWorld(town, dozer, particles, upgrades, SIM_DT);
+    const out = stepWorld(town, dozer, particles, SIM_DT);
     expect(out.debrisLoad).toBeGreaterThanOrEqual(0);
     expect(Array.isArray(out.events)).toBe(true);
   });

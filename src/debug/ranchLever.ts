@@ -25,11 +25,10 @@ import { cellPresent } from "../structure/types";
 import { createDozer } from "../vehicle/dozer";
 import { worldToScreen } from "../world/iso";
 import { createTown } from "../world/town";
-import { stepWorld, type Upgrades } from "../sim/worldSim";
+import { stepWorld } from "../sim/worldSim";
 
 export const RANCH_LEVER_DIR = ".ranch-frames";
 
-const UPGRADES: Upgrades = { blade: 0, engine: 0, push: 0 };
 const GUTTER_EPS = 0.08;
 const COVER_MIN = 0.72;
 
@@ -376,7 +375,7 @@ export function runRanchLever(outDir = RANCH_LEVER_DIR): LeverReport {
   let tick = 0;
   const step = (n: number): void => {
     for (let i = 0; i < n; i++) {
-      stepWorld(town, dozer, particles, UPGRADES, SIM_DT);
+      stepWorld(town, dozer, particles, SIM_DT);
       tick++;
     }
   };

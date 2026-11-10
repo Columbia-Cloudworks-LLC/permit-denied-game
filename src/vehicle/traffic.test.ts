@@ -8,7 +8,6 @@ import { createDozer, type Dozer } from './dozer';
 import { createTraffic, requestPolice, seesDozer, sightBlocked, trafficConfigFor, type TrafficConfig } from './traffic';
 import type { VehicleState } from './types';
 
-const NO_UPGRADES = { blade: 0, engine: 0, push: 0 };
 
 function trafficTown(level: Parameters<typeof campaignLevelById>[0], config?: Partial<TrafficConfig>, police = false) {
   const town = createTown({ district: 'd30', seed: 19, campaign: campaignLevelById(level) });
@@ -20,7 +19,7 @@ function trafficTown(level: Parameters<typeof campaignLevelById>[0], config?: Pa
 
 function run(t: ReturnType<typeof trafficTown>, seconds: number, each?: (time: number) => void): void {
   for (let i = 0; i < Math.round(seconds / SIM_DT); i++) {
-    stepWorld(t.town, t.dozer, t.particles, NO_UPGRADES, SIM_DT);
+    stepWorld(t.town, t.dozer, t.particles, SIM_DT);
     each?.(i * SIM_DT);
   }
 }

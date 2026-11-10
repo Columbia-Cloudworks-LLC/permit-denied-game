@@ -23,6 +23,8 @@ export interface MenuSetup {
   countyIndex?: number;
   weather?: WeatherConditionId;
   mapSeed?: number;
+  /** The Home Yard is running: the pause menu offers no bailout, dispatch replaces nothing. */
+  home?: boolean;
 }
 
 /** The county run the pause menu was opened over. Browsing the map never ends it. */
@@ -46,6 +48,8 @@ export interface MenuActions {
   unlockSound(): Promise<void>;
   titleSound(kind: PermitSound, index: number): void;
   pwaUpdate?(): void;
+  /** Title: roll into the Home Yard. Pause during a run: bail out to it. */
+  homeYard?(): void;
 }
 
 const publisher = '<a class="publisher-brand" href="https://columbiacloudworks.com/" target="_blank" rel="noopener noreferrer"><img src="/brand/Columbia-Cloudworks-Icon-Small.png" width="28" height="28" alt="" /><span>Columbia Cloudworks LLC</span></a>';
@@ -53,7 +57,7 @@ const facebookUrl = import.meta.env.VITE_FACEBOOK_PAGE_URL;
 const facebookLink = facebookUrl ? '<a class="menu-social" data-facebook-link target="_blank" rel="noopener noreferrer" aria-label="PERMIT DENIED on Facebook (opens in a new tab)"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><circle cx="12" cy="12" r="12" fill="#1877f2"/><path d="M13.6 22v-8h2.7l.4-3h-3.1V9.1c0-.9.3-1.5 1.6-1.5H17V4.9c-.3 0-1.4-.1-2.5-.1-2.5 0-4.2 1.5-4.2 4.4V11H7.5v3h2.8v8z" fill="#fff"/></svg><span>Facebook</span></a>' : '';
 const copyright = '<span>© 2026</span>' + publisher + '<span>All rights reserved.</span>';
 
-const CONTROLS_HTML = `<dl class="control-list"><div><dt>W / S or ↑ / ↓</dt><dd>Drive forward / reverse</dd></div><div><dt>A / D or ← / →</dt><dd>Steer left / right</dd></div><div><dt>Hold SPACE</dt><dd>Power the blade</dd></div><div><dt>Esc / Pause</dt><dd>Pause / Resume</dd></div><div><dt>R</dt><dd>${L.restart}</dd></div><div><dt>N</dt><dd>${L.newLayout}</dd></div><div><dt>1 / 2 / 3</dt><dd>${L.blade} / ${L.engine} / ${L.push} upgrade</dd></div><div><dt>M</dt><dd>Toggle sound</dd></div></dl><div class="instruction-card"><strong>Touch Controls</strong><p>Drag the left stick to drive and steer. Hold the right POWER BLADE button while driving. Release the stick to coast. Release the blade to finish the current push.</p></div><p class="fine-print">Watch ENGINE HEAT and TRACK STRESS. Above 65%, release the blade or back off rubble. In sandbox these gauges remain advisory.</p>`;
+const CONTROLS_HTML = `<dl class="control-list"><div><dt>W / S or ↑ / ↓</dt><dd>Drive forward / reverse</dd></div><div><dt>A / D or ← / →</dt><dd>Steer left / right</dd></div><div><dt>Hold SPACE</dt><dd>Power the blade</dd></div><div><dt>Esc / Pause</dt><dd>Pause / Resume</dd></div><div><dt>R</dt><dd>${L.restart}</dd></div><div><dt>N</dt><dd>${L.newLayout}</dd></div><div><dt>Q</dt><dd>Fire the blade-slot attachment</dd></div><div><dt>SHIFT</dt><dd>Fire the aux-slot attachment</dd></div><div><dt>T</dt><dd>Home Yard: rebuild the proving ground</dd></div><div><dt>M</dt><dd>Toggle sound</dd></div></dl><div class="instruction-card"><strong>Touch Controls</strong><p>Drag the left stick to drive and steer. Hold the right POWER BLADE button while driving. Release the stick to coast. Release the blade to finish the current push.</p></div><p class="fine-print">Watch ENGINE HEAT and TRACK STRESS. Above 65%, release the blade or back off rubble. In sandbox these gauges remain advisory.</p>`;
 const ABOUT_HTML = `<dl class="credits-list"><div><dt>Publisher</dt><dd>${publisher}</dd></div><div><dt>Website</dt><dd><a href="https://columbiacloudworks.com" target="_blank" rel="noopener noreferrer">columbiacloudworks.com ↗</a></dd></div><div><dt>Contact</dt><dd><a href="mailto:nicholas.king@columbiacloudworks.com">nicholas.king@columbiacloudworks.com</a></dd></div><div><dt>Game</dt><dd><a href="https://permitdenied.app" target="_blank" rel="noopener noreferrer">permitdenied.app ↗</a></dd></div><div><dt>GitHub</dt><dd><a href="https://github.com/Columbia-Cloudworks-LLC/permit-denied-game" target="_blank" rel="noopener noreferrer">permit-denied-game ↗</a></dd></div><div><dt>Version</dt><dd>${version}</dd></div></dl><details class="license-notices"><summary>Third-party software notices</summary><pre></pre></details>`;
 
 /** Two clicks on the same map shape within this many milliseconds open it. */
@@ -97,6 +101,7 @@ export class OperatorMenu {
   /** Where Back leaves the world map: setup for a new game, the pause home for a run in progress. */
   private mapOrigin: 'dispatch' | 'home' = 'dispatch';
   private muted = false;
+  private home = false;
   private updateAvailable = false;
   private readonly intro = new PermitIntro();
   private introVersion = 0;
@@ -159,6 +164,7 @@ export class OperatorMenu {
     'open-region': () => this.openRegion(),
     'cycle-weather': () => this.cycleWeather(),
     deploy: () => this.deploy(),
+    'home-yard': () => this.actions.homeYard?.(),
   };
 
   /**
@@ -339,6 +345,7 @@ export class OperatorMenu {
   }
 
   private adoptSetup(setup: MenuSetup, running: boolean): void {
+    this.home = !!setup.home;
     this.session = setup.session;
     if (setup.season) this.season = setup.season;
     if (setup.effects) this.effects = setup.effects;
@@ -357,6 +364,12 @@ export class OperatorMenu {
     this.intro.stop();
     const debug = document.querySelector<HTMLElement>('#debug-panel:not([hidden])');
     (debug ?? document.querySelector<HTMLCanvasElement>('#game-root canvas'))?.focus();
+  }
+
+  /** The lowboy pad: open the dispatch setup straight over the paused yard. */
+  openDispatch(setup: MenuSetup): void {
+    this.show('pause', setup);
+    if (this.mode === 'pause') this.navigate('dispatch');
   }
 
   back(): void {
@@ -444,7 +457,7 @@ export class OperatorMenu {
     if (mapPage) this.progress = this.world.sharedCountyProgress();
     // Prefetch the chunk and the atlas while the player picks a mode and season.
     if (page === 'dispatch') void this.loadMap().catch(() => undefined);
-    const titles = { home: this.mode === 'title' ? TITLE : 'Paused', dispatch: L.newGame, overworld: 'North America', region: page === 'region' ? this.world.regionById(this.regionId)!.name : '', controls: L.controls, about: L.about, equipment: 'Equipment & Objective' };
+    const titles = { home: this.mode === 'title' ? TITLE : 'Paused', dispatch: this.home ? 'Dispatch' : L.newGame, overworld: 'North America', region: page === 'region' ? this.world.regionById(this.regionId)!.name : '', controls: L.controls, about: L.about, equipment: 'Equipment & Objective' };
     this.heading.textContent = titles[page];
     this.root.querySelector<HTMLElement>('.nameplate')!.hidden = !titlePage && page !== 'about';
     this.pages[page]();
@@ -475,13 +488,13 @@ export class OperatorMenu {
     const pause = this.mode === 'pause';
     return `${this.mode === 'title'
       ? `${permitDocument()}<button class="ignition primary" data-nav="dispatch"><span class="ignition-symbol" aria-hidden="true">${MENU_ICONS.power}</span><span>${L.play}</span><span aria-hidden="true">↗</span></button>`
-      : `<button class="primary" data-menu-action="resume">${L.resume}</button><div class="mobile-menu-links menu-grid"><button data-nav="equipment">Equipment & Objective</button><button data-menu-action="debug">${L.debug}</button></div><div class="menu-grid">${this.running ? `<button data-menu-action="state-map">${L.stateMap}</button>` : ''}<button data-menu-action="world-map">${L.worldMap}</button></div><div class="menu-grid"><button data-menu-action="restart" aria-describedby="restart-help">${L.restart}</button><button data-nav="dispatch">${L.newGame}</button></div><p class="fine-print" id="restart-help">Start this site over with the same layout. Resets cash, demolition, upgrades, and the permit application.</p>`}
+      : `<button class="primary" data-menu-action="resume">${L.resume}</button><div class="mobile-menu-links menu-grid"><button data-nav="equipment">Equipment & Objective</button><button data-menu-action="debug">${L.debug}</button></div><div class="menu-grid">${this.running ? `<button data-menu-action="state-map">${L.stateMap}</button>` : ''}<button data-menu-action="world-map">${L.worldMap}</button></div><div class="menu-grid"><button data-menu-action="restart" aria-describedby="restart-help">${L.restart}</button><button data-nav="dispatch">${this.home ? 'Dispatch' : L.newGame}</button></div>${this.home ? '' : '<button data-menu-action="home-yard" aria-describedby="bailout-help">Bail Out to Yard</button><p class="fine-print" id="bailout-help">Ends this run and banks 20% of escrow (25% in Sandbox).</p>'}<p class="fine-print" id="restart-help">Start this site over with the same layout. Resets cash, demolition, and the permit application, and banks bailout salvage.</p>`}
       <nav class="menu-grid" aria-label="Game menu"><button data-nav="controls">${labeledMenuButton(MENU_ICONS.gamepad, L.controls)}</button><button data-menu-action="mute">${soundButtonContent(false)}</button><button data-nav="about">${labeledMenuButton(MENU_ICONS.about, L.about)}</button>${facebookLink}${pause ? `<button data-menu-action="title" aria-describedby="main-menu-help">${L.mainMenu}</button>` : ''}</nav>${pause ? '<p class="fine-print" id="main-menu-help">Returning to the main menu ends this game. You cannot resume it.</p>' : ''}${this.updatePromptHtml()}`;
   }
 
   private dispatchHtml(): string {
     const seasonOptions = SEASONS.map((id) => `<option value="${id}">${seasonLabel(id)}</option>`).join('');
-    return `<div class="dispatch-fields"><label>Mode<select id="dispatch-mode">${Object.entries(MODE_LABELS).map(([id, label]) => `<option value="${id}">${label}</option>`).join('')}</select><span class="fine-print" id="mode-description"></span></label><label id="dispatch-season-field">Season<select id="dispatch-season">${seasonOptions}</select></label></div><p class="fine-print" id="season-note"></p>${this.mode === 'pause' ? '<p class="caution">Starting a new game replaces your current progress and upgrades.</p>' : ''}<button class="primary" data-menu-action="open-map">${L.openMap}</button><button data-nav="back">Back</button>`;
+    return `<div class="dispatch-fields"><label>Mode<select id="dispatch-mode">${Object.entries(MODE_LABELS).map(([id, label]) => `<option value="${id}">${label}</option>`).join('')}</select><span class="fine-print" id="mode-description"></span></label><label id="dispatch-season-field">Season<select id="dispatch-season">${seasonOptions}</select></label></div><p class="fine-print" id="season-note"></p>${this.mode === 'pause' && !this.home ? '<p class="caution">Starting a new game ends this run and banks its bailout salvage.</p>' : ''}<button class="primary" data-menu-action="open-map">${L.openMap}</button><button data-nav="back">Back</button>`;
   }
 
   private updatePromptHtml(): string {

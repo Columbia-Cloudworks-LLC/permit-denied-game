@@ -99,8 +99,8 @@ describe('generated asset test yard', () => {
     const plan = planBatch([bay.asset], 1, false, 8, t.yard!.baselineEnd); spawnBatch(t, plan);
     const experiment = plan[0]!.prop!;
     t.pile.addMass(experiment.x, experiment.y, 2, 'wood');
-    const dozer = createDozer(3, 3, 0), upgrades = { blade: 0, engine: 0, push: 0 };
-    stepWorld(t, dozer, pool, upgrades, 1 / 60);
+    const dozer = createDozer(3, 3, 0);
+    stepWorld(t, dozer, pool, 1 / 60);
     const ids = new Set<number>();
     for (let i = 0; i < 8; i++) {
       ids.add(bay.prop!.id); destroyProp(t, bay.prop!, pool, [], 0, 0);
@@ -112,7 +112,7 @@ describe('generated asset test yard', () => {
       expect(pool.items.some(p => p.alive && p.kind !== 'dust')).toBe(false);
       expect(t.marks.filter(m => m.yardOwner === bay.key)).toHaveLength(0);
       expect(sum(t.pile.mass)).toBeCloseTo(2, 4);
-      expect(stepWorld(t, dozer, pool, upgrades, 1 / 60).metrics.collisionRebuilds).toBe(1);
+      expect(stepWorld(t, dozer, pool, 1 / 60).metrics.collisionRebuilds).toBe(1);
     }
     expect(ids.size).toBe(8);
     removeBay(t, plan[0]!, pool); expect(t.props).not.toContain(experiment);
@@ -124,7 +124,7 @@ describe('generated asset test yard', () => {
     const old = bay.building!;
     for (const c of old.cells) applyCellDamage(old, c, 10000, 1, 0, pool, []);
     const dozer = createDozer(3, 3, 0);
-    for (let i = 0; i < 150; i++) stepWorld(t, dozer, pool, { blade: 0, engine: 0, push: 0 }, 1 / 60);
+    for (let i = 0; i < 150; i++) stepWorld(t, dozer, pool, 1 / 60);
     restoreBay(t, bay, pool);
     expect(t.buildings).not.toContain(old); expect(t.buildings).toContain(neighbor);
     expect(t.collapsedSites.some(s => s.buildingId === old.id)).toBe(false);
@@ -155,11 +155,11 @@ describe('generated asset test yard', () => {
     expect(placementError(t, plan)).toMatch(/Pile/);
     clearTestArea(t, b); spawnBatch(t, plan);
     const p = b.prop!, x = p.x + p.w / 2, y = p.y + p.d / 2;
-    const pool = new ParticlePool(), upgrades = { blade: 0, engine: 0, push: 0 };
-    const blocked = createDozer(x, y, 0); stepWorld(t, blocked, pool, upgrades, 1 / 60);
+    const pool = new ParticlePool();
+    const blocked = createDozer(x, y, 0); stepWorld(t, blocked, pool, 1 / 60);
     expect(Math.hypot(blocked.x - x, blocked.y - y)).toBeGreaterThan(0);
     removeBay(t, b);
-    const free = createDozer(x, y, 0); stepWorld(t, free, pool, upgrades, 1 / 60);
+    const free = createDozer(x, y, 0); stepWorld(t, free, pool, 1 / 60);
     expect(free.x).toBe(x); expect(free.y).toBe(y);
   });
   it('leaves the world untouched if a batch constructor fails', () => {
