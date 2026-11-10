@@ -26,7 +26,8 @@ import { siteContaining, siteFeel } from "../structure/site";
 let nextDebrisId = 1;
 const playRng = new Rng(0xdeb415);
 const nearbyBodies: Rubble[] = [];
-const bodyHash = new SpatialHash<Rubble>(2.2);
+/** Cells near a fragment's own size, so a query in a dense heap returns its real neighbours. */
+const bodyHash = new SpatialHash<Rubble>(0.8);
 const contacted = new Set<number>();
 
 export interface DebrisStepStats {
@@ -78,6 +79,7 @@ export interface CollapseSpawn {
 export function resetDebrisSim(seed = 0xdeb415): void {
   nextDebrisId = 1;
   bodyHashTown = null; bodySnapshot = []; bodyHash.clear();
+  remnantHash.clear(); remnantCount = -1;
   unattendedSince = new WeakMap();
   playRng.reset(seed ^ 0xdeb415);
   contacted.clear();
@@ -822,7 +824,7 @@ function applyImpulse(
   jn: number,
   jt: number,
 ): void {
-  if (r.sleeping) wake(r);
+  if (r.sleeping) return;
   const im = invMass(r);
   const ii = invInertia(r);
   const ix = nx * jn - ny * jt;
@@ -834,48 +836,51 @@ function applyImpulse(
   r.omega += (rx * iy - ry * ix) * ii;
 }
 
+/**
+ * Resolve one overlapping pair. `a` is awake; `b` may be asleep, and then acts as a fixed
+ * obstacle unless `a` strikes it hard enough to wake it. Resting overlap alone never wakes a
+ * sleeper, so a settled heap stays out of the solver.
+ */
 function resolveBodies(a: Rubble, b: Rubble): number {
   // Boxes whose bounding circles are apart cannot touch; most hash neighbours stop here.
   const dx = b.x - a.x, dy = b.y - a.y, reach = (Math.hypot(a.w, a.d) + Math.hypot(b.w, b.d)) * 0.5;
   if (dx * dx + dy * dy > reach * reach) return 0;
   if (!obbOverlap(a.x, a.y, a.heading, a.w * 0.5, a.d * 0.5, b.x, b.y, b.heading, b.w * 0.5, b.d * 0.5)) return 0;
-  const hit = overlap;
+  const { nx, ny, depth, px, py } = overlap;
   const imA = invMass(a);
+  if (b.sleeping) {
+    const closing = (a.vx - a.omega * (py - a.y)) * nx + (a.vy + a.omega * (px - a.x)) * ny;
+    if (closing > DEBRIS.sleepSpeed && closing / Math.max(1e-5, imA) > DEBRIS.wakeImpulse) wake(b);
+  }
   const imB = invMass(b);
   const invSum = imA + imB;
   if (invSum <= 1e-8) return 0;
-  const corr = Math.min(DEBRIS.maxCorrect, Math.max(0, hit.depth - DEBRIS.slop) * DEBRIS.baumgarte);
-  if (a.sleeping && hit.depth > 0.02) wake(a);
-  if (b.sleeping && hit.depth > 0.02) wake(b);
-  a.x -= hit.nx * corr * (imA / invSum);
-  a.y -= hit.ny * corr * (imA / invSum);
-  b.x += hit.nx * corr * (imB / invSum);
-  b.y += hit.ny * corr * (imB / invSum);
+  const corr = Math.min(DEBRIS.maxCorrect, Math.max(0, depth - DEBRIS.slop) * DEBRIS.baumgarte);
+  a.x -= nx * corr * (imA / invSum);
+  a.y -= ny * corr * (imA / invSum);
+  b.x += nx * corr * (imB / invSum);
+  b.y += ny * corr * (imB / invSum);
 
-  const rax = hit.px - a.x;
-  const ray = hit.py - a.y;
-  const rbx = hit.px - b.x;
-  const rby = hit.py - b.y;
-  const vax = a.vx - a.omega * ray;
-  const vay = a.vy + a.omega * rax;
-  const vbx = b.vx - b.omega * rby;
-  const vby = b.vy + b.omega * rbx;
-  const rvx = vax - vbx;
-  const rvy = vay - vby;
-  const vn = rvx * hit.nx + rvy * hit.ny;
-  if (vn > 0) return hit.depth;
-  const rnA = rax * hit.ny - ray * hit.nx;
-  const rnB = rbx * hit.ny - rby * hit.nx;
-  const denom = invSum + rnA * rnA * invInertia(a) + rnB * rnB * invInertia(b);
-  const j = (-(1 + DEBRIS.rest) * vn) / Math.max(1e-5, denom);
-  const jn = clamp(j, 0, 4.5);
-  const tx = -hit.ny;
-  const ty = hit.nx;
-  const vt = rvx * tx + rvy * ty;
+  const rax = px - a.x;
+  const ray = py - a.y;
+  const rbx = px - b.x;
+  const rby = py - b.y;
+  const rvx = a.vx - a.omega * ray - (b.vx - b.omega * rby);
+  const rvy = a.vy + a.omega * rax - (b.vy + b.omega * rbx);
+  // The normal points from a to b, so a positive normal speed is the pair closing.
+  const vn = rvx * nx + rvy * ny;
+  if (vn <= 0) return depth;
+  const rnA = rax * ny - ray * nx;
+  const rnB = rbx * ny - rby * nx;
+  const denom = Math.max(1e-5, invSum + rnA * rnA * invInertia(a) + rnB * rnB * invInertia(b));
+  const jn = clamp(((1 + DEBRIS.rest) * vn) / denom, 0, 4.5);
+  // a's slide along its own tangent (ny, -nx); friction opposes it on a and drags b along.
+  const slide = ny * rvx - nx * rvy;
   const mu = Math.min(a.friction, b.friction);
-  const jt = clamp(-vt / Math.max(1e-5, denom), -jn * mu, jn * mu);
-  applyImpulse(a, hit.nx, hit.ny, hit.px, hit.py, jn, jt);
-  applyImpulse(b, -hit.nx, -hit.ny, hit.px, hit.py, jn, jt);
+  const jt = -clamp(slide / denom, -jn * mu, jn * mu);
+  // Equal and opposite: a is pushed back along the normal, b forward.
+  applyImpulse(a, -nx, -ny, px, py, jn, jt);
+  applyImpulse(b, nx, ny, px, py, jn, jt);
   return jn;
 }
 
@@ -1084,23 +1089,29 @@ function approachElev(current: number, target: number, maxDelta: number): number
   return current + Math.sign(d) * maxDelta;
 }
 
-const supportCache = new WeakMap<Rubble, { pile: Town['pile']; revision: number; hash: number; elev: number; height: number }>();
+interface SupportMemo { pile: Town['pile']; tile: number; remnants: number; x: number; y: number; elev: number; height: number }
+const supportCache = new WeakMap<Rubble, SupportMemo>();
+
+/**
+ * Height a body rests on. A sleeper reuses its last answer until the pile tile under it, the
+ * remnants around it, or its own pose change; fragments churning nearby do not disturb it.
+ */
 function supportHeight(town: Town, r: Rubble): number {
   const old = supportCache.get(r);
-  if (r.sleeping && old?.pile === town.pile && old.revision === town.pile.revision && old.hash === bodyHashRevision && old.elev === r.elev) return old.height;
+  const tile = town.pile.tileRevisionAt(r.x, r.y);
+  if (r.sleeping && old && old.pile === town.pile && old.tile === tile && old.remnants === remnantRevision && old.x === r.x && old.y === r.y && old.elev === r.elev) return old.height;
   const height = calculateSupportHeight(town, r);
-  if (old) {
-    old.pile = town.pile; old.revision = town.pile.revision; old.hash = bodyHashRevision; old.elev = r.elev; old.height = height;
-  } else supportCache.set(r, { pile: town.pile, revision: town.pile.revision, hash: bodyHashRevision, elev: r.elev, height });
+  const memo = old ?? ({} as SupportMemo);
+  memo.pile = town.pile; memo.tile = tile; memo.remnants = remnantRevision; memo.x = r.x; memo.y = r.y; memo.elev = r.elev; memo.height = height;
+  if (!old) supportCache.set(r, memo);
   return height;
 }
 function calculateSupportHeight(town: Town, r: Rubble): number {
   let support = Math.min(0.7, town.pile.heightAt(r.x, r.y));
   if (r.layer === "remnant") return support;
   const ext = rubbleExtent(r);
-  bodyHash.query(r.x - ext, r.y - ext, ext * 2, ext * 2, nearbyBodies);
+  remnantHash.query(r.x - ext, r.y - ext, ext * 2, ext * 2, nearbyBodies);
   for (const other of nearbyBodies) {
-    if (other.id === r.id || other.layer !== "remnant") continue;
     if (other.elev > r.elev + 0.02) continue;
     const dx = other.x - r.x;
     const dy = other.y - r.y;
@@ -1113,38 +1124,58 @@ function calculateSupportHeight(town: Town, r: Rubble): number {
 }
 
 let bodyHashTown: Town | null = null;
-let bodyHashRevision = 0;
+/** Remnants only: what loose fragments can ride on. Rebuilt when a remnant moves, joins or leaves. */
+const remnantHash = new SpatialHash<Rubble>(1.6);
+let remnantRevision = 0;
+let remnantCount = -1;
 /** Bodies and poses the hash was built from: six numbers per body. */
 let bodySnapshot: Rubble[] = [];
 let poseSnapshot = new Float64Array(0);
 const POSE = 6;
 
+function poseMatches(r: Rubble, i: number): boolean {
+  const j = i * POSE;
+  return bodySnapshot[i] === r && poseSnapshot[j] === r.x && poseSnapshot[j + 1] === r.y && poseSnapshot[j + 2] === r.w && poseSnapshot[j + 3] === r.d
+    && poseSnapshot[j + 4] === r.heading && poseSnapshot[j + 5] === r.elev;
+}
+
 function hashMatchesBodies(town: Town): boolean {
   const bodies = town.rubble;
   if (bodyHashTown !== town || bodySnapshot.length !== bodies.length) return false;
-  for (let i = 0, j = 0; i < bodies.length; i++, j += POSE) {
-    const r = bodies[i]!;
-    if (bodySnapshot[i] !== r || poseSnapshot[j] !== r.x || poseSnapshot[j + 1] !== r.y || poseSnapshot[j + 2] !== r.w || poseSnapshot[j + 3] !== r.d
-      || poseSnapshot[j + 4] !== r.heading || poseSnapshot[j + 5] !== r.elev) return false;
-  }
+  for (let i = 0; i < bodies.length; i++) if (!poseMatches(bodies[i]!, i)) return false;
   return true;
 }
 
 function rebuildBodyHash(town: Town): void {
   if (hashMatchesBodies(town)) return;
   const bodies = town.rubble;
+  let remnants = 0;
+  let remnantsMoved = bodyHashTown !== town;
   bodyHashTown = town;
-  bodyHashRevision++;
   if (poseSnapshot.length < bodies.length * POSE) poseSnapshot = new Float64Array(Math.max(256, bodies.length * 2) * POSE);
+  const known = bodySnapshot.length;
   bodySnapshot.length = bodies.length;
   bodyHash.clear();
   for (let i = 0, j = 0; i < bodies.length; i++, j += POSE) {
     const r = bodies[i]!;
+    if (r.layer === "remnant") {
+      remnants++;
+      if (i >= known || !poseMatches(r, i)) remnantsMoved = true;
+    }
     bodySnapshot[i] = r;
     poseSnapshot[j] = r.x; poseSnapshot[j + 1] = r.y; poseSnapshot[j + 2] = r.w; poseSnapshot[j + 3] = r.d;
     poseSnapshot[j + 4] = r.heading; poseSnapshot[j + 5] = r.elev;
     const ext = rubbleExtent(r);
     bodyHash.insert(r.x - ext, r.y - ext, ext * 2, ext * 2, r);
+  }
+  if (!remnantsMoved && remnants === remnantCount) return;
+  remnantCount = remnants;
+  remnantRevision++;
+  remnantHash.clear();
+  for (const r of bodies) {
+    if (r.layer !== "remnant") continue;
+    const ext = rubbleExtent(r);
+    remnantHash.insert(r.x - ext, r.y - ext, ext * 2, ext * 2, r);
   }
 }
 
@@ -1337,43 +1368,46 @@ export function stepDebris(
   return { load };
 }
 
-const activeBodies: Rubble[] = [];
 const activeIds = new Set<number>();
+/** This step's candidate pairs, flattened as [a0, b0, a1, b1, ...]; `a` is always awake at collection. */
+const pairBodies: Rubble[] = [];
+const contactBodies: Rubble[] = [];
+/** Bodies shift a few centimetres per solver pass; pairs within this gap are kept for the later passes. */
+const PAIR_MARGIN = 0.3;
 
-/** Pairwise body contacts over a few solver passes; returns pairs resolved. */
+/**
+ * Pairwise body contacts. The broad phase runs once from the awake bodies (sleepers stay in the
+ * hash as targets), then a few solver passes relax that pair list. Returns the pairs collected.
+ */
 function solveBodyContacts(town: Town): number {
-  let contactPairs = 0;
+  activeIds.clear();
+  for (const r of town.rubble) if (!r.sleeping) activeIds.add(r.id);
+  if (!activeIds.size) return 0;
+  pairBodies.length = 0;
+  for (const r of town.rubble) if (!r.sleeping) collectPairs(r);
   for (let iter = 0; iter < DEBRIS.solverIters; iter++) {
-    // Query from moving pieces; sleeping pieces remain in the hash as targets.
-    // Snapshot membership so a newly woken piece cannot duplicate a pair.
-    activeBodies.length = 0;
-    activeIds.clear();
-    for (const r of town.rubble) {
-      if (r.sleeping) continue;
-      activeBodies.push(r);
-      activeIds.add(r.id);
+    let touching = false;
+    for (let i = 0; i < pairBodies.length; i += 2) {
+      if (resolveBodies(pairBodies[i]!, pairBodies[i + 1]!) > 0) touching = true;
     }
-    if (!activeBodies.length) break;
-    if (iter > 0) rebuildBodyHash(town);
-    for (let i = 0; i < activeBodies.length; i++) contactPairs += resolveAgainstNearby(activeBodies[i]!);
+    if (!touching) break;
   }
-  activeBodies.length = 0;
-  return contactPairs;
+  const pairs = pairBodies.length / 2;
+  pairBodies.length = 0;
+  return pairs;
 }
 
-const contactBodies: Rubble[] = [];
-
-function resolveAgainstNearby(r: Rubble): number {
-  let pairs = 0;
-  const ext = rubbleExtent(r);
-  bodyHash.query(r.x - ext - 0.05, r.y - ext - 0.05, ext * 2 + 0.1, ext * 2 + 0.1, contactBodies);
+/** Queue each neighbour close enough to touch `r` this step; a pair of awake bodies is queued once, by the lower id. */
+function collectPairs(r: Rubble): void {
+  const ext = rubbleExtent(r) + PAIR_MARGIN * 0.5;
+  bodyHash.query(r.x - ext, r.y - ext, ext * 2, ext * 2, contactBodies);
+  const radius = Math.hypot(r.w, r.d) * 0.5 + PAIR_MARGIN;
   for (let i = 0; i < contactBodies.length; i++) {
     const other = contactBodies[i]!;
-    if (other.id === r.id || (activeIds.has(other.id) && other.id < r.id)) continue;
-    pairs++;
-    resolveBodies(r, other);
+    if (other.id === r.id || (other.id < r.id && activeIds.has(other.id))) continue;
+    const dx = other.x - r.x, dy = other.y - r.y, reach = radius + Math.hypot(other.w, other.d) * 0.5;
+    if (dx * dx + dy * dy <= reach * reach) pairBodies.push(r, other);
   }
-  return pairs;
 }
 
 /** Blade, then hull contact with nearby bodies, plus crushing small pieces under the tracks. */

@@ -9,7 +9,14 @@ export class SpatialHash<T> {
 
   constructor(private readonly cellSize: number) {}
 
+  /** Emptied buckets, reused so a hash rebuilt every step does not churn arrays. */
+  private readonly spare: T[][] = [];
+
   clear(): void {
+    for (const bucket of this.cells.values()) {
+      bucket.length = 0;
+      this.spare.push(bucket);
+    }
     this.cells.clear();
   }
 
@@ -22,7 +29,11 @@ export class SpatialHash<T> {
         const key = (ix + BIAS) * SPAN + (iy + BIAS);
         const bucket = this.cells.get(key);
         if (bucket) bucket.push(item);
-        else this.cells.set(key, [item]);
+        else {
+          const fresh = this.spare.pop() ?? [];
+          fresh.push(item);
+          this.cells.set(key, fresh);
+        }
       }
     }
   }

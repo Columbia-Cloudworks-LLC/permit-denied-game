@@ -140,6 +140,12 @@ export class PileField {
     for (let ty = ty0; ty <= ty1; ty++) for (let tx = tx0; tx <= tx1; tx++) this.tileRevision[ty * this.tilesX + tx]!++;
   }
 
+  /** Change counter of the tile holding (x, y); it moves whenever a cell a bilinear read there touches does. */
+  tileRevisionAt(x: number, y: number): number {
+    const tx = Math.floor((x - this.ox) / this.cell / PILE_TILE), ty = Math.floor((y - this.oy) / this.cell / PILE_TILE);
+    return tx < 0 || ty < 0 || tx >= this.tilesX || ty >= this.tilesY ? 0 : this.tileRevision[ty * this.tilesX + tx]!;
+  }
+
   private index(ix: number, iy: number): number {
     if (ix < 0 || iy < 0 || ix >= this.cols || iy >= this.rows) return -1;
     return iy * this.cols + ix;
