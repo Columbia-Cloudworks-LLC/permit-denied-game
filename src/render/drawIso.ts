@@ -85,22 +85,24 @@ export function drawOrientedIsoBox(
     BOX_BOT[k] = (wx + wy) * ISO_H - z0 * ISO_Z;
     BOX_LID[k] = (wx + wy) * ISO_H - (z0 + h * (slope ? (hw - c) / width : 1)) * ISO_Z;
   }
-  // A box shows at most two side faces; paint the farther one first.
-  let first = -1, second = -1, firstDepth = 0, secondDepth = 0;
+  boxSides(g, z0 + h * 0.5, left, right, alpha);
+  g.poly([BOX_SX[0]!, BOX_LID[0]!, BOX_SX[1]!, BOX_LID[1]!, BOX_SX[2]!, BOX_LID[2]!, BOX_SX[3]!, BOX_LID[3]!]);
+  g.fill({ color: top, alpha });
+}
+
+/** A box shows at most two side faces; paint the farther one first. */
+function boxSides(g: Graphics, zMid: number, left: number, right: number, alpha: number): void {
+  let first = -1, second = -1, firstDepth = 0;
   for (let i0 = 0; i0 < 4; i0++) {
     const i1 = (i0 + 1) & 3;
-    const nx = BOX_WY[i1]! - BOX_WY[i0]!;
-    const ny = -(BOX_WX[i1]! - BOX_WX[i0]!);
-    if (nx + ny <= 0.001) continue;
-    const depth = depthKey((BOX_WX[i0]! + BOX_WX[i1]!) * 0.5, (BOX_WY[i0]! + BOX_WY[i1]!) * 0.5, z0 + h * 0.5);
-    if (first < 0) { first = i0; firstDepth = depth; }
-    else if (depth < firstDepth) { second = first; secondDepth = firstDepth; first = i0; firstDepth = depth; }
-    else if (second < 0 || depth < secondDepth) { second = i0; secondDepth = depth; }
+    // Outward normal of edge i0 -> i1; only faces turned toward the camera show.
+    if (BOX_WY[i1]! - BOX_WY[i0]! - (BOX_WX[i1]! - BOX_WX[i0]!) <= 0.001) continue;
+    const depth = depthKey((BOX_WX[i0]! + BOX_WX[i1]!) * 0.5, (BOX_WY[i0]! + BOX_WY[i1]!) * 0.5, zMid);
+    if (first >= 0 && depth >= firstDepth) second = i0;
+    else { second = first; first = i0; firstDepth = depth; }
   }
   if (first >= 0) boxFace(g, first, left, right, alpha);
   if (second >= 0) boxFace(g, second, left, right, alpha);
-  g.poly([BOX_SX[0]!, BOX_LID[0]!, BOX_SX[1]!, BOX_LID[1]!, BOX_SX[2]!, BOX_LID[2]!, BOX_SX[3]!, BOX_LID[3]!]);
-  g.fill({ color: top, alpha });
 }
 
 const BOX_WX = new Float64Array(4);

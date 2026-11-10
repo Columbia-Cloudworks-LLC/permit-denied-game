@@ -390,33 +390,43 @@ function bladeContacts(ctx: SubstepContext, v: VehicleState, a: VehicleBox): voi
 function hitByRubble(town: Town, v: VehicleState): void {
     // Part boxes are costly to pose, so they are built once and again only after a hit deforms the vehicle.
     let boxes: VehicleBox[] | undefined;
-    let minX = 0, minY = 0, maxX = 0, maxY = 0;
+    const bounds = { minX: 0, minY: 0, maxX: 0, maxY: 0 };
     for (const r of town.rubble) {
         if (r.sleeping)
             continue;
-        if (!boxes) {
-            boxes = vehicleBoxes(v);
-            minX = minY = Infinity; maxX = maxY = -Infinity;
-            for (const b of boxes) {
-                const a = boxBounds(b);
-                minX = Math.min(minX, a.x); minY = Math.min(minY, a.y); maxX = Math.max(maxX, a.x + a.w); maxY = Math.max(maxY, a.y + a.d);
-            }
-        }
+        boxes ??= boundBoxes(vehicleBoxes(v), bounds);
         // A body's corners reach at most half its diagonal from its centre.
         const reach = Math.hypot(r.w, r.d) * .5 + .01;
-        if (r.x + reach < minX || r.x - reach > maxX || r.y + reach < minY || r.y - reach > maxY)
+        if (r.x + reach < bounds.minX || r.x - reach > bounds.maxX || r.y + reach < bounds.minY || r.y - reach > bounds.maxY)
             continue;
-        for (const b of boxes) {
-            const other = { x: r.x, y: r.y, w: r.w, d: r.d, z: r.elev, h: r.thickness, heading: r.heading }, hit = boxContact(b, other);
-            if (!hit)
-                continue;
-            const impulse = Math.max(0, -((r.vx - v.vx) * hit.nx + (r.vy - v.vy) * hit.ny)) + Math.max(0, -r.vz) * r.mass;
-            hitVehicle(v, [{ x: r.x, y: r.y, z: r.elev, nx: -hit.nx, ny: -hit.ny, nz: r.vz < -.5 ? -1 : 0, impulse, source: `debris:${r.id}` }]);
-            r.vx += hit.nx * .1;
-            r.vy += hit.ny * .1;
-            r.vz = Math.max(r.vz, 0);
+        if (strikeVehicle(v, boxes, r))
             boxes = undefined;
-            break;
-        }
     }
+}
+/** Fill `bounds` with the world-axis box around every part; returns the parts. */
+function boundBoxes(boxes: VehicleBox[], bounds: { minX: number; minY: number; maxX: number; maxY: number }): VehicleBox[] {
+    bounds.minX = bounds.minY = Infinity;
+    bounds.maxX = bounds.maxY = -Infinity;
+    for (const b of boxes) {
+        const a = boxBounds(b);
+        bounds.minX = Math.min(bounds.minX, a.x); bounds.minY = Math.min(bounds.minY, a.y);
+        bounds.maxX = Math.max(bounds.maxX, a.x + a.w); bounds.maxY = Math.max(bounds.maxY, a.y + a.d);
+    }
+    return boxes;
+}
+/** The first part an awake body overlaps takes the hit and nudges the body off; true when one did. */
+function strikeVehicle(v: VehicleState, boxes: VehicleBox[], r: Town['rubble'][number]): boolean {
+    const other = { x: r.x, y: r.y, w: r.w, d: r.d, z: r.elev, h: r.thickness, heading: r.heading };
+    for (const b of boxes) {
+        const hit = boxContact(b, other);
+        if (!hit)
+            continue;
+        const impulse = Math.max(0, -((r.vx - v.vx) * hit.nx + (r.vy - v.vy) * hit.ny)) + Math.max(0, -r.vz) * r.mass;
+        hitVehicle(v, [{ x: r.x, y: r.y, z: r.elev, nx: -hit.nx, ny: -hit.ny, nz: r.vz < -.5 ? -1 : 0, impulse, source: `debris:${r.id}` }]);
+        r.vx += hit.nx * .1;
+        r.vy += hit.ny * .1;
+        r.vz = Math.max(r.vz, 0);
+        return true;
+    }
+    return false;
 }

@@ -769,12 +769,13 @@ function obbOverlap(
 ): boolean {
   const afx = Math.cos(aHeading), afy = Math.sin(aHeading);
   const bfx = Math.cos(bHeading), bfy = Math.sin(bHeading);
+  // The four face normals: a's forward and side, then b's.
+  SAT_X[0] = afx; SAT_Y[0] = afy; SAT_X[1] = -afy; SAT_Y[1] = afx;
+  SAT_X[2] = bfx; SAT_Y[2] = bfy; SAT_X[3] = -bfy; SAT_Y[3] = bfx;
   let minDepth = Infinity;
-  let nx = 1;
-  let ny = 0;
+  let best = 0;
   for (let k = 0; k < 4; k++) {
-    const x = k === 0 ? afx : k === 1 ? -afy : k === 2 ? bfx : -bfy;
-    const y = k === 0 ? afy : k === 1 ? afx : k === 2 ? bfy : bfx;
+    const x = SAT_X[k]!, y = SAT_Y[k]!;
     const ca = ax * x + ay * y;
     const ea = ahl * Math.abs(afx * x + afy * y) + ahw * Math.abs(-afy * x + afx * y);
     const cb = bx * x + by * y;
@@ -783,21 +784,20 @@ function obbOverlap(
     if (o <= 0) return false;
     if (o < minDepth) {
       minDepth = o;
-      nx = x;
-      ny = y;
+      best = k;
     }
   }
-  if ((bx - ax) * nx + (by - ay) * ny < 0) {
-    nx = -nx;
-    ny = -ny;
-  }
-  overlap.nx = nx;
-  overlap.ny = ny;
+  const flip = (bx - ax) * SAT_X[best]! + (by - ay) * SAT_Y[best]! < 0 ? -1 : 1;
+  overlap.nx = SAT_X[best]! * flip;
+  overlap.ny = SAT_Y[best]! * flip;
   overlap.depth = minDepth;
   overlap.px = (ax + bx) * 0.5;
   overlap.py = (ay + by) * 0.5;
   return true;
 }
+
+const SAT_X = new Float64Array(4);
+const SAT_Y = new Float64Array(4);
 
 function closestOnObb(px: number, py: number, o: Obb): { x: number; y: number; along: number; across: number } {
   const fx = Math.cos(o.heading);

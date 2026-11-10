@@ -48,20 +48,21 @@ export class SpatialHash<T> {
       if (bucket) for (let i = 0; i < bucket.length; i++) out.push(bucket[i]!);
       return out;
     }
-    const seen = this.seen;
     for (let iy = y0; iy <= y1; iy++) {
-      for (let ix = x0; ix <= x1; ix++) {
-        const bucket = this.cells.get((ix + BIAS) * SPAN + (iy + BIAS));
-        if (!bucket) continue;
-        for (let i = 0; i < bucket.length; i++) {
-          const item = bucket[i]!;
-          if (seen.has(item)) continue;
-          seen.add(item);
-          out.push(item);
-        }
-      }
+      for (let ix = x0; ix <= x1; ix++) this.collect(this.cells.get((ix + BIAS) * SPAN + (iy + BIAS)), out);
     }
-    seen.clear();
+    this.seen.clear();
     return out;
+  }
+
+  /** Append a bucket's items not yet reported in this query. */
+  private collect(bucket: T[] | undefined, out: T[]): void {
+    if (!bucket) return;
+    for (let i = 0; i < bucket.length; i++) {
+      const item = bucket[i]!;
+      if (this.seen.has(item)) continue;
+      this.seen.add(item);
+      out.push(item);
+    }
   }
 }

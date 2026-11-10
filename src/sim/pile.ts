@@ -165,37 +165,42 @@ export class PileField {
     const ix = Math.floor((x - this.ox) / this.cell);
     const iy = Math.floor((y - this.oy) / this.cell);
     const inside = ix >= 1 && iy >= 1 && ix < this.cols - 1 && iy < this.rows - 1;
-    let wsum = 0;
-    if (inside) wsum = ADD_WEIGHT_SUM;
-    else {
-      let wi = 0;
-      for (let dy = -1; dy <= 1; dy++) {
-        for (let dx = -1; dx <= 1; dx++) {
-          const w = ADD_WEIGHTS[wi++]!;
-          if (this.index(ix + dx, iy + dy) >= 0) wsum += w;
-        }
-      }
-    }
+    const wsum = inside ? ADD_WEIGHT_SUM : this.dropWeight(ix, iy);
     if (wsum <= 0) return;
     const owner = ownership ?? this.ownerAt?.(x, y);
     const mi = materialIndex(material);
-    const mats = this.mats[mi]!;
     let wi = 0;
     for (let dy = -1; dy <= 1; dy++) {
       for (let dx = -1; dx <= 1; dx++) {
         const w = ADD_WEIGHTS[wi++]!;
         const i = inside ? (iy + dy) * this.cols + ix + dx : this.index(ix + dx, iy + dy);
-        if (i < 0) continue;
-        const add = mass * (w / wsum);
-        if (typeof owner === "string") this.creditOwner(i, add, mi, owner);
-        else if (owner) for (const key in owner) this.creditOwner(i, add * owner[key]!, mi, key);
-        this.mass[i]! += add;
-        this.runningMass += add;
-        mats[i]! += add;
-        this.height[i]! += add * 0.16 * (1 - 0.38 * this.compact[i]!);
+        if (i >= 0) this.deposit(i, mass * (w / wsum), mi, owner);
       }
     }
     this.touch(ix - 1, iy - 1, ix + 1, iy + 1);
+  }
+
+  /** Sum of the drop weights that land inside the field around an edge cell. */
+  private dropWeight(ix: number, iy: number): number {
+    let wsum = 0;
+    let wi = 0;
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const w = ADD_WEIGHTS[wi++]!;
+        if (this.index(ix + dx, iy + dy) >= 0) wsum += w;
+      }
+    }
+    return wsum;
+  }
+
+  /** Put `add` of one material into cell i, credited to its owner or owners. */
+  private deposit(i: number, add: number, mi: number, owner: string | Record<string, number> | undefined): void {
+    if (typeof owner === "string") this.creditOwner(i, add, mi, owner);
+    else if (owner) for (const key in owner) this.creditOwner(i, add * owner[key]!, mi, key);
+    this.mass[i]! += add;
+    this.runningMass += add;
+    this.mats[mi]![i]! += add;
+    this.height[i]! += add * 0.16 * (1 - 0.38 * this.compact[i]!);
   }
 
   /** Record that a yard owner put `amount` of material `mi` into cell i. */

@@ -25,12 +25,7 @@ export class DrawCache {
     let live = 0;
     for (let i = 0; i < commands.length; i++) {
       const cmd = commands[i]!;
-      const key = cmd.key ?? `dynamic:${i}`;
-      let entry = this.entries.get(key);
-      if (!entry) {
-        entry = { graphic: new Graphics(), frame: 0 };
-        this.entries.set(key, entry);
-      }
+      const entry = this.entryFor(cmd.key ?? `dynamic:${i}`);
       if (entry.frame !== frame) live++;
       entry.frame = frame;
       if (cmd.version === undefined || entry.version !== cmd.version) {
@@ -42,14 +37,28 @@ export class DrawCache {
       order[i] = entry.graphic;
     }
     // Entries not stamped this frame left the view; sweep only when there are any.
-    if (this.entries.size > live) {
-      for (const [key, entry] of this.entries) if (entry.frame !== frame) {
-        entry.graphic.destroy({ context: true });
-        this.entries.delete(key);
-      }
+    if (this.entries.size > live) this.sweep(frame);
+    this.reparent(order);
+  }
+  private entryFor(key: string): { graphic: Graphics; version?: string | number; frame: number } {
+    let entry = this.entries.get(key);
+    if (!entry) {
+      entry = { graphic: new Graphics(), frame: 0 };
+      this.entries.set(key, entry);
     }
-    // Re-parenting every child with addChild is an indexOf + splice each (O(n^2));
-    // keep the matching prefix and rebuild only the tail that changed.
+    return entry;
+  }
+  private sweep(frame: number): void {
+    for (const [key, entry] of this.entries) if (entry.frame !== frame) {
+      entry.graphic.destroy({ context: true });
+      this.entries.delete(key);
+    }
+  }
+  /**
+   * Re-parenting every child with addChild is an indexOf + splice each (O(n^2));
+   * keep the matching prefix and rebuild only the tail that changed.
+   */
+  private reparent(order: readonly Graphics[]): void {
     const children = this.root.children;
     let same = 0;
     while (same < order.length && children[same] === order[same]) same++;
