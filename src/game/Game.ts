@@ -72,6 +72,7 @@ import {
   MATCH_SECONDS,
   SIM_DT,
   SIM_MAX_STEPS,
+  SIM_STEP_BUDGET_MS,
   TITLE,
   UPGRADE_MILESTONES,
 } from "./constants";
@@ -643,7 +644,7 @@ class Game {
     this.acc += realDt;
     const simStart = performance.now();
     const advanced = advanceSimulation(this.acc, SIM_DT, SIM_MAX_STEPS,
-      () => this.mode === "play", () => this.step(SIM_DT));
+      () => this.mode === "play", () => this.step(SIM_DT), SIM_STEP_BUDGET_MS);
     this.acc = advanced.acc;
     this.droppedSimSec += advanced.dropped;
     return performance.now() - simStart;

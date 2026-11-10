@@ -3,6 +3,8 @@ export const TAGLINE = "The County Said No.";
 
 export const SIM_DT = 1 / 60;
 export const SIM_MAX_STEPS = 5;
+/** Simulation time one frame may spend before it stops starting catch-up steps (about three quarters of a 60 Hz frame). */
+export const SIM_STEP_BUDGET_MS = 12;
 
 export const CELL = 1.15;
 export const FLOOR_Z = 2.35;
