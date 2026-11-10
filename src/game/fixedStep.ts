@@ -28,3 +28,12 @@ export function advanceSimulation(
   const dropped = playing() && capped ? acc : 0;
   return { acc: !playing() || capped ? 0 : acc, dropped };
 }
+
+/**
+ * Anti-tunneling: how many sub-steps a fixed step needs so the dozer never moves more than 0.45
+ * of a cell per sweep. Drivetrain and rocket speeds would otherwise skip a thin wall in one tick.
+ */
+export function sweepSubsteps(speed: number, dt: number, cellSize: number, max = 4): number {
+  const reach = Math.abs(speed) * dt;
+  return Math.min(max, Math.max(1, Math.ceil(reach / (0.45 * cellSize))));
+}

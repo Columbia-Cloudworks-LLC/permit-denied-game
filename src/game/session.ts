@@ -50,7 +50,7 @@ export function gameSetupRules(
 export type DemoAsset = "ranch" | "rivertown" | "steel-warehouse";
 export type DistrictId = "classic" | "d10" | "d30" | "d100";
 export type SessionTopology = "county" | "crossroads" | "tjunction" | "curve-farm" | "loop" | "frontage";
-export type PlayMode = "title" | "play" | "pause" | "upgrade" | "results" | "briefing";
+export type PlayMode = "title" | "play" | "pause" | "results" | "briefing" | "shop";
 
 export const DISTRICT_COUNTS: Record<DistrictId, number> = {
   classic: 7,
@@ -70,6 +70,8 @@ export interface SessionRules {
   testMap?: TestMapRequest;
   towerTest?: boolean;
   job?: boolean;
+  /** The player's Home Yard: no clock, no traffic, no pay; the Heavy Shop and dispatch live here. */
+  home?: boolean;
   demo?: DemoAsset;
   kind: SessionKind;
   district: DistrictId;
@@ -136,6 +138,7 @@ export function parseSessionFromSearch(search: string): SessionRules {
   applyLookLinks(rules, params);
   applyCountyLink(rules, params);
   if (params.get("job") === "brick") applyBrickJob(rules);
+  if (params.get("home") === "1") Object.assign(rules, homeYardRules(rules.seed));
   return rules;
 }
 
@@ -224,6 +227,11 @@ function applySeasonLink(rules: SessionRules, seasonParam: string | null): void 
   }
 }
 
+/** The Home Yard is a free sandbox lot of its own: no level, county, or test map. */
+export function homeYardRules(seed: number): SessionRules {
+  return { kind: "sandbox", district: "classic", seed, ranchFocus: false, home: true, season: "summer", seasonExplicit: false, weatherDetail: "on" };
+}
+
 /** The brick demolition job is its own challenge on the classic rivertown map. */
 function applyBrickJob(rules: SessionRules): void {
   rules.testMap = undefined;
@@ -244,17 +252,9 @@ export function sessionFailsOn(rules: SessionRules): { heat: boolean; track: boo
   return { heat: true, track: true, clock: true };
 }
 
-export function sessionForcesUpgrade(rules: SessionRules): boolean {
-  return rules.kind === "challenge" && !rules.job;
-}
-
-export function canPickUpgrade(rules: SessionRules, mode: PlayMode, earned: boolean): boolean {
-  return rules.kind === "sandbox" || (mode === "upgrade" && earned);
-}
-
 
 /** Explicit scenario links retain their immediate-play behavior. */
 export function startsAtTitle(search: string): boolean {
   const params = new URLSearchParams(search);
-  return !['testAsset', 'yard', 'sandbox', 'mode', 'district', 'level', 'seed', 'ranch', 'demo', 'tower', 'job', 'perf', 'nhood', 'region'].some(key => params.has(key));
+  return !['testAsset', 'yard', 'sandbox', 'mode', 'district', 'level', 'seed', 'ranch', 'demo', 'tower', 'job', 'perf', 'nhood', 'region', 'home'].some(key => params.has(key));
 }

@@ -13,4 +13,4 @@ File a **Bug**, **Playtest**, or **Change** issue when something is wrong or you
 
 In-scope: driving, demolition, the seven-level Time Challenge campaign, the overworld counties built from it, sandbox, HUD, and CI.
 
-Out of spec: a second town generator, between-run progression beyond county clears and the capitol unlock, backend accounts, or names the copy forbids.
+Out of spec: a second town generator, between-run progression beyond county clears, the capitol unlock, and the Home Yard career profile, backend accounts, or names the copy forbids.

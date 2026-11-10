@@ -14,7 +14,7 @@ function flatten(town: ReturnType<typeof createTown>, name?: string): void {
     for (const cell of b.cells) applyCellDamage(b, cell, 999, 1, 0, particles, []);
   }
   const dozer = createDozer(town.maxX - 2, town.maxY - 2, 0);
-  for (let i = 0; i < 400; i++) stepWorld(town, dozer, particles, { blade: 0, engine: 0, push: 0 }, SIM_DT);
+  for (let i = 0; i < 400; i++) stepWorld(town, dozer, particles, SIM_DT);
 }
 
 describe("persistent collapsed sites", () => {

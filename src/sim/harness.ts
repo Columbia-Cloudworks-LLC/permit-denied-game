@@ -4,7 +4,7 @@ import { applyCellDamage, createBuildingFromArchetype, stepStructures } from "..
 import { cellPresent, type Building, type Cell } from "../structure/types";
 import { createDozer, stepDozer } from "../vehicle/dozer";
 import { createTown } from "../world/town";
-import { stepWorld, type Upgrades } from "./worldSim";
+import { stepWorld } from "./worldSim";
 
 export function freshWarehouse(): Building {
   return createBuildingFromArchetype("warehouse", "TEST SHED", 0, 0);
@@ -65,7 +65,6 @@ export function driveIntoFirstHouse(seconds = 6): {
   const intactStart = town.buildings.every((b) => b.cells.every((c) => c.state === "intact"));
   const dozer = createDozer(town.spawnX, town.spawnY, town.spawnHeading);
   const particles = new ParticlePool();
-  const upgrades: Upgrades = { blade: 0, engine: 0, push: 0 };
   let cash = 0;
   const steps = Math.ceil(seconds / SIM_DT);
   for (let i = 0; i < steps; i++) {
@@ -75,13 +74,10 @@ export function driveIntoFirstHouse(seconds = 6): {
         throttle: 1,
         steer: 0,
         blade: true,
-        engineMul: 1,
-        bladeMul: 1,
-        pushMul: 1,
-      },
+        },
       SIM_DT,
     );
-    const out = stepWorld(town, dozer, particles, upgrades, SIM_DT);
+    const out = stepWorld(town, dozer, particles, SIM_DT);
     cash += out.cash;
   }
   const house = town.buildings[0]!;

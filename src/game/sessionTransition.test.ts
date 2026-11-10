@@ -33,7 +33,7 @@ describe("mode transitions", () => {
       timeLimit: 180,
     };
     expect(debugMapLabel(view)).toBe("Time Challenge · 1/7 County");
-    expect(debugSessionPanels(view)).toEqual({ levels: true, job: false, upgrades: false });
+    expect(debugSessionPanels(view)).toEqual({ levels: true, job: false });
     expect(debugSessionFacts(view)).toContain("12 buildings");
     expect(debugSessionFacts(view)).toContain("seed 77");
     expect(debugSessionFacts(view)).toContain("$4,200");
@@ -43,7 +43,6 @@ describe("mode transitions", () => {
     expect(debugSessionPanels({ ...view, testMapName: "All Assets Sandbox" })).toEqual({
       levels: false,
       job: false,
-      upgrades: false,
     });
   });
 

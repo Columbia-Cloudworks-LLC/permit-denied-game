@@ -13,9 +13,11 @@ export const ISO_W = 22;
 export const ISO_H = 11;
 export const ISO_Z = 14;
 
+/** Police cruise speed: the fastest thing on the county's roads, and the yardstick for Drivetrain upgrades. */
+export const POLICE_CRUISE = 16;
+
 export const MATCH_SECONDS = 180;
 export const CASH_TARGET = 1800;
-export const UPGRADE_MILESTONES = [350, 900, 1600] as const;
 
 export const DOZER = {
   mass: 8.5,

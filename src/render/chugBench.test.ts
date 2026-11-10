@@ -8,7 +8,7 @@ import { SIM_DT } from "../game/constants";
 import { ParticlePool } from "../fx/particles";
 import { applyCellDamage } from "../structure/building";
 import { addDebrisBody, lastDebrisStats } from "../sim/debris";
-import { BENCH_UPGRADES, percentile } from "../sim/benchSupport";
+import { percentile } from "../sim/benchSupport";
 import { SpatialHash } from "../sim/spatial";
 import { stepWorld } from "../sim/worldSim";
 import { createDozer } from "../vehicle/dozer";
@@ -148,7 +148,7 @@ function benchTick({ town, dozer, particles, renderer, camera, counts, passes, h
   for (const k of Object.keys(passes)) passes[k] = 0;
   for (const k of Object.keys(pileBumps)) delete pileBumps[k];
   const s0 = performance.now();
-  stepWorld(town, dozer, particles, BENCH_UPGRADES, SIM_DT);
+  stepWorld(town, dozer, particles, SIM_DT);
   const simMs = performance.now() - s0;
   const sim = { ...phase };
   const bumps = { ...pileBumps };

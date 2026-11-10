@@ -73,6 +73,11 @@ export class CountyProgress {
     this.save();
   }
 
+  /** Every county cleared in this browser, across all regions. */
+  totalCleared(): number {
+    return this.cleared.size;
+  }
+
   clearedCount(regionId: string): number {
     let count = 0;
     for (let index = 1; index <= COUNTIES_PER_REGION; index++) if (this.isCleared(regionId, index)) count++;

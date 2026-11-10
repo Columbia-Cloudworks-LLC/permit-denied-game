@@ -5,7 +5,7 @@ import { createDozer, stepDozer } from "../vehicle/dozer";
 import { createTown } from "../world/town";
 import { spawnCollapseDebris, totalDebrisMass } from "./debris";
 import { stepWorld } from "./worldSim";
-import { BENCH_UPGRADES, pumpVitestRpc, report, smashNearest } from "./benchSupport";
+import { pumpVitestRpc, report, smashNearest } from "./benchSupport";
 
 describe("simulation soak", () => {
   it("accelerates a 20-minute classic sandbox without losing wreckage", { timeout: 360_000 }, async () => {
@@ -32,9 +32,9 @@ describe("simulation soak", () => {
         });
       }
       if (i === Math.floor(steps * 0.45)) smashNearest(town, 5, particles);
-      stepDozer(dozer, { throttle: 0.4, steer: 0.05, blade: true, engineMul: 1, bladeMul: 1, pushMul: 1 }, SIM_DT);
+      stepDozer(dozer, { throttle: 0.4, steer: 0.05, blade: true}, SIM_DT);
       const t0 = performance.now();
-      for (let k = 0; k < stride; k++) stepWorld(town, dozer, particles, BENCH_UPGRADES, SIM_DT);
+      for (let k = 0; k < stride; k++) stepWorld(town, dozer, particles, SIM_DT);
       samples.push((performance.now() - t0) / stride);
       lastMass = totalDebrisMass(town);
       if (samples.length % 20 === 0) await pumpVitestRpc();

@@ -66,13 +66,11 @@ describe('campaign objectives', () => {
 });
 
 describe('campaign run flow', () => {
-  it('starts at County, carries upgrades, and restores retry entry state', () => {
+  it('starts at County and restores retry entry state', () => {
     const run = startCampaign(19);
     expect(run.levelIndex).toBe(0);
     expect(run.briefing).toBe(true);
     creditCampaignEarnings(run, 500);
-    run.upgrades.blade = 1;
-    run.nextUpgrade = 1;
     expect(spendCampaignCash(run, 80)).toBe(true);
     expect(run.levelEarned).toBe(500);
     expect(run.spendable).toBe(420);
@@ -81,7 +79,6 @@ describe('campaign run flow', () => {
     const retried = retryCampaignLevel(run);
     expect(retried.levelIndex).toBe(0);
     expect(retried.levelSeed).toBe(19);
-    expect(retried.upgrades).toEqual({ blade: 0, engine: 0, push: 0 });
     expect(retried.levelEarned).toBe(0);
     expect(retried.campaignEarned).toBe(0);
     expect(retried.spendable).toBe(0);
@@ -90,7 +87,6 @@ describe('campaign run flow', () => {
     const next = advanceCampaignLevel(run, 99);
     expect(next.levelIndex).toBe(1);
     expect(next.levelSeed).toBe(99);
-    expect(next.upgrades.blade).toBe(1);
     expect(next.levelEarned).toBe(0);
     expect(next.campaignEarned).toBe(500);
     expect(next.briefing).toBe(true);

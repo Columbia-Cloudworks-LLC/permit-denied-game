@@ -43,7 +43,7 @@ describe('focused asset test maps', () => {
       yardVehicleRoute(v, 0, bay);
       const route = v.waypoints.map(p => ({ ...p }));
       for (let frame = 0; frame < 900; frame++) {
-        stepWorld(town, dozer, particles, { blade: 0, engine: 0, push: 0 }, 1 / 60);
+        stepWorld(town, dozer, particles, 1 / 60);
         if (frame % 60 === 0) for (const box of vehicleBoxes(v)) {
           const bounds = boxBounds(box);
           expect(bounds.x, asset.id).toBeGreaterThan(0); expect(bounds.y, asset.id).toBeGreaterThan(0);

@@ -2,7 +2,7 @@
 
 PERMIT DENIED is an isometric demolition arcade built on one town generator.
 
-The North American overworld (50 US states, 13 Canadian provinces and territories) gives each region seven counties, and every county is a seeded variant of one of the **seven campaign levels** (County through Governor's Mansion). The only between-run state is per-browser county clears and the capitol unlock. There is no second town generator, and no other unlock tree, currency, or progression carries between runs. Sandbox, the Asset Test Yard, captures, and development scenarios stay on their own paths. See [`docs/campaign.md`](../docs/campaign.md).
+The North American overworld (50 US states, 13 Canadian provinces and territories) gives each region seven counties, and every county is a seeded variant of one of the **seven campaign levels** (County through Governor's Mansion). Between runs, the browser keeps two records: county clears (with the capitol unlock) and the career profile, the wallet banked from run escrow and spent in the Home Yard's Heavy Shop on core tracks, Skunkworks attachments, and cosmetics. There is no second town generator, and no other unlock tree, currency, or progression carries between runs. Sandbox, the Asset Test Yard, captures, and development scenarios stay on their own paths. See [`docs/campaign.md`](../docs/campaign.md).
 
 1. [`README.md`](../README.md) — run, controls, scope, and hosting
 2. Stay client-side: TypeScript + Vite + PixiJS. Simulation is world-space; isometric projection is render-only.

@@ -25,13 +25,13 @@ const digest = (over: Partial<PlaythroughDigest> = {}): PlaythroughDigest => ({
 const setup = {
   rules: { kind: "sandbox", district: "d10", seed: 7, ranchFocus: false, season: "summer", seasonExplicit: false, weatherDetail: "on" },
   campaign: null,
-  upgrades: { blade: 0, engine: 0, push: 0 },
-} as const;
+  loadout: undefined as undefined | { topSpeed: number },
+};
 
 function record(controls: PlaythroughControl[]) {
   const recorder = new PlaythroughRecorder(structuredClone(setup) as never, "1.0.0");
   controls.forEach((control, i) => {
-    if (i === 2) recorder.action({ kind: "upgrade", id: "engine" });
+    if (i === 2) recorder.action({ kind: "ability", slot: "blade" });
     recorder.control(control);
   });
   return recorder.finish(digest({ steps: controls.length }), "2026-10-13T00:00:00.000Z");
@@ -58,17 +58,17 @@ describe("playthrough recording", () => {
     expect(player.due()).toEqual([]);
     player.control();
     expect(player.done).toBe(false);
-    expect(player.due()).toEqual([{ at: 2, kind: "upgrade", id: "engine" }]);
+    expect(player.due()).toEqual([{ at: 2, kind: "ability", slot: "blade" }]);
     expect(player.due()).toEqual([]);
   });
 
   it("holds while paused and copies the setup so later play cannot change the recording", () => {
-    const live = structuredClone(setup) as never as { upgrades: { blade: number } };
+    const live = structuredClone({ ...setup, loadout: { topSpeed: 8.6 } });
     const recorder = new PlaythroughRecorder(live as never, "1.0.0");
     recorder.control(W);
     const p = recorder.finish(digest());
-    live.upgrades.blade = 9;
-    expect(p.upgrades.blade).toBe(0);
+    live.loadout.topSpeed = 99;
+    expect(p.loadout?.topSpeed).toBe(8.6);
     const player = new PlaythroughPlayer(p);
     expect(player.holds).toBe(false);
     player.paused = true;
@@ -87,7 +87,7 @@ describe("playthrough verification", () => {
     const good = record([W]);
     expect(() => parsePlaythrough("[]")).toThrow("Not a PERMIT DENIED playthrough file.");
     expect(() => parsePlaythrough(null)).toThrow("JSON object");
-    expect(() => parsePlaythrough({ ...good, version: 2 })).toThrow("Unsupported playthrough version 2.");
+    expect(() => parsePlaythrough({ ...good, version: 1 })).toThrow("Unsupported playthrough version 1.");
     expect(() => parsePlaythrough({ ...good, rules: undefined })).toThrow("site setup");
     expect(() => parsePlaythrough({ ...good, steps: -1 })).toThrow("step count");
     expect(() => parsePlaythrough({ ...good, actions: undefined })).toThrow("input stream");

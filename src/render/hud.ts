@@ -2,9 +2,7 @@ import { version as buildVersion } from '../../package.json';
 import { clockValue } from './instrumentValues';
 import { CashCounter } from './cashCounter';
 import { EquipmentClock } from './equipmentClock';
-import { upgradePercent, type UpgradeModifiers } from '../game/upgrades';
 import { MENU_LABELS as L, MODE_LABELS, BRICK_DESCRIPTION } from '../game/menuLabels';
-import { MENU_ICONS } from './menuIcons';
 import { COPY, CASH_TARGET, MATCH_SECONDS } from "../game/constants";
 import { type CampaignLevelId } from "../game/campaign";
 import { campaignLevelButtons, debugMapLabel, debugSessionFacts, debugSessionPanels } from "../game/debugSession";
@@ -17,7 +15,7 @@ import type { SeasonId, WeatherConditionId, WeatherDetail } from "../world/seaso
 import { createDebugBinderState, type BinderTab } from '../debug/binderState';
 import { applyPwaUpdate, onPwaUpdate } from '../pwa/update';
 
-export type OverlayMode = "none" | "title" | "pause" | "upgrade" | "results" | "briefing";
+export type OverlayMode = "none" | "title" | "pause" | "results" | "briefing";
 
 export interface CampaignHud {
   levelIndex: number;
@@ -41,7 +39,6 @@ export interface HudState {
   hasYard: boolean;
   testMapName?: string;
   focusedTest?: boolean;
-  upgradeModifiers: UpgradeModifiers;
   developmentScenario?: boolean;
   pileResistance?: number;
   job?: { progress: number; remaining: number; instruction: string; paid: boolean; payout: number };
@@ -78,6 +75,8 @@ export interface HudState {
   countyIndex?: number;
   weather?: WeatherConditionId;
   mapSeed?: number;
+  /** The Home Yard is running. */
+  home?: boolean;
 }
 
 export class Hud {
@@ -93,8 +92,6 @@ export class Hud {
   private lastOverlay: OverlayMode | null = null;
   private lastDeath: string | null = null;
   private lastWon = false;
-  private modifierValues = new Map<string, number>();
-  private modifierElements: HTMLElement[];
   private readonly cashCounter: CashCounter;
   private readonly cashTarget: HTMLElement;
   private readonly clock: EquipmentClock;
@@ -106,6 +103,7 @@ export class Hud {
   onMenu?: () => void;
   onTitle?: () => void;
   onStart?: (deploy: CountyDeployment) => void | Promise<void>;
+  onHomeYard?: () => void;
   onBeginLevel?: () => void;
   onNextLevel?: () => void;
   onRetryLevel?: () => void;
@@ -113,7 +111,6 @@ export class Hud {
   onClick?: () => void;
   onUnlockSound?: () => Promise<void>;
   onTitleSound?: (kind: PermitSound, index: number) => void;
-  onChoice?: (id: "blade" | "engine" | "push") => void;
   onResume?: () => void;
   onRestart?: () => void;
   onNewSeed?: () => void;
@@ -176,12 +173,10 @@ export class Hud {
       <div class="instrument-deck">
         ${gauge('heat', 'ENGINE HEAT')}
         ${gauge('track', 'TRACK STRESS')}
-        <div class="upgrade-bank" role="group" aria-label="Dozer Upgrades">${(['blade', 'engine', 'push'] as const).map(upgradeInstrument).join('')}</div>
         <div class="blade-module"><div class="blade" id="hud-blade"></div><p id="hud-advisory" role="status"></p></div>
       </div>
       <div class="overlay" id="hud-overlay" role="dialog" aria-modal="true" aria-labelledby="result-heading"><div class="panel" id="hud-panel" tabindex="-1"></div></div>
     `;
-    this.modifierElements = [...root.querySelectorAll<HTMLElement>('[data-modifier]')];
     this.cashCounter = new CashCounter(root.querySelector("#hud-cash")!);
     this.cashTarget = root.querySelector("#cash-target")!;
     this.clock = new EquipmentClock(root.querySelector("#hud-time")!);
@@ -214,6 +209,7 @@ export class Hud {
       unlockSound: () => this.onUnlockSound?.() ?? Promise.resolve(),
       titleSound: (kind, index) => this.onTitleSound?.(kind, index),
       pwaUpdate: () => { void applyPwaUpdate(); },
+      homeYard: () => this.onHomeYard?.(),
     });
     onPwaUpdate(pending => this.menu.setUpdateAvailable(pending));
     root.querySelector('#debug-session')!.append(root.querySelector('#hud-session')!);
@@ -232,13 +228,9 @@ export class Hud {
     for (const id of ["#hud-cash", "#hud-time", ".cash-stat", "#hud-campaign", ".clock-stat"]) new ResizeObserver(() => this.layoutInstruments()).observe(root.querySelector(id)!);
   }
 
-  /** Number keys pick an upgrade; R restarts from the results card. */
+  /** R restarts from the results card. */
   private overlayShortcut(e: KeyboardEvent): void {
     if (e.repeat) return;
-    if (this.lastOverlay === 'upgrade' && ['1', '2', '3'].includes(e.key)) {
-      e.preventDefault();
-      this.onChoice?.((['blade', 'engine', 'push'] as const)[Number(e.key) - 1]);
-    }
     if (this.lastOverlay === 'results' && e.key.toLowerCase() === 'r') this.onRestart?.();
   }
 
@@ -459,20 +451,15 @@ export class Hud {
       </section>
       <button type="button" data-act="restart">${L.restart}</button>
       <button type="button" data-act="newseed">${L.newLayout}</button>
-      <h3 class="sandbox-upgrades">Sandbox Upgrades</h3>
-      <button type="button" data-up="blade">${L.blade} ${upgradePercent('blade')}</button>
-      <button type="button" data-up="engine">${L.engine} ${upgradePercent('engine')}</button>
-      <button type="button" data-up="push">${L.push} ${upgradePercent('push')}</button>
     `;
     bar.querySelectorAll("button").forEach((btn) => btn.addEventListener("click", () => this.onSessionButton(btn)));
   }
 
   private onSessionButton(btn: HTMLButtonElement): void {
-    const { session, level, act, up } = btn.dataset;
+    const { session, level, act } = btn.dataset;
     if (session) this.onSession?.(session as SessionKind);
     if (level) this.onCampaignLevel?.(level as CampaignLevelId);
     if (act) this.sessionActs[act]?.();
-    if (up) this.onChoice?.(up as "blade" | "engine" | "push");
   }
 
   private readonly sessionActs: Record<string, () => void> = {
@@ -484,13 +471,9 @@ export class Hud {
   resetCash(): void { this.cashCounter.reset(); }
 
   render(s: HudState): void {
-    this.renderModifiers(s.upgradeModifiers);
     const permitInMenu = !!this.permitLogo.root.closest('.menu-permit-host');
     this.permitLogo.render(s.resubmitted, s.cash, s.overlay !== 'none' && !(s.overlay === 'pause' && permitInMenu));
     this.renderJob(s.job);
-    this.root.querySelectorAll<HTMLElement>("#hud-session [data-up], .sandbox-upgrades").forEach(el => {
-      el.hidden = s.session !== "sandbox";
-    });
     const elapsedClock = s.session === 'sandbox' || !!s.job;
     this.renderCash(s, elapsedClock);
     this.clock.update(elapsedClock ? s.elapsed : s.timeLeft, elapsedClock);
@@ -506,28 +489,10 @@ export class Hud {
     this.binderBlocked = modal; this.syncBinder();
     this.renderTestControls(s);
     this.setModal(modal);
-    this.menu.show(s.overlay === 'title' || s.overlay === 'pause' ? s.overlay : null, { session: s.session, season: s.season, effects: s.weatherDetail, regionId: s.regionId, countyIndex: s.countyIndex, weather: s.weather, mapSeed: s.mapSeed });
+    this.menu.show(s.overlay === 'title' || s.overlay === 'pause' ? s.overlay : null, { session: s.session, season: s.season, effects: s.weatherDetail, regionId: s.regionId, countyIndex: s.countyIndex, weather: s.weather, mapSeed: s.mapSeed, home: s.home });
     this.menu.syncMuted(s.muted);
     this.renderMobile(s, elapsedClock, advisory);
     this.renderOverlay(s);
-  }
-
-  /** Upgrade multipliers repaint only on change, and glow briefly when one rises. */
-  private renderModifiers(modifiers: UpgradeModifiers): void {
-    for (const element of this.modifierElements) {
-      const key = element.dataset.modifier as keyof UpgradeModifiers;
-      const value = modifiers[key];
-      const previous = this.modifierValues.get(key);
-      if (previous === value) continue;
-      element.innerHTML = `${value.toFixed(2)}<span class="multiplier-symbol">×</span>`;
-      element.setAttribute('aria-label', `${element.dataset.description}: ${value.toFixed(2)} times`);
-      element.getAnimations().forEach(animation => animation.cancel());
-      if (previous !== undefined && value > previous && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
-        // A later change cancels this glow; cancellation rejects `finished`, which nothing awaits.
-        element.animate([{ color: '#fff4c4', textShadow: '0 0 12px #ffc863' }, { color: '#e8bf70', textShadow: '0 0 3px #e8bf7026' }], { duration: 650 }).finished.catch(() => undefined);
-      }
-      this.modifierValues.set(key, value);
-    }
   }
 
   private renderJob(job: HudState['job']): void {
@@ -625,15 +590,13 @@ export class Hud {
 
   private hideOverlay(overlay: OverlayMode): void {
     this.overlay.classList.remove("show");
-    if (overlay === 'none' && (this.lastOverlay === 'upgrade' || this.lastOverlay === 'results')) {
+    if (overlay === 'none' && this.lastOverlay === 'results') {
       document.querySelector<HTMLCanvasElement>('#game-root canvas')?.focus();
     }
     this.lastOverlay = "none";
   }
 
   private onPanelButton(btn: HTMLButtonElement): void {
-    const up = btn.dataset.up as "blade" | "engine" | "push" | undefined;
-    if (up) this.onChoice?.(up);
     this.onClick?.();
     const act = btn.dataset.act;
     if (act) this.panelActs[act]?.();
@@ -648,7 +611,13 @@ export class Hud {
     next: () => this.onNextLevel?.(),
     retry: () => this.onRetryLevel?.(),
     "new-campaign": () => this.onNewCampaign?.(),
+    home: () => this.onHomeYard?.(),
   };
+
+  /** Lowboy pad: pause over the yard and open dispatch setup. */
+  openDispatch(): void {
+    this.menu.openDispatch({ session: 'challenge', season: 'summer', effects: 'on', home: true });
+  }
 
   private paintSessionBar(s: HudState): void {
     const bar = this.root.querySelector("#hud-session");
@@ -728,12 +697,10 @@ function objectiveText(s: HudState): string {
 }
 
 function equipmentDetails(s: HudState): string {
-  const m = s.upgradeModifiers;
-  return `Blade ${m.bladeMul.toFixed(2)}× · Engine ${m.engineMul.toFixed(2)}× · Push ${m.pushMul.toFixed(2)}×\n\n${objectiveText(s)}`;
+  return objectiveText(s);
 }
 
 function overlayPanelHtml(s: HudState): string {
-  if (s.overlay === "upgrade") return upgradePanelHtml(s.job);
   if (s.overlay === "briefing" && s.campaign) return `
         <h2 id="result-heading">${s.campaign.levelName}</h2>
         <p class="campaign-briefing">${s.campaign.briefing.replaceAll('\n', '<br>')}</p>
@@ -744,17 +711,6 @@ function overlayPanelHtml(s: HudState): string {
         <h2 id="result-heading">${resultHeadline(s)}</h2>
         <p>${resultBody(s)}</p>
         <div class="choices">${resultActions(s)}</div>`;
-}
-
-function upgradePanelHtml(job: HudState['job']): string {
-  return `
-        <h2 id="result-heading">${job ? "Demolition Complete" : "Upgrade"}</h2>
-        <p>${job ? `+${job.payout}. Choose an upgrade.` : "Choose an upgrade."}</p>
-        <div class="choices">
-          <button type="button" data-up="blade" aria-label="1, ${L.blade}, blade damage ${upgradePercent('blade')}">${MENU_ICONS.blade}<span>1 · ${L.blade} ${upgradePercent('blade')}</span></button>
-          <button type="button" data-up="engine" aria-label="2, ${L.engine}, engine performance ${upgradePercent('engine')}">${MENU_ICONS.engine}<span>2 · ${L.engine} ${upgradePercent('engine')}</span></button>
-          <button type="button" data-up="push" aria-label="3, ${L.push}, push duration ${upgradePercent('push')}">${MENU_ICONS.push}<span>3 · ${L.push} ${upgradePercent('push')}</span></button>
-        </div>`;
 }
 
 function resultHeadline(s: HudState): string {
@@ -775,7 +731,7 @@ function resultActions(s: HudState): string {
     : campaign && s.won ? ['next', L.nextLevel]
       : campaign ? ['retry', L.retryLevel]
         : ['restart', L.restart];
-  return `<button class="primary" type="button" data-act="${act}">${label}</button><button type="button" data-act="title">${L.mainMenu}</button>`;
+  return `<button class="primary" type="button" data-act="${act}">${label}</button><button type="button" data-act="home">Return to Yard</button><button type="button" data-act="title">${L.mainMenu}</button>`;
 }
 
 function formatTime(used: number): string {
@@ -783,13 +739,6 @@ function formatTime(used: number): string {
   return `${Math.floor(t / 60)}:${Math.floor(t % 60)
     .toString()
     .padStart(2, "0")}`;
-}
-
-const UPGRADE_DESCRIPTIONS = { blade: 'Blade damage', engine: 'Engine performance', push: 'Push duration' } as const;
-
-function upgradeInstrument(key: keyof typeof UPGRADE_DESCRIPTIONS): string {
-  const description = UPGRADE_DESCRIPTIONS[key];
-  return `<div class="upgrade-instrument"><span class="upgrade-label">${MENU_ICONS[key]}${L[key]}</span><span class="upgrade-value" data-modifier="${key}Mul" data-description="${description}" aria-label="${L[key]} ${description.toLowerCase()}: 1.00 times">1.00<span class="multiplier-symbol">×</span></span></div>`;
 }
 
 /** Binder tab keys, as the tab index each one moves focus to. */

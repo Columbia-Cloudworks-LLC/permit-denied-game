@@ -10,8 +10,7 @@
   --red: #f09167;
   --mono: "Courier New", monospace;
   --deck-base-height: 122px;
-  --upgrade-strip-height: 0px;
-  --deck-height: calc(var(--deck-base-height) + var(--upgrade-strip-height));
+  --deck-height: var(--deck-base-height);
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #20271f; font-family: Arial, Helvetica, sans-serif; }
@@ -110,7 +109,6 @@ dt { color: #d9b96f; font: bold 11px/1.5 var(--mono); } dd { margin: 0; color: #
 .panel p { color: #c8cfb9; font: 14px/1.6 Arial,sans-serif; }
 .choices { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 26px; }
 .choices button { flex: 1 1 150px; }
-.choices button[data-up] { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
 .session { display: flex; flex-wrap: wrap; gap: 8px; padding-bottom: 16px; border-bottom: 1px solid var(--line); }
 .session button { flex: 1 1 100px; }
 #hud-root .session button.on { border-color: var(--yellow); color: #f6d27d; background: #414631; }
@@ -355,21 +353,6 @@ dt { color: #d9b96f; font: bold 11px/1.5 var(--mono); } dd { margin: 0; color: #
   .cash-wad { width: 100px; height: 54px; }
 }
 
-/* Installed equipment readouts share the dozer's instrument housing. */
-.upgrade-bank { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; width: 268px; flex: 0 0 268px; padding: 6px 8px; border: 1px solid #626957; border-radius: 4px; background: linear-gradient(#41463b, #272e25); box-shadow: inset 0 1px #d9ce9c26, 0 2px 4px #0006; }
-.upgrade-instrument { min-width: 0; text-align: center; }
-.upgrade-label { display: flex; align-items: center; justify-content: center; gap: 4px; margin-bottom: 4px; color: #c0bea3; font: bold 9px/1.15 var(--mono); letter-spacing: .04em; text-shadow: 0 1px #111a11; }
-.upgrade-label .menu-icon { width: 14px; height: 14px; }
-.upgrade-value { display: block; padding: 6px 2px; border: 2px solid #10170f; border-radius: 2px; color: #e8bf70; background: linear-gradient(#0b120c, #192018); box-shadow: inset 0 2px 5px #000b, 0 1px #c7c59c26; font: bold 18px/1.15 var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; text-shadow: 0 0 3px #e8bf7026; }
-.multiplier-symbol { margin-left: 1px; font-size: .75em; }
-@media (max-width: 999px) {
-  :root { --upgrade-strip-height: 56px; }
-  .instrument-deck { padding-top: 68px; }
-  .upgrade-bank { position: absolute; top: 6px; left: max(28px, env(safe-area-inset-left)); right: max(28px, env(safe-area-inset-right)); width: auto; height: 48px; padding: 3px 8px; gap: 10px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .upgrade-label { margin-bottom: 2px; font-size: 10px; }
-  .upgrade-value { font-size: 18px; line-height: 1; padding: 2px; }
-}
-
 /* Upper dash: mechanical cash wheels and an amber equipment timer. */
 .top { flex-wrap: wrap; --top-offset: max(14px, env(safe-area-inset-top)); top: var(--top-offset); }
 .cash-stat, .clock-stat { flex: 0 0 auto; }
@@ -423,7 +406,7 @@ dt { color: #d9b96f; font: bold 11px/1.5 var(--mono); } dd { margin: 0; color: #
 
 /* Touch HUD: one compact status area and floating controls over the full world. */
 .mobile-hud, .mobile-menu-links { display: none; }
-.touch-ui { --deck-base-height: 0px; --upgrade-strip-height: 0px; --stick-size: 96px; --blade-size: 80px; }
+.touch-ui { --deck-base-height: 0px; --stick-size: 96px; --blade-size: 80px; }
 .touch-ui.touch-portrait { --stick-size: 112px; }
 .touch-ui #game-root { inset: 0; }
 .touch-ui #hud-root > :is(.top, .instrument-deck, .job) { display: none; }
@@ -792,7 +775,7 @@ dt { color: #d9b96f; font: bold 11px/1.5 var(--mono); } dd { margin: 0; color: #
 #hud-root .atlas-zoom button:hover { background: #fff8e6; border-color: var(--pencil); }
 /* Bottom action bars: Back · county stamps · Go. */
 .atlas-bar { position: relative; z-index: 4; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "back center go"; gap: 14px; align-items: center; padding: 10px max(14px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left)); background: linear-gradient(#352d27, #241e1a); border-top: 3px solid #8a6a3c; color: var(--cream); }
-.atlas-back { grid-area: back; }
+.atlas-back { grid-area: back; display: flex; gap: 8px; }
 .atlas-go { grid-area: go; min-width: 200px; }
 #hud-root .atlas-go:disabled { opacity: .55; }
 .atlas-bar-center { grid-area: center; display: flex; align-items: center; justify-content: center; gap: 12px; min-width: 0; flex-wrap: wrap; }
@@ -874,4 +857,45 @@ dt { color: #d9b96f; font: bold 11px/1.5 var(--mono); } dd { margin: 0; color: #
 @media (max-height: 500px) {
   .county-card-host { width: min(300px, 45%); }
   .atlas-cartouche .atlas-note, .atlas-cartouche .atlas-subtitle { display: none; }
+}
+
+/* Career: escrow / wallet strip, attachment gauges, settlement card, Heavy Shop. */
+.career-strip { position: absolute; top: calc(var(--top-panel-height, 64px) + max(24px, env(safe-area-inset-top))); left: max(18px, env(safe-area-inset-left)); display: flex; flex-wrap: wrap; align-items: stretch; gap: 8px; max-width: calc(100% - 36px); z-index: 4; }
+.career-cell, .career-hint, .career-rig { background: #1b211fe8; border: 1px solid #697061; border-left: 3px solid var(--yellow); border-radius: 3px; padding: 6px 10px; }
+.career-cell strong { display: block; font: bold 14px/1.2 var(--mono); font-variant-numeric: tabular-nums; }
+.career-cell small { font: bold 9px var(--mono); color: #f2c86a; }
+.career-hint { font: 11px/1.45 var(--mono); color: #e6d9a8; max-width: 320px; align-self: center; }
+.career-combo, .career-meter { display: block; height: 5px; margin: 4px 0 2px; background: #0d130e; border: 1px solid #3a4136; }
+.career-combo i, .career-meter i { display: block; height: 100%; background: linear-gradient(90deg, #d5aa46, #ffe08a); }
+#hud-root .career-rig { min-height: 0; padding: 6px 10px; text-align: left; font: bold 11px var(--mono); min-width: 132px; }
+#hud-root .career-rig.hot { border-left-color: #ff8a3a; box-shadow: 0 0 10px #ff8a3a66; }
+#hud-root .career-rig.hot .career-meter i { background: linear-gradient(90deg, #ff6a2a, #ffd06a); }
+#hud-root .career-rig.career-flash { animation: career-flash .25s steps(2) 3; }
+@keyframes career-flash { 50% { background: #7a2318; } }
+.career-banked { position: absolute; top: max(14px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); z-index: 31; padding: 10px 18px; text-align: center; background: #1b211ff5; border: 1px solid #697061; border-top: 3px solid #7fcf6a; border-radius: 4px; box-shadow: 0 6px 18px #0008; }
+.career-banked strong { display: block; font: bold 22px/1.2 var(--mono); color: #b8f0a0; }
+.career-banked small { font: 11px var(--mono); color: var(--muted); }
+.heavy-shop { z-index: 32; }
+.shop-panel { width: min(100%, 760px); }
+.shop-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; border-bottom: 1px solid var(--line); padding-bottom: 12px; }
+.shop-head h2 { margin: 4px 0 0; font: 900 24px Arial, sans-serif; }
+.shop-wallet { text-align: right; }
+.shop-wallet strong { font: bold 22px var(--mono); color: #b8f0a0; }
+.shop-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 4px; }
+.shop-message { min-height: 1.5em; margin: 6px 0; font: 12px var(--mono); color: #ebbd7c; }
+.shop-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 10px 0; border-bottom: 1px dashed #3d453b; }
+.shop-row-main { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.shop-row-main strong { font: bold 14px Arial, sans-serif; }
+.shop-row-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.shop-level { font: bold 10px var(--mono); color: var(--yellow); letter-spacing: .1em; }
+.shop-pips { display: flex; gap: 3px; }
+.shop-pips i { width: 14px; height: 6px; background: #0d130e; border: 1px solid #4a5146; }
+.shop-pips i.on { background: var(--yellow); border-color: #f0cf73; }
+.shop-slots { display: flex; flex-wrap: wrap; gap: 18px; padding: 8px 0; }
+.shop-body h3 { margin: 18px 0 4px; }
+.shop-foot { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; margin-top: 16px; }
+.shop-foot-actions { display: flex; gap: 8px; }
+@media (max-width: 560px) {
+  .shop-row { flex-direction: column; align-items: stretch; }
+  .career-hint { max-width: none; }
 }

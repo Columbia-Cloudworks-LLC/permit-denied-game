@@ -66,8 +66,8 @@ describe('authored tower core', () => {
         if (i < facade.length * 12 && i % 12 === 0) applyCellDamage(b, facade[i / 12]!, 999, 0, -1, p, []);
         if (i === 180) hit(b, p, true);
         const start = performance.now();
-        stepDozer(d, { throttle: 0, steer: 0, blade: false, engineMul: 1, bladeMul: 1, pushMul: 1 }, 1 / 60);
-        stepWorld(town, d, p, { blade: 0, engine: 0, push: 0 }, 1 / 60); p.step(1 / 60);
+        stepDozer(d, { throttle: 0, steer: 0, blade: false}, 1 / 60);
+        stepWorld(town, d, p, 1 / 60); p.step(1 / 60);
         const ms = performance.now() - start; maxMs = Math.max(maxMs, ms); timings.push(ms);
         peak = Math.max(peak, town.rubble.length);
       }
@@ -121,8 +121,8 @@ describe('authored tower core', () => {
     const box = cellWorldBox(b, support);
     const d = createDozer(box.x + box.w / 2, box.y + box.d + 1.1, -Math.PI / 2);
     for (let i = 0; i < 180; i++) {
-      stepDozer(d, { throttle: 1, steer: 0, blade: true, engineMul: 1, bladeMul: 1, pushMul: 1 }, 1 / 60);
-      stepWorld(town, d, p, { blade: 0, engine: 0, push: 0 }, 1 / 60);
+      stepDozer(d, { throttle: 1, steer: 0, blade: true}, 1 / 60);
+      stepWorld(town, d, p, 1 / 60);
     }
     expect(support.hp).toBeLessThan(support.maxHp);
   });

@@ -36,12 +36,12 @@ DOM code (HUD, menus, binder panels, privacy dialogs, and the game shell) is tes
 
 The Debug binder's **Record Playthrough** closes the binder, restarts the current site (a Time Challenge level restarts like Restart Site, but skips the briefing), and captures every fixed step from the first frame. A blinking **REC** badge stays on screen; **Stop** on the badge, **Stop Recording** in the binder, or any restart, new layout or site change finishes the capture. The payload (`src/debug/playthrough.ts`, format `permit-denied-playthrough` v1) holds:
 
-- the setup that rebuilds the site: session rules (mode, level, seed, season, biome, effects, test map), the campaign run, and upgrades;
+- the setup that rebuilds the site: session rules (mode, level, seed, season, biome, effects, test map), the campaign run, and the career loadout (stats and attachments) the run used;
 - the drive control applied on each step (`[step, throttle, steer, blade]`, change entries only), so keyboard and touch record the same way;
-- discrete actions with the step they happened before: upgrade picks, the resubmission fee that was charged, and **V** road cars;
+- discrete actions with the step they happened before: attachment presses (**Q** / **Shift**), the resubmission fee that was charged, and **V** road cars;
 - an end-state digest: cash, elapsed, dozer pose, heat and track, rubble count and mass, cell states and total cell HP.
 
-The last capture is kept in `localStorage` (`pd.playthrough.last`); **Save File** downloads it as JSON and **Load Replay…** opens one. **Replay Last** rebuilds the site and feeds the recorded steps. Live keyboard, touch, upgrade, resubmission and road-car input are ignored during a replay. The badge shows progress with **Pause**/**Play**, **Restart**, **Perf** (the timing overlay) and **Exit**. Replay runs at real 60 Hz pacing, so the perf overlay reads like live play. Freeze Simulation and Step One Frame step it one recorded frame at a time. When every step has run, the simulation holds and the badge reports **MATCH** or **DRIFT** with the fields that differ.
+The last capture is kept in `localStorage` (`pd.playthrough.last`); **Save File** downloads it as JSON and **Load Replay…** opens one. **Replay Last** rebuilds the site and feeds the recorded steps. Live keyboard, touch, attachment, resubmission and road-car input are ignored during a replay. Recordings are format version 2; version 1 files (which carried in-run upgrade picks) no longer load. The badge shows progress with **Pause**/**Play**, **Restart**, **Perf** (the timing overlay) and **Exit**. Replay runs at real 60 Hz pacing, so the perf overlay reads like live play. Freeze Simulation and Step One Frame step it one recorded frame at a time. When every step has run, the simulation holds and the badge reports **MATCH** or **DRIFT** with the fields that differ.
 
 Replay is exact on the same build: same seed, same steps, same floating-point results. A recording made on another build may drift once simulation code changes; the payload names its build. Debug-bridge pose edits (`setDozerPose`, `lookAtWorld`) and test-yard edits are not recorded.
 

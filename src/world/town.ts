@@ -45,8 +45,26 @@ import {
   type SurfaceGrid,
 } from "./terrain";
 
+/** An axis-aligned trigger or display area on the Home Yard. */
+export interface HomeZone { x: number; y: number; w: number; d: number }
+
+/** Home Yard trigger zones, built by `src/world/homeYard.ts`. */
+export interface HomeYardLayout {
+  apron: HomeZone;
+  reset: HomeZone;
+  lowboy: HomeZone;
+  trophy: HomeZone;
+  lanes: (HomeZone & { key: string; label: string })[];
+  /** Where the dozer rolls out of the Heavy Shop, facing the yard. */
+  exit: { x: number; y: number; heading: number };
+  /** Painted pads the renderer draws with their labels. */
+  pads: (HomeZone & { color: number; label: string })[];
+}
+
 export interface Town {
   yard?: TestYard;
+  /** Present only on the Home Yard. */
+  home?: HomeYardLayout;
   debrisOwnerAt?: (x: number, y: number) => string | undefined;
   buildings: Building[];
   props: Prop[];
@@ -108,6 +126,8 @@ export interface TownOptions {
   weather?: WeatherConditionId;
   /** County flavor for campaign layouts: placement bias and signature tags. */
   regional?: RegionalPlacement;
+  /** Fills an empty lot instead of generating a town (the lazily loaded Home Yard). */
+  populate?: (town: Town) => Town;
 }
 
 export function createTown(options: TownOptions = {}): Town {
@@ -120,6 +140,7 @@ function createTownLayout(options: TownOptions = {}): Town {
   resetDebrisSim(seed);
   resetPropIds();
 
+  if (options.populate) return options.populate(emptyTestTown(seed));
   if (options.testMap || (options.yard && district === 'classic')) return populateTestYard(emptyTestTown(seed), options.testMap);
 
   if (district === "classic") {

@@ -1,4 +1,4 @@
-/** A county processing fee. It never changes permits, upgrades, or simulation state. */
+/** A county processing fee. It never changes permits or simulation state. */
 export class Resubmission {
   used = false;
 

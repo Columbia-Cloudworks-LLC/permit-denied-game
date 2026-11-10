@@ -193,7 +193,7 @@ try {
     const { Hud } = await import('/src/render/hud.ts');
     const { TouchControls } = await import('/src/render/touchControls.ts');
     const { Resubmission } = await import('/src/game/resubmission.ts');
-    const state = { hasYard:false,upgradeModifiers:{bladeMul:1.25,engineMul:1.5,pushMul:1.75},cash:123456789,timeLeft:120,elapsed:3661,session:'sandbox',district:'d10',bladeDown:false,muted:true,heat:66,track:88,overlay:'none',death:null,won:false,resubmitted:false,job:{progress:.8,remaining:10,instruction:'Clear the remaining walls.',paid:false,payout:250} };
+    const state = { hasYard:false,cash:123456789,timeLeft:120,elapsed:3661,session:'sandbox',district:'d10',bladeDown:false,muted:true,heat:66,track:88,overlay:'none',death:null,won:false,resubmitted:false,job:{progress:.8,remaining:10,instruction:'Clear the remaining walls.',paid:false,payout:250} };
     const hud = new Hud(document.querySelector('#hud-root'));
     const fixture = window.mobileFixture = {state,hud,input:null,releases:0};
     const touch = fixture.touch = new TouchControls(hud.root,{change:value=>fixture.input=value,release:()=>fixture.releases++,interact:()=>{},resize:()=>{}});
@@ -245,7 +245,7 @@ try {
   await page.getByRole('button',{name:'Back',exact:true}).click();
   await page.getByRole('button',{name:'Resume',exact:true}).click();
   assert.equal(await page.locator('.resubmitting').count(),0);
-  for (const overlay of ['upgrade','results']) {
+  for (const overlay of ['briefing','results']) {
     await page.evaluate(overlay=>{window.mobileFixture.state.overlay=overlay;window.mobileFixture.render();},overlay);
     assert.equal(await page.locator('#hud-overlay').isVisible(),true);
     assert.equal(await page.locator('.touch-stick').isVisible(),false);

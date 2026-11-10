@@ -26,7 +26,7 @@ An exit is any public road end within 1.5 units of the bounds (`edgeExitNodes`).
 - **Pursuit:** police always know where the dozer is. They route at 16 u/s with light penalties and pass traffic by swerving around it. Within 9 units, or 22 with line of sight, they charge directly, off-road if needed.
 - **Hits:** the cruiser's nose is tested against the dozer's full footprint, blade included. Any touch ends the charge and sends the cruiser back to reverse. A collision with more than 2 u/s closing speed counts as one hit, from the cruiser ramming, the dozer ramming, or the blade at speed. Three hits wreck the cruiser (`wreckAfterHits`) and pay its bounty.
 - **Ram cost to the dozer:** heat `10 + 1.1·force` and track `7 + 0.8·force`, with force capped at 12. Both cool quickly, so one cruiser stings and two at once hurt. The dozer also takes a small velocity jolt.
-- **Push resistance:** the dozer's push mass is `8 × engine × (blade down ? blade : 1) × (1 + 0.5·speed/max)` (`dozerPushMass` in `vehicle/world.ts`). It decides how much each side gives in any dozer-vehicle contact, so the 5-mass cruiser shoves harder than a 2-mass sedan unless the dozer is upgraded, blade down, or moving.
+- **Push resistance:** the dozer's push mass is `8 × hit × (blade down ? hit : 1) × (1 + 0.5·speed/max)`, where `hit` is 1, or JATO's ×5 during a burn, (`dozerPushMass` in `vehicle/world.ts`). It decides how much each side gives in any dozer-vehicle contact, so the 5-mass cruiser shoves harder than a 2-mass sedan unless the dozer is under JATO, blade down, or moving.
 
 ## Tests
 

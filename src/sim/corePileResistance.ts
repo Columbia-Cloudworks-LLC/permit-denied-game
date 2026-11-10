@@ -30,8 +30,10 @@ function corePilePressure(town: Town, x: number, y: number): number {
 export function resistCorePile(town: Town, dozer: Dozer, dt: number): void {
   const x0 = dozer.motionStartX ?? dozer.x, y0 = dozer.motionStartY ?? dozer.y;
   dozer.motionStartX = undefined; dozer.motionStartY = undefined;
-  const startPressure = corePilePressure(town, x0, y0);
-  const endPressure = corePilePressure(town, dozer.x, dozer.y);
+  // Ballast & Torque drives through that share of the heap's resistance; 98% still leaves a crunch.
+  const bite = 1 - (dozer.resistanceCut ?? 0);
+  const startPressure = corePilePressure(town, x0, y0) * bite;
+  const endPressure = corePilePressure(town, dozer.x, dozer.y) * bite;
   dozer.pileResistance = Math.max(startPressure, endPressure);
   if (dozer.pileResistance === 0) return;
   const dx = dozer.x - x0, dy = dozer.y - y0;
@@ -44,7 +46,7 @@ export function resistCorePile(town: Town, dozer: Dozer, dt: number): void {
   dozer.x = x0; dozer.y = y0;
   for (let i = 1; i <= steps; i++) {
     const x = x0 + mx * i / steps, y = y0 + my * i / steps;
-    const pressure = corePilePressure(town, x, y);
+    const pressure = corePilePressure(town, x, y) * bite;
     // A dozer caught inside during settling may escape along equal/lower pressure.
     const escaping = startPressure >= STOP_PRESSURE && pressure <= startPressure + 1e-6;
     if (pressure >= STOP_PRESSURE && !escaping) {

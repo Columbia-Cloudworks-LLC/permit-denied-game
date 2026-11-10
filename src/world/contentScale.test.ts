@@ -59,7 +59,7 @@ it('bounds a whole-tower debris burst before the solver and preserves owned mass
   const dozer = createDozer(b.x + b.w * b.cellSize / 2, b.y + b.d * b.cellSize + 3, 0);
   for(const c of b.cells) applyCellDamage(b,c,10000,1,0,p,[]);
   let peak=0;const times=[];
-  for(let i=0;i<480;i++){const start=performance.now();stepWorld(t,dozer,p,{blade:0,engine:0,push:0},1/60);times.push(performance.now()-start);peak=Math.max(peak,t.rubble.length);}
+  for(let i=0;i<480;i++){const start=performance.now();stepWorld(t,dozer,p,1/60);times.push(performance.now()-start);peak=Math.max(peak,t.rubble.length);}
   expect(b.fullyDown).toBe(true);
   expect(peak).toBeLessThanOrEqual(100);
   expect(totalDebrisMass(t)).toBeGreaterThan(2000);

@@ -20,7 +20,7 @@ for(const touch of [false,true]) {
   const {Hud}=await import('/src/render/hud.ts');
   if(touch)document.documentElement.classList.add('touch-ui');
   const hud=new Hud(document.querySelector('#hud-root'));
-  const state={hasYard:false,upgradeModifiers:{bladeMul:1,engineMul:1,pushMul:1},cash:999,timeLeft:120,elapsed:59,session:'sandbox',district:'d10',bladeDown:false,muted:true,heat:50,track:25,overlay:'none',death:null,won:false,resubmitted:false};
+  const state={hasYard:false,cash:999,timeLeft:120,elapsed:59,session:'sandbox',district:'d10',bladeDown:false,muted:true,heat:50,track:25,overlay:'none',death:null,won:false,resubmitted:false};
   window.fixture={hud,state,input:null};
   if(touch){const {TouchControls}=await import('/src/render/touchControls.ts');window.fixture.touch=new TouchControls(hud.root,{change:v=>window.fixture.input=v,release:()=>{},interact:()=>{},resize:()=>{}});}
   hud.render(state);

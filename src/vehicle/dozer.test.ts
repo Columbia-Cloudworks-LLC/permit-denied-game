@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { SIM_DT, DOZER } from "../game/constants";
-import { createDozer, dozerForward, resolveCircleSolid, stepDozer } from "./dozer";
+import { bladePoints, createDozer, dozerForward, resolveCircleSolid, stepDozer } from "./dozer";
 
 function drive(throttle: number, seconds: number) {
   const d = createDozer(10, 10, 0);
   for (let t = 0; t < seconds; t += SIM_DT) {
     stepDozer(
       d,
-      { throttle, steer: 0, blade: false, engineMul: 1, bladeMul: 1, pushMul: 1 },
+      { throttle, steer: 0, blade: false},
       SIM_DT,
     );
   }
@@ -35,7 +35,7 @@ describe("dozer reverse", () => {
 });
 
 describe("dozer chassis pitch", () => {
-  const input = (throttle: number) => ({ throttle, steer: 0, blade: false, engineMul: 1, bladeMul: 1, pushMul: 1 });
+  const input = (throttle: number) => ({ throttle, steer: 0, blade: false});
 
   it("squats the rear under throttle and dips the nose when braking", () => {
     const d = createDozer(10, 10, 0);
@@ -61,7 +61,7 @@ describe("dozer chassis pitch", () => {
 });
 
 describe("dozer track scrub and chassis roll", () => {
-  const input = (throttle: number, steer: number, blade = false) => ({ throttle, steer, blade, engineMul: 1, bladeMul: 1, pushMul: 1 });
+  const input = (throttle: number, steer: number, blade = false) => ({ throttle, steer, blade});
   const speedAfter = (throttle: number, steer: number, seconds: number, start = 0) => {
     const d = createDozer(10, 10, 0);
     d.vx = start;
@@ -98,5 +98,37 @@ describe("dozer track scrub and chassis roll", () => {
     expect(d.pitchVel).toBeGreaterThan(0);
     stepDozer(d, input(0, 0, true), SIM_DT);
     expect(d.bladeLanded).toBe(false);
+  });
+});
+
+describe('career drive stats', () => {
+  const drive = (d: ReturnType<typeof createDozer>, extra: Partial<Parameters<typeof stepDozer>[1]>, seconds: number) => {
+    for (let t = 0; t < seconds; t += 1 / 60) stepDozer(d, { throttle: 1, steer: 0, blade: false, ...extra }, 1 / 60);
+  };
+
+  it('reaches an upgraded top speed within 2.2 seconds and never exceeds it', () => {
+    const d = createDozer(0, 0, 0);
+    drive(d, { topSpeed: 32, accel: 32 / 2.2 }, 2.25);
+    expect(Math.hypot(d.vx, d.vy)).toBeGreaterThan(31.5);
+    drive(d, { topSpeed: 32, accel: 32 / 2.2 }, 1);
+    expect(Math.hypot(d.vx, d.vy)).toBeLessThanOrEqual(32 + 1e-9);
+  });
+
+  it('a JATO burn overrides throttle and top speed and cuts steering', () => {
+    const d = createDozer(0, 0, 0);
+    drive(d, { throttle: 0, boost: { speed: 40, turn: 0.3 } }, 0.6);
+    expect(Math.hypot(d.vx, d.vy)).toBeGreaterThan(38);
+    const free = createDozer(0, 0, 0), burning = createDozer(0, 0, 0);
+    drive(free, { steer: 1, topSpeed: 40 }, 0.2);
+    drive(burning, { steer: 1, boost: { speed: 40, turn: 0.3 } }, 0.2);
+    expect(Math.abs(burning.heading)).toBeLessThan(Math.abs(free.heading));
+  });
+
+  it('Hydraulic Overdrive widens the blade sweep', () => {
+    const d = createDozer(0, 0, 0);
+    const span = () => { const p = bladePoints(d); return Math.hypot(p[0]!.x - p[4]!.x, p[0]!.y - p[4]!.y); };
+    const stock = span();
+    d.bladeWidthMul = 1.4;
+    expect(span()).toBeCloseTo(stock * 1.4);
   });
 });

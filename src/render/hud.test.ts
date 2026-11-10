@@ -8,7 +8,7 @@ import { Hud, type CampaignHud, type HudState } from './hud';
 
 function state(overrides: Partial<HudState> = {}): HudState {
   return {
-    hasYard: false, upgradeModifiers: { bladeMul: 1, engineMul: 1, pushMul: 1 },
+    hasYard: false,
     cash: 0, resubmitted: false, timeLeft: 300, elapsed: 0, session: 'challenge', district: 'classic',
     bladeDown: false, muted: false, heat: 0, track: 0, overlay: 'none', death: null, won: false,
     ...overrides,
@@ -80,15 +80,12 @@ describe('play readouts', () => {
     expect(text('#mobile-job')).toBe('Demolition complete · +$1200');
   });
 
-  it('labels the blade and repaints upgrade multipliers only when they change', () => {
-    hud.render(state({ bladeDown: true, upgradeModifiers: { bladeMul: 1.25, engineMul: 1, pushMul: 1 } }));
+  it('labels the blade, with no in-run upgrade instruments left on the deck', () => {
+    hud.render(state({ bladeDown: true }));
     expect(text('#hud-blade')).toBe(COPY.bladeDown);
-    const blade = root.querySelector('[data-modifier="bladeMul"]')!;
-    expect(blade.textContent).toBe('1.25×');
-    expect(blade.getAttribute('aria-label')).toBe('Blade damage: 1.25 times');
-    hud.render(state({ upgradeModifiers: { bladeMul: 1.5, engineMul: 1, pushMul: 1 } }));
+    hud.render(state());
     expect(text('#hud-blade')).toBe(COPY.bladeUp);
-    expect(blade.textContent).toBe('1.50×');
+    expect(root.querySelector('[data-modifier], .upgrade-bank, [data-up]')).toBeNull();
   });
 
   it('tracks campaign money and the landmark', () => {
@@ -119,28 +116,16 @@ describe('overlays', () => {
     expect(document.querySelector<HTMLElement>('#game-root')!.inert).toBe(false);
   });
 
-  it('offers upgrades by click and by number key', () => {
-    const onChoice = vi.fn(), onClick = vi.fn();
-    Object.assign(hud, { onChoice, onClick });
-    hud.render(state({ overlay: 'upgrade' }));
-    expect(text('#result-heading')).toBe('Upgrade');
-    click('#hud-panel [data-up="push"]');
-    expect(onChoice).toHaveBeenLastCalledWith('push');
-    expect(onClick).toHaveBeenCalled();
-    key(root.querySelector('#hud-overlay')!, { key: '2' });
-    expect(onChoice).toHaveBeenLastCalledWith('engine');
-    key(root.querySelector('#hud-overlay')!, { key: '1', repeat: true });
-    expect(onChoice).toHaveBeenCalledTimes(2);
-  });
-
   it('keeps Tab inside the results panel and restarts on R', () => {
     const onRestart = vi.fn(), onTitle = vi.fn();
     Object.assign(hud, { onRestart, onTitle });
     hud.render(state({ overlay: 'results', death: COPY.engineCooked, cash: 950.4, timeLeft: 200 }));
     expect(text('#result-heading')).toBe(COPY.engineCooked);
     expect(text('#hud-panel p')).toContain('CASH $950');
-    const [restart, title] = [...root.querySelectorAll<HTMLButtonElement>('#hud-panel button')];
+    const buttons = [...root.querySelectorAll<HTMLButtonElement>('#hud-panel button')];
+    const [restart, title] = [buttons[0], buttons.at(-1)];
     expect(restart!.dataset.act).toBe('restart');
+    expect(buttons.map(b => b.dataset.act)).toEqual(['restart', 'home', 'title']);
     title!.focus();
     key(title!, { key: 'Tab' });
     expect(document.activeElement).toBe(restart);
@@ -237,8 +222,8 @@ describe('debug binder', () => {
   });
 
   it('routes session bar buttons and marks the running mode and level', () => {
-    const onSession = vi.fn(), onCampaignLevel = vi.fn(), onJob = vi.fn(), onNewSeed = vi.fn(), onChoice = vi.fn();
-    Object.assign(hud, { onSession, onCampaignLevel, onJob, onNewSeed, onChoice });
+    const onSession = vi.fn(), onCampaignLevel = vi.fn(), onJob = vi.fn(), onNewSeed = vi.fn();
+    Object.assign(hud, { onSession, onCampaignLevel, onJob, onNewSeed });
     hud.render(state({ session: 'challenge', campaign: campaign({ levelId: 'county' }) }));
     const challenge = root.querySelector<HTMLButtonElement>('[data-session="challenge"]')!;
     expect(challenge.getAttribute('aria-pressed')).toBe('true');
@@ -252,8 +237,6 @@ describe('debug binder', () => {
     expect(onJob).toHaveBeenCalledOnce();
     click('#hud-session [data-act="newseed"]');
     expect(onNewSeed).toHaveBeenCalledOnce();
-    click('#hud-session [data-up="engine"]');
-    expect(onChoice).toHaveBeenCalledWith('engine');
   });
 
   it('names the test yard reset after what is loaded', () => {

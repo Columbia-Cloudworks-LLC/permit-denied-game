@@ -212,7 +212,7 @@ describe("rural farmland matrix", () => {
     const particles = new ParticlePool();
     const before = live!.churn.reduce((sum, cell) => sum + cell, 0);
     const t0 = performance.now();
-    const out = stepWorld(town, dozer, particles, { blade: 0, engine: 0, push: 0 }, SIM_DT);
+    const out = stepWorld(town, dozer, particles, SIM_DT);
     expect(performance.now() - t0).toBeLessThan(100);
     expect(live!.churn.reduce((sum, cell) => sum + cell, 0)).toBeGreaterThan(before);
     expect(particles.items.some((p) => p.alive && p.kind === "crop")).toBe(true);

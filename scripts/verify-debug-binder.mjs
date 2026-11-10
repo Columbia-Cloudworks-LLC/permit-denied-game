@@ -48,13 +48,13 @@ try {
   const before = await snapshot();
   await button('Reset Test').click(); await settle();
   const after = await snapshot();
-  assert.deepEqual(after.upgrades, before.upgrades); assert.deepEqual(after.debug, before.debug);
+  assert.deepEqual(after.debug, before.debug);
   assert.equal(after.binder.tab, 'inspector'); assert.equal(after.binder.search, 'bus');
   assert.equal(after.binder.category, 'vehicle'); assert.equal(after.binder.variant, 1);
   assert.equal(after.scroll, before.scroll); assert.equal(after.elapsed, 0);
   await button('Step One Frame').click(); await settle();
   assert.ok(Math.abs((await snapshot()).elapsed - 1 / 60) < 1e-6);
-  results.push('Focused launch, filters, upgrades, Inspector scroll, freeze and single-step persist.');
+  results.push('Focused launch, filters, Inspector scroll, freeze and single-step persist.');
 
   await tab('Assets').click();
   for (let cycle = 0; cycle < 10; cycle++) {
@@ -64,7 +64,7 @@ try {
     const clean = await snapshot();
     assert.equal(clean.status, 'operational'); assert.equal(clean.damage, 0); assert.equal(clean.rubble, 0);
     assert.equal(clean.vehicles, 1); assert.equal(clean.bays, 1); assert.deepEqual(clean.dozer, clean.spawn);
-    assert.equal(clean.scroll, scroll); assert.deepEqual(clean.upgrades, before.upgrades);
+    assert.equal(clean.scroll, scroll);
   }
   await page.locator('[data-follow]').click(); await button('Reset Test').click(); await settle();
   assert.equal((await snapshot()).following, true);
@@ -105,12 +105,11 @@ try {
   assert.equal((await snapshot()).binder.search, 'bus'); assert.equal((await snapshot()).binder.variant, 1);
   assert.equal(await button('Open All-Assets Test Map').isVisible(), true);
   await button('Reset Entire Yard').click(); await settle();
-  assert.equal((await snapshot()).binder.search, 'bus'); assert.deepEqual((await snapshot()).upgrades, before.upgrades);
+  assert.equal((await snapshot()).binder.search, 'bus');
   await tab('Session').click();
   assert.equal(await page.locator('[data-demo], [data-tower]').count(), 0);
   await page.locator('[data-session=challenge]').click(); await settle();
   assert.equal((await snapshot()).request, undefined);
-  assert.deepEqual((await snapshot()).upgrades, { blade: 0, engine: 0, push: 0 });
   assert.equal((await snapshot()).binder.tab, 'session');
   await button('Begin Level').click(); await settle();
   if (!await page.locator('#debug-panel').isVisible()) await button('Debug').click();

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { advanceSimulation } from "./fixedStep";
+import { advanceSimulation, sweepSubsteps } from "./fixedStep";
 
 describe("fixed step", () => {
   const dt = 1 / 60;
@@ -42,5 +42,15 @@ describe("fixed step", () => {
     const out = advanceSimulation(dt * 4, dt, 5, () => playing, () => { steps++; playing = false; });
     expect(steps).toBe(1);
     expect(out).toEqual({ acc: 0, dropped: 0 });
+  });
+});
+
+describe('sweep sub-steps', () => {
+  it('keeps stock speeds on one step and splits rocket speeds so no sweep exceeds 0.45 of a cell', () => {
+    expect(sweepSubsteps(8.6, 1 / 60, 1.15)).toBe(1);
+    const n = sweepSubsteps(51.2, 1 / 60, 1.15);
+    expect(n).toBeGreaterThan(1);
+    expect((51.2 / 60) / n).toBeLessThanOrEqual(0.45 * 1.15);
+    expect(sweepSubsteps(1e6, 1 / 60, 1.15)).toBe(4);
   });
 });

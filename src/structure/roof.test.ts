@@ -131,7 +131,7 @@ describe("structural roofs", () => {
     const dozer = createDozer(town.maxX - 2, town.maxY - 2, 0);
     let cashEvents = 0;
     for (let i = 0; i < 360; i++) {
-      const out = stepWorld(town, dozer, particles, { blade: 0, engine: 0, push: 0 }, SIM_DT);
+      const out = stepWorld(town, dozer, particles, SIM_DT);
       cashEvents += out.events.filter((e) => e.kind === "cash" && e.cash === 140).length;
     }
     expect(house.fullyDown).toBe(true);

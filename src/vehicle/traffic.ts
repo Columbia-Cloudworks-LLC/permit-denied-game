@@ -1,4 +1,4 @@
-import { DOZER } from '../game/constants';
+import { DOZER, POLICE_CRUISE } from '../game/constants';
 import { clamp, wrapAngle } from '../game/math';
 import { Rng } from '../game/rng';
 import type { CampaignLevelId } from '../game/campaign';
@@ -55,7 +55,6 @@ export interface TrafficState {
 const CRUISE: Record<RoadSegment['roadClass'], number> = {
   highway: 15, arterial: 12.5, commercial: 10.5, rural: 12, residential: 9.5, service: 7, ramp: 9, driveway: 4,
 };
-const POLICE_CRUISE = 16;
 const POLICE_RAM = 13;
 const POLICE_HITS = 3;
 const RAM_HEAT = 10;

@@ -129,6 +129,9 @@ function countyBadgesHtml(region: RegionDef, progress: CountyProgress, kind: Ses
   return `<ol class="county-badges" aria-label="${escapeHtml(region.name)}: ${progress.clearedCount(region.id)} of 7 counties cleared">${badges}</ol>`;
 }
 
+/** Back and Home Yard share the bar's left cell on both map pages. */
+const ATLAS_NAV = '<div class="atlas-back"><button type="button" data-nav="back">Back</button><button type="button" data-menu-action="home-yard">Home Yard</button></div>';
+
 /** Back · county badges · Go to region. */
 export function macroBarHtml(region: RegionDef | undefined, progress: CountyProgress, kind: SessionKind): string {
   const center = region
@@ -137,7 +140,7 @@ export function macroBarHtml(region: RegionDef | undefined, progress: CountyProg
   const go = region
     ? `<button type="button" class="primary atlas-go" data-menu-action="open-region">Go to ${escapeHtml(region.name)}</button>`
     : '<button type="button" class="primary atlas-go" data-menu-action="open-region" disabled>Select a State or Province</button>';
-  return `<button type="button" class="atlas-back" data-nav="back">Back</button><div class="atlas-bar-center">${center}</div>${go}`;
+  return `${ATLAS_NAV}<div class="atlas-bar-center">${center}</div>${go}`;
 }
 
 export function atlasMacroHtml(atlas: AtlasData, regions: readonly RegionDef[], progress: CountyProgress, kind: SessionKind, chips: MapChips, selected?: RegionDef): string {
@@ -234,7 +237,7 @@ export function countyCardHtml(region: RegionDef, progress: CountyProgress, view
     ? `<p class="caution" id="county-lock-note">Clear Counties 1–6 in ${escapeHtml(region.name)} to open the capitol.</p>`
     : '';
   const runNote = run.current
-    ? `<p class="fine-print county-current">You are playing this county. Resume keeps your run; Restart rebuilds it with the weather below.</p><button type="button" data-menu-action="deploy" aria-describedby="deploy-replace-note">Restart County ${county.index}</button><p class="caution" id="deploy-replace-note">Restarting resets this county's cash, demolition, and upgrades.</p>`
+    ? `<p class="fine-print county-current">You are playing this county. Resume keeps your run; Restart rebuilds it with the weather below.</p><button type="button" data-menu-action="deploy" aria-describedby="deploy-replace-note">Restart County ${county.index}</button><p class="caution" id="deploy-replace-note">Restarting resets this county's cash and demolition.</p>`
     : run.replacing && status !== 'locked' ? '<p class="caution" id="deploy-replace-note">Deploying ends your current county run. Resume from the pause menu to keep playing it.</p>' : '';
   // Phones start with the facts folded so the dossier does not cover the county map.
   const open = typeof matchMedia !== 'function' || !matchMedia('(max-width: 760px)').matches;
@@ -253,7 +256,7 @@ ${lockNote}${runNote}
 
 /** Back · selected county badge and weather · Go to county (or Resume it). */
 export function sheetBarHtml(region: RegionDef, progress: CountyProgress, view: CountyViewState, run: CountyCardRun, effects: WeatherDetail = 'on'): string {
-  const back = '<button type="button" class="atlas-back" data-nav="back">Back</button>';
+  const back = ATLAS_NAV;
   if (!view.selected) {
     return `${back}<div class="atlas-bar-center"><p class="atlas-bar-hint">Select a county. Weather can be changed once one is picked.</p></div><button type="button" class="primary atlas-go" data-menu-action="deploy" disabled>Select a County</button>`;
   }

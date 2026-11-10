@@ -16,10 +16,10 @@ function scene() {
   particles.clear();
   return { town, dozer, particles, cx, cy };
 }
-function drive(s: ReturnType<typeof scene>, frames: number, throttle = 1, blade = false, engine = 0) {
+function drive(s: ReturnType<typeof scene>, frames: number, throttle = 1, blade = false, topSpeed?: number) {
   for (let i = 0; i < frames; i++) {
-    stepDozer(s.dozer, { throttle, steer: 0, blade, engineMul: 1 + engine * .28, bladeMul: 1, pushMul: 1 }, 1 / 60);
-    stepWorld(s.town, s.dozer, s.particles, { blade: 0, engine, push: 0 }, 1 / 60);
+    stepDozer(s.dozer, { throttle, steer: 0, blade, topSpeed, accel: topSpeed && topSpeed / 2.2 }, 1 / 60);
+    stepWorld(s.town, s.dozer, s.particles, 1 / 60);
   }
 }
 
@@ -38,9 +38,13 @@ it('allows reversing away and passes through a sufficiently cleared corridor', (
   s.town.pile.clearArea(s.cx - 2, s.cy - 15, 4, 30);
   drive(s, 480); expect(s.dozer.y).toBeLessThan(s.cy - 3);
 });
-it('prevents an upgraded, powered dozer from charging directly across uncleared rubble', () => {
-  const s = scene(); drive(s, 300, 1, true, 8);
+it('prevents a fast Drivetrain without Ballast from charging directly across uncleared rubble', () => {
+  const s = scene(); drive(s, 300, 1, true, 32);
   expect(s.dozer.y).toBeGreaterThan(s.cy + 5);
+});
+it('lets maxed Ballast & Torque drive through the heap that stops a stock machine', () => {
+  const s = scene(); s.dozer.resistanceCut = 0.98; drive(s, 480);
+  expect(s.dozer.y).toBeLessThan(s.cy - 3);
 });
 it('lets a dozer already inside the pile escape instead of trapping it in an invisible ring', () => {
   const s = scene(); s.dozer.y = s.cy; s.dozer.heading = Math.PI / 2;

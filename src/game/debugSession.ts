@@ -31,11 +31,10 @@ export function debugMapLabel(view: DebugSessionView): string {
 export function debugSessionPanels(view: DebugSessionView): {
   levels: boolean;
   job: boolean;
-  upgrades: boolean;
 } {
-  if (view.testMapName) return { levels: false, job: false, upgrades: false };
-  if (view.session === "challenge") return { levels: true, job: false, upgrades: false };
-  return { levels: true, job: true, upgrades: true };
+  if (view.testMapName) return { levels: false, job: false };
+  if (view.session === "challenge") return { levels: true, job: false };
+  return { levels: true, job: true };
 }
 
 export function debugSessionFacts(view: DebugSessionView): string {
