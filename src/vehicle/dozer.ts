@@ -6,6 +6,8 @@ export interface Dozer {
   motionStartX?: number;
   motionStartY?: number;
   pileResistance?: number;
+  /** Throttle last commanded, -1 to 1. A stalled dozer still pushing forward keeps digging. */
+  throttle?: number;
   x: number;
   y: number;
   heading: number;
@@ -97,6 +99,7 @@ export interface DriveInput {
 }
 
 export function stepDozer(d: Dozer, input: DriveInput, dt: number): void {
+  d.throttle = input.throttle;
   d.motionStartX = d.x;
   d.motionStartY = d.y;
   stepPush(d, input, dt);

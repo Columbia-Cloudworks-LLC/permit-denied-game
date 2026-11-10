@@ -160,6 +160,7 @@ describe("blade work in a pile", () => {
     const town = createTown();
     const dozer = createDozer(12, 18, 0);
     dozer.bladeDown = true;
+    dozer.throttle = 1;
     const bx = dozer.x + DOZER.bladeReach + 0.1;
     // Material under the blade, and a berm of the given height ahead of it.
     for (let i = 0; i < 6; i++) town.pile.addMass(bx, 18, 1.5, "brick");
@@ -181,5 +182,20 @@ describe("blade work in a pile", () => {
     expect(tall.spilled).toBeGreaterThan(0.1);
     // A tall berm also pushes back harder.
     expect(tall.load).toBeGreaterThan(low.load);
+  });
+
+  it("does not churn a pile under a lowered blade that is not being pushed", () => {
+    const town = createTown();
+    const dozer = createDozer(12, 18, 0);
+    dozer.bladeDown = true;
+    const bx = dozer.x + DOZER.bladeReach + 0.1;
+    for (let i = 0; i < 6; i++) town.pile.addMass(bx, 18, 1.5, "concrete");
+    const particles = new ParticlePool();
+    for (let i = 0; i < 60; i++) stepDebris(town, dozer, particles, [], 1, SIM_DT);
+    expect(town.rubble).toHaveLength(0);
+    // Pushed forward, even while stalled against the heap, the blade digs.
+    dozer.throttle = 1;
+    for (let i = 0; i < 10; i++) stepDebris(town, dozer, particles, [], 1, SIM_DT);
+    expect(town.rubble.length).toBeGreaterThan(0);
   });
 });

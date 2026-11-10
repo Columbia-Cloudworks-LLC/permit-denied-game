@@ -918,6 +918,8 @@ interface VehicleContact {
   radius: number;
   profile: VehicleProfile;
   blade?: { cx: number; cy: number; heading: number; hl: number; hw: number; z0: number };
+  /** The blade is being driven into the pile: throttle forward, or still rolling forward. */
+  digging?: boolean;
 }
 
 function bladeOf(dozer: Dozer): VehicleContact["blade"] {
@@ -1300,7 +1302,9 @@ function interactWithPile(
   particles: ParticlePool,
   dt: number,
 ): number {
-  const scooping = bladeDown && !!v.blade;
+  // A lowered blade that is not being pushed forward only rests on the pile; it must not keep
+  // lifting mass into live debris around a parked dozer.
+  const scooping = bladeDown && !!v.blade && !!v.digging;
   const px = scooping ? v.blade!.cx : v.x;
   const py = scooping ? v.blade!.cy : v.y;
   const sample = town.pile.sample(px, py);
@@ -1430,6 +1434,7 @@ export function stepDebris(
     radius: DOZER.radius,
     profile,
     blade: bladeOf(dozer),
+    digging: (dozer.throttle ?? 0) > 0 || dozer.vx * Math.cos(dozer.heading) + dozer.vy * Math.sin(dozer.heading) > 0.1,
   };
 
   let load = dozerBodyLoad(town, dozer, v, events, particles, dt);
