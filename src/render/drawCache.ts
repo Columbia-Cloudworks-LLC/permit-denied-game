@@ -11,33 +11,42 @@ export interface CachedDraw {
 /** Keep GPU geometry only for currently submitted objects, in painter order. */
 export class DrawCache {
   readonly root = new Container();
-  private entries = new Map<string, { graphic: Graphics; version?: string | number }>();
+  private entries = new Map<string, { graphic: Graphics; version?: string | number; frame: number }>();
+  private frame = 0;
+  private readonly order: Graphics[] = [];
   rebuilt = 0;
   get size(): number { return this.entries.size; }
   keys(): string[] { return [...this.entries.keys()].sort(); }
   draw(commands: readonly CachedDraw[]): void {
     this.rebuilt = 0;
-    const used = new Set<string>();
-    const order: Graphics[] = [];
-    commands.forEach((cmd, i) => {
+    const frame = ++this.frame;
+    const order = this.order;
+    order.length = commands.length;
+    let live = 0;
+    for (let i = 0; i < commands.length; i++) {
+      const cmd = commands[i]!;
       const key = cmd.key ?? `dynamic:${i}`;
-      used.add(key);
       let entry = this.entries.get(key);
       if (!entry) {
-        entry = { graphic: new Graphics() };
+        entry = { graphic: new Graphics(), frame: 0 };
         this.entries.set(key, entry);
       }
+      if (entry.frame !== frame) live++;
+      entry.frame = frame;
       if (cmd.version === undefined || entry.version !== cmd.version) {
         entry.graphic.clear(); cmd.run(entry.graphic);
         entry.version = cmd.version;
         this.rebuilt++;
       }
       entry.graphic.y = cmd.offsetY ?? 0;
-      order.push(entry.graphic);
-    });
-    for (const [key, entry] of this.entries) if (!used.has(key)) {
-      entry.graphic.destroy({ context: true });
-      this.entries.delete(key);
+      order[i] = entry.graphic;
+    }
+    // Entries not stamped this frame left the view; sweep only when there are any.
+    if (this.entries.size > live) {
+      for (const [key, entry] of this.entries) if (entry.frame !== frame) {
+        entry.graphic.destroy({ context: true });
+        this.entries.delete(key);
+      }
     }
     // Re-parenting every child with addChild is an indexOf + splice each (O(n^2));
     // keep the matching prefix and rebuild only the tail that changed.

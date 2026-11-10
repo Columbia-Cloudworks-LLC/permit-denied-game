@@ -98,10 +98,34 @@ export function vehicleLoad(town: Town, x: number, y: number, z: number, radius:
 }
 export const vehicleStats = { active: 0, sleeping: 0, detached: 0, contacts: 0 };
 const staticCache = new WeakMap<Town, {
-    /** What the hash was built from: site revision, then id, revision and cell count per building, then id, broken and position per prop. */
+    /** What the hash was built from: site revision, then id, retired and standing ground solids per building, then id, broken and position per prop. */
     stamp: unknown[];
     hash: SpatialHash<VehicleBox>;
 }>();
+
+const solidCounts = new WeakMap<Town['buildings'][number], { revision: number; cells: number; solids: number }>();
+
+/**
+ * Ground-floor cells and fixtures still standing, which is all the static hash holds. They only
+ * ever break, so the count identifies the set; it is recounted when the building's revision moves.
+ * A tower dropping its upper floors bumps the revision every step without changing this.
+ */
+function buildingSolids(b: Town['buildings'][number]): number {
+    let memo = solidCounts.get(b);
+    if (memo && memo.revision === b.visualRevision && memo.cells === b.cells.length)
+        return memo.solids;
+    let solids = 0;
+    for (const c of b.cells)
+        if (c.floor === 0 && c.hp > 0)
+            solids++;
+    for (const f of b.fixtures)
+        if (!f.broken && f.floor === 0)
+            solids += 65536;
+    if (!memo)
+        solidCounts.set(b, memo = { revision: 0, cells: 0, solids: 0 });
+    memo.revision = b.visualRevision; memo.cells = b.cells.length; memo.solids = solids;
+    return solids;
+}
 
 /** Compare the town's solids with a stamp and bring the stamp up to date; false when anything differed. */
 function staticStampCurrent(town: Town, stamp: unknown[]): boolean {
@@ -112,7 +136,7 @@ function staticStampCurrent(town: Town, stamp: unknown[]): boolean {
     };
     put(town.siteRevision);
     put(town.buildings.length);
-    for (const b of town.buildings) { put(b.id); put(b.visualRevision); put(b.cells.length); }
+    for (const b of town.buildings) { put(b.id); put(b.retired); put(buildingSolids(b)); }
     for (const p of town.props) { put(p.id); put(p.broken); put(p.x); put(p.y); }
     if (stamp.length !== n) { stamp.length = n; same = false; }
     return same;
