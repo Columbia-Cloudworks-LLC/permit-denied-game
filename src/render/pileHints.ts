@@ -104,8 +104,9 @@ export class PileHintLayer {
         const s = pile.cell * 0.76;
         const i = iy * pile.cols + ix;
         const tint = pileTint(pile, i);
-        // A dark skirt of fines so the heap reads against any ground, then the heap in its own material.
-        drawGroundPoly(g, x, y, s, s, shade(tint, 0.5), Math.min(0.62, 0.16 + h * 0.85));
+        // A skirt of fines over the whole cell, so neighbours join into one dark patch that reads
+        // against any ground; then the heap itself in its own material.
+        drawGroundPoly(g, pile.ox + ix * pile.cell, pile.oy + iy * pile.cell, pile.cell, pile.cell, shade(tint, 0.55), Math.min(0.5, 0.14 + h * 0.8));
         if (h > 0.14) {
           const hash = (ix * 73 + iy * 151) % 16;
           const lit = shade(tint, 0.92 + hash * 0.012);

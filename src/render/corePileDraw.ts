@@ -88,9 +88,12 @@ function drawPileQuad(g: Graphics, pile: Pile, ix: number, iy: number): boolean 
   const seed = (ix * 17 + iy * 13) % 11;
   const vertices = [{ x, y, z: cornerHeight(pile, ix, iy) }, { x: x + step, y, z: cornerHeight(pile, ix + 2, iy) },
     { x: x + step, y: y + step, z: cornerHeight(pile, ix + 2, iy + 2) }, { x, y: y + step, z: cornerHeight(pile, ix, iy + 2) }];
-  const color = shade(pileTint(pile, i), .94 + (vertices[0]!.z - vertices[2]!.z) * .12);
+  // Darker than the lot, with each facet lit by its slope and a little of its own tone, so the
+  // mound reads as broken rubble rather than a tinted patch of ground.
+  const lit = .82 + (vertices[0]!.z - vertices[2]!.z) * .3 + (seed % 5 - 2) * .022;
+  const color = shade(pileTint(pile, i), Math.max(.6, Math.min(1.1, lit)));
   drawWorldPoly(g, [vertices[0]!, vertices[1]!, vertices[2]!], color, 1);
-  drawWorldPoly(g, [vertices[0]!, vertices[2]!, vertices[3]!], shade(color, .98), 1);
+  drawWorldPoly(g, [vertices[0]!, vertices[2]!, vertices[3]!], shade(color, .93), 1);
   // A few stationary chips make the surface read as rubble without bodies.
   if (seed < 4 && h > .2) {
     const z = vertices.reduce((n, v) => n + v.z, 0) / 4;

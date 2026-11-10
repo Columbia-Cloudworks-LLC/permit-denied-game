@@ -57,6 +57,18 @@ Caps live in `DEBRIS`: remnant/fragment soft caps, `hardOverflow`, `protectRadiu
 
 The technical overlay (`?perf=1` or `` ` ``) splits `far` (distance cleanup) from `emerg` (hard-cap cleanup).
 
+## Debris motion and contact
+
+A collapse spawn drops its bodies from the storey they broke off, capped at 1.6 units above the heap (`MAX_AIR` in `src/sim/debris.ts`); fragments are also kicked upward. In the air a body keeps its throw. On touchdown the ground grips it by its material's friction and it bounces by its restitution (`BOUNCE`): steel hops and slides on, masonry thuds and stops. On the ground, drag scales with friction, static friction stops a piece that is nearly at rest, and fragments hold on pile slopes below the angle of repose. Lighter material is thrown further (`throwScale`), and fragments take their material's proportions (`FRAGMENT_SIZE`). Unsupported cells let go at 0.85 to 1.3 of the construction's `failureDelay`, fixed per cell by `failureStagger`, so a span sheds as a ragged run.
+
+Body contacts exchange an equal and opposite impulse with friction; the normal points from the first body to the second, and only a closing pair is resolved. The broad phase runs once per step from the awake bodies, and the solver passes relax that pair list. A sleeping body is a fixed obstacle until something strikes it above `DEBRIS.wakeImpulse`; resting overlap does not wake it, so a settled heap leaves the solver. Vehicle and blade contact always wake what they touch.
+
+When the blade cuts a pile, about half the lifted mass is pushed ahead as a berm and the rest becomes live debris moving with the blade. Once the berm stands above `SPILL_HEIGHT`, a growing share rolls off the blade ends into windrows and the berm adds to the push load.
+
+## Debris appearance
+
+`drawDebris` in `src/render/effectsDraw.ts` draws a body as the material it broke from: bonded brick courses on a mortar bed, concrete with a paler broken face and rebar, steel beams bent at a kink and ribbed sheets (some rusted), timber planks with pale splintered ends, flat glass shards. Shape and tone come from the body's seed, so a piece keeps its look while it moves. Pile hint cells and tower mounds take the mass-weighted colour of the materials in the cell (`pileTint`), and dust takes the colour of what broke. All of it is render-only.
+
 ## Destructible asset catalog
 
 `src/world/catalog.ts` is the immutable data table. Each `AssetDef` carries id, family, tags, footprint, collision, material, HP, mass, resistance, blade multiplier, track hazard, cash, destruction profile, debris recipe, render boxes, placement zones, and optional spark / bird / explosion fields.
@@ -143,6 +155,10 @@ Debris continuously more than 28 world units from the dozer retires after eight 
 
 Fully demolished buildings retain their identity and one-time reward status. After eight seconds more than 28 units from their footprint, their cells, structural grid, floors, roofs, fixtures and decoration arrays are released. A persistent site and editable pile represent the aftermath. Returning does not respawn the building; restoration constructs a fresh instance.
 
-Building geometry and floor-coverage caches use `visualRevision`. Code that changes visual or structural state must advance that revision; direct state mutation is not an authoring API. The renderer reuses submitted graphics by identity and visual state, preserves painter order, and destroys cached graphics when they leave the submitted view. Interior floor and wall caches are released when a building retires. Sleeping debris reuses its spatial index and support checks until positions, elevations, membership or pile state change.
+Building geometry and floor-coverage caches use `visualRevision`. Code that changes visual or structural state must advance that revision; direct state mutation is not an authoring API. The renderer reuses submitted graphics by identity and visual state, preserves painter order, and destroys cached graphics when they leave the submitted view. Interior floor and wall caches are released when a building retires. The body hash rebuilds only when a pose or membership changes. A sleeping fragment keeps its support height until the pile tile under it or the set of remnants changes; fragments churning nearby do not disturb it.
+
+Ground marks are drawn in 24-mark buckets by age (`src/render/markLayer.ts`), so a new chip repaints one bucket. Pile hints are one Graphics per 8-cell pile tile; a tile repaints only when its revision moved and it is on screen, and at most eight repaint per frame, which spreads a tower pulse over a few frames.
+
+A frame runs at most `SIM_MAX_STEPS` fixed steps, and after the first step starts no further one once `SIM_STEP_BUDGET_MS` has gone to simulation; time still owed is dropped and shows as `drop` in the overlay.
 
 Enable the performance overlay with `?perf=1` or DEBUG. It reports simulation CPU time, drawing preparation time, live runtime-record counts, retired buildings, retained drawing objects and geometry rebuilds. Browser heap usage is shown only when available; it is a sampled JavaScript heap estimate, not GPU memory. Compare object counts after repeated demolition/restoration and heap trends across garbage-collection cycles, rather than treating a single heap reading as a leak.
