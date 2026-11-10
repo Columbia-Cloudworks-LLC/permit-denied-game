@@ -407,9 +407,12 @@ describe('playthrough record and replay', () => {
     game.destroy();
     game = await boot();
     internal = game as unknown as GameInternals;
+    // A range upgrade bought since the recording must not change the replayed lot.
+    careerHost().career.profile.cosmetics.yardTier = 2;
     pd().replayPlaythrough(recorded);
     await vi.waitFor(() => expect(status().state).toBe('replaying'));
     expect(careerHost().town.home).toBeDefined();
+    expect((careerHost().town.home as { lanes: unknown[] }).lanes).toHaveLength(4);
     finishReplay();
     expect(status()).toMatchObject({ done: true, drift: [] });
   });

@@ -1,3 +1,4 @@
+import type { HomeYardLayoutInputs } from '../game/session';
 import { createBuildingFromArchetype } from '../structure/building';
 import type { Building } from '../structure/types';
 import { PileField } from '../sim/pile';
@@ -19,11 +20,7 @@ import type { HomeYardLayout, HomeZone, Town } from './town';
  *
  * x runs east, y runs south. Range tiers widen the lot to the east.
  */
-export interface HomeYardOptions {
-  yardTier: number;
-  countiesCleared: number;
-  lifetimeEarned: number;
-}
+export type HomeYardOptions = HomeYardLayoutInputs;
 
 const BASE_W = 96;
 const H = 72;

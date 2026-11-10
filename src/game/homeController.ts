@@ -13,6 +13,8 @@ export interface HomeHost {
   readonly hudRoot: HTMLElement;
   readonly particles: ParticlePool;
   options(): HomeYardOptions;
+  /** False during a replay: the shop and dispatch stay shut, the range reset still runs. */
+  interactive(): boolean;
   /** Freeze play under the shop overlay. */
   enterShop(): void;
   /** Put the dozer at the apron exit with the career's current loadout, and resume play. */
@@ -43,12 +45,13 @@ export class HomeYardController {
     if (!home) return;
     const d = this.host.dozer(), speed = dozerSpeed(d);
     const at = (z: HomeZone) => d.x >= z.x && d.x <= z.x + z.w && d.y >= z.y && d.y <= z.y + z.d;
+    const interactive = this.host.interactive();
     if (!at(home.apron)) this.latch.apron = false;
-    else if (!this.latch.apron && speed < 0.75) { this.latch.apron = true; this.openShop(); return; }
+    else if (interactive && !this.latch.apron && speed < 0.75) { this.latch.apron = true; this.openShop(); return; }
     if (!at(home.reset)) this.latch.reset = false;
     else if (!this.latch.reset) { this.latch.reset = true; this.resetRange(); }
     if (!at(home.lowboy)) this.latch.lowboy = false;
-    else if (!this.latch.lowboy && speed < 1.5) { this.latch.lowboy = true; this.host.dispatch(); }
+    else if (interactive && !this.latch.lowboy && speed < 1.5) { this.latch.lowboy = true; this.host.dispatch(); }
   }
 
   openShop(): void {

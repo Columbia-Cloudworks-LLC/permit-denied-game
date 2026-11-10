@@ -72,6 +72,11 @@ export interface SessionRules {
   job?: boolean;
   /** The player's Home Yard: no clock, no traffic, no pay; the Heavy Shop and dispatch live here. */
   home?: boolean;
+  /**
+   * The career state the yard was laid out from, fixed on entry so a reset or a recorded replay
+   * rebuilds the same lot. Absent on a bare `?home=1` link, which reads the live career.
+   */
+  homeYard?: HomeYardLayoutInputs;
   demo?: DemoAsset;
   kind: SessionKind;
   district: DistrictId;
@@ -228,8 +233,15 @@ function applySeasonLink(rules: SessionRules, seasonParam: string | null): void 
 }
 
 /** The Home Yard is a free sandbox lot of its own: no level, county, or test map. */
-export function homeYardRules(seed: number): SessionRules {
-  return { kind: "sandbox", district: "classic", seed, ranchFocus: false, home: true, season: "summer", seasonExplicit: false, weatherDetail: "on" };
+/** What decides the Home Yard's buildings, vehicles and props. */
+export interface HomeYardLayoutInputs {
+  yardTier: number;
+  countiesCleared: number;
+  lifetimeEarned: number;
+}
+
+export function homeYardRules(seed: number, homeYard?: HomeYardLayoutInputs): SessionRules {
+  return { kind: "sandbox", district: "classic", seed, ranchFocus: false, home: true, homeYard, season: "summer", seasonExplicit: false, weatherDetail: "on" };
 }
 
 /** The brick demolition job is its own challenge on the classic rivertown map. */

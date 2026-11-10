@@ -100,7 +100,7 @@ import { SIGNATURE_BONUS, type RegionalPlacement } from "../world/regionalPlacem
 import { loadOverworld, type OverworldModule } from "./overworldLoader";
 import type { CountyProgress } from "./countyProgress";
 import type { CountyDeployment } from "./session";
-import { homeYardRules } from "./session";
+import { homeYardRules, type HomeYardLayoutInputs } from "./session";
 import { sharedCareer, settleRun, SalvageCombo, STOCK_LOADOUT, type DozerLoadout, type Settlement, type SettlementOutcome } from "./career";
 import type { AttachmentRig } from "../vehicle/attachments";
 import type { CareerStrip, CareerStripState } from "../render/careerStrip";
@@ -396,6 +396,7 @@ class Game {
     const level = generationLevel(this.rules, this.campaign);
     const homeBase = this.homeBase;
     if (this.rules.home && !homeBase) throw new Error("Home Yard built before its chunk loaded");
+    if (this.rules.home) this.rules.homeYard ??= this.liveHomeOptions();
     this.town = this.rules.home && homeBase ? createTown({ seed: this.rules.seed, populate: town => homeBase.populateHomeYard(town, this.homeOptions()) }) : createTown({
       towerTest: this.rules.towerTest,
       district: this.rules.district,
@@ -604,7 +605,12 @@ class Game {
     this.career.bank(settlement.payout, this.runCells, Math.min(1, this.runCells / 600));
   }
 
-  private homeOptions() {
+  /** The yard's layout inputs: the snapshot taken on entry (and recorded with it), else the live career. */
+  private homeOptions(): HomeYardLayoutInputs {
+    return this.rules.homeYard ?? this.liveHomeOptions();
+  }
+
+  private liveHomeOptions(): HomeYardLayoutInputs {
     const profile = this.career.profile;
     return { yardTier: profile.cosmetics.yardTier, countiesCleared: this.countyProgress?.totalCleared() ?? 0, lifetimeEarned: profile.lifetimeEarnedCash };
   }
@@ -622,7 +628,7 @@ class Game {
     this.settleOpenRun("bailout");
     await this.ensureHomeBase();
     this.campaign = null;
-    this.rules = homeYardRules(this.rules.seed);
+    this.rules = homeYardRules(this.rules.seed, this.liveHomeOptions());
     this.reset("same");
     this.syncSessionUrl();
   }
@@ -676,7 +682,11 @@ class Game {
       hudRoot: this.hudRoot,
       particles: this.particles,
       options: () => this.homeOptions(),
+      // The shop and dispatch change the run outside recorded input: they end a recording, and a
+      // replay never opens them.
+      interactive: () => !this.playthrough.replaying,
       enterShop: () => {
+        this.stopPlaythrough();
         this.dozer.vx = 0;
         this.dozer.vy = 0;
         this.releaseControls();
@@ -691,6 +701,7 @@ class Game {
         document.querySelector<HTMLCanvasElement>("#game-root canvas")?.focus();
       },
       dispatch: () => {
+        this.stopPlaythrough();
         this.dozer.vx = 0;
         this.dozer.vy = 0;
         this.releaseControls();
