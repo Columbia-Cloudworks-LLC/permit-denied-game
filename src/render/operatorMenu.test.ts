@@ -49,7 +49,11 @@ const select = (id: string, value: string) => {
   el.dispatchEvent(new Event('change', { bubbles: true }));
 };
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  // Close the menu so a test that ends on the title page stops its intro timers before teardown.
+  menu.show(null);
+  vi.unstubAllGlobals();
+});
 
 beforeEach(() => {
   resetAtlasCache();
