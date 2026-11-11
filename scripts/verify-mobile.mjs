@@ -11,12 +11,13 @@ import {
   htmlKeepsIcoFavicon,
 } from './pwa.mjs';
 /**
- * Setup → Open Map → tap a state → its seven county badges → Go → tap a county → Go: the menu
+ * Play → tap a state → its seven county badges → Go → tap a county → Go: the menu
  * path that starts a game, checked against the full-viewport road atlas on a phone.
  */
 async function deployFirstCounty(page) {
-  await page.getByRole('button', { name: 'Open Map', exact: true }).click();
   await page.locator('.atlas-macro').waitFor();
+  // The atlas arrives folded and its flap swings open; wait for it to land.
+  await page.waitForFunction(() => !document.querySelector('.atlas-flap'));
   const layout = await page.evaluate(() => {
     const panel = document.querySelector('.map-open .console-panel').getBoundingClientRect();
     return { panel: [panel.width, panel.height], overflow: document.documentElement.scrollWidth > innerWidth, size: [innerWidth, innerHeight] };
@@ -32,10 +33,15 @@ async function deployFirstCounty(page) {
   await page.screenshot({ path: `${output}/atlas-macro.png` });
   await go.tap();
   await page.locator('.atlas-sheet').waitFor();
-  // The sheet slides in; measure label positions only once it has settled.
-  await page.waitForFunction(() => document.querySelector('.atlas-sheet').getAnimations().every(a => a.playState === 'finished'));
+  // The sheet unfolds in from the right; measure label positions only once it has settled.
+  await page.waitForFunction(() => !document.querySelector('.atlas-flap') && document.querySelector('.atlas-sheet').getAnimations({ subtree: true }).every(a => a.playState === 'finished'));
   assert.equal(await go.isDisabled(), true);
   assert.equal(await go.innerText(), 'Select a County');
+  // Time Challenge is the default; the rest of this check plays Sandbox, switched on the sheet itself.
+  assert.equal(await page.locator('.atlas-sheet [data-pick=mode][aria-pressed=true]').getAttribute('data-value'), 'challenge');
+  await page.locator('.atlas-sheet [data-pick=mode][data-value=sandbox]').tap();
+  assert.equal(await page.locator('.atlas-sheet [data-pick=mode][aria-pressed=true]').getAttribute('data-value'), 'sandbox');
+  assert.equal(await page.locator('.atlas-sheet .atlas-flap').count(), 0, 'A mode change redraws the sheet without refolding it');
   // Labels let taps through to the county cell underneath, as on a real phone.
   const label = await page.locator('[data-county-label="1"] .num').boundingBox();
   await page.touchscreen.tap(label.x + label.width / 2, label.y + label.height / 2);
@@ -68,6 +74,8 @@ async function assertTouchPan(page) {
   const moved = (before[0] - after[0]) * pxPerUnit;
   assert.ok(moved > 100, `Touch drag of 120px panned only ${moved.toFixed(1)}px`);
   assert.equal(await page.locator('[data-region-id][aria-pressed=true]').count(), 0, 'A touch pan never selects');
+  // Put the whole map back in view: zoomed 2.56× and dragged right, the eastern states are off screen.
+  await page.locator('.atlas-macro [data-zoom=reset]').tap();
   await page.locator('.atlas-macro [data-zoom=reset]').tap();
 }
 
@@ -151,7 +159,8 @@ try {
   await page.getByRole('button',{name:'Pause',exact:true}).filter({visible:true}).click();
   await page.getByRole('button',{name:'Equipment & Objective',exact:true}).click();
   await page.locator('.equipment-details').waitFor();
-  assert.match(await page.locator('.equipment-details').innerText(),/Blade 1.00/);
+  // The page states the run's objective; dozer stats moved to the Home Yard's Heavy Shop.
+  assert.match(await page.locator('.equipment-details').innerText(),/Sandbox · demolish freely/);
   await page.getByRole('button',{name:'Back',exact:true}).click();
   await page.locator('.operator-menu').getByRole('button',{name:'Debug',exact:true}).click();
   await page.getByRole('checkbox',{name:'Freeze Simulation',exact:true}).check();

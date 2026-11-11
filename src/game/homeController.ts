@@ -19,7 +19,7 @@ export interface HomeHost {
   enterShop(): void;
   /** Put the dozer at the apron exit with the career's current loadout, and resume play. */
   leaveShop(exit: { x: number; y: number; heading: number } | undefined): void;
-  /** Pause over the yard with dispatch setup open. */
+  /** Pause over the yard with the atlas open. */
   dispatch(): void;
   sound(kind: 'click' | 'cash' | 'rumble'): void;
   invalidate(): void;

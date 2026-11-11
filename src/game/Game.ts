@@ -1633,6 +1633,10 @@ class Game {
       onTitle: () => { this.releaseControls(); this.settleOpenRun("bailout"); this.campaign = null; this.mode = "title"; },
       onHomeYard: () => { void this.goHome(); },
       onStart: (deploy) => this.deployCounty(deploy),
+      onClearProgress: async () => {
+        this.career.reset();
+        (await this.ensureOverworld()).sharedCountyProgress().clearAll();
+      },
       onBeginLevel: () => {
         if (this.campaign) this.campaign.briefing = false;
         if (this.mode === "briefing") this.mode = "play";
