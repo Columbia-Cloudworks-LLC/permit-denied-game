@@ -45,10 +45,40 @@ jobs:
           path: dist
           retention-days: 14
 
-  # Runs alongside interface, which needs only the build artifact.
+  # Unit, soak, and script tests need no build artifact, so they start with build.
   test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run test:soak
+      - run: node --test scripts/*.test.mjs
+
+  # The generation matrices are the longest suite; they get a runner to themselves.
+  integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run test:integration
+
+  privacy:
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -62,10 +92,6 @@ jobs:
         with:
           name: game-build
           path: dist
-      - run: npm test
-      - run: npm run test:integration
-      - run: npm run test:soak
-      - run: node --test scripts/*.test.mjs
       - uses: ./.github/actions/setup-playwright
       - run: node scripts/verify-privacy.mjs
 
@@ -117,7 +143,7 @@ jobs:
           retention-days: 14
 
   deploy:
-    needs: [build, test, windows, interface]
+    needs: [build, test, integration, privacy, windows, interface]
     # Fork PRs get tests, never deployment credentials. Dispatch also handles the
     # final screenshot-bot commit, whose push does not start ordinary CI.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
