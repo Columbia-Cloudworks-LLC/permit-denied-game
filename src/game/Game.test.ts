@@ -645,11 +645,12 @@ describe('career: escrow settlement and the Home Yard', () => {
     expect(internal.mode).toBe('play');
   });
 
-  it('opens dispatch from the lowboy ramp', async () => {
+  it('unfolds the atlas from the lowboy ramp', async () => {
     await inner().goHome();
     park(inner().town.home!.lowboy);
     internal.step(SIM_DT);
     expect(internal.mode).toBe('pause');
-    expect(document.querySelector('#dispatch-mode')).not.toBeNull();
+    // Dispatch is the atlas itself now: no setup page in between.
+    await vi.waitFor(() => expect(document.querySelector('.atlas-macro')).not.toBeNull());
   });
 });

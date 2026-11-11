@@ -15,6 +15,7 @@ export interface HudSessionBindings {
   onTitle: () => void;
   onStart: (deploy: CountyDeployment) => void | Promise<void>;
   onHomeYard: () => void;
+  onClearProgress: () => void | Promise<void>;
   onBeginLevel: () => void;
   onNextLevel: () => void;
   onRetryLevel: () => void;
@@ -45,6 +46,7 @@ export function bindHudSession(hud: Hud, bindings: HudSessionBindings): void {
   hud.onTitle = bindings.onTitle;
   hud.onStart = bindings.onStart;
   hud.onHomeYard = bindings.onHomeYard;
+  hud.onClearProgress = bindings.onClearProgress;
   hud.onBeginLevel = bindings.onBeginLevel;
   hud.onNextLevel = bindings.onNextLevel;
   hud.onRetryLevel = bindings.onRetryLevel;

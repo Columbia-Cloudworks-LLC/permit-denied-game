@@ -38,13 +38,22 @@ const openRegion = (id: string) => {
   tap(region(id));
   go().click();
 };
+/** Press a season key on the world atlas. */
+const season = (id: string) => button(`.atlas-macro [data-pick="season"][data-value="${id}"]`).click();
+/** Press Time Challenge or Sandbox on the open state sheet. */
+const mode = (kind: 'challenge' | 'sandbox') => button(`.atlas-sheet [data-pick="mode"][data-value="${kind}"]`).click();
+const pressed = (pick: string) => [...menu.root.querySelectorAll<HTMLElement>(`[data-pick="${pick}"][aria-pressed="true"]`)].map(el => el.dataset.value);
 const select = (id: string, value: string) => {
   const el = menu.root.querySelector<HTMLSelectElement>(`#${id}`)!;
   el.value = value;
   el.dispatchEvent(new Event('change', { bubbles: true }));
 };
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  // Close the menu so a test that ends on the title page stops its intro timers before teardown.
+  menu.show(null);
+  vi.unstubAllGlobals();
+});
 
 beforeEach(() => {
   resetAtlasCache();
@@ -56,30 +65,29 @@ beforeEach(() => {
   parent = document.querySelector<HTMLElement>('#host')!;
   actions = {
     page: vi.fn(), resume: vi.fn(), start: vi.fn(), mapSeed: vi.fn(() => 1234), restart: vi.fn(), debug: vi.fn(), title: vi.fn(), mute: vi.fn(),
-    click: vi.fn(), unlockSound: vi.fn(() => Promise.resolve()), titleSound: vi.fn(), pwaUpdate: vi.fn(), homeYard: vi.fn(),
+    click: vi.fn(), unlockSound: vi.fn(() => Promise.resolve()), titleSound: vi.fn(), pwaUpdate: vi.fn(), homeYard: vi.fn(), clearProgress: vi.fn(),
   };
   menu = new OperatorMenu(parent, actions);
 });
 
-it('asks only for mode and season, then opens the full-viewport atlas with nothing selected', async () => {
+it('opens the atlas straight from Play, with the season keys on the map and nothing selected', async () => {
   menu.show('title');
   expect(menu.root.hidden).toBe(false);
   expect(heading()).toBe(TITLE);
-  button('[data-nav="dispatch"]').click();
-  expect(heading()).toBe(L.newGame);
-  expect(actions.click).toHaveBeenCalled();
-  expect([...menu.root.querySelectorAll('.dispatch-fields select')].map(el => el.id)).toEqual(['dispatch-mode', 'dispatch-season']);
-  expect(menu.root.querySelector('#dispatch-lot')).toBeNull();
-  expect(menu.root.querySelector('#dispatch-effects')).toBeNull();
-  expect([...menu.root.querySelectorAll<HTMLOptionElement>('#dispatch-season option')].map(o => o.value)).toEqual(['spring', 'summer', 'autumn', 'winter']);
-  select('dispatch-mode', 'challenge');
-  select('dispatch-season', 'winter');
-  expect(menu.root.querySelector('#mode-description')!.textContent).toMatch(/capitol/);
+  // No setup page: Play is the button that opens the map.
+  expect(menu.root.querySelector('[data-nav="dispatch"]')).toBeNull();
+  expect(menu.root.querySelector('#dispatch-mode')).toBeNull();
   await openMap();
+  expect(actions.click).toHaveBeenCalled();
   expect(heading()).toBe('North America');
   expect(menu.root.classList.contains('map-open')).toBe(true);
   expect(menu.root.querySelectorAll('.overworld-map [data-region-id]')).toHaveLength(63);
-  expect(menu.root.querySelector('.map-chips')!.textContent).toContain('Winter · locked');
+  // The season is chosen on the atlas itself; the mode waits for a state sheet.
+  expect([...menu.root.querySelectorAll<HTMLElement>('.atlas-macro [data-pick="season"]')].map(el => el.dataset.value)).toEqual(['spring', 'summer', 'autumn', 'winter']);
+  expect(pressed('season')).toEqual(['summer']);
+  season('winter');
+  expect(pressed('season')).toEqual(['winter']);
+  expect(menu.root.querySelector('.atlas-macro [data-pick="mode"]')).toBeNull();
   // The searchable sidebar is gone; the map is the picker.
   expect(menu.root.querySelector('#region-search')).toBeNull();
   expect(menu.root.querySelector('.region-list')).toBeNull();
@@ -89,6 +97,9 @@ it('asks only for mode and season, then opens the full-viewport atlas with nothi
   expect(menu.root.querySelector('#county-weather')).toBeNull();
   expect(menu.root.querySelectorAll('.atlas-zoom [data-zoom]')).toHaveLength(3);
   expect(actions.start).not.toHaveBeenCalled();
+  // Back from the atlas returns to the title page.
+  key(menu.root, { key: 'Escape' });
+  expect(heading()).toBe(TITLE);
 });
 
 it('single-click selects a region and shows its seven county badges; Go opens the state sheet over the map', async () => {
@@ -96,13 +107,21 @@ it('single-click selects a region and shows its seven county badges; Go opens th
   progress.markCleared('US-IL', 2);
   progress.markCleared('US-IL', 5);
   menu.show('title');
-  button('[data-nav="dispatch"]').click();
-  select('dispatch-mode', 'challenge');
   await openMap();
   tap(region('US-IL'));
   expect(heading()).toBe('North America');
   expect(menu.root.querySelector(region('US-IL'))!.getAttribute('aria-pressed')).toBe('true');
-  expect(menu.root.querySelector('.atlas-selection')!.getAttribute('d')).toBe(menu.root.querySelector(region('US-IL'))!.getAttribute('d'));
+  // The pick is circled in grease pencil: a fresh loop scrawled around the region, not a trace of its outline.
+  const loop = menu.root.querySelector('.atlas-macro .atlas-selection')!;
+  expect(loop.hasAttribute('hidden')).toBe(false);
+  expect(loop.classList.contains('draw')).toBe(true);
+  expect(loop.getAttribute('d')).toMatch(/^M[\d.-]+ [\d.-]+C/);
+  expect(loop.getAttribute('d')).not.toBe(menu.root.querySelector(region('US-IL'))!.getAttribute('d'));
+  // Hovering lays the highlighter over the region under the pointer.
+  menu.root.querySelector(region('US-OH'))!.dispatchEvent(new Event('pointerover', { bubbles: true }));
+  const mark = menu.root.querySelector('.atlas-macro .atlas-hover')!;
+  expect(mark.hasAttribute('hidden')).toBe(false);
+  expect(mark.getAttribute('d')).toBe(menu.root.querySelector(region('US-OH'))!.getAttribute('d'));
   const badges = [...menu.root.querySelectorAll<HTMLElement>('[data-atlas-bar="macro"] [data-county-slot]')];
   expect(badges.map(b => b.dataset.countySlot)).toEqual(['1', '2', '3', '4', '5', '6', '7']);
   expect(badges.map(b => b.dataset.countyCompleted)).toEqual(['false', 'true', 'false', 'false', 'true', 'false', 'false']);
@@ -134,9 +153,112 @@ it('single-click selects a region and shows its seven county badges; Go opens th
   expect(go().textContent).toBe('Go to Illinois');
 });
 
+it('defaults to Time Challenge, switches mode on the state sheet, and deploys what is pressed', async () => {
+  menu.show('title');
+  await openMap();
+  season('autumn');
+  tap(region('US-IL'));
+  go().click();
+  await settle();
+  expect(pressed('mode')).toEqual(['challenge']);
+  expect(menu.root.querySelector('.atlas-sheet .map-chips')!.textContent).toContain('Autumn');
+  // Time Challenge keeps the capitol locked until Counties 1–6 clear.
+  tap(county(7));
+  expect(go().disabled).toBe(true);
+  expect(menu.root.querySelector(county(7))!.classList.contains('locked')).toBe(true);
+  // Sandbox opens every county; the sheet redraws in place and keeps the pick.
+  mode('sandbox');
+  expect(pressed('mode')).toEqual(['sandbox']);
+  expect(menu.root.querySelectorAll('.atlas-sheet')).toHaveLength(1);
+  expect(menu.root.querySelector('.atlas-sheet')!.classList.contains('settled')).toBe(true);
+  expect(menu.root.querySelector(county(7))!.classList.contains('locked')).toBe(false);
+  expect(menu.root.querySelector(county(7))!.getAttribute('aria-pressed')).toBe('true');
+  expect(go().disabled).toBe(false);
+  expect([...menu.root.querySelectorAll('.county-card .county-facts dt')].map(dt => dt.textContent)).toEqual(['Landmark', 'Region', 'Watch for']);
+  go().click();
+  expect(actions.start).toHaveBeenLastCalledWith(expect.objectContaining({ kind: 'sandbox', season: 'autumn', regionId: 'US-IL', countyIndex: 7 }));
+  // The choice carries to the next sheet opened from this map.
+  mode('challenge');
+  tap(county(1));
+  go().click();
+  expect(actions.start).toHaveBeenLastCalledWith(expect.objectContaining({ kind: 'challenge', season: 'autumn', regionId: 'US-IL', countyIndex: 1 }));
+});
+
+it('unfolds each map from its other side: a hinged flap with the cover on its back', async () => {
+  vi.stubGlobal('matchMedia', () => ({ matches: false }));
+  menu.show('title');
+  await openMap();
+  const paper = menu.root.querySelector('.atlas-macro > .atlas-paper')!;
+  const flap = paper.querySelector<HTMLElement>(':scope > .atlas-flap')!;
+  expect(paper.classList.contains('folding')).toBe(true);
+  expect(flap.inert).toBe(true);
+  expect(flap.querySelector('.atlas-flap-back')!.textContent).toContain('Official Road Atlas');
+  expect(flap.querySelector('.atlas-flap-back img')!.getAttribute('src')).toBe('/atlas/globe.webp');
+  // Its face is a copy of the map with nothing to click, focus or look up by id.
+  expect(flap.querySelectorAll('.atlas-flap-front .atlas-region')).toHaveLength(63);
+  expect(flap.querySelector('[id], [data-region-id], [data-pick], [tabindex]')).toBeNull();
+  expect(menu.root.querySelectorAll('[data-region-id]')).toHaveLength(63);
+  // Landing removes the flap and leaves the whole sheet as the real paper.
+  flap.dispatchEvent(new Event('animationend'));
+  expect(paper.querySelector('.atlas-flap')).toBeNull();
+  expect(paper.classList.contains('folding')).toBe(false);
+  // A state sheet arrives the same way, its back a plain title block; a mode change does not refold it.
+  openRegion('US-OH');
+  const sheetFlap = menu.root.querySelector('.atlas-sheet .atlas-flap')!;
+  expect(sheetFlap.querySelector('.atlas-flap-back')!.textContent).toContain('Ohio');
+  mode('sandbox');
+  expect(menu.root.querySelector('.atlas-sheet .atlas-flap')).toBeNull();
+});
+
+it('draws the paper relief inside each map, so its creases pan and zoom with the map', async () => {
+  menu.show('title');
+  await openMap();
+  const svg = menu.root.querySelector('.overworld-map')!;
+  const relief = svg.querySelector(':scope > .atlas-relief')!;
+  expect(relief.getAttribute('href')).toBe('/atlas/paper-atlas.webp');
+  // It is the map's top layer, in map units: a viewBox change moves it with everything else.
+  expect(svg.lastElementChild).toBe(relief);
+  const before = svg.getAttribute('viewBox');
+  button('.atlas-macro [data-zoom="in"]').click();
+  expect(svg.getAttribute('viewBox')).not.toBe(before);
+  expect(relief.getAttribute('width')).toBe(before!.split(' ')[2]);
+  // No fixed texture layer is left on the paper for the map to slide under.
+  expect(getComputedStyle(menu.root.querySelector('.atlas-paper')!, '::after').backgroundImage || 'none').toBe('none');
+  openRegion('US-IL');
+  const il = menu.root.querySelector('.county-map .atlas-relief')!.getAttribute('href');
+  expect(il).toMatch(/^\/atlas\/paper-sheet-[ab]\.webp$/);
+});
+
+it('lays the maps flat at once when motion is reduced', async () => {
+  vi.stubGlobal('matchMedia', () => ({ matches: true }));
+  menu.show('title');
+  await openMap();
+  expect(menu.root.querySelector('.atlas-flap')).toBeNull();
+  expect(menu.root.querySelector('.atlas-paper.folding')).toBeNull();
+});
+
+it('circles the picked county and shows its facts as icon rows', async () => {
+  menu.show('title');
+  await openMap();
+  tap(region('US-IL'));
+  go().click();
+  await settle();
+  // Nothing picked yet: no card, and no circle.
+  expect(menu.root.querySelector('.county-card')).toBeNull();
+  expect(menu.root.querySelector('.atlas-sheet .atlas-selection')!.hasAttribute('hidden')).toBe(true);
+  tap(county(2));
+  const loop = menu.root.querySelector('.atlas-sheet .atlas-selection')!;
+  expect(loop.hasAttribute('hidden')).toBe(false);
+  expect(loop.getAttribute('d')).toMatch(/^M[\d.-]+ [\d.-]+C/);
+  const facts = [...menu.root.querySelectorAll('.county-card .county-facts dt')].map(dt => dt.textContent);
+  expect(facts).toEqual(['Objective', 'Earn', 'County clock', 'Region', 'Watch for']);
+  expect(menu.root.querySelectorAll('.county-card .county-facts dt svg')).toHaveLength(5);
+  tap(county(4));
+  expect(menu.root.querySelector('.atlas-sheet .atlas-selection')!.getAttribute('d')).not.toBe(loop.getAttribute('d'));
+});
+
 it('double-click opens a region, and double-click on an open county deploys it', async () => {
   menu.show('title');
-  button('[data-nav="dispatch"]').click();
   await openMap();
   tap(region('US-OH'));
   tap(region('US-OH'));
@@ -146,16 +268,16 @@ it('double-click opens a region, and double-click on an open county deploys it',
   expect(go().textContent).toBe('Go to Suburban County');
   expect(go().getAttribute('aria-label')).toBe('Go to Ohio Suburban County');
   tap(county(4));
-  expect(actions.start).toHaveBeenCalledWith(expect.objectContaining({ kind: 'sandbox', regionId: 'US-OH', countyIndex: 4 }));
+  expect(actions.start).toHaveBeenCalledWith(expect.objectContaining({ kind: 'challenge', regionId: 'US-OH', countyIndex: 4 }));
 });
 
 it('deploys a sandbox county with its rolled weather, and only the sheet changes weather', async () => {
   menu.show('title');
-  button('[data-nav="dispatch"]').click();
-  select('dispatch-season', 'autumn');
   await openMap();
+  season('autumn');
   openRegion('US-TX');
   expect(heading()).toBe('Texas');
+  mode('sandbox');
   expect(menu.root.querySelector('#county-weather')).toBeNull();
   tap(county(1));
   expect(menu.root.querySelector('#county-card-title')!.textContent).toBe('Texas Farmstead County');
@@ -180,13 +302,11 @@ it('deploys a sandbox county with its rolled weather, and only the sheet changes
   key(menu.root, { key: 'Escape' });
   expect(heading()).toBe('North America');
   key(menu.root, { key: 'Escape' });
-  expect(heading()).toBe(L.newGame);
+  expect(heading()).toBe(TITLE);
 });
 
 it('locks the capitol in Time Challenge until Counties 1–6 are cleared', async () => {
   menu.show('title');
-  button('[data-nav="dispatch"]').click();
-  select('dispatch-mode', 'challenge');
   await openMap();
   openRegion('CA-ON');
   expect(menu.root.querySelector(county(7))!.classList.contains('locked')).toBe(true);
@@ -213,8 +333,6 @@ it('keeps same-session clears on the map when storage writes fail', async () => 
   const blocked: ProgressStore = { getItem: () => null, setItem: () => { throw new Error('QuotaExceededError'); } };
   const progress = resetSharedCountyProgress(blocked);
   menu.show('title');
-  button('[data-nav="dispatch"]').click();
-  select('dispatch-mode', 'challenge');
   await openMap();
   openRegion('US-GA');
   tap(county(7));
@@ -232,10 +350,10 @@ it('keeps only the newest map request when Open Map is clicked again while the a
   let release!: (response: Response) => void;
   vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>(resolve => { release = resolve; })));
   menu.show('title');
-  button('[data-nav="dispatch"]').click();
   await settle();
   button('[data-menu-action="open-map"]').click();
   button('[data-menu-action="open-map"]').click();
+  await vi.waitFor(() => expect(release).toBeTypeOf('function'));
   release(new Response(JSON.stringify(schematicAtlas())));
   await settle();
   expect(heading()).toBe('North America');
@@ -247,44 +365,43 @@ it('keeps only the newest map request when Open Map is clicked again while the a
   expect(svg.getAttribute('viewBox')).not.toBe(before);
 });
 
-it('drops a run-map load that finishes after the player moved on to New Game', async () => {
+const yard = { session: 'challenge', season: 'summer', effects: 'on', home: true } as const;
+
+it('keeps only the Dispatch map when it is asked for after a world map that is still loading', async () => {
   let release!: (response: Response) => void;
   vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>(resolve => { release = resolve; })));
-  menu.show('pause', running);
+  menu.show('pause', yard);
   button('[data-menu-action="world-map"]').click();
-  button('[data-nav="dispatch"]').click();
-  select('dispatch-mode', 'sandbox');
+  button('[data-menu-action="open-map"]').click();
   await vi.waitFor(() => expect(fetch).toHaveBeenCalled());
   release(new Response(JSON.stringify(schematicAtlas())));
   await settle();
-  expect(heading()).toBe(L.newGame);
-  expect(menu.root.querySelector<HTMLSelectElement>('#dispatch-mode')!.value).toBe('sandbox');
-  await openMap();
-  expect(menu.root.querySelector('.map-chips')!.textContent).toContain('Sandbox');
+  expect(heading()).toBe('North America');
+  // A fresh map: nothing preselected, and the season is free to change.
+  expect(menu.root.querySelector('[data-region-id][aria-pressed="true"]')).toBeNull();
+  expect(menu.root.querySelector<HTMLButtonElement>('.atlas-macro [data-pick="season"][data-value="spring"]')!.disabled).toBe(false);
 });
 
-it('never offers to resume the paused run from a New Game map', async () => {
+it('offers no New Game during a run, and Dispatch only from the Home Yard', async () => {
   menu.show('pause', running);
-  button('[data-nav="dispatch"]').click();
-  select('dispatch-mode', 'sandbox');
-  select('dispatch-season', 'summer');
+  // A run is replaced only by deploying another county from its own maps.
+  expect(menu.root.querySelector('[data-menu-action="open-map"]')).toBeNull();
+  expect(menu.root.textContent).not.toContain(L.newGame);
+  menu.show(null);
+  menu.show('pause', yard);
+  expect(button('[data-menu-action="open-map"]').textContent).toBe('Dispatch');
   await openMap();
   openRegion('US-MI');
-  expect(menu.root.querySelector(county(3))!.classList.contains('current')).toBe(false);
   tap(county(3));
-  expect(go().textContent).toBe('Go to Works County');
+  // Dispatching from the yard replaces nothing, so there is nothing to warn about.
+  expect(menu.root.querySelector('#deploy-replace-note')).toBeNull();
   expect(menu.root.querySelector('[data-menu-action="resume"]')).toBeNull();
-  expect(menu.root.querySelector('#deploy-replace-note')!.textContent).toMatch(/ends your current county run/);
-  tap(county(3));
-  expect(actions.resume).not.toHaveBeenCalled();
-  expect(actions.start).toHaveBeenCalledWith(expect.objectContaining({ kind: 'sandbox', season: 'summer', regionId: 'US-MI', countyIndex: 3 }));
 });
 
 it('renders the fetched road atlas when it is available', async () => {
   const atlas = { ...schematicAtlas(), source: 'fixture', schematic: undefined };
   vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response(JSON.stringify(atlas)))));
   menu.show('title');
-  button('[data-nav="dispatch"]').click();
   await openMap();
   expect(fetch).toHaveBeenCalledWith('/atlas/north-america-atlas.json');
   expect(menu.root.querySelector('.atlas-macro')!.classList.contains('schematic')).toBe(false);
@@ -298,9 +415,6 @@ it('pauses on the running setup and routes each action', () => {
     button(`[data-menu-action="${action}"]`).click();
     expect(actions[action]).toHaveBeenCalledOnce();
   }
-  button('[data-nav="dispatch"]').click();
-  expect(menu.root.querySelector<HTMLSelectElement>('#dispatch-mode')!.value).toBe('challenge');
-  expect(menu.root.querySelector<HTMLSelectElement>('#dispatch-season')!.value).toBe('spring');
   expect(menu.root.querySelector('.caution')).not.toBeNull();
 });
 
@@ -315,7 +429,11 @@ it('opens the state map over a paused run without ending it, and resumes from th
   expect(button('[data-menu-action="state-map"]').textContent).toBe(L.stateMap);
   await pauseMap('state-map');
   expect(heading()).toBe('Michigan');
-  expect(menu.root.querySelector('.atlas-sheet .map-chips')!.textContent).toContain('Winter · locked');
+  expect(menu.root.querySelector('.atlas-sheet .map-chips')!.textContent).toContain('Winter');
+  expect(pressed('mode')).toEqual(['challenge']);
+  // The run's maps keep the run's season: the other season keys are locked.
+  expect(pressed('season')).toEqual(['winter']);
+  expect([...menu.root.querySelectorAll<HTMLButtonElement>('.atlas-macro [data-pick="season"]')].filter(key => key.disabled).map(key => key.dataset.value)).toEqual(['spring', 'summer', 'autumn']);
   expect(menu.root.querySelector(county(3))!.classList.contains('current')).toBe(true);
   expect(menu.root.querySelector(county(3))!.classList.contains('selected')).toBe(true);
   expect(menu.root.querySelector<HTMLSelectElement>('#county-weather')!.value).toBe('fog');
@@ -348,6 +466,36 @@ it('browses the world map from pause, warns before replacing the run, and steps 
   expect(actions.start).toHaveBeenCalledWith(expect.objectContaining({ kind: 'challenge', season: 'winter', regionId: 'US-OH', countyIndex: 2, mapSeed: 42 }));
 });
 
+it('offers Resume and Restart only in the run\'s own mode', async () => {
+  // A Sandbox run in the Michigan capitol, which Time Challenge keeps locked until 1–6 clear.
+  menu.show('pause', { ...running, session: 'sandbox', countyIndex: 7 });
+  await pauseMap('state-map');
+  expect(pressed('mode')).toEqual(['sandbox']);
+  expect(go().textContent).toMatch(/^Resume /);
+  expect(menu.root.querySelector('.county-card [data-menu-action="deploy"]')!.textContent).toBe('Restart County 7');
+  mode('challenge');
+  // The run's county is now a locked Time Challenge county: no Resume, no Restart that does nothing.
+  expect(menu.root.querySelector(county(7))!.classList.contains('current')).toBe(true);
+  expect(go().textContent).not.toMatch(/^Resume /);
+  expect(go().disabled).toBe(true);
+  expect(menu.root.querySelector('.county-card [data-menu-action="deploy"]')).toBeNull();
+  expect(menu.root.querySelector('#county-lock-note')).not.toBeNull();
+  tap(county(7));
+  tap(county(7));
+  expect(actions.resume).not.toHaveBeenCalled();
+  expect(actions.start).not.toHaveBeenCalled();
+  // An open county in the other mode deploys fresh, with the replace warning.
+  tap(county(2));
+  expect(go().textContent).toMatch(/^Go to /);
+  expect(menu.root.querySelector('#deploy-replace-note')).not.toBeNull();
+  // Back in the run's mode, Resume returns.
+  mode('sandbox');
+  tap(county(7));
+  expect(go().textContent).toMatch(/^Resume /);
+  go().click();
+  expect(actions.resume).toHaveBeenCalledOnce();
+});
+
 it('restarts the running county from its card with the chosen weather', async () => {
   menu.show('pause', running);
   await pauseMap('state-map');
@@ -356,30 +504,96 @@ it('restarts the running county from its card with the chosen weather', async ()
   expect(actions.start).toHaveBeenCalledWith(expect.objectContaining({ regionId: 'US-MI', countyIndex: 3, weather: 'clear', effects: 'reduced' }));
 });
 
-it('opens run maps on the running setup after a canceled New Game draft', async () => {
+it('keeps the run season on the run maps: the other season keys do nothing', async () => {
   menu.show('pause', running);
-  button('[data-nav="dispatch"]').click();
-  select('dispatch-mode', 'sandbox');
-  select('dispatch-season', 'summer');
-  key(menu.root, { key: 'Escape' });
-  expect(heading()).toBe('Paused');
-  await pauseMap('state-map');
-  expect(menu.root.querySelector('.atlas-sheet .map-chips')!.textContent).toContain('Time Challenge');
-  expect(menu.root.querySelector('.atlas-sheet .map-chips')!.textContent).toContain('Winter · locked');
+  await pauseMap('world-map');
+  season('spring');
+  expect(pressed('season')).toEqual(['winter']);
+  go().click();
+  await settle();
   tap(county(7));
   expect(go().disabled).toBe(true);
   tap(county(3));
   button('.county-card [data-menu-action="deploy"]').click();
   expect(actions.start).toHaveBeenLastCalledWith(expect.objectContaining({ kind: 'challenge', season: 'winter', effects: 'reduced', regionId: 'US-MI', countyIndex: 3, weather: 'fog' }));
-  // A deliberate New Game map still uses the draft.
+});
+
+it('slides the open atlas up under a state sheet opened straight from pause', async () => {
+  vi.stubGlobal('matchMedia', () => ({ matches: false }));
+  menu.show('pause', running);
+  await pauseMap('state-map');
+  // No second unfold underneath: the atlas arrives open, and only the sheet has a flap.
+  expect(menu.root.querySelector('.atlas-macro')!.classList.contains('risen')).toBe(true);
+  expect(menu.root.querySelector('.atlas-macro .atlas-flap')).toBeNull();
+  expect(menu.root.querySelector('.atlas-sheet')!.classList.contains('late')).toBe(true);
+  expect(menu.root.querySelector('.atlas-sheet .atlas-flap')).not.toBeNull();
+  // From the world map, the atlas unfolds as usual.
+  menu.show(null);
+  menu.show('pause', running);
+  await pauseMap('world-map');
+  expect(menu.root.querySelector('.atlas-macro')!.classList.contains('risen')).toBe(false);
+  expect(menu.root.querySelector('.atlas-macro .atlas-flap')).not.toBeNull();
+});
+
+it('sweeps the maps away for a loading card, then starts the county once it has painted', async () => {
+  vi.useFakeTimers();
+  try {
+    menu.show('title');
+    button('[data-menu-action="open-map"]').click();
+    await vi.runAllTimersAsync();
+    openRegion('US-OH');
+    tap(county(2));
+    // Give the atlas a size, as it has in a browser: the departure only plays where it can be seen.
+    const atlas = menu.root.querySelector<HTMLElement>('.atlas')!;
+    Object.defineProperty(atlas, 'clientWidth', { value: 1280 });
+    go().click();
+    expect(atlas.classList.contains('leaving')).toBe(true);
+    const card = atlas.querySelector('.atlas-splash')!;
+    expect(card.getAttribute('role')).toBe('status');
+    expect(card.querySelector('h2')!.textContent).toBe('Ohio Highway County');
+    expect(card.textContent).toContain('Time Challenge');
+    // The level build can hold the page, so it waits for the card to be on screen.
+    expect(actions.start).not.toHaveBeenCalled();
+    // Nothing on the departing maps answers: no second deploy, no Back.
+    go().click();
+    key(menu.root, { key: 'Escape' });
+    expect(heading()).toBe('Ohio');
+    await vi.advanceTimersByTimeAsync(500);
+    expect(actions.start).toHaveBeenCalledOnce();
+    expect(actions.start).toHaveBeenCalledWith(expect.objectContaining({ kind: 'challenge', regionId: 'US-OH', countyIndex: 2 }));
+    // If the level never takes over, the maps come back rather than strand the card.
+    await vi.advanceTimersByTimeAsync(20000);
+    expect(atlas.classList.contains('leaving')).toBe(false);
+    expect(atlas.querySelector('.atlas-splash')).toBeNull();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it('clears progress only from the main menu, and only after a confirmation that says what goes', () => {
+  menu.show('pause', running);
+  expect(menu.root.querySelector('[data-nav="reset"]')).toBeNull();
+  menu.show(null);
+  menu.show('title');
+  button('[data-nav="reset"]').click();
+  expect(heading()).toBe('Clear Progress');
+  expect(actions.clearProgress).not.toHaveBeenCalled();
+  const text = menu.root.querySelector('.menu-body')!.textContent!;
+  expect(text).toMatch(/cannot be undone/);
+  expect(text).toMatch(/Every county you have cleared/);
+  expect(text).toMatch(/banked cash, Heavy Shop upgrades/);
+  // Backing out, by button or Escape, erases nothing.
+  button('.reset-actions [data-nav="back"]').click();
+  expect(heading()).toBe(TITLE);
+  button('[data-nav="reset"]').click();
   key(menu.root, { key: 'Escape' });
-  key(menu.root, { key: 'Escape' });
-  button('[data-nav="dispatch"]').click();
-  select('dispatch-mode', 'sandbox');
-  select('dispatch-season', 'summer');
-  await openMap();
-  expect(menu.root.querySelector('.map-chips')!.textContent).toContain('Sandbox');
-  expect(menu.root.querySelector('.map-chips')!.textContent).toContain('Summer · locked');
+  expect(heading()).toBe(TITLE);
+  expect(actions.clearProgress).not.toHaveBeenCalled();
+  button('[data-nav="reset"]').click();
+  button('[data-menu-action="clear-progress"]').click();
+  expect(actions.clearProgress).toHaveBeenCalledOnce();
+  expect(menu.root.querySelector('[role="status"]')!.textContent).toMatch(/Progress cleared/);
+  expect(menu.root.querySelector('[data-menu-action="clear-progress"]')).toBeNull();
 });
 
 it('offers only the world map when the paused run is not an overworld county', () => {
@@ -392,15 +606,15 @@ it('walks the info pages, and Escape steps back before it resumes', async () => 
   menu.show('pause', { session: 'sandbox' });
   button('[data-nav="controls"]').click();
   expect(heading()).toBe(L.controls);
-  expect(menu.root.querySelector('.control-list')).not.toBeNull();
+  // Controls and About text load on first visit, not at startup.
+  await vi.waitFor(() => expect(menu.root.querySelector('.control-list')).not.toBeNull());
   key(menu.root, { key: 'Escape' });
   expect(heading()).toBe('Paused');
   expect(actions.resume).not.toHaveBeenCalled();
   button('[data-nav="about"]').click();
   expect(heading()).toBe(L.about);
   // The licence notices load with the page rather than at startup.
-  const notices = menu.root.querySelector('pre')!;
-  await vi.waitFor(() => expect(notices.textContent!.length).toBeGreaterThan(0));
+  await vi.waitFor(() => expect(menu.root.querySelector('pre')!.textContent!.length).toBeGreaterThan(0));
   expect(menu.root.querySelector<HTMLElement>('.nameplate')!.hidden).toBe(false);
   button('[data-nav="back"]').click();
   button('[data-nav="equipment"]').click();
@@ -411,14 +625,16 @@ it('walks the info pages, and Escape steps back before it resumes', async () => 
   expect(actions.resume).toHaveBeenCalledOnce();
 });
 
-it('toggles sound with M except while typing in a field', () => {
+it('toggles sound with M except while typing in a field', async () => {
   menu.show('title', { session: 'sandbox' });
   key(menu.root, { key: 'm' });
   expect(actions.mute).toHaveBeenCalledOnce();
   key(menu.root, { key: 'M', repeat: true });
   expect(actions.mute).toHaveBeenCalledOnce();
-  button('[data-nav="dispatch"]').click();
-  key(menu.root.querySelector('#dispatch-mode')!, { key: 'm' });
+  await openMap();
+  openRegion('US-OH');
+  tap(county(1));
+  key(menu.root.querySelector('#county-weather')!, { key: 'm' });
   expect(actions.mute).toHaveBeenCalledOnce();
 });
 
@@ -462,7 +678,6 @@ it('wraps Tab within the visible controls, and parks focus on the heading when n
 it('reaches the Home Yard from the world and state maps, not from the title page', async () => {
   menu.show('title');
   expect(menu.root.querySelector('[data-menu-action="home-yard"]')).toBeNull();
-  button('[data-nav="dispatch"]').click();
   await openMap();
   button('.atlas-back [data-menu-action="home-yard"]').click();
   expect(actions.homeYard).toHaveBeenCalledTimes(1);

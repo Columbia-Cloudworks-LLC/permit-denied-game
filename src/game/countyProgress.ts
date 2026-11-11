@@ -73,6 +73,12 @@ export class CountyProgress {
     this.save();
   }
 
+  /** Erase every clear: the map goes back to unstamped and every capitol locks again. */
+  clearAll(): void {
+    this.cleared.clear();
+    this.save();
+  }
+
   /** Every county cleared in this browser, across all regions. */
   totalCleared(): number {
     return this.cleared.size;

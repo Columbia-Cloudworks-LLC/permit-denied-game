@@ -160,3 +160,19 @@ describe('career store', () => {
     expect(normalizeProfile({ version: 2, walletBalance: 50 })).toEqual(emptyProfile());
   });
 });
+
+it('resets the career in place to a stock profile and persists it', () => {
+  const data = new Map<string, string>();
+  const career = new CareerStore({ getItem: key => data.get(key) ?? null, setItem: (key, value) => { data.set(key, value); } });
+  const held = career.profile;
+  let notified = 0;
+  career.onChange(() => { notified++; });
+  career.bank(5000, 120, 0.4);
+  expect(career.profile.walletBalance).toBeGreaterThan(0);
+  career.reset();
+  // The same record object: the game and the shop keep their reference.
+  expect(career.profile).toBe(held);
+  expect(career.profile).toEqual(emptyProfile());
+  expect(JSON.parse(data.get(PROFILE_KEY)!)).toEqual(emptyProfile());
+  expect(notified).toBe(2);
+});

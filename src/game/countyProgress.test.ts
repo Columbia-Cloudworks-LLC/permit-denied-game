@@ -58,3 +58,15 @@ describe('county progress', () => {
     expect(progress.nextChallengeCounty('US-TX', 7)).toBeNull();
   });
 });
+
+it('clears every county and persists the empty record', () => {
+  const data = new Map<string, string>();
+  const store = { getItem: (key: string) => data.get(key) ?? null, setItem: (key: string, value: string) => { data.set(key, value); } };
+  const progress = new CountyProgress(store);
+  for (let index = 1; index <= 6; index++) progress.markCleared('US-IL', index);
+  expect(progress.isUnlocked('challenge', 'US-IL', 7)).toBe(true);
+  progress.clearAll();
+  expect(progress.clearedCount('US-IL')).toBe(0);
+  expect(progress.isUnlocked('challenge', 'US-IL', 7)).toBe(false);
+  expect(new CountyProgress(store).clearedCount('US-IL')).toBe(0);
+});

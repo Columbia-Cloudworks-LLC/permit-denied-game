@@ -3,6 +3,7 @@ import { clockValue } from './instrumentValues';
 import { CashCounter } from './cashCounter';
 import { EquipmentClock } from './equipmentClock';
 import { MENU_LABELS as L, MODE_LABELS, BRICK_DESCRIPTION } from '../game/menuLabels';
+import { MENU_ICONS } from './menuIcons';
 import { COPY, CASH_TARGET, MATCH_SECONDS } from "../game/constants";
 import { type CampaignLevelId } from "../game/campaign";
 import { campaignLevelButtons, debugMapLabel, debugSessionFacts, debugSessionPanels } from "../game/debugSession";
@@ -79,6 +80,17 @@ export interface HudState {
   home?: boolean;
 }
 
+const TAB_ICONS = {
+  assets: MENU_ICONS.cube,
+  inspector: MENU_ICONS.eye,
+  session: MENU_ICONS.clipboard,
+} as const;
+/** Overlay line colors, matching `debugOverlay.ts`. */
+const DEBUG_LEGEND: readonly (readonly [string, string])[] = [
+  ['#7ec8ff', 'Paths'], ['#ffd24a', 'Car route'], ['#ffb347', 'Driveways, props, contents'], ['#5ad68a', 'Lots'], ['#e07cff', 'Buildable'],
+  ['#f6d677', 'Rooms'], ['#ff697c', 'Walls, failing supports'], ['#53efb2', 'Live supports'], ['#ffffff', 'Dozer'],
+];
+
 export class Hud {
   readonly root: HTMLElement;
   readonly assetsHost: HTMLElement;
@@ -104,6 +116,8 @@ export class Hud {
   onTitle?: () => void;
   onStart?: (deploy: CountyDeployment) => void | Promise<void>;
   onHomeYard?: () => void;
+  /** Main menu → Clear Progress, confirmed: erase county clears and the career profile. */
+  onClearProgress?: () => void | Promise<void>;
   onBeginLevel?: () => void;
   onNextLevel?: () => void;
   onRetryLevel?: () => void;
@@ -138,19 +152,19 @@ export class Hud {
           <span id="hud-landmark" class="cash-target"></span>
         </div>
         <div class="stat clock-stat"><span class="instrument-label" id="hud-clock-label">County Clock</span><div id="hud-time"></div></div>
-        <div class="hud-actions"><button type="button" id="debug-toggle" aria-expanded="false" aria-controls="debug-panel">${L.debug}</button><button type="button" id="hud-menu">${L.pause}</button></div>
+        <div class="hud-actions"><button type="button" id="debug-toggle" class="hud-icon-btn" aria-label="${L.debug}" title="${L.debug}" aria-expanded="false" aria-controls="debug-panel">${MENU_ICONS.wrench}</button><button type="button" id="hud-menu" class="hud-icon-btn" aria-label="${L.pause}" title="${L.pause} (Esc)">${MENU_ICONS.pause}</button></div>
       </div>
-      <div class="mobile-hud"><div class="mobile-readouts"><div><strong id="mobile-cash"></strong><small id="mobile-target"></small></div><div><strong id="mobile-clock"></strong><small id="mobile-clock-label"></small></div><button type="button" id="mobile-debug" aria-label="Debug" aria-expanded="false" aria-controls="debug-panel">Debug</button><button type="button" id="mobile-pause" aria-label="Pause">Ⅱ</button></div><div class="mobile-meters">${['heat', 'track'].map(id => `<div id="mobile-${id}" role="meter" aria-label="${id === 'heat' ? 'Engine heat' : 'Track stress'}" aria-valuemin="0" aria-valuemax="100"><span>${id === 'heat' ? 'Heat' : 'Track'} <output>0%</output></span><i></i></div>`).join('')}</div><div class="mobile-notices"><div id="mobile-warning" role="status" hidden></div><div id="mobile-job" hidden></div></div></div>
+      <div class="mobile-hud"><div class="mobile-readouts"><div><strong id="mobile-cash"></strong><small id="mobile-target"></small></div><div><strong id="mobile-clock"></strong><small id="mobile-clock-label"></small></div><button type="button" id="mobile-debug" aria-label="Debug" aria-expanded="false" aria-controls="debug-panel">${MENU_ICONS.wrench}</button><button type="button" id="mobile-pause" aria-label="Pause">${MENU_ICONS.pause}</button></div><div class="mobile-meters">${['heat', 'track'].map(id => `<div id="mobile-${id}" role="meter" aria-label="${id === 'heat' ? 'Engine heat' : 'Track stress'}" aria-valuemin="0" aria-valuemax="100"><span>${id === 'heat' ? 'Heat' : 'Track'} <output>0%</output></span><i></i></div>`).join('')}</div><div class="mobile-notices"><div id="mobile-warning" role="status" hidden></div><div id="mobile-job" hidden></div></div></div>
       <div id="simulation-frozen" role="status" hidden><span>Simulation frozen</span><button type="button" id="resume-simulation">Resume</button></div>
       <div class="session" id="hud-session"></div>
       <div id="hud-job" class="job" hidden></div>
       <div class="debug-menu">
         <section id="debug-panel" aria-label="${L.debug}" tabindex="-1" hidden>
-          <div class="binder-hardware" aria-hidden="true"><i></i><i></i><i></i></div><div class="debug-heading"><div><small>COUNTY FIELD OPERATIONS · DIAGNOSTICS</small><h2>Equipment field manual</h2><small>PD–01 · Revision ${buildVersion}</small></div><button type="button" id="debug-collapse" aria-label="Collapse binder" aria-expanded="true">Fold</button><button type="button" id="debug-close" aria-label="Close Debug">Close binder</button></div>
+          <div class="binder-hardware" aria-hidden="true"><i></i><i></i><i></i></div><div class="debug-heading"><div><h2>Field manual</h2><small>PD–01 · Rev ${buildVersion}</small></div><button type="button" id="debug-collapse" aria-label="Collapse binder" title="Fold" aria-expanded="true">${MENU_ICONS.fold}<span class="sr-only">Fold</span></button><button type="button" id="debug-close" aria-label="Close Debug" title="Close">${MENU_ICONS.close}</button></div>
           <div class="debug-map"><span id="debug-map-name"></span><button type="button" id="debug-open-yard">Open All-Assets Test Map</button><button type="button" id="debug-reset-test" hidden>Reset Test</button></div>
           <div class="debug-toolbar"><label><input type="checkbox" data-debug="freeze"> Freeze Simulation</label><button type="button" id="debug-run" hidden>Run Simulation</button><button type="button" id="debug-step" disabled>Step One Frame</button></div>
           <div class="debug-tabs" role="tablist" aria-label="Debug tools">
-            ${(['assets', 'inspector', 'session'] as const).map(tab => `<button type="button" role="tab" id="debug-tab-${tab}" aria-controls="debug-${tab}" aria-selected="${tab === 'assets'}" tabindex="${tab === 'assets' ? 0 : -1}" data-debug-tab="${tab}">${tab[0].toUpperCase() + tab.slice(1)}</button>`).join('')}
+            ${(['assets', 'inspector', 'session'] as const).map(tab => `<button type="button" role="tab" id="debug-tab-${tab}" aria-controls="debug-${tab}" aria-selected="${tab === 'assets'}" tabindex="${tab === 'assets' ? 0 : -1}" data-debug-tab="${tab}">${TAB_ICONS[tab]}${tab[0].toUpperCase() + tab.slice(1)}</button>`).join('')}
           </div>
           <h3 id="binder-subsection">Asset catalog</h3>
           <div class="debug-pages">
@@ -163,7 +177,7 @@ export class Hud {
           ${DEBUG_GROUPS.map(group => `<fieldset><legend>${group.label}</legend>${group.options.filter(([key]) => key !== 'freeze').map(([key, label, checked]) =>
             `<label><input type="checkbox" data-debug="${key}" ${checked ? "checked" : ""}> ${label}</label>`).join("")}</fieldset>`).join("")}
           <button type="button" id="debug-reset">Reset Debug Options</button>
-          <p class="debug-legend">Paths: blue · route: yellow · lots: green · buildable: purple · rooms: gold<br>Collision: pink walls, orange props/contents, white dozer · supports: green live / pink failing</p>
+          <ul class="debug-legend" aria-label="Overlay colors">${DEBUG_LEGEND.map(([color, label]) => `<li><i style="background:${color}"></i>${label}</li>`).join('')}</ul>
           </section>
           <section id="debug-session" role="tabpanel" aria-labelledby="debug-tab-session" hidden></section>
           <section id="debug-assets" role="tabpanel" aria-labelledby="debug-tab-assets"><div id="debug-asset-host"></div></section>
@@ -210,6 +224,7 @@ export class Hud {
       titleSound: (kind, index) => this.onTitleSound?.(kind, index),
       pwaUpdate: () => { void applyPwaUpdate(); },
       homeYard: () => this.onHomeYard?.(),
+      clearProgress: () => { void this.onClearProgress?.(); },
     });
     onPwaUpdate(pending => this.menu.setUpdateAvailable(pending));
     root.querySelector('#debug-session')!.append(root.querySelector('#hud-session')!);
@@ -397,7 +412,8 @@ export class Hud {
   private syncCollapseButton(): void {
     const collapsed = this.binder.collapsed;
     const collapse = this.root.querySelector<HTMLButtonElement>('#debug-collapse')!;
-    collapse.textContent = collapsed ? 'Unfold' : 'Fold';
+    collapse.querySelector('.sr-only')!.textContent = collapsed ? 'Unfold' : 'Fold';
+    collapse.title = collapsed ? 'Unfold' : 'Fold';
     collapse.setAttribute('aria-label', collapsed ? 'Expand binder' : 'Collapse binder');
     collapse.setAttribute('aria-expanded', String(!collapsed));
   }
@@ -428,7 +444,6 @@ export class Hud {
     this.root.querySelector<HTMLButtonElement>("#debug-step")!.disabled = !view.freeze;
     this.root.querySelector<HTMLElement>("#simulation-frozen")!.hidden = !view.freeze;
     this.root.querySelector<HTMLElement>("#debug-run")!.hidden = !view.freeze;
-    this.root.querySelector<HTMLButtonElement>("#debug-toggle")!.textContent = L.debug;
   }
 
   private bindSessionBar(): void {
@@ -614,7 +629,7 @@ export class Hud {
     home: () => this.onHomeYard?.(),
   };
 
-  /** Lowboy pad: pause over the yard and open dispatch setup. */
+  /** Lowboy pad: pause over the yard and unfold the atlas. */
   openDispatch(): void {
     this.menu.openDispatch({ session: 'challenge', season: 'summer', effects: 'on', home: true });
   }

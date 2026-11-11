@@ -70,15 +70,14 @@ try {
     await page.screenshot({ path: `${out}/assets-${size.width}.png` });
   }
   await page.goto(base + '/?debug=1');
-  await page.locator('[data-nav=dispatch]').click();
-  assert.equal(await page.locator('#dispatch-mode').evaluate(el => el.parentElement.contains(document.querySelector('#mode-description'))), true);
-  assert.match(await page.locator('#season-note').innerText(), /locked for every county/);
-  assert.equal(await page.locator('#dispatch-lot').count(), 0, 'Setup no longer offers a map dropdown');
-  await page.locator('#dispatch-mode').selectOption('challenge');
-  await page.locator('#dispatch-season').selectOption('winter');
-  assert.match(await page.locator('#mode-description').innerText(), /Seven counties per state or province/);
+  // Play opens the atlas directly; the season is keyed on the map and the mode on each state sheet.
+  assert.equal(await page.locator('[data-nav=dispatch], #dispatch-mode').count(), 0, 'No setup page stands between Play and the map');
   await page.locator('[data-menu-action=open-map]').click();
   await page.locator('.atlas-macro').waitFor();
+  // The atlas arrives folded, cover up, and its flap swings open; wait for it to land.
+  await page.waitForFunction(() => !document.querySelector('.atlas-flap'));
+  await page.locator('[data-pick=season][data-value=winter]').click();
+  assert.equal(await page.locator('[data-pick=season][aria-pressed=true]').getAttribute('data-value'), 'winter');
   assert.equal(await page.locator('.atlas-macro').evaluate(el => el.classList.contains('schematic')), false, 'The road atlas loads from /atlas');
   assert.equal(await page.locator('.overworld-map [data-region-id]').count(), 63);
   assert.equal(await page.locator('#region-search, .region-list').count(), 0, 'The search sidebar is gone');
@@ -109,11 +108,12 @@ try {
   await page.screenshot({ path: `${out}/atlas-macro.png` });
   await page.locator('[data-region-id="US-RI"]').dblclick();
   await page.locator('.atlas-sheet').waitFor();
-  // The sheet slides in; measure label positions only once it has settled.
-  await page.waitForFunction(() => document.querySelector('.atlas-sheet').getAnimations().every(a => a.playState === 'finished'));
+  // The sheet unfolds in from the right; measure label positions only once it has settled.
+  await page.waitForFunction(() => !document.querySelector('.atlas-flap') && document.querySelector('.atlas-sheet').getAnimations({ subtree: true }).every(a => a.playState === 'finished'));
   assert.equal(await page.locator('#operator-heading').innerText(), 'Rhode Island');
   assert.match(await page.locator('#atlas-sheet-title').innerText(), /RHODE ISLAND — CAPITOL: PROVIDENCE/i);
   assert.equal(await page.locator('.atlas-sheet [data-county-index]').count(), 7);
+  assert.equal(await page.locator('.atlas-sheet [data-pick=mode][aria-pressed=true]').getAttribute('data-value'), 'challenge', 'Time Challenge is the default mode');
   // Compositor safety: filters, blend modes and will-change over the two stacked map SVGs made
   // Chromium bleed tiles of the continental map through the sheet. None may return.
   const layered = await page.evaluate(() => [...document.querySelectorAll('.atlas, .atlas *')].flatMap(el => ['', '::after', '::before'].map(pseudo => {

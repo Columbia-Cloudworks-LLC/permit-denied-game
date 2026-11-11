@@ -85,6 +85,29 @@ h1:focus, .panel:focus { outline: none; }
 .menu-icon { display: block; flex: none; }
 .menu-icon-ban { stroke: #a12827; }
 .menu-btn-icon { display: inline-flex; align-items: center; }
+/* Icon-first menus: square tiles for the choices, a row of round tool buttons, one caution line. */
+.menu-tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 14px 0; }
+#hud-root .menu-tile { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; min-height: 86px; padding: 12px 8px; text-align: center; }
+.menu-tile .menu-icon { width: 30px; height: 30px; }
+#hud-root .menu-resume, .mobile-menu-links button { display: inline-flex; align-items: center; justify-content: center; gap: 10px; }
+#hud-root .menu-resume { width: 100%; min-height: 56px; font-size: 15px; }
+.menu-tools { display: flex; justify-content: center; gap: 12px; margin: 18px 0 4px; }
+#hud-root .menu-tools :is(button, .menu-social) { display: grid; place-items: center; width: 48px; height: 48px; min-height: 48px; padding: 0; border-radius: 50%; }
+.menu-tools :is(.menu-btn-label, .menu-social span) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+/* Main menu: the one destructive option is small, and its confirmation is plain about what goes. */
+#hud-root .menu-minor { display: block; min-height: 32px; margin: 10px auto 0; padding: 4px 10px; border: 0; background: none; box-shadow: none; color: #9aa390; font: 11px/1.4 var(--mono); letter-spacing: .04em; text-decoration: underline; text-underline-offset: 3px; }
+#hud-root .menu-minor:hover { color: var(--cream); background: none; }
+.reset-list { margin: 14px 0; }
+.reset-list > div { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 12px; padding: 9px 0; border-top: 1px solid var(--line); }
+.reset-list dt { color: #ebbd7c; font: bold 10px/1.9 var(--mono); letter-spacing: .1em; text-transform: uppercase; }
+.reset-list dd { margin: 0; color: #d7dccb; font: 13px/1.5 Arial, sans-serif; }
+.reset-actions { display: grid; grid-template-columns: 1fr auto; gap: 10px; }
+#hud-root button.danger { color: #ffd9cf; background: #5a2620; border-color: #a5463a #6e2a22 #3b1612; }
+#hud-root button.danger:hover { background: #7a3027; }
+.reset-done { color: #d7dccb; font: 14px/1.6 Arial, sans-serif; }
+.run-ends { display: flex; align-items: flex-start; gap: 8px; margin: 4px 0 0; }
+.run-ends .menu-icon { width: 16px; height: 16px; margin-top: 1px; }
+@media (max-width: 520px) { .menu-tiles { grid-template-columns: 1fr 1fr; } #hud-root .menu-tile { min-height: 72px; } }
 .nameplate { margin-top: 26px; padding: 13px 18px; display: flex; justify-content: space-between; gap: 20px; align-items: center; background: #151c16; border: 1px solid #5c6451; color: #b6bdab; border-radius: 3px; font: 9px/1.8 var(--mono); position: relative; }
 .nameplate:before, .nameplate:after { content: '•'; position: absolute; top: calc(50% - 8px); color: #94977e; }
 .nameplate:before { left: 5px; } .nameplate:after { right: 5px; }
@@ -721,22 +744,64 @@ dt { color: #d9b96f; font: bold 11px/1.5 var(--mono); } dd { margin: 0; color: #
 .map-open .menu-body { position: relative; flex: 1; min-height: 0; }
 .atlas { position: absolute; inset: 0; color: var(--atlas-ink); font-family: Georgia, "Times New Roman", serif; }
 /*
- * Paper grain and accordion fold creases: plain gradients over the map, no SVG filters and no
- * blend modes. Filters (feTurbulence, drop-shadow, blur) and mix-blend-mode over two stacked
- * full-viewport SVGs made Chromium's GPU compositor bleed tiles of the continental map through
- * the state sheet, so nothing in the atlas stack may use them.
+ * Paper. The folds and wrinkles are a photographed sheet reduced to a shading overlay (translucent
+ * black and white, built by scripts/build-atlas-paper.mjs) and drawn as an <image> inside each
+ * map's SVG, in map units, so the creases pan and zoom with the map like one sheet of paper. The
+ * map bleeds to the paper's edge for the same reason: nothing printed stays behind when the view
+ * moves. No SVG filters and no blend modes: filters (feTurbulence, drop-shadow, blur) and
+ * mix-blend-mode over two stacked full-viewport SVGs made Chromium's GPU compositor bleed tiles
+ * of the continental map through the state sheet, so nothing in the atlas stack may use them.
  */
-.atlas-macro::after, .atlas-sheet::after { content: ''; position: absolute; inset: 0; pointer-events: none; z-index: 3;
-  background:
-    linear-gradient(90deg, transparent calc(33.3% - 1px), #0000001a calc(33.3% - 1px), #ffffff2e 33.3%, transparent calc(33.3% + 3px)),
-    linear-gradient(90deg, transparent calc(66.6% - 1px), #0000001a calc(66.6% - 1px), #ffffff2e 66.6%, transparent calc(66.6% + 3px)),
-    linear-gradient(transparent calc(50% - 1px), #00000014 calc(50% - 1px), #ffffff28 50%, transparent calc(50% + 3px)),
-    repeating-linear-gradient(37deg, #5a462d08 0 1px, transparent 1px 3px),
-    repeating-linear-gradient(-53deg, #5a462d06 0 1px, transparent 1px 4px),
-    radial-gradient(ellipse at center, transparent 60%, #5a462d1f); }
-.atlas-macro { position: absolute; inset: 0; display: grid; grid-template-rows: minmax(0, 1fr) auto; background: var(--paper); }
+.atlas-paper { position: relative; min-height: 0; display: grid; grid-template-rows: minmax(0, 1fr); background: var(--paper); box-shadow: 0 0 0 1px #2c252055, 0 18px 44px #000b, 0 3px 9px #0008; perspective: 2600px; }
+/* Up close the relief eases off, so a crease does not swell into a dark band across the county. */
+.atlas-map .atlas-relief { pointer-events: none; opacity: max(.2, var(--label-scale, 1)); }
+/* The desk the maps are spread on. */
+.atlas { background: radial-gradient(ellipse at 50% 35%, #51402f, #2b2119 70%, #1d1610); overflow: hidden; }
+.atlas-macro { position: absolute; inset: 0; display: grid; grid-template-rows: minmax(0, 1fr) auto; }
+/* The continental atlas slides in from the left, folded in half with its cover up, and lands askew. */
+.atlas-macro .atlas-paper { margin: 14px 20px 12px 12px; transform: rotate(-.45deg); transform-origin: 30% 50%; animation: atlas-slide-left .5s cubic-bezier(.2, .8, .3, 1) backwards; }
+@keyframes atlas-slide-left { from { transform: translateX(-70%) rotate(-7deg); } }
+/*
+ * While folded, only the half that lies on the desk is the real paper; the other half is the flap
+ * (atlasView.ts `unfold`), hinged on the centre fold. It starts folded over with the paper's other
+ * side up (the cover) and swings across, so the cover turns away as the map's face comes round.
+ */
+.atlas-paper.folding { background: linear-gradient(90deg, var(--paper) 50%, transparent 50%); box-shadow: none; }
+.atlas-paper.folding > :is(.atlas-viewport, .atlas-sheet-body) { clip-path: inset(0 50% 0 0); }
+.atlas-sheet .atlas-paper.folding { background: linear-gradient(90deg, transparent 50%, var(--paper) 50%); }
+.atlas-sheet .atlas-paper.folding > :is(.atlas-viewport, .atlas-sheet-body) { clip-path: inset(0 0 0 50%); }
+/* The sheet's title box lies on the half that is still folded over. */
+.atlas-sheet .atlas-paper.folding > .atlas-sheet-head { visibility: hidden; }
+.atlas-flap { position: absolute; top: 0; bottom: 0; left: 50%; width: 50%; z-index: 8; pointer-events: none; transform-origin: left center; transform-style: preserve-3d; animation: atlas-flap-right 1s cubic-bezier(.45, .05, .25, 1) .38s both; }
+.atlas-sheet .atlas-flap { left: 0; transform-origin: right center; animation-name: atlas-flap-left; }
+@keyframes atlas-flap-right { from { transform: rotateY(-180deg); } to { transform: rotateY(0); } }
+@keyframes atlas-flap-left { from { transform: rotateY(180deg); } to { transform: rotateY(0); } }
+.atlas-flap-front, .atlas-flap-back { position: absolute; inset: 0; overflow: hidden; backface-visibility: hidden; -webkit-backface-visibility: hidden; box-shadow: 0 10px 30px #0009; }
+.atlas-flap-back { transform: rotateY(180deg); }
+/* The copy of the paper on the flap's face: the full sheet, slid so its own half shows. */
+.atlas .atlas-flap .atlas-flap-front > .atlas-paper { position: absolute; top: 0; bottom: 0; left: -100%; width: 200%; margin: 0; transform: none; animation: none; box-shadow: none; perspective: none; }
+.atlas .atlas-sheet .atlas-flap .atlas-flap-front > .atlas-paper { left: 0; }
+/* Light falls off the rising half and returns as it lies flat. */
+.atlas-flap-front::after { content: ''; position: absolute; inset: 0; z-index: 9; background: linear-gradient(90deg, #0007, #0000 70%); animation: atlas-flap-light 1s ease-out .38s both; }
+.atlas-sheet .atlas-flap-front::after { background: linear-gradient(270deg, #0007, #0000 70%); }
+@keyframes atlas-flap-light { from { opacity: 1; } to { opacity: 0; } }
+/* The printed cover: the atlas's other side. */
+.atlas-cover { position: absolute; inset: 0; display: grid; grid-template-rows: auto minmax(0, 1fr) auto auto auto; justify-items: center; align-items: center; gap: 1.2vh; padding: 7% 9%; text-align: center; color: #e9cf8a; background: radial-gradient(ellipse at 50% 42%, #2c5148, #1b3530 75%); font-family: Georgia, "Times New Roman", serif; }
+.atlas-cover::before { content: ''; position: absolute; inset: 14px; border: 2px solid #c9a44e; outline: 1px solid #c9a44e; outline-offset: 4px; }
+.atlas-cover::after { content: ''; position: absolute; inset: 0; background: var(--relief, url("/atlas/paper-sheet-b.webp")) center / 100% 100% no-repeat; }
+.atlas-cover p { margin: 0; }
+.atlas-cover img { width: auto; height: 100%; max-width: 78%; min-height: 0; object-fit: contain; }
+.cover-kicker { font: bold clamp(11px, 1.3vw, 17px)/1.3 var(--mono); letter-spacing: .32em; text-transform: uppercase; }
+.cover-title { font: 900 clamp(26px, 4.6vw, 64px)/1 Georgia, serif; letter-spacing: .1em; text-transform: uppercase; color: #f4e3b0; }
+.cover-sub { font: italic clamp(13px, 1.6vw, 22px)/1.3 Georgia, serif; }
+.cover-edition { padding-top: 1vh; border-top: 1px solid #c9a44e88; font: clamp(9px, .9vw, 12px)/1.5 var(--mono); letter-spacing: .14em; text-transform: uppercase; opacity: .85; }
+/* The back of a state sheet is bare paper with a title block. */
+.atlas-cover.sheet { grid-template-rows: 1fr auto auto auto auto 1fr; color: var(--atlas-ink); background: #e3d6bb; }
+.atlas-cover.sheet .cover-kicker { grid-row: 2; }
+.atlas-cover.sheet .cover-title { color: var(--atlas-ink); font-size: clamp(22px, 3.6vw, 50px); }
+.atlas-cover.sheet::before { border-color: #2c252066; outline-color: #2c252066; }
+.atlas-cover.sheet .cover-edition { border-color: #2c252066; }
 /* Under the sheet: a flat dim (no filter) and none of the macro chrome, so no buttons peek out. */
-.atlas.sheet-open .atlas-macro::after { background: #1d1712a8; }
 .atlas.sheet-open :is(.atlas-cartouche, .atlas-macro > .atlas-bar, .atlas-macro .atlas-zoom) { visibility: hidden; pointer-events: none; }
 .atlas-viewport { position: relative; min-height: 0; overflow: hidden; touch-action: none; cursor: grab; user-select: none; -webkit-user-select: none; }
 .atlas-viewport.panning { cursor: grabbing; }
@@ -760,8 +825,13 @@ dt { color: #d9b96f; font: bold 11px/1.5 var(--mono); } dd { margin: 0; color: #
 .atlas-region:is(:hover, :focus-visible) { fill: #fbf1d9; }
 .atlas-region:focus-visible { stroke: var(--pencil); stroke-width: 2px; }
 .atlas-region.selected { fill: #fff5dc; }
-.atlas-selection { fill: none; stroke: #b83227; stroke-width: 2.5px; stroke-linejoin: round; pointer-events: none; }
-.atlas-selection-shadow { fill: none; stroke: #2c252066; stroke-width: 4.5px; stroke-linejoin: round; pointer-events: none; }
+/* Hover: a swipe of yellow highlighter. Selection: a red grease-pencil loop scrawled around the place. */
+.atlas-map .atlas-hover { fill: #ffe45e80; stroke: #d99a00; stroke-width: 3px; stroke-linejoin: round; pointer-events: none; }
+.atlas-map .atlas-hover.locked { fill: #2c252026; stroke: #6b6257; }
+@media (hover: none) { .atlas-map .atlas-hover { display: none; } }
+.atlas-map .atlas-selection { fill: none; stroke: var(--pencil); stroke-width: calc(var(--sw, 2.6) * var(--label-scale, 1)); vector-effect: none; stroke-linecap: round; stroke-linejoin: round; opacity: .9; pointer-events: none; }
+.atlas-map .atlas-selection.draw { stroke-dasharray: 1; animation: atlas-scribble .55s cubic-bezier(.4, .1, .3, 1) backwards; }
+@keyframes atlas-scribble { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
 .atlas-capitols circle { vector-effect: none; fill: #b0241b; stroke: #f6ecd6; stroke-width: .8px; pointer-events: none; }
 .atlas-map .ls { transform: scale(var(--label-scale, 1)); }
 .atlas-labels text { fill: var(--atlas-ink); stroke: #f6ecd6; stroke-linejoin: round; paint-order: stroke fill; font-family: Georgia, serif; font-weight: bold; text-anchor: middle; dominant-baseline: central; letter-spacing: .04em; pointer-events: none; }
@@ -794,12 +864,46 @@ dt { color: #d9b96f; font: bold 11px/1.5 var(--mono); } dd { margin: 0; color: #
 #hud-root .atlas-weather select { width: auto; min-width: 140px; padding: 8px 10px; min-height: 40px; }
 #hud-root .weather-cycle { min-height: 40px; min-width: 40px; padding: 6px 10px; font-size: 16px; }
 /* The state sheet: a second unfolded page dropped onto the continental map. */
-.atlas-sheet { position: absolute; z-index: 6; inset: 3vh 4vw; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; overflow: hidden; background: var(--paper); border: 1px solid var(--atlas-ink); outline: 6px solid #f3e9d3; box-shadow: 0 40px 90px #000a, 0 12px 24px #0008; animation: atlas-sheet-in .3s cubic-bezier(.2, .8, .3, 1); }
-@keyframes atlas-sheet-in { from { opacity: 0; transform: translateY(24px) rotate(-.6deg) scale(.97); } }
-@media (prefers-reduced-motion: reduce) { .atlas-sheet { animation: none; } }
-.atlas-sheet-head { position: relative; z-index: 4; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px; padding: 10px 16px 8px; border-bottom: 2px solid var(--atlas-ink); }
+.atlas-sheet { position: absolute; z-index: 6; inset: 0; display: grid; grid-template-rows: minmax(0, 1fr) auto; }
+/* The continental map stays spread underneath, dimmed. */
+.atlas-sheet::before { content: ''; position: absolute; inset: 0; background: #17110ca8; animation: atlas-dim .4s ease-out backwards; }
+@keyframes atlas-dim { from { opacity: 0; } }
+/* The state sheet slides in from the right, folded the other way, and opens over the atlas. */
+.atlas-sheet .atlas-paper { margin: 18px 14px 12px clamp(26px, 8vw, 132px); transform: rotate(.55deg); transform-origin: 70% 50%; animation: atlas-slide-right .5s cubic-bezier(.2, .8, .3, 1) backwards; }
+@keyframes atlas-slide-right { from { transform: translateX(70%) rotate(8deg); } }
+/* Pause → State Map: the atlas comes up from the bottom already open, and the sheet waits for it. */
+.atlas-macro.risen .atlas-paper { animation: atlas-rise .26s cubic-bezier(.2, .8, .3, 1) backwards; }
+@keyframes atlas-rise { from { transform: translateY(104%) rotate(-2deg); } }
+.atlas-sheet.late .atlas-paper, .atlas-sheet.late::before { animation-delay: .22s; }
+.atlas-sheet.late .atlas-flap, .atlas-sheet.late .atlas-flap-front::after { animation-delay: .6s; }
+/* A county is chosen: the maps are swept off the desk and a loading card holds it until the level is ready. */
+.atlas.leaving .atlas-macro .atlas-paper { animation: atlas-leave-left .42s cubic-bezier(.5, 0, .8, .4) forwards; }
+.atlas.leaving .atlas-sheet .atlas-paper { animation: atlas-leave-right .42s cubic-bezier(.5, 0, .8, .4) forwards; }
+.atlas.leaving .atlas-sheet::before, .atlas.leaving .atlas-bar { animation: atlas-leave-fade .3s ease-out forwards; }
+@keyframes atlas-leave-left { to { transform: translateX(-115%) rotate(-9deg); } }
+@keyframes atlas-leave-right { to { transform: translateX(115%) rotate(9deg); } }
+@keyframes atlas-leave-fade { to { opacity: 0; } }
+.atlas-splash { position: absolute; inset: 0; z-index: 9; display: grid; place-items: center; padding: 16px; animation: atlas-splash-in .3s ease-out .2s backwards; }
+@keyframes atlas-splash-in { from { opacity: 0; transform: translateY(14px); } }
+.splash-card { width: min(520px, 100%); padding: 26px 28px 22px; text-align: center; color: var(--atlas-ink); background: #f3e9d3; border: 2px solid var(--atlas-ink); outline: 1px solid var(--atlas-ink); outline-offset: 4px; box-shadow: 0 18px 44px #000b; transform: rotate(-.6deg); }
+.splash-card p { margin: 0; }
+.splash-kicker { font: bold 11px/1.4 var(--mono); letter-spacing: .3em; text-transform: uppercase; color: #7d1f17; }
+.splash-card h2 { margin: 8px 0 4px; font: 900 clamp(20px, 3.4vw, 32px)/1.15 Georgia, serif; letter-spacing: .04em; color: var(--atlas-ink); }
+.splash-sub { font: italic 14px/1.4 Georgia, serif; }
+.splash-card .map-chips { justify-content: center; margin: 14px 0 0; }
+/* Hazard tape that keeps crawling while the level builds: a transform, so it runs off the main thread. */
+.splash-bar { height: 14px; margin: 18px 0 8px; overflow: hidden; border: 2px solid var(--atlas-ink); background: #e8b93c; }
+.splash-bar i { display: block; width: calc(100% + 40px); height: 100%; background: repeating-linear-gradient(-45deg, #2c2520 0 10px, transparent 10px 20px); background-size: 28.3px 100%; animation: splash-crawl .7s linear infinite; }
+@keyframes splash-crawl { from { transform: translateX(-28.3px); } to { transform: translateX(0); } }
+.splash-note { font: 11px/1.4 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: #4a3f35; }
+/* A sheet redrawn in place (a mode change) is already lying open. */
+.atlas-sheet.settled .atlas-paper, .atlas-sheet.settled::before, .atlas-sheet.settled .atlas-selection.draw { animation: none; }
+@media (prefers-reduced-motion: reduce) {
+  .atlas-paper, .atlas-sheet::before, .atlas-map .atlas-selection.draw, .atlas-splash, .splash-bar i { animation: none !important; }
+  .atlas.leaving :is(.atlas-macro, .atlas-sheet) { visibility: hidden; }
+}
+.atlas-sheet-head { position: absolute; z-index: 4; top: 12px; left: 12px; max-width: calc(100% - 380px); display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding: 8px 14px; background: #f3e9d3ee; border: 2px solid var(--atlas-ink); outline: 1px solid var(--atlas-ink); outline-offset: 3px; box-shadow: 0 3px 10px #0003; }
 .atlas-sheet-head h2 { margin: 0; font: 900 clamp(15px, 2.2vw, 24px)/1.15 Georgia, serif; letter-spacing: .07em; text-transform: uppercase; color: var(--atlas-ink); }
-.atlas-sheet-head .region-summary { margin: 0; color: #4a3f35; font: 11px/1.4 var(--mono); }
 .atlas-sheet-head .map-chips { margin: 0; }
 .atlas-sheet-body { position: relative; min-height: 0; display: grid; }
 .atlas-county { stroke: #b3261e; stroke-width: 1.6px; stroke-dasharray: 7 4; cursor: pointer; outline: none; transition: fill .12s; }
@@ -808,9 +912,8 @@ dt { color: #d9b96f; font: bold 11px/1.5 var(--mono); } dd { margin: 0; color: #
 .atlas-county.locked { fill: #bdb5a6; cursor: not-allowed; }
 .atlas-county:is(:hover, :focus-visible) { fill: #fff6df; }
 .atlas-county.locked:is(:hover, :focus-visible) { fill: #cbc4b6; }
-.atlas-county.selected { fill: #fff3d4; stroke: var(--pencil); stroke-width: 4px; stroke-dasharray: none; }
+.atlas-county.selected { fill: #fff3d4; }
 .atlas-county.current { stroke: #2f6b3a; stroke-width: 3px; stroke-dasharray: none; }
-.atlas-county.current.selected { stroke: var(--pencil); }
 .atlas-outline { fill: none; stroke: var(--atlas-ink); stroke-width: 2.5px; pointer-events: none; }
 .atlas-county-labels { pointer-events: none; }
 .county-label text { fill: var(--atlas-ink); stroke: #f8eed8; stroke-linejoin: round; paint-order: stroke fill; text-anchor: middle; dominant-baseline: central; font-family: Georgia, serif; }
@@ -821,12 +924,45 @@ dt { color: #d9b96f; font: bold 11px/1.5 var(--mono); } dd { margin: 0; color: #
 .county-label .county-lock { fill: #3b352f; stroke: none; font-weight: bold; letter-spacing: .14em; }
 .capitol-bullseye circle { fill: none; stroke: var(--pencil); stroke-width: 2px; }
 .capitol-bullseye .dot { fill: var(--pencil); }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+.atlas-ico { width: 18px; height: 18px; flex: none; }
+.atlas-seasons { display: flex; align-items: center; gap: 6px; margin-top: 8px; pointer-events: auto; }
+.atlas-legend { margin-right: 4px; font: bold 10px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; }
+#hud-root .atlas-seasons button { display: grid; place-items: center; width: 38px; height: 38px; min-height: 38px; padding: 0; border: 2px solid var(--atlas-ink); border-radius: 50%; color: var(--atlas-ink); background: #f8efdb; box-shadow: 0 2px 0 #2c252055; }
+#hud-root .atlas-seasons button:hover { border-color: var(--pencil); background: #fff8e6; }
+#hud-root .atlas-seasons button[aria-pressed=true] { color: #f8efdb; background: var(--atlas-ink); }
+#hud-root .atlas-seasons button:disabled { opacity: .35; }
+.atlas-mode { position: absolute; z-index: 4; left: 12px; bottom: 12px; display: flex; box-shadow: 0 3px 8px #0004; }
+#hud-root .atlas-mode button { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 8px 14px; border: 2px solid var(--atlas-ink); border-radius: 0; color: var(--atlas-ink); background: #f3e9d3; box-shadow: none; font: bold 12px/1.2 var(--mono); letter-spacing: .05em; }
+#hud-root .atlas-mode button + button { border-left: 0; }
+#hud-root .atlas-mode button:hover { background: #fff8e6; }
+#hud-root .atlas-mode button[aria-pressed=true] { color: #f8efdb; background: var(--atlas-ink); }
+.map-chips span { display: inline-flex; align-items: center; gap: 5px; }
+.map-chips .atlas-ico { width: 14px; height: 14px; }
+.map-chips .atlas-ico + .atlas-ico, .map-chips .sr-only + .atlas-ico { width: 11px; height: 11px; opacity: .7; }
+#hud-root .atlas-back .icon-btn { display: grid; place-items: center; min-width: 48px; padding: 8px 12px; }
+.atlas-back .atlas-ico { width: 22px; height: 22px; }
+.atlas-go { display: inline-flex; align-items: center; justify-content: center; gap: 10px; }
+.atlas-go-arrow { display: inline-grid; }
+.atlas-go:disabled .atlas-go-arrow { display: none; }
+.atlas-zoom .atlas-ico { display: block; margin: auto; }
+.atlas-weather .atlas-ico { width: 20px; height: 20px; }
+.atlas-sheet-head .region-summary { margin: 0; display: inline-flex; align-items: center; padding: 1px 9px; border: 2px solid var(--pencil); border-radius: 3px; color: var(--pencil); font: 900 12px/1.5 var(--mono); letter-spacing: .08em; transform: rotate(-3deg); }
+.county-card .credits-list.county-facts > div { grid-template-columns: 22px minmax(0, 1fr); gap: 8px; align-items: start; }
+.county-card dt { display: grid; place-items: center; height: 20px; }
+.county-card dt .atlas-ico { width: 17px; height: 17px; }
+.watch-list { display: flex; flex-wrap: wrap; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.watch-list li { padding: 1px 7px; border: 1px solid #2c252055; border-radius: 3px; background: #fff8e666; font-size: 12px; }
+.dossier-status { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; }
+.dossier-status .county-no { display: grid; place-items: center; width: 22px; height: 22px; border: 2px solid var(--atlas-ink); border-radius: 50%; font-weight: bold; }
+.dossier-status strong { padding: 0 6px; border: 1px solid currentColor; border-radius: 3px; letter-spacing: .04em; text-transform: uppercase; font-size: 10px; }
+.county-card :is(.caution, .county-current) { display: flex; gap: 6px; align-items: flex-start; }
+.county-card :is(.caution, .county-current) .atlas-ico { width: 15px; height: 15px; margin-top: 2px; }
+.county-card .county-current { margin: 6px 0 0; color: #2f6b3a; font: bold 11px/1.6 var(--mono); letter-spacing: .06em; text-transform: uppercase; }
 .county-card-host:empty { display: none; }
 /* The county dossier: an index card pinned over the sheet's top-right corner, styled like the cartouche. */
 .county-card-host { position: absolute; z-index: 4; top: 12px; right: 12px; width: min(330px, calc(100% - 24px)); max-height: calc(100% - 150px); overflow-y: auto; overscroll-behavior: contain; background: #f3e9d3f2; border: 2px solid var(--atlas-ink); outline: 1px solid var(--atlas-ink); outline-offset: 3px; box-shadow: 0 4px 12px #0003; }
 .county-card { padding: 12px 14px; color: var(--atlas-ink); }
-.county-card.hint { padding: 8px 12px; }
-.county-card.hint p { margin: 0; font: italic 13px/1.4 Georgia, serif; }
 .county-card h3 { margin: 0 0 4px; font: 900 17px/1.2 Georgia, serif; color: #7d1f17; }
 .dossier-status { margin: 0 0 6px; font: 11px/1.4 var(--mono); color: #4a3f35; }
 .county-card.cleared .dossier-status strong { color: #9a2a1e; }
@@ -840,7 +976,17 @@ dt { color: #d9b96f; font: bold 11px/1.5 var(--mono); } dd { margin: 0; color: #
 @media (max-width: 760px) {
   .atlas-bar { grid-template-columns: auto minmax(0, 1fr); grid-template-areas: "center center" "back go"; gap: 8px 10px; padding-top: 8px; }
   .atlas-go { min-width: 0; }
-  .atlas-sheet { inset: 1.5vh 2vw; }
+  /* Phones: the title box is wider than the folded half, so it waits for the sheet to open. */
+  .atlas-paper.folding > .atlas-cartouche { visibility: hidden; }
+  /* Phones: the mode switch shrinks to its two glyphs so it clears the zoom buttons. */
+  .atlas-mode { left: 8px; bottom: 8px; }
+  .atlas-mode button span { display: none; }
+  #hud-root .atlas-mode button { min-width: 44px; padding: 6px 10px; justify-content: center; }
+  .atlas-macro .atlas-paper { margin: 8px 9px 7px 6px; transform: rotate(-.3deg); }
+  .atlas-sheet .atlas-paper { margin: 10px 6px 7px 16px; transform: rotate(.35deg); }
+  /* Phones: the sheet's title box spans the top, and the county card sits under it. */
+  .atlas-sheet-head { top: 8px; left: 8px; right: 8px; max-width: none; padding: 5px 10px; }
+  .atlas-sheet .county-card-host { top: 56px; }
   /* Never more than ~40% of the sheet, even when the facts are unfolded or the window shrinks. */
   .county-card-host { top: 8px; right: 8px; width: calc(100% - 16px); max-height: 42%; }
   .county-badge { width: 28px; height: 28px; font-size: 12px; }
@@ -851,7 +997,6 @@ dt { color: #d9b96f; font: bold 11px/1.5 var(--mono); } dd { margin: 0; color: #
   .atlas-zoom { flex-direction: row; bottom: 8px; }
   #hud-root .atlas-zoom button { min-height: 36px; min-width: 36px; padding: 4px 8px; }
   .atlas-sheet .atlas-bar-title, .atlas-sheet-head .map-chips { display: none; }
-  .atlas-sheet-head { padding: 8px 12px 6px; }
   .county-card { padding: 8px 10px; }
 }
 @media (max-height: 500px) {
@@ -899,3 +1044,17 @@ dt { color: #d9b96f; font: bold 11px/1.5 var(--mono); } dd { margin: 0; color: #
   .shop-row { flex-direction: column; align-items: stretch; }
   .career-hint { max-width: none; }
 }
+
+/* Glyph buttons in the HUD corner, and a quieter field-manual binder. */
+#hud-root .hud-icon-btn { display: grid; place-items: center; min-width: 48px; padding: 8px 12px; }
+#hud-root #mobile-debug, #hud-root #mobile-pause { display: grid; place-items: center; }
+#hud-root #mobile-debug .menu-icon { width: 22px; height: 22px; }
+#hud-root #debug-panel button:disabled { opacity: .45; border-style: solid; background: #f6efdb; text-decoration: none; }
+#hud-root #debug-panel .debug-heading button { display: grid; place-items: center; width: 44px; min-width: 44px; padding: 4px; }
+#debug-panel.binder-collapsed #debug-collapse .menu-icon { transform: rotate(180deg); }
+#hud-root #debug-panel .debug-tabs button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-height: 62px; }
+#debug-panel .debug-tabs .menu-icon { width: 20px; height: 20px; }
+#hud-root #debug-panel .debug-tabs [aria-selected=true] { text-decoration: none; }
+#debug-panel .debug-legend { display: flex; flex-wrap: wrap; gap: 6px 12px; margin: 12px 0 4px; padding: 0; list-style: none; font: 11px/1.4 var(--mono); color: #5b584a; }
+#debug-panel .debug-legend li { display: inline-flex; align-items: center; gap: 5px; }
+#debug-panel .debug-legend i { width: 12px; height: 12px; border: 1px solid #29332d; border-radius: 2px; }

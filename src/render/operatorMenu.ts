@@ -3,15 +3,14 @@ import { PermitIntro, permitDocument, type PermitSound } from './permitIntro';
 import { type CountyDeployment, type SessionKind } from '../game/session';
 import type { CountyProgress } from '../game/countyProgress';
 import { loadOverworld, type OverworldModule } from '../game/overworldLoader';
-import { isWeatherCondition, isWeatherDetail, seasonLabel, SEASONS, WEATHER_CONDITIONS, type SeasonId, type WeatherConditionId, type WeatherDetail } from '../world/season';
+import { isWeatherCondition, isWeatherDetail, SEASONS, WEATHER_CONDITIONS, type SeasonId, type WeatherConditionId, type WeatherDetail } from '../world/season';
 import type { CountyViewState } from './overworldMap';
 import type { AtlasData } from '../world/atlas';
 import type { AtlasState, AtlasView } from './atlasView';
-import { MENU_LABELS as L, MODE_LABELS, MODE_DESCRIPTIONS } from '../game/menuLabels';
+import { MENU_LABELS as L } from '../game/menuLabels';
 import { labeledMenuButton, MENU_ICONS, soundButtonContent } from './menuIcons';
-import { version } from '../../package.json';
 
-type Page = 'home' | 'dispatch' | 'overworld' | 'region' | 'controls' | 'about' | 'equipment';
+type Page = 'home' | 'overworld' | 'region' | 'controls' | 'about' | 'equipment' | 'reset';
 
 /** The running game's setup, adopted when the pause menu opens. */
 export interface MenuSetup {
@@ -48,6 +47,8 @@ export interface MenuActions {
   unlockSound(): Promise<void>;
   titleSound(kind: PermitSound, index: number): void;
   pwaUpdate?(): void;
+  /** Main menu → Clear Progress, after the player confirms: erase county clears and the career profile. */
+  clearProgress?(): void;
   /** Title: roll into the Home Yard. Pause during a run: bail out to it. */
   homeYard?(): void;
 }
@@ -57,13 +58,17 @@ const facebookUrl = import.meta.env.VITE_FACEBOOK_PAGE_URL;
 const facebookLink = facebookUrl ? '<a class="menu-social" data-facebook-link target="_blank" rel="noopener noreferrer" aria-label="PERMIT DENIED on Facebook (opens in a new tab)"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><circle cx="12" cy="12" r="12" fill="#1877f2"/><path d="M13.6 22v-8h2.7l.4-3h-3.1V9.1c0-.9.3-1.5 1.6-1.5H17V4.9c-.3 0-1.4-.1-2.5-.1-2.5 0-4.2 1.5-4.2 4.4V11H7.5v3h2.8v8z" fill="#fff"/></svg><span>Facebook</span></a>' : '';
 const copyright = '<span>© 2026</span>' + publisher + '<span>All rights reserved.</span>';
 
-const CONTROLS_HTML = `<dl class="control-list"><div><dt>W / S or ↑ / ↓</dt><dd>Drive forward / reverse</dd></div><div><dt>A / D or ← / →</dt><dd>Steer left / right</dd></div><div><dt>Hold SPACE</dt><dd>Power the blade</dd></div><div><dt>Esc / Pause</dt><dd>Pause / Resume</dd></div><div><dt>R</dt><dd>${L.restart}</dd></div><div><dt>N</dt><dd>${L.newLayout}</dd></div><div><dt>Q</dt><dd>Fire the blade-slot attachment</dd></div><div><dt>SHIFT</dt><dd>Fire the aux-slot attachment</dd></div><div><dt>T</dt><dd>Home Yard: rebuild the proving ground</dd></div><div><dt>M</dt><dd>Toggle sound</dd></div></dl><div class="instruction-card"><strong>Touch Controls</strong><p>Drag the left stick to drive and steer. Hold the right POWER BLADE button while driving. Release the stick to coast. Release the blade to finish the current push.</p></div><p class="fine-print">Watch ENGINE HEAT and TRACK STRESS. Above 65%, release the blade or back off rubble. In sandbox these gauges remain advisory.</p>`;
-const ABOUT_HTML = `<dl class="credits-list"><div><dt>Publisher</dt><dd>${publisher}</dd></div><div><dt>Website</dt><dd><a href="https://columbiacloudworks.com" target="_blank" rel="noopener noreferrer">columbiacloudworks.com ↗</a></dd></div><div><dt>Contact</dt><dd><a href="mailto:nicholas.king@columbiacloudworks.com">nicholas.king@columbiacloudworks.com</a></dd></div><div><dt>Game</dt><dd><a href="https://permitdenied.app" target="_blank" rel="noopener noreferrer">permitdenied.app ↗</a></dd></div><div><dt>GitHub</dt><dd><a href="https://github.com/Columbia-Cloudworks-LLC/permit-denied-game" target="_blank" rel="noopener noreferrer">permit-denied-game ↗</a></dd></div><div><dt>Version</dt><dd>${version}</dd></div></dl><details class="license-notices"><summary>Third-party software notices</summary><pre></pre></details>`;
 
 /** Two clicks on the same map shape within this many milliseconds open it. */
 const DOUBLE_MS = 450;
 
-const SEASON_NOTE = 'The season stays locked for every county you play from this map. Weather is chosen per county.';
+/** The confirmation behind the main menu's Clear Progress: what goes, what stays, and no way back. */
+const RESET_HTML = `<p class="caution run-ends">${MENU_ICONS.caution}<span>This erases your saved progress in this browser. It cannot be undone.</span></p><dl class="reset-list"><div><dt>Erased</dt><dd>Every county you have cleared: the atlas goes back to unmarked and every capitol locks again.</dd></div><div><dt>Erased</dt><dd>Your career: banked cash, Heavy Shop upgrades, Skunkworks attachments, liveries and range tiers. The dozer goes back to stock.</dd></div><div><dt>Kept</dt><dd>Sound and privacy settings.</dd></div></dl><div class="reset-actions"><button class="primary" data-nav="back">Keep My Progress</button><button class="danger" data-menu-action="clear-progress">Erase Everything</button></div>`;
+
+/** A square menu tile: glyph over a short label. */
+function tile(attrs: string, icon: string, label: string, extra = ''): string {
+  return `<button type="button" class="menu-tile" ${attrs}>${icon}<span>${label}</span>${extra}</button>`;
+}
 
 /** One navigation and focus owner for keyboard, mouse and touch menus. */
 export class OperatorMenu {
@@ -98,8 +103,8 @@ export class OperatorMenu {
    * `effects`; the run maps restore from this copy so a canceled draft never leaks into them.
    */
   private runningSetup?: { session: SessionKind; season: SeasonId; effects: WeatherDetail };
-  /** Where Back leaves the world map: setup for a new game, the pause home for a run in progress. */
-  private mapOrigin: 'dispatch' | 'home' = 'dispatch';
+  /** The map was opened over a paused run (World Map, State Map), not as a fresh New Game. */
+  private runMap = false;
   private muted = false;
   private home = false;
   private updateAvailable = false;
@@ -134,11 +139,16 @@ export class OperatorMenu {
       const input = e.target as HTMLSelectElement;
       this.setupFields[input.id]?.(input.value);
     });
+    for (const type of ['pointerover', 'focusin'] as const) this.root.addEventListener(type, e => {
+      // Warm the atlas before the click lands, so Play unfolds it without a pause.
+      if ((e.target as Element).closest?.('[data-menu-action="open-map"]')) void this.loadMap().catch(() => undefined);
+    });
     // Handle menu navigation before focused controls consume the key.
     this.root.addEventListener('keydown', e => this.onKey(e), true);
   }
 
   private onClick(e: MouseEvent): void {
+    if (this.leaving) return;
     if ((e.target as Element).closest('[data-replay-permit]')) { this.replayIntro(); return; }
     if (this.pickMapTarget(e.target as Element, 'click')) { this.actions.click(); return; }
     const button = (e.target as Element).closest<HTMLButtonElement>('button');
@@ -149,6 +159,8 @@ export class OperatorMenu {
     else if (nav) this.navigate(nav as Page);
     const action = button.dataset.menuAction;
     if (action) this.menuActs[action]?.();
+    const pick = button.dataset.pick;
+    if (pick && button.dataset.value) this.setupFields[pick]?.(button.dataset.value);
   }
 
   private readonly menuActs: Record<string, () => void> = {
@@ -165,6 +177,11 @@ export class OperatorMenu {
     'cycle-weather': () => this.cycleWeather(),
     deploy: () => this.deploy(),
     'home-yard': () => this.actions.homeYard?.(),
+    'clear-progress': () => {
+      this.actions.clearProgress?.();
+      this.body.innerHTML = '<p class="reset-done" role="status">Progress cleared. The atlas is unmarked and the dozer is stock again.</p><button class="primary" data-nav="back">Back to the Main Menu</button>';
+      this.body.querySelector<HTMLElement>('button')?.focus();
+    },
   };
 
   /**
@@ -207,19 +224,19 @@ export class OperatorMenu {
     this.lastPick = undefined;
   }
 
-  /** Opening the map rolls fresh county weather; the season chosen on setup is now fixed. */
+  /** Play, New Game, or the lowboy ramp: a fresh atlas with fresh county weather and nothing picked. */
   private openMap(): void {
     const request = ++this.mapRequest;
     void this.loadMap().then(() => {
       // A double click, or Back and back again while the atlas loads, leaves only the newest
-      // request; and nothing changes unless setup is still showing.
-      if (request !== this.mapRequest || !this.mode || this.page !== 'dispatch') return;
+      // request; and nothing changes unless the menu's home page is still showing.
+      if (request !== this.mapRequest || !this.mode || this.page !== 'home') return;
       this.mapSeed = (this.actions.mapSeed?.() ?? Math.floor(Math.random() * 0x100000000)) >>> 0;
       this.weatherOverrides.clear();
       this.resetMapView();
       this.regionId = undefined;
       this.countyIndex = undefined;
-      this.mapOrigin = 'dispatch';
+      this.runMap = false;
       this.navigate('overworld');
     });
   }
@@ -248,7 +265,7 @@ export class OperatorMenu {
         this.regionId = undefined;
         this.countyIndex = undefined;
       }
-      this.mapOrigin = 'home';
+      this.runMap = true;
       this.navigate(run && target === 'region' ? 'region' : 'overworld');
     });
   }
@@ -259,11 +276,17 @@ export class OperatorMenu {
    */
   private runCountyHere(): number | undefined {
     const run = this.running;
-    return this.mode === 'pause' && this.mapOrigin === 'home' && run && run.regionId === this.regionId ? run.countyIndex : undefined;
+    return this.mode === 'pause' && this.runMap && run && run.regionId === this.regionId ? run.countyIndex : undefined;
   }
 
+  /**
+   * Resume and Restart belong to the paused run, so they apply only while the sheet shows the
+   * run's own mode. Switched to the other mode, the run's county is a fresh deployment like any
+   * other: it deploys, warns that it ends the run, or stays locked as that mode decides. The
+   * county keeps its "playing now" outline either way.
+   */
   private isRunningCounty(index: number | undefined): boolean {
-    return index !== undefined && this.runCountyHere() === index;
+    return index !== undefined && this.runCountyHere() === index && this.session === this.runningSetup?.session;
   }
 
   /** Only the map pages read this; they render after the chunk has loaded. */
@@ -285,16 +308,35 @@ export class OperatorMenu {
 
   private deploy(): void {
     if (!this.regionId || !this.countyIndex || !this.progress?.isUnlocked(this.session, this.regionId, this.countyIndex)) return;
-    this.actions.start({
+    const deployment: CountyDeployment = {
       kind: this.session, season: this.season, regionId: this.regionId, countyIndex: this.countyIndex,
       weather: this.countyWeather(this.countyIndex), effects: this.effects, mapSeed: this.mapSeed,
-    });
+    };
+    // The maps slide away and a loading card holds the screen until the level takes over.
+    const start = () => this.actions.start(deployment);
+    if (this.atlasView) this.atlasView.depart(this.atlasState(), deployment.weather, start);
+    else start();
+  }
+
+  /** The maps are leaving for a county: nothing on them should answer any more. */
+  private get leaving(): boolean {
+    return !!this.body.querySelector('.atlas.leaving');
   }
 
   /** New-game fields by select id; the mode also reshapes the season fields. */
   private readonly setupFields: Record<string, (value: string) => void> = {
-    'dispatch-mode': value => { this.session = value as SessionKind; this.syncSetup(); },
-    'dispatch-season': value => { this.season = value as SeasonId; },
+    /** The season keys on the world atlas. Weather labels follow the season, so the open sheet refreshes too. */
+    season: value => {
+      if (this.runMap || !(SEASONS as readonly string[]).includes(value)) return;
+      this.season = value as SeasonId;
+      this.atlasView?.setSeason(this.atlasState());
+    },
+    /** Time Challenge or Sandbox, on the state sheet: locks, objectives and the Go button follow. */
+    mode: value => {
+      if (value !== 'challenge' && value !== 'sandbox') return;
+      this.session = value;
+      if (this.page === 'region') this.atlasView?.setMode(this.atlasState());
+    },
     'county-weather': value => {
       if (isWeatherCondition(value) && this.regionId && this.countyIndex) this.weatherOverrides.set(this.world.countyId(this.regionId, this.countyIndex), value);
       this.refreshSheet('#county-weather');
@@ -322,7 +364,7 @@ export class OperatorMenu {
   /** Tab wraps within the visible, enabled controls; with none, focus stays on the heading. */
   private trapFocus(e: KeyboardEvent): void {
     const nodes = [...this.root.querySelectorAll<HTMLElement>('button, a[href], input, select, summary, [tabindex="0"]')]
-      .filter(el => !el.closest('[hidden], [inert]') && !el.matches(':disabled') && el.getClientRects().length);
+      .filter(el => !el.closest('[hidden], [inert]') && !el.matches(':disabled, [tabindex="-1"]') && el.getClientRects().length);
     const first = nodes[0], last = nodes.at(-1);
     if (!first) { e.preventDefault(); this.heading.focus(); return; }
     const from = document.activeElement;
@@ -336,8 +378,8 @@ export class OperatorMenu {
     if (this.mode === mode) return;
     // Pause opens on the running game's setup; the title menu starts from the defaults.
     if (mode === 'pause') this.adoptSetup(setup, true);
-    if (mode === 'title') this.adoptSetup({ session: 'sandbox', season: 'summer', effects: 'on' }, false);
-    this.mapOrigin = 'dispatch';
+    if (mode === 'title') this.adoptSetup({ session: 'challenge', season: 'summer', effects: 'on' }, false);
+    this.runMap = false;
     this.mode = mode;
     this.root.hidden = !mode;
     if (mode) this.navigate('home');
@@ -366,14 +408,15 @@ export class OperatorMenu {
     (debug ?? document.querySelector<HTMLCanvasElement>('#game-root canvas'))?.focus();
   }
 
-  /** The lowboy pad: open the dispatch setup straight over the paused yard. */
+  /** The lowboy pad: unfold the atlas straight over the paused yard. */
   openDispatch(setup: MenuSetup): void {
     this.show('pause', setup);
-    if (this.mode === 'pause') this.navigate('dispatch');
+    if (this.mode === 'pause') this.openMap();
   }
 
   back(): void {
-    const parent: Partial<Record<Page, Page>> = { region: 'overworld', overworld: this.mapOrigin };
+    if (this.leaving) return;
+    const parent: Partial<Record<Page, Page>> = { region: 'overworld' };
     if (this.page !== 'home') this.navigate(parent[this.page] ?? 'home');
     else if (this.mode === 'pause') this.actions.resume();
   }
@@ -394,18 +437,11 @@ export class OperatorMenu {
     this.syncUpdatePrompt();
   }
 
-  private syncSetup(): void {
-    this.body.querySelector<HTMLSelectElement>('#dispatch-mode')!.value = this.session;
-    this.body.querySelector<HTMLSelectElement>('#dispatch-season')!.value = this.season;
-    this.body.querySelector('#season-note')!.textContent = SEASON_NOTE;
-    this.body.querySelector('#mode-description')!.textContent = MODE_DESCRIPTIONS[this.session];
-  }
-
   private atlasState(): AtlasState {
     return {
-      atlas: this.atlas!, progress: this.progress!, kind: this.session, chips: { mode: MODE_LABELS[this.session], season: this.season },
+      atlas: this.atlas!, progress: this.progress!, kind: this.session, season: this.season, seasonLocked: this.runMap,
       effects: this.effects, regionId: this.regionId, view: this.countyView(),
-      run: { current: this.isRunningCounty(this.countyIndex), replacing: this.mode === 'pause' },
+      run: { current: this.isRunningCounty(this.countyIndex), replacing: this.mode === 'pause' && !this.home },
     };
   }
 
@@ -450,14 +486,12 @@ export class OperatorMenu {
     const titlePage = this.mode === 'title' && page === 'home';
     const mapPage = page === 'overworld' || page === 'region';
     // Map pages carry their own Back in the bottom action bar.
-    this.root.querySelector<HTMLButtonElement>('.menu-heading [data-nav="back"]')!.hidden = page === 'home' || page === 'dispatch' || mapPage;
+    this.root.querySelector<HTMLButtonElement>('.menu-heading [data-nav="back"]')!.hidden = page === 'home' || mapPage;
     this.root.classList.toggle('map-open', mapPage);
     // Any other page replaces the body: let go of the detached map and its pan/zoom listeners.
     if (!mapPage) this.atlasView?.reset();
     if (mapPage) this.progress = this.world.sharedCountyProgress();
-    // Prefetch the chunk and the atlas while the player picks a mode and season.
-    if (page === 'dispatch') void this.loadMap().catch(() => undefined);
-    const titles = { home: this.mode === 'title' ? TITLE : 'Paused', dispatch: this.home ? 'Dispatch' : L.newGame, overworld: 'North America', region: page === 'region' ? this.world.regionById(this.regionId)!.name : '', controls: L.controls, about: L.about, equipment: 'Equipment & Objective' };
+    const titles = { home: this.mode === 'title' ? TITLE : 'Paused', overworld: 'North America', region: page === 'region' ? this.world.regionById(this.regionId)!.name : '', controls: L.controls, about: L.about, equipment: 'Equipment & Objective', reset: 'Clear Progress' };
     this.heading.textContent = titles[page];
     this.root.querySelector<HTMLElement>('.nameplate')!.hidden = !titlePage && page !== 'about';
     this.pages[page]();
@@ -471,30 +505,42 @@ export class OperatorMenu {
 
   private readonly pages: Record<Page, () => void> = {
     home: () => { this.body.innerHTML = this.homeHtml(); },
+    reset: () => { this.body.innerHTML = RESET_HTML; },
     equipment: () => { this.body.innerHTML = '<div class="equipment-details"></div><h2>Permit Application</h2><p class="fine-print">Resubmitting spends cash on a county processing fee.</p><div class="menu-permit-host"></div>'; },
-    dispatch: () => { this.body.innerHTML = this.dispatchHtml(); this.syncSetup(); },
     overworld: () => this.showAtlas(false),
     region: () => this.showAtlas(true),
-    controls: () => { this.body.innerHTML = CONTROLS_HTML; },
-    about: () => {
-      this.body.innerHTML = ABOUT_HTML;
+    controls: () => this.infoPage('controls', pages => pages.CONTROLS_HTML),
+    about: () => this.infoPage('about', pages => pages.aboutHtml(publisher), () => {
       // The notices are 16 kB of licence text behind a collapsed disclosure; they load with the page, not at startup.
       const pre = this.body.querySelector('pre')!;
       void import('./thirdPartyNotices.txt?raw').then((notices) => { pre.textContent = notices.default; });
-    },
+    }),
   };
 
-  private homeHtml(): string {
-    const pause = this.mode === 'pause';
-    return `${this.mode === 'title'
-      ? `${permitDocument()}<button class="ignition primary" data-nav="dispatch"><span class="ignition-symbol" aria-hidden="true">${MENU_ICONS.power}</span><span>${L.play}</span><span aria-hidden="true">↗</span></button>`
-      : `<button class="primary" data-menu-action="resume">${L.resume}</button><div class="mobile-menu-links menu-grid"><button data-nav="equipment">Equipment & Objective</button><button data-menu-action="debug">${L.debug}</button></div><div class="menu-grid">${this.running ? `<button data-menu-action="state-map">${L.stateMap}</button>` : ''}<button data-menu-action="world-map">${L.worldMap}</button></div><div class="menu-grid"><button data-menu-action="restart" aria-describedby="restart-help">${L.restart}</button><button data-nav="dispatch">${this.home ? 'Dispatch' : L.newGame}</button></div>${this.home ? '' : '<button data-menu-action="home-yard" aria-describedby="bailout-help">Bail Out to Yard</button><p class="fine-print" id="bailout-help">Ends this run and banks 20% of escrow (25% in Sandbox).</p>'}<p class="fine-print" id="restart-help">Start this site over with the same layout. Resets cash, demolition, and the permit application, and banks bailout salvage.</p>`}
-      <nav class="menu-grid" aria-label="Game menu"><button data-nav="controls">${labeledMenuButton(MENU_ICONS.gamepad, L.controls)}</button><button data-menu-action="mute">${soundButtonContent(false)}</button><button data-nav="about">${labeledMenuButton(MENU_ICONS.about, L.about)}</button>${facebookLink}${pause ? `<button data-menu-action="title" aria-describedby="main-menu-help">${L.mainMenu}</button>` : ''}</nav>${pause ? '<p class="fine-print" id="main-menu-help">Returning to the main menu ends this game. You cannot resume it.</p>' : ''}${this.updatePromptHtml()}`;
+  /** Controls and About are static text nobody needs at startup, so their markup loads on first visit. */
+  private infoPage(page: Page, html: (pages: typeof import('./menuPages')) => string, then?: () => void): void {
+    this.body.innerHTML = '';
+    void import('./menuPages').then(pages => {
+      if (!this.mode || this.page !== page) return;
+      this.body.innerHTML = html(pages);
+      then?.();
+    });
   }
 
-  private dispatchHtml(): string {
-    const seasonOptions = SEASONS.map((id) => `<option value="${id}">${seasonLabel(id)}</option>`).join('');
-    return `<div class="dispatch-fields"><label>Mode<select id="dispatch-mode">${Object.entries(MODE_LABELS).map(([id, label]) => `<option value="${id}">${label}</option>`).join('')}</select><span class="fine-print" id="mode-description"></span></label><label id="dispatch-season-field">Season<select id="dispatch-season">${seasonOptions}</select></label></div><p class="fine-print" id="season-note"></p>${this.mode === 'pause' && !this.home ? '<p class="caution">Starting a new game ends this run and banks its bailout salvage.</p>' : ''}<button class="primary" data-menu-action="open-map">${L.openMap}</button><button data-nav="back">Back</button>`;
+  private homeHtml(): string {
+    const tools = `<nav class="menu-tools" aria-label="Game menu"><button data-nav="controls" aria-label="${L.controls}" title="${L.controls}">${labeledMenuButton(MENU_ICONS.gamepad, L.controls)}</button><button data-menu-action="mute" title="Sound">${soundButtonContent(false)}</button><button data-nav="about" aria-label="${L.about}" title="${L.about}">${labeledMenuButton(MENU_ICONS.about, L.about)}</button>${facebookLink}</nav>`;
+    if (this.mode === 'title') {
+      return `${permitDocument()}<button class="ignition primary" data-menu-action="open-map"><span class="ignition-symbol" aria-hidden="true">${MENU_ICONS.power}</span><span>${L.play}</span><span aria-hidden="true">↗</span></button>${tools}<button class="menu-minor" data-nav="reset">Clear progress…</button>${this.updatePromptHtml()}`;
+    }
+    // Every tile but the maps ends the run; one caution line says so instead of a paragraph each.
+    // There is no New Game here: a run is replaced only by deploying another county from its maps.
+    // The Home Yard keeps Dispatch, which replaces nothing.
+    const ends = this.home ? '' : `<p class="caution run-ends" aria-hidden="true">${MENU_ICONS.caution}<span>Restart, Yard and Main Menu end this run. Yard banks 20% of escrow (25% in Sandbox).</span></p>`;
+    const help = `<p class="sr-only" id="restart-help">Start this site over with the same layout. Resets cash, demolition, and the permit application, and banks bailout salvage.</p><p class="sr-only" id="bailout-help">Ends this run and banks 20% of escrow (25% in Sandbox).</p><p class="sr-only" id="main-menu-help">Returning to the main menu ends this game. You cannot resume it.</p>`;
+    return `<button class="primary menu-resume" data-menu-action="resume">${MENU_ICONS.play}<span>${L.resume}</span></button>
+<div class="mobile-menu-links menu-grid"><button data-nav="equipment">${MENU_ICONS.clipboard}<span>Equipment & Objective</span></button><button data-menu-action="debug">${MENU_ICONS.wrench}<span>${L.debug}</span></button></div>
+<div class="menu-tiles">${this.running ? tile('data-menu-action="state-map"', MENU_ICONS.map, L.stateMap) : ''}${tile('data-menu-action="world-map"', MENU_ICONS.globe, L.worldMap)}${tile('data-menu-action="restart" aria-describedby="restart-help"', MENU_ICONS.restart, L.restart)}${this.home ? tile('data-menu-action="open-map"', MENU_ICONS.map, 'Dispatch') : ''}${this.home ? '' : tile('data-menu-action="home-yard" aria-describedby="bailout-help"', MENU_ICONS.yard, 'Bail Out to Yard')}${tile('data-menu-action="title" aria-describedby="main-menu-help"', MENU_ICONS.exit, L.mainMenu)}</div>
+${ends}${help}${tools}${this.updatePromptHtml()}`;
   }
 
   private updatePromptHtml(): string {

@@ -5,16 +5,18 @@ import path from 'node:path';
 import { chromium } from 'playwright';
 
 /**
- * Setup → Open Map → Illinois → Go → County 1 → Go: the menu path that starts a game since the
- * road atlas. Works on the real atlas or its schematic fallback.
+ * Play → Illinois → Go → County 1 → Go: the menu path that starts a game. Play opens the road
+ * atlas directly; it arrives folded and its flap swings open, so each step waits for the fold to
+ * land. Works on the real atlas or its schematic fallback.
  */
 async function deployFirstCounty(page) {
-  await page.getByRole('button', { name: 'Open Map', exact: true }).click();
+  await page.locator('.atlas-macro').waitFor();
+  await page.waitForFunction(() => !document.querySelector('.atlas-flap'));
   await page.locator('[data-region-id="US-IL"]').click();
   const go = page.locator('.atlas-go').last();
   await go.click();
   await page.locator('.atlas-sheet').waitFor();
-  await page.waitForFunction(() => document.querySelector('.atlas-sheet').getAnimations().every(a => a.playState === 'finished'));
+  await page.waitForFunction(() => !document.querySelector('.atlas-flap') && document.querySelector('.atlas-sheet').getAnimations({ subtree: true }).every(a => a.playState === 'finished'));
   // County labels let clicks through to the county cell underneath.
   const label = await page.locator('[data-county-label="1"] .num').boundingBox();
   await page.mouse.click(label.x + label.width / 2, label.y + label.height / 2);
@@ -123,6 +125,8 @@ try {
   assert.equal(await page.locator('#analytics-allow').isDisabled(), true);
   assert.equal(scripts.length, 0);
   await page.locator('#analytics-decline').click();
+  // Time Challenge is the default mode, and a county opens on its briefing with the clock held.
+  await page.locator('[data-act=begin]').click();
   await page.waitForFunction(() => window.__pd?.ready?.() === true && window.__pd.snapshot().elapsed > 0);
   await page.reload(); await page.waitForFunction(() => window.__pd?.version === 1);
   assert.equal(await page.locator('.privacy-dialog').count(), 0);

@@ -291,6 +291,13 @@ export class CareerStore {
     this.commit();
   }
 
+  /** Erase the career: wallet, upgrades, attachments and liveries go back to a stock dozer. */
+  reset(): void {
+    // In place: the game and the shop hold this same record.
+    Object.assign(this.profile, emptyProfile());
+    this.commit();
+  }
+
   /** The garage washes off stage grime. */
   wash(): void {
     if (this.profile.wearLevel === 0) return;

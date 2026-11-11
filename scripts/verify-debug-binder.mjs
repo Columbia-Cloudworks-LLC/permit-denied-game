@@ -32,14 +32,17 @@ try {
   await button('Debug').click();
   assert.equal(await tab('Assets').getAttribute('aria-selected'), 'true');
   assert.equal((await snapshot()).mode, 'play');
-  const count = await page.locator('[data-assets] option').count(); assert.ok(count > 190);
+  // The catalog loads on demand, so wait for it rather than counting the instant the binder opens.
+  await page.waitForFunction(() => document.querySelector('[data-assets]')?.options.length > 190);
+  const count = await page.locator('[data-assets] option').count();
   await page.locator('[data-category]').selectOption('vehicle');
   await page.locator('[data-search]').fill('bus');
   await page.locator('[data-variant]').fill('1');
   await button('Test This Asset').click(); await settle();
   assert.deepEqual((await snapshot()).request, { kind: 'asset', assetId: 'vehicle:bus', variant: 1 });
   assert.equal((await snapshot()).bays, 1);
-  await tab('Session').click(); await page.locator('[data-up=blade]').click(); await page.locator('[data-up=engine]').click();
+  // In-run upgrade buttons are gone (the Heavy Shop owns upgrades); the tab round trip still has to keep state.
+  await tab('Session').click();
   await tab('Inspector').click();
   await page.getByRole('checkbox', { name: 'Freeze Simulation', exact: true }).check();
   await page.locator('[data-debug=roofs]').uncheck();
