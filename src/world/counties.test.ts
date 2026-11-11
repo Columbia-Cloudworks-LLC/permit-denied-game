@@ -23,8 +23,11 @@ describe('seven counties per region', () => {
       expect(counties.map(county => county.index)).toEqual([1, 2, 3, 4, 5, 6, 7]);
       expect(counties.map(county => county.level.id)).toEqual(CAMPAIGN_LEVELS.map(level => level.id));
       expect(counties[6]!.level.id).toBe('governors-mansion');
-      expect(counties[6]!.name).toBe(`${region.capitol} Capitol District — Governor's Mansion`);
+      // The capitol is named for its landmark: the mansion, or the region's statehouse.
+      expect(counties[6]!.name).toBe(`${region.capitol} Capitol District — ${counties[6]!.level.landmark.label}`);
     }
+    expect(countyAt('US-MA', 7)!.name).toBe('Boston Capitol District — Granite Statehouse');
+    expect(countyAt('CA-QC', 7)!.name).toBe('Quebec City Capitol District — Granite Legislature');
     expect(countyAt('US-IL', 7)!.name).toBe("Springfield Capitol District — Governor's Mansion");
     expect(countyAt('US-TX', 7)!.name).toBe("Austin Capitol District — Governor's Mansion");
     expect(countyAt('US-IL', 0)).toBeUndefined();

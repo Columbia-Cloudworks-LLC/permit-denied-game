@@ -1,0 +1,6 @@
+{
+  "partitions": false,
+  "rooms": [
+    {"id": "cast-floor", "kind": "production", "floor": 0, "x": 0, "y": 0, "w": 1, "d": 1, "finish": "concrete", "contents": [{"id": "ladle", "kind": "machine", "x": 0.1, "y": 0.1, "w": 0.35, "d": 0.4, "h": 1.6, "rotation": 0}, {"id": "pig-pallet", "kind": "pallet", "x": 0.6, "y": 0.15, "w": 0.25, "d": 0.3, "h": 0.8, "rotation": 0}]}
+  ]
+}

@@ -8,7 +8,7 @@ import { shade } from "./palette";
 
 export const FOREST_GARNISH_CHUNK_CAP = 140;
 
-export type ForestSpecies = "oak" | "pine" | "oak-sapling" | "pine-sapling" | "oak-shrub" | "pine-shrub";
+export type ForestSpecies = "oak" | "pine" | "oak-sapling" | "pine-sapling" | "oak-shrub" | "pine-shrub" | "scrub";
 export type ForestForm = "interior" | "edge" | "understory";
 
 export interface ForestGarnish {
@@ -125,6 +125,9 @@ export function drawForestGarnish(g: Graphics, tree: ForestGarnish, alpha = 1): 
     case "pine-shrub":
       drawShrub(g, tree, true, alpha);
       return;
+    case "scrub":
+      drawShrub(g, tree, true, alpha, SCRUB_MASS);
+      return;
     default: {
       const _never: never = tree.species;
       return _never;
@@ -193,20 +196,20 @@ function drawPine(g: Graphics, tree: ForestGarnish, mul: number, alpha: number):
   }
 }
 
-function drawShrub(g: Graphics, tree: ForestGarnish, pine: boolean, alpha: number): void {
+function drawShrub(g: Graphics, tree: ForestGarnish, pine: boolean, alpha: number, dry?: typeof SCRUB_MASS): void {
   const s = tree.scale;
   if (!pine && tree.phenology === "winter") {
     const trunk = tone(OAK_TRUNK, tree.tint);
     drawOrientedIsoBox(g, tree.x, tree.y, tree.heading, 0.16 * s, 0.16 * s, 0, 0.42 * s, trunk.t, trunk.l, trunk.r, alpha);
     return;
   }
-  const fol = pine
+  const fol = dry ?? (pine
     ? PINE_FOL[tree.tint]!
     : tree.phenology === "autumn"
       ? AUTUMN_FOL[tree.tint]!
       : tree.phenology === "spring"
         ? SPRING_FOL[tree.tint]!
-        : SHRUB_FOL[tree.tint]!;
+        : SHRUB_FOL[tree.tint]!);
   drawOrientedIsoBox(g, tree.x, tree.y, tree.heading, 0.95 * s, 0.82 * s, 0, 0.55 * s, fol.t, fol.l, fol.r, alpha);
   const bump = headingOffset(tree.x, tree.y, tree.heading, 0.16 * s, -0.12 * s);
   drawOrientedIsoBox(g, bump.x, bump.y, tree.heading + 0.4, 0.62 * s, 0.55 * s, 0.28 * s, 0.42 * s, shade(fol.t, 1.08), fol.l, fol.r, alpha);
@@ -260,6 +263,8 @@ function coreIsEdge(grid: SurfaceGrid, ix: number, iy: number): boolean {
 }
 
 function speciesFor(biome: BiomeProfile, salt: number, form: ForestForm): ForestSpecies {
+  // Arid scrub has no woods: its thickets are dry brush.
+  if (biome.id === "arid-scrub") return "scrub";
   const tree = forestTree(biome, salt);
   const growth = undergrowth(form, salt % 10);
   return growth ? `${tree}-${growth}` : tree;
@@ -292,7 +297,7 @@ function hashCell(ix: number, iy: number, seed: number): number {
 }
 
 export interface ForestMass {
-  species?: "oak" | "pine";
+  species?: "oak" | "pine" | "scrub";
   x: number;
   y: number;
   w: number;
@@ -305,7 +310,8 @@ export function planForestMasses(grid: SurfaceGrid, biome?: BiomeProfile, seed =
   const cell = grid.cell;
   for (let iy = 0; iy < grid.rows; iy++) forEachWoodRun(grid, iy, (run, span) => {
     if (span < 2) return;
-    const species = biome && speciesFor(biome, hashCell(Math.floor(run / SURFACE_CHUNK), Math.floor(iy / SURFACE_CHUNK), seed), "interior").startsWith("pine") ? "pine" as const : "oak" as const;
+    const kind = biome && speciesFor(biome, hashCell(Math.floor(run / SURFACE_CHUNK), Math.floor(iy / SURFACE_CHUNK), seed), "interior");
+    const species = kind === "scrub" ? kind : kind?.startsWith("pine") ? "pine" as const : "oak" as const;
     addMassRow(runs, { species, x: grid.ox + run * cell, y: grid.oy + iy * cell, w: span * cell, d: cell });
   });
   return runs;
@@ -333,6 +339,10 @@ function addMassRow(runs: ForestMass[], mass: ForestMass): void {
 
 export function drawForestMass(g: Graphics, mass: ForestMass, season: SeasonId = "summer"): void {
   const pine = mass.species === "pine";
+  if (mass.species === "scrub") {
+    drawOrientedIsoBox(g, mass.x + mass.w * 0.5, mass.y + mass.d * 0.5, 0, mass.w, mass.d, 0.1, 0.42, SCRUB_MASS.t, SCRUB_MASS.l, SCRUB_MASS.r, 0.9);
+    return;
+  }
   if (season === "winter" && !pine) {
     drawBareThicket(g, mass);
     return;
@@ -359,6 +369,7 @@ function drawBareThicket(g: Graphics, mass: ForestMass): void {
 }
 
 const PINE_MASS = { t: 0x347850, l: 0x1a4230, r: 0x265c3c };
+const SCRUB_MASS = { t: 0x9a9a62, l: 0x5a5a38, r: 0x7a7a4c };
 const SNOWY_PINE_MASS = { ...PINE_MASS, t: 0xb9c8c7 };
 const BROADLEAF_MASS: Record<SeasonId, { t: number; l: number; r: number }> = {
   spring: { t: 0x6a9a44, l: 0x3a5c28, r: 0x4e7a34 },

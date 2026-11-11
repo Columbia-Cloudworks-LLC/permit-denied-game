@@ -1,6 +1,6 @@
 import type { Graphics } from 'pixi.js';
 import { FLOOR_Z } from '../game/constants';
-import { facadeDetailPose, roofDetailPoint, type FacadeDetailDef } from '../structure/facadeDetails';
+import { facadeDetailPose, onRoof, roofDetailPoint, type FacadeDetailDef } from '../structure/facadeDetails';
 import type { Building } from '../structure/types';
 import { depthKey } from '../world/iso';
 import { drawWorldPoly } from './drawIso';
@@ -27,8 +27,6 @@ type Pose = NonNullable<ReturnType<typeof facadeDetailPose>>;
 type Vec3 = { x: number; y: number; z: number };
 /** A point on the detail's plane: u along the wall, v up it, out away from it. */
 type PlanePoint = (u: number, v: number, out?: number) => Vec3;
-
-const onRoof = (d: FacadeDetailDef) => d.kind === 'roof-duct' || d.kind === 'dormer';
 
 export function facadeDetailCommand(b: Building, d: FacadeDetailDef, alpha = 1) {
   const pose = facadeDetailPose(b, d);
@@ -213,18 +211,28 @@ function drawMarquee({ pen, d }: DetailPaint): void {
   const top = SIGN_TOP, bottom = top - .58, out = .85;
   pen.world([point(0,bottom,.02),point(w,bottom,.02),point(w,bottom,out),point(0,bottom,out)], 0x847c64);
   for (const u of [.08, w-.08]) pen.world([point(u,bottom,.02),point(u,bottom,out),point(u,top-.05,.02)], 0x5b615a);
-  pen.rect(0,bottom,w,top-bottom,0x8d4239,out);
-  pen.rect(.08,bottom+.09,w-.16,top-bottom-.18,0xe9d7a7,out+.01);
-  pen.label(d.text ?? 'STAR',bottom+.15,.28,0x3d3933,out+.02);
+  pen.rect(0,bottom,w,top-bottom,d.trimColor ?? 0x8d4239,out);
+  pen.rect(.08,bottom+.09,w-.16,top-bottom-.18,d.faceColor ?? 0xe9d7a7,out+.01);
+  pen.label(d.text ?? 'STAR',bottom+.15,.28,d.textColor ?? 0x3d3933,out+.02);
   for(let u=.12;u<w;u+=.2) pen.rect(u,bottom+.025,.045,.045,0xffedac,out+.025);
 }
 
 function drawSignboard({ pen, d, pose }: DetailPaint): void {
   const { w } = pen;
   const top = SIGN_TOP, bottom = top - .5, out = .08;
-  pen.rect(0,bottom,w,top-bottom,0x343f39,out);
-  pen.rect(.045,bottom+.04,w-.09,top-bottom-.08,pose.damaged?0x795f46:0x947446,out+.005);
-  pen.label(d.text ?? 'SHOP',bottom+.1,.3,0xf3e4ba,out+.01);
+  const face = d.faceColor ?? 0x947446;
+  pen.rect(0,bottom,w,top-bottom,d.trimColor ?? 0x343f39,out);
+  pen.rect(.045,bottom+.04,w-.09,top-bottom-.08,pose.damaged?shade(face,.8):face,out+.005);
+  pen.label(d.text ?? 'SHOP',bottom+.1,.3,d.textColor ?? 0xf3e4ba,out+.01);
+}
+
+/** A lit cabinet on steel struts at the roof edge, facing the street side it is mounted on. */
+function drawRooftopSign({ pen, b, d }: DetailPaint): void {
+  const { w } = pen, edge = b.cellSize - .3;
+  for (const u of [.2, w-.3]) pen.box(u,edge+.04,0,.1,.1,.5,0x59625c);
+  pen.box(.04,edge,.42,w-.08,.2,.86,d.trimColor ?? 0x2f3a36);
+  pen.rect(.11,.5,w-.22,.7,d.faceColor ?? 0xb5372e,edge+.21);
+  pen.label(d.text ?? 'OPEN',.65,.4,d.textColor ?? 0xfff3c4,edge+.22);
 }
 
 const PAINTERS: Record<FacadeDetailDef['kind'], (paint: DetailPaint) => void> = {
@@ -238,4 +246,5 @@ const PAINTERS: Record<FacadeDetailDef['kind'], (paint: DetailPaint) => void> = 
   'display-glazing': drawDisplayGlazing,
   'roof-duct': drawRoofDuct,
   dormer: drawDormer,
+  'rooftop-sign': drawRooftopSign,
 };

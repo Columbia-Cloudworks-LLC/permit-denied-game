@@ -313,6 +313,7 @@ export function createBuilding(spec: BuildingSpec, definition?: Archetype): Buil
     windowStride,
     features,
     facadeDetails: structuredClone(spec.facadeDetails ?? archetype?.facadeDetails ?? []),
+    fasciaColor: archetype?.fasciaColor,
     decorBoxes: makeDecor(spec, cellSize, features),
     fixtures: [],
     cells,

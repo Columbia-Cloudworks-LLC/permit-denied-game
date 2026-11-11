@@ -124,6 +124,33 @@ describe('career store', () => {
     expect(new CareerStore(backend).profile.wearLevel).toBe(0);
   });
 
+  it('records wrecked cruisers and demolished brands once each, and survives a reload', () => {
+    const backend = memory();
+    const store = new CareerStore(backend);
+    store.bank(100, 10, 0, 2, ['kaseys-general', 'timmys-coffee']);
+    store.bank(100, 10, 0, 1, ['kaseys-general', 'Not A Slug!', 'whatabeef']);
+    const reloaded = new CareerStore(backend).profile;
+    expect(reloaded.lifetimeCruisersWrecked).toBe(3);
+    expect(reloaded.brandTrophies).toEqual(['kaseys-general', 'timmys-coffee', 'whatabeef']);
+  });
+
+  it('loads a profile saved before trophies existed, and drops junk from a tampered one', () => {
+    const legacy = { ...emptyProfile(), walletBalance: 900 } as Record<string, unknown>;
+    delete legacy.brandTrophies;
+    delete legacy.lifetimeCruisersWrecked;
+    const old = new CareerStore(memory(JSON.stringify(legacy))).profile;
+    expect(old.walletBalance).toBe(900);
+    expect(old.brandTrophies).toEqual([]);
+    expect(old.lifetimeCruisersWrecked).toBe(0);
+    const tampered = normalizeProfile({ ...emptyProfile(), brandTrophies: ['dunkies', 7, '<b>', 'dunkies', null], lifetimeCruisersWrecked: -4 });
+    expect(tampered.brandTrophies).toEqual(['dunkies']);
+    expect(tampered.lifetimeCruisersWrecked).toBe(0);
+    const store = new CareerStore(memory());
+    store.bank(0, 0, 0, 1, ['dunkies']);
+    store.reset();
+    expect(store.profile.brandTrophies).toEqual([]);
+  });
+
   it('locks Skunkworks until a core track reaches level 3, then auto-equips the first purchase', () => {
     const store = new CareerStore(memory());
     store.bank(10_000_000, 0, 0);

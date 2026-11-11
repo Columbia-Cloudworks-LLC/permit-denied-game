@@ -1,5 +1,5 @@
 import {expect,it} from 'vitest';
-import {CAMPAIGN_LEVELS} from '../game/campaign';
+import {CAMPAIGN_LEVELS,campaignLevelById} from '../game/campaign';
 import {availableTownValue} from '../game/campaignValue';
 import {createTown} from './town';
 import {BIOME_PROFILES} from './biomes';
@@ -32,4 +32,15 @@ it('overview forest masses preserve species and collision footprints',()=>{
  const pine=planForestMasses(grid,BIOME_PROFILES['northern-conifer'],19);
  expect(pine.length).toBeGreaterThan(0);expect(pine.every(m=>m.species==='pine')).toBe(true);
  expect([...grid.surface]).toEqual(before);
+ // Arid scrub has no woods: its thickets are dry brush in every season.
+ const scrub=planForestMasses(grid,BIOME_PROFILES['arid-scrub'],19);
+ expect(scrub.length).toBeGreaterThan(0);expect(scrub.every(m=>m.species==='scrub')).toBe(true);
+});
+it('an arid-scrub county generates in every season with only desert vegetation',()=>{
+ for(const season of ['spring','summer','autumn','winter'] as const){
+  const town=createTown({district:"d30",seed:19,campaign:campaignLevelById('village'),season,biome:BIOME_PROFILES['arid-scrub']});
+  expect(town.biome?.id).toBe('arid-scrub');
+  expect(town.diagnostic.ok,season).toBe(true);
+  expect(town.props.filter(p=>/^(oak|pine)/.test(p.assetId)).map(p=>p.assetId)).toEqual([]);
+ }
 });

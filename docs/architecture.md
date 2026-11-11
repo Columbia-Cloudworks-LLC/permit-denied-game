@@ -145,7 +145,13 @@ Developer overlay: `?nhood=1` or press `G` to draw nodes, segment IDs, parcel ri
 
 Civilian traffic must stay on road or driveway. The V-key test car follows lane connectivity on a generated route (curve + intersection), not a hard-coded east-west path. Full civilian traffic sim is out of scope.
 
-Police navigation is a **contract only** (`src/world/routing.ts`). Ordinary pursuit prefers roads. Police may leave the road only when the dozer is nearby, a valid off-road approach exists, and pursuit rules allow it. Routes report their `RouteMode` (`road`, `offroad-pursuit`, `blocked`, `inaccessible`); no off-road travel cost is modelled yet. Routing distinguishes a blocked road from an inaccessible destination. There is no police AI in this branch.
+`src/world/routing.ts` holds the police navigation contract. Ordinary pursuit prefers roads. Police may leave the road only when the dozer is nearby, a valid off-road approach exists, and pursuit rules allow it. Routes report their `RouteMode` (`road`, `offroad-pursuit`, `blocked`, `inaccessible`); no off-road travel cost is modelled yet. Routing distinguishes a blocked road from an inaccessible destination. The Code Enforcement cruisers in `src/vehicle/traffic.ts` use `policeMayLeaveRoad` for their ram decision and are dispatched by campaign events, not a timer; see [traffic.md](traffic.md).
+
+### Regional data and the startup bundle
+
+Regional content reaches town generation only through `RegionalPlacement` (`src/world/regionalPlacement.ts`, startup): boosts, signatures, an optional landmark override, the county's brand list, and a `finish` callback that runs once on the finished layout. The data and the code behind them (`regionalCatalog.ts`, `regionalBrands.ts`, `landmarkPack.ts` and the packages in `src/world/landmarkData/`) sit in a lazy chunk shared by the overworld and the Home Yard. `landmarkPack.ts` registers its archetypes with `registerArchetypes`, so `archetypeById` finds them while `ARCHETYPES` stays the eager roster. County towns are only built after the overworld has loaded. Nothing in the startup graph may import those modules.
+
+Brand stamping is post-creation visual state: it replaces `building.facadeDetails`, sets `fasciaColor` and bumps `visualRevision`; rendering stays read-only. Weather stakes (`src/game/weatherRisk.ts`) enter the fixed step as a grip input to `stepDozer` and as scaling of that step's heat and track gain, so they are recorded-replay safe.
 
 ## Wreckage lifecycle and performance
 

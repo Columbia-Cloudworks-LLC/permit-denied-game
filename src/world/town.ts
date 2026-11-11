@@ -155,6 +155,7 @@ function createTownLayout(options: TownOptions = {}): Town {
   const layout = generateDistrictLayout(district, seed, options.topology, options.campaign, environment, options.weatherDetail ?? "on");
   if (options.weather) layout.weather = weatherPresetFor(season, options.weather);
   tagRegionalSignatures(layout.buildings, regional);
+  regional?.finish?.(layout, seed);
   const pileW = layout.maxX - layout.minX + 4;
   const pileD = layout.maxY - layout.minY + 4;
   return {

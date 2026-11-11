@@ -70,6 +70,8 @@ export function identityFromArchetype(archetype: Pick<Archetype, "id" | "kind" |
 }
 
 export function identityFromBuilding(building: Building): LotIdentity {
+  // A campaign landmark always stands on a civic lot, whatever it is built as (a regional one may be a canopy or an elevator).
+  if (building.campaignLandmark) return "shop";
   const archetype = ARCHETYPES.find((entry) => entry.id === building.archetypeId);
   if (archetype) return identityFromArchetype(archetype);
   switch (building.kind) {

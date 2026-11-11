@@ -6,7 +6,8 @@ export type BiomeId =
   | "temperate-broadleaf"
   | "northern-conifer"
   | "mixed-woodland"
-  | "agricultural-plain";
+  | "agricultural-plain"
+  | "arid-scrub";
 
 export type FieldCropId = "corn" | "wheat" | "soy";
 export type FieldState = "tilled" | "short" | "mature" | "stubble";
@@ -29,7 +30,11 @@ export const BIOME_IDS: readonly BiomeId[] = [
   "northern-conifer",
   "mixed-woodland",
   "agricultural-plain",
+  "arid-scrub",
 ];
+
+/** Seed-rolled biomes. Arid scrub is only ever assigned by region, so legacy seeds keep their roll. */
+const ROLLED_BIOMES = BIOME_IDS.slice(0, 4);
 
 const BIOME_SALT = 0xb10be;
 /** Campaign region roll. Separate from per-level layout and season streams. */
@@ -37,7 +42,7 @@ const CAMPAIGN_BIOME_SALT = 0xc0a91b;
 
 export function selectCampaignBiome(campaignSeed: number): BiomeProfile {
   const rng = new Rng((campaignSeed ^ CAMPAIGN_BIOME_SALT) >>> 0);
-  return BIOME_PROFILES[BIOME_IDS[rng.int(0, BIOME_IDS.length - 1)]!]!;
+  return BIOME_PROFILES[ROLLED_BIOMES[rng.int(0, ROLLED_BIOMES.length - 1)]!]!;
 }
 
 export function biomeById(id: string | undefined | null): BiomeProfile | undefined {
@@ -90,9 +95,20 @@ export const BIOME_PROFILES: Record<BiomeId, BiomeProfile> = {
     fieldDensity: 0.95,
     groundCover: ["prairie", "grass", "dirt"],
   },
+  "arid-scrub": {
+    id: "arid-scrub",
+    trees: ["saguaro-cactus", "desert-palm"],
+    saplings: ["yucca-scrub"],
+    shrubs: ["yucca-scrub"],
+    crops: ["wheat"],
+    waterLikelihood: 0.12,
+    forestDensity: 0.1,
+    fieldDensity: 0.08,
+    groundCover: ["dirt", "scrub", "prairie"],
+  },
 };
 
-const SPECIES = new Set(["oak", "pine", "oak-sapling", "pine-sapling", "oak-shrub", "pine-shrub"]);
+const SPECIES = new Set(["oak", "pine", "oak-sapling", "pine-sapling", "oak-shrub", "pine-shrub", "saguaro-cactus", "yucca-scrub", "desert-palm"]);
 
 export function speciesCompatible(biome: BiomeProfile, assetId: string): boolean {
   if (!SPECIES.has(assetId)) return true;
@@ -102,7 +118,7 @@ export function speciesCompatible(biome: BiomeProfile, assetId: string): boolean
 export function selectBiome(district: Exclude<DistrictId, "classic">, seed: number, topology: TopologyFamily): BiomeProfile {
   const rng = new Rng(seed ^ BIOME_SALT);
   const weights = biomeWeights(district, topology);
-  return BIOME_PROFILES[pickWeighted(BIOME_IDS, (id) => Math.max(0, weights[id]), rng)];
+  return BIOME_PROFILES[pickWeighted(ROLLED_BIOMES, (id) => Math.max(0, weights[id]), rng)];
 }
 
 export function defaultBiome(): BiomeProfile {
@@ -115,6 +131,7 @@ function biomeWeights(district: Exclude<DistrictId, "classic">, topology: Topolo
     "northern-conifer": 2,
     "mixed-woodland": 3,
     "agricultural-plain": 2,
+    "arid-scrub": 0,
   };
   switch (topology) {
     case "curve-farm":

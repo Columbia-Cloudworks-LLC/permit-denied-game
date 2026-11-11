@@ -28,9 +28,37 @@ County 7 is named for the real capitol, for example *Springfield Capitol Distric
 
 **Map from pause.** The pause menu has **State Map** (for an overworld county) and **World Map**. It has no New Game during a run: a run is replaced only by deploying another county from these maps, where the county card warns first. **State Map** skips the atlas's unfold: the atlas slides up from the bottom already open (`.atlas-macro.risen`, about a quarter second) and the state sheet unfolds over it a beat later (`.atlas-sheet.late`). **World Map** unfolds the atlas as usual. They open the map over the paused run: the clock stays stopped, the season and weather roll stay the run's, and the county you are playing is outlined in green and preselected. The bar offers **Resume *County***, and its dossier card **Restart County N** with the weather shown. Any other county's card warns that deploying ends the current run. Nothing changes until you deploy. Back and Esc step from state map to world map to the pause menu.
 
-**Weather.** Weather is a county condition, separate from the season: Clear, Overcast, Rain (Snow in winter), Storm (Blizzard in winter), or Fog. Each county rolls a condition when the map opens, seeded from the map load and the county and weighted by season. The continental map never changes weather. Only the selected county on the state sheet can, from the bottom bar's Weather select or its cycle button, right before **Go**. The Weather effects setting (On, Reduced, Off) sits beside it in the same bar. Weather is presentation only: tint, particles, and a haze veil for fog and storms.
+**Weather.** Weather is a county condition, separate from the season: Clear, Overcast, Rain (Snow in winter), Storm (Blizzard in winter), or Fog. Each county rolls a condition when the map opens, seeded from the map load and the county and weighted by season. The continental map never changes weather. Only the selected county on the state sheet can, from the bottom bar's Weather select or its cycle button, right before **Go**. The Weather effects setting (On, Reduced, Off) sits beside it in the same bar. In Sandbox, weather is presentation only: tint, particles, and a haze veil for fog and storms.
 
-**Regional flavor.** `src/world/regionalCatalog.ts` maps each region to a flavor (Grain Belt, Great Lakes Works, Northeast Rowhouse, Southern Roadside, Southwest Travel Plaza, Mountain West, Pacific Coast, Northern Timber). A flavor sets the biome and multiplies the campaign weight of buildings the level already allows. County archetypes add their own boosts. A boost never makes an ineligible building eligible, so `campaign.levels` stays the opt-in gate. Up to two placed buildings per county are tagged as **regional signatures**, region picks first and then archetype picks. They pay an extra $600 on collapse, and the HUD calls them out on first hit and when they fall.
+**Weather stakes and Hazard Pay (Time Challenge only).** `src/game/weatherRisk.ts` gives a county's chosen weather light mechanical teeth, and pays for them:
+
+| Weather | Effect | Hazard Pay |
+| --- | --- | ---: |
+| Clear in Summer | +8% engine heat gain under load | none |
+| Clear (other seasons), Overcast | none | none |
+| Rain / Snow | 9% less lateral grip off the pavement | +10% |
+| Storm / Blizzard | 15% less lateral grip off the pavement; +12% track stress gained while on rubble | +20% |
+| Fog | none beyond the haze veil | +10% |
+
+Roads keep full grip. Hazard Pay is a bonus on the run's escrow at settlement, whatever the outcome (`settleRun`), and the state sheet shows it as a badge (`+20% HAZARD PAY`) beside the Weather select while the mode switch is on Time Challenge. Sandbox, the Home Yard, test maps, the brick job, and legacy links whose weather is rolled from the seed get neither the effects nor the pay.
+
+**Regional flavor.** `src/world/regionalCatalog.ts` maps each region to a flavor (Grain Belt, Great Lakes Works, Northeast Rowhouse, Southern Roadside, Southwest Travel Plaza, Mountain West, Pacific Coast, Northern Timber). A flavor sets the biome and multiplies the campaign weight of buildings the level already allows. County archetypes add their own boosts. A boost never makes an ineligible building eligible, so `campaign.levels` stays the opt-in gate. Up to two placed buildings per county are tagged as **regional signatures**, region picks first and then archetype picks. They pay an extra $600 on collapse, and the HUD calls them out on first hit and when they fall. The Southwest flavor (Arizona, Nevada, New Mexico, Oklahoma, Texas) plays on the `arid-scrub` biome: dirt and scrub ground, saguaro, yucca and palm instead of oak and pine, dry-brush thickets instead of woods, little water and almost no crop fields. Seed-rolled biomes never pick it.
+
+**Regional establishments (brand skins).** `BRANDS` in `regionalCatalog.ts` lists parody chains (`BrandSpec` in `regionalPlacement.ts`): a slug, a display label, sign lettering, host building IDs, four colours, and optional `countries` and `regionIds`. No brand has geometry of its own. Each flavor lists its brands; a brand that names a region joins that region's list and leads it, and a brand limited to the other country is dropped, so provinces lead with Timmy's Coffee and Canuck Tire, Texas with Buccee's Travel Plaza and Whatabeef, and Illinois, Iowa and Missouri with Kasey's General Store and Mennard's. After signatures are tagged, `stampRegionalBrands` (`src/world/regionalBrands.ts`) paints the county: tagged signatures that can host a brand first, then a seeded 60% of the other eligible hosts, at most two buildings per brand. Stamping renames the building, sets `fasciaColor`, recolours and reletters its existing sign or mounts a `rooftop-sign` (flat roofs) or `signboard` on an exposed south or east span, and bumps `visualRevision`; a host with no valid mount stays unbranded. A branded `service-station-canopy` carries its brand to the nearest unbranded `storefront` within 24 m, which covers the `service-station` site. Sign text must match `/^[A-Z0-9 ]{1,16}$/`. Knocking a branded building down shows a salvage notice and, in a paying run, records the brand in the career profile for the Trophy Lot.
+
+**Regional landmarks.** A flavor's `landmarks` list (optionally narrowed by `regionIds`, which then win) replaces a county's civic landmark with a regional one. The county keeps `campaignLandmark`, the 90% settled rule, its dollar target and its clock; only the building and its name change, and County 7 is named for it (*Boston Capitol District — Granite Statehouse*). The dossier card and HUD show the resolved name.
+
+| Landmark | Package | Where |
+| --- | --- | --- |
+| Terminal Grain Co-op | `terminal-grain-coop` | Grain Belt County 1; County 3 in KS, NE, ND, SD, SK, MB |
+| Giant Roadside Water Tower | `giant-water-tower` | Southern Roadside and Mountain West County 2 |
+| Mega Beaver Travel Plaza | `mega-beaver-travel-plaza` | Southwest County 2, with 8–12 fuel pumps under the canopy |
+| Blast Furnace & Auto Works | `blast-furnace-works` | Great Lakes County 3 |
+| Frank Grimes Bowl | `frank-grimes-bowling` | Great Lakes County 4 |
+| Riverboat / Lakeside Brewery Brickworks | `brewery-brickworks` | County 5 in MO, IA, IL, MN, LA, MS, KY, TN, WI |
+| Granite Statehouse / Sandstone Statehouse / Granite Legislature | `granite-statehouse` | County 7 in the Northeast, Pacific and Northern Timber flavors; it stands on the mansion's pad in `governors-estate` |
+
+These packages live in `src/world/landmarkData/`, outside the eager `src/world/data/` glob. `src/world/landmarkPack.ts` parses them with the shared constructions and registers them by ID when the lazy overworld chunk loads, so they cost the startup bundle nothing. They are `landmarkOnly` with zero zone weights and are not in `ARCHETYPES`. To add one: author the package there, list its level in `campaign.levels`, add a `landmarks` entry, and run `npm test` (`landmarkPack.test.ts`, `regionalBrands.test.ts`).
 
 **Links and bundle.** `?region=US-IL&county=3` opens that county: its level, seed, and biome unless the link names them. `&weather=storm` sets the condition. The overworld (manifest, flavor data, map markup, pan/zoom) is a lazy chunk (`src/game/overworld.ts`). It loads when the pointer or focus reaches Play (or on the click itself), or when a link names a region. Legacy `?level=` and `?district=` links, the test yard, and job links do not load it. The atlas geometry is a separate static file, `public/atlas/north-america-atlas.json` (about 245 KB), fetched once when setup opens and precached by the service worker. If the fetch fails, the map falls back to a schematic grid of squares built from each region's `tile`.
 
@@ -60,6 +88,15 @@ Either order is fine. Completing one does not end the level.
 The run ends if the clock hits zero (**COUNTY CLOCK**), the engine overheats (**ENGINE COOKED**), or track stress maxes out (**TRACK THROWN**). After the clock expires, finishing the objectives later does not count as a win.
 
 A gold pin marks the landmark. If it is off-screen, a gold arrow on the rim points toward it.
+
+### Code Enforcement
+
+Time Challenge only; Sandbox, the Home Yard, the Asset Test Yard and the brick job never dispatch (Sandbox keeps its manual police key). No cruiser rolls until the run earns one:
+
+- **One cruiser** when the landmark takes its first breach, or the level reaches half its dollar target.
+- **A second** when the landmark is down, or a demolition spree spikes (a meter of destroyed cells that drains 6 a second passes 120).
+
+The alert never drops. A cruiser arrives at a map edge about 4 seconds after the alert, and a wrecked one is replaced after 14. Cruisers drive lanes toward the dozer and treat lanes buried in rubble or wrecks as costly, so they route around them. They leave the road to ram only within close range with a clear line: buildings block it beyond 9 m, and rubble heaped over half a metre high between cruiser and dozer blocks it at any range, so walls dropped across an intersection are cover. A ram adds heat and track stress and a short shove, then the cruiser backs off before it can hit again. Three hits wreck a cruiser: each pays a $150 bounty into escrow, feeds the Shaped-Charge Blade's charge, and counts toward the career's cruisers-wrecked total. Dispatch and pursuit run on the town's seeded traffic stream inside the fixed step, so replays match.
 
 ## HUD
 
@@ -188,14 +225,17 @@ Between county runs the dozer lives in the **Home Yard** (**Return to Yard** on 
 | Proving ground lanes A–D | — | Respawning test targets: timber shed, masonry shop, concrete pump house, junked tractor-trailer and combine. Range tiers add a water tower + grain elevator lane and an eight-story office slab pad. Wrecks pay $0. |
 | Reset pad (blue) / **T** | Drive over it | Rebuilds every lane the dozer is not standing in, with its debris, marks, and pile. |
 | Lowboy ramp (orange) | Halt on it (< 1.5 m/s) | Unfolds the atlas to deploy a county. |
-| Trophy lot | — | Fills with crushed cruisers (one per three counties cleared) and salvaged signs and caps as lifetime cash grows. |
+| Trophy lot | — | Fills with crushed cruisers (one per three counties cleared), salvaged signs and caps as lifetime cash grows, and one branded signboard rack for each regional establishment demolished in a paying run (the newest eight). |
 
 **Escrow and settlement** (`settleRun` in `src/game/career.ts`). Run cash is escrow, already multiplied live by Salvage Magnetics and the combo. A run settles exactly once, however it ends:
 
 - Time Challenge clear: escrow + $50 × seconds left, halved on a county cleared before; a first capitol (County 7) clear adds a $7,000 bounty.
 - Time Challenge failure, restart, or bailout: 20% of escrow (halved on a replayed county).
 - Sandbox: 25% of escrow when the run is left.
+- Time Challenge weather adds Hazard Pay to escrow first (+10% rain, snow or fog; +20% storm or blizzard), on any outcome.
 - The yard, test maps, the brick job, and replays never pay.
+
+Settlement also records the run's wrecked cruisers and demolished brand IDs (`lifetimeCruisersWrecked`, `brandTrophies`). Both fields were added to `permit_denied_profile_v1` without a version bump: an older record loads with zero and none.
 
 **Economy scale.** The design tables are written against a $25,000 standard county. Live counties pay about a fifth of that, so every price and bounty is the design figure × `ECONOMY_SCALE` (0.2): Drivetrain level 1 costs $2,000, the full core set $667,500, all Skunkworks Mk III $291,000. Cash targets and in-run values are unchanged.
 

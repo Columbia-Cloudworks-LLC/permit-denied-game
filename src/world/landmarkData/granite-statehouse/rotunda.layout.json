@@ -1,0 +1,6 @@
+{
+  "partitions": false,
+  "rooms": [
+    {"id": "rotunda", "kind": "living", "floor": 0, "x": 0, "y": 0, "w": 1, "d": 1, "finish": "tile", "contents": [{"id": "clerk-desk", "kind": "office-desk", "x": 0.1, "y": 0.12, "w": 0.2, "d": 0.15, "h": 0.9, "rotation": 0}, {"id": "records", "kind": "filing-cabinet", "x": 0.75, "y": 0.1, "w": 0.12, "d": 0.2, "h": 1.4, "rotation": 0}]}
+  ]
+}

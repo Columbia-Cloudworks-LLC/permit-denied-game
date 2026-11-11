@@ -174,7 +174,7 @@ it('defaults to Time Challenge, switches mode on the state sheet, and deploys wh
   expect(menu.root.querySelector(county(7))!.classList.contains('locked')).toBe(false);
   expect(menu.root.querySelector(county(7))!.getAttribute('aria-pressed')).toBe('true');
   expect(go().disabled).toBe(false);
-  expect([...menu.root.querySelectorAll('.county-card .county-facts dt')].map(dt => dt.textContent)).toEqual(['Landmark', 'Region', 'Watch for']);
+  expect([...menu.root.querySelectorAll('.county-card .county-facts dt')].map(dt => dt.textContent)).toEqual(['Landmark', 'Region', 'Watch for', 'Establishments']);
   go().click();
   expect(actions.start).toHaveBeenLastCalledWith(expect.objectContaining({ kind: 'sandbox', season: 'autumn', regionId: 'US-IL', countyIndex: 7 }));
   // The choice carries to the next sheet opened from this map.
@@ -251,8 +251,8 @@ it('circles the picked county and shows its facts as icon rows', async () => {
   expect(loop.hasAttribute('hidden')).toBe(false);
   expect(loop.getAttribute('d')).toMatch(/^M[\d.-]+ [\d.-]+C/);
   const facts = [...menu.root.querySelectorAll('.county-card .county-facts dt')].map(dt => dt.textContent);
-  expect(facts).toEqual(['Objective', 'Earn', 'County clock', 'Region', 'Watch for']);
-  expect(menu.root.querySelectorAll('.county-card .county-facts dt svg')).toHaveLength(5);
+  expect(facts).toEqual(['Objective', 'Earn', 'County clock', 'Region', 'Watch for', 'Establishments']);
+  expect(menu.root.querySelectorAll('.county-card .county-facts dt svg')).toHaveLength(6);
   tap(county(4));
   expect(menu.root.querySelector('.atlas-sheet .atlas-selection')!.getAttribute('d')).not.toBe(loop.getAttribute('d'));
 });

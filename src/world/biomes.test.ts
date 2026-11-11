@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { BIOME_IDS, BIOME_PROFILES, selectBiome, speciesCompatible } from "./biomes";
+import { BIOME_IDS, BIOME_PROFILES, biomeById, selectBiome, selectCampaignBiome, speciesCompatible } from "./biomes";
+import { getAsset } from "./catalog";
 import type { TopologyFamily } from "./rural";
 
 const TOPOLOGIES: TopologyFamily[] = ["county", "crossroads", "tjunction", "curve-farm", "loop", "frontage"];
@@ -34,6 +35,26 @@ describe("biome selection", () => {
     expect(speciesCompatible(BIOME_PROFILES["agricultural-plain"], "oak-shrub")).toBe(true);
     expect(speciesCompatible(BIOME_PROFILES["agricultural-plain"], "pine-sapling")).toBe(false);
     expect(speciesCompatible(BIOME_PROFILES["northern-conifer"], "mailbox")).toBe(true);
+  });
+
+  it("keeps arid scrub dry, sparse and out of every seed roll", () => {
+    const arid = BIOME_PROFILES["arid-scrub"];
+    expect(BIOME_IDS).toContain("arid-scrub");
+    expect(biomeById("arid-scrub")).toBe(arid);
+    expect(arid.groundCover).toEqual(["dirt", "scrub", "prairie"]);
+    expect(arid.waterLikelihood).toBeLessThanOrEqual(0.15);
+    expect(arid.forestDensity).toBeLessThanOrEqual(0.12);
+    expect(arid.fieldDensity).toBeLessThanOrEqual(0.1);
+    for (const id of ["saguaro-cactus", "yucca-scrub", "desert-palm"]) {
+      expect(getAsset(id).family).toBe("vegetation");
+      expect(speciesCompatible(arid, id)).toBe(true);
+      expect(speciesCompatible(BIOME_PROFILES["temperate-broadleaf"], id)).toBe(false);
+    }
+    expect(speciesCompatible(arid, "oak")).toBe(false);
+    expect(speciesCompatible(arid, "pine-shrub")).toBe(false);
+    // Legacy seeds and districts never roll it: only a region assigns it.
+    for (let n = 1; n <= 400; n++) expect(selectCampaignBiome(Math.imul(n, 0x9e3779b1) >>> 0).id).not.toBe("arid-scrub");
+    for (const topology of TOPOLOGIES) for (let n = 1; n <= 60; n++) expect(selectBiome("d30", Math.imul(n, 0x9e3779b1) >>> 0, topology).id).not.toBe("arid-scrub");
   });
 
   it("does not treat mixed woodland as an accident", () => {

@@ -110,6 +110,9 @@ const PROP_CAMPAIGN: Record<string, CampaignPlacement> = {
   'pine-sapling': { levels: ALL_CAMPAIGN_LEVELS },
   'oak-shrub': { levels: ALL_CAMPAIGN_LEVELS },
   'pine-shrub': { levels: ALL_CAMPAIGN_LEVELS },
+  'saguaro-cactus': { levels: ALL_CAMPAIGN_LEVELS },
+  'yucca-scrub': { levels: ALL_CAMPAIGN_LEVELS },
+  'desert-palm': { levels: ALL_CAMPAIGN_LEVELS },
   'fire-hydrant': { levels: ALL_CAMPAIGN_LEVELS },
   'stop-sign': { levels: ALL_CAMPAIGN_LEVELS },
   'power-pole': { levels: ALL_CAMPAIGN_LEVELS },
@@ -165,6 +168,21 @@ const OAK_TRUNK = { t: 0x9a6a38, l: 0x5a3818, r: 0x7a4e28 };
 const PINE_FOL = { t: 0x3f8c58, l: 0x1c4a30, r: 0x2d6a40 };
 const PINE_NEEDLE = { t: 0x52a468, l: 0x245838, r: 0x3a7a4c };
 const PINE_TRUNK = { t: 0x6a4a32, l: 0x3a2818, r: 0x523828 };
+const CACTUS = { t: 0x6f9a55, l: 0x35502c, r: 0x4f7540 };
+const YUCCA = { t: 0xa9b06a, l: 0x5d6336, r: 0x80874c };
+
+/** Arid-scrub vegetation: one compact definition for cactus, yucca and palm. */
+function aridPlant(id: string, w: number, h: number, hp: number, mass: number, cash: number, destruction: "topple" | "crush", boxes: AssetDef["boxes"]): AssetDef {
+  const tall = destruction === "topple";
+  return asset({
+    id, family: "vegetation", tags: tall ? ["vegetation", "tall"] : ["vegetation", "residential"],
+    footprint: { w, d: w, h }, collision: { w: tall ? 0.4 : 0.6, d: tall ? 0.4 : 0.56 }, material: "wood", hp, mass,
+    resistance: tall ? 0.6 : 0.12, bladeMul: tall ? 0.85 : 1.3, trackHazard: 0, cash, destruction,
+    debris: tall ? debris(1, 2, 8, 1, 0.7, "beam") : debris(0, 1, 6, 0.4, 0.12, "chunk"),
+    variants: 3, boxes, zones: ["residential", "yard", "agricultural"], roadsideOk: false, minClear: tall ? 0.5 : 0.25,
+    sparks: false, birdGag: false, explodeRadius: 0, explodeImpulse: 0, explodeDamage: 0, yawResist: tall ? 0.15 : 0,
+  });
+}
 
 export const ASSET_CATALOG: readonly AssetDef[] = [
   ...CONTENT_ASSETS,
@@ -1420,6 +1438,23 @@ export const ASSET_CATALOG: readonly AssetDef[] = [
     explodeDamage: 0,
     yawResist: 0,
   }),
+  aridPlant("saguaro-cactus", 0.7, 2.6, 22, 2.6, 18, "topple", [
+    box(0, 0, 0, 0.34, 0.34, 2.5, CACTUS.t, CACTUS.l, CACTUS.r),
+    box(0.3, 0, 0.9, 0.3, 0.22, 0.2, CACTUS.t, CACTUS.l, CACTUS.r),
+    box(0.4, 0, 1.0, 0.2, 0.2, 0.8, CACTUS.t, CACTUS.l, CACTUS.r),
+    box(-0.3, 0, 1.3, 0.3, 0.22, 0.2, CACTUS.t, CACTUS.l, CACTUS.r),
+    box(-0.4, 0, 1.4, 0.2, 0.2, 0.6, CACTUS.t, CACTUS.l, CACTUS.r),
+  ]),
+  aridPlant("yucca-scrub", 0.8, 0.7, 6, 0.24, 5, "crush", [
+    box(0, 0, 0, 0.7, 0.66, 0.34, YUCCA.t, YUCCA.l, YUCCA.r),
+    box(0.06, -0.04, 0.3, 0.3, 0.3, 0.4, CACTUS.t, CACTUS.l, CACTUS.r),
+  ]),
+  aridPlant("desert-palm", 1.2, 3.4, 26, 3.2, 20, "topple", [
+    box(0, 0, 0, 0.3, 0.3, 2.9, OAK_TRUNK.t, OAK_TRUNK.l, OAK_TRUNK.r),
+    box(0, 0, 2.8, 1.5, 0.4, 0.22, CACTUS.t, CACTUS.l, CACTUS.r),
+    box(0, 0, 2.86, 0.4, 1.5, 0.22, YUCCA.t, CACTUS.l, CACTUS.r),
+    box(0, 0, 3.0, 0.5, 0.5, 0.3, CACTUS.t, CACTUS.l, CACTUS.r),
+  ]),
   asset({
     id: "pine-shrub",
     family: "vegetation",

@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { createTown } from './town';
-import { populateHomeYard, resetRange, type HomeYardOptions } from './homeYard';
+import { populateHomeYard, resetRange, TROPHY_SIGN_SLOTS, type HomeYardOptions } from './homeYard';
+import { BRANDS, brandById } from './regionalCatalog';
+import { facadeDetailPose } from '../structure/facadeDetails';
 import { cellPresent } from '../structure/types';
 
 const build = (options: HomeYardOptions) => createTown({ seed: 7, populate: town => populateHomeYard(town, options) });
@@ -31,6 +33,26 @@ describe('home yard', () => {
   it('the trophy lot fills with crushed cruisers as counties are cleared', () => {
     const town = build({ yardTier: 0, countiesCleared: 9, lifetimeEarned: 150000 });
     expect(town.vehicles.filter(v => v.definitionId === 'police-cruiser')).toHaveLength(3);
+  });
+
+  it('hangs one salvaged signboard per demolished regional brand, in that chain\'s lettering and colours', () => {
+    const plain = build({ yardTier: 0, countiesCleared: 0, lifetimeEarned: 0 });
+    expect(plain.buildings.some(b => b.brandId)).toBe(false);
+    const town = build({ yardTier: 0, countiesCleared: 0, lifetimeEarned: 0, brands: ['kaseys-general', 'retired-brand', 'timmys-coffee'] });
+    const racks = town.buildings.filter(b => b.brandId);
+    expect(racks.map(b => b.brandId)).toEqual(['kaseys-general', 'timmys-coffee']);
+    const kaseys = brandById('kaseys-general')!;
+    const sign = racks[0]!.facadeDetails[0]!;
+    expect(sign).toMatchObject({ kind: 'signboard', text: 'KASEYS PIZZA', faceColor: kaseys.faceColor, textColor: kaseys.textColor });
+    expect(facadeDetailPose(racks[0]!, sign)).not.toBeNull();
+    const home = town.home!;
+    for (const rack of racks) {
+      expect(rack.y).toBeGreaterThanOrEqual(home.trophy.y + home.trophy.d);
+      expect(rack.y + rack.d * rack.cellSize).toBeLessThan(home.lanes[0]!.y - 1.6);
+    }
+    // A long career keeps only the newest signs.
+    const many = build({ yardTier: 0, countiesCleared: 0, lifetimeEarned: 0, brands: BRANDS.map(b => b.id) });
+    expect(many.buildings.filter(b => b.brandId)).toHaveLength(TROPHY_SIGN_SLOTS);
   });
 
   it('a range reset rebuilds wrecked lanes but leaves the one the dozer stands in', () => {

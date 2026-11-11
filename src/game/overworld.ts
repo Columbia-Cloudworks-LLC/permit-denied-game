@@ -38,5 +38,5 @@ export function resolveCountyLink(rules: SessionRules, search: string): void {
 /** Regional flavor for the rules' county; none on legacy level links. */
 export function placementForRules(rules: Pick<SessionRules, 'regionId' | 'countyIndex'>) {
   const region = regionById(rules.regionId);
-  return region && rules.countyIndex ? regionalPlacement(region.flavor, rules.countyIndex) : undefined;
+  return region && rules.countyIndex ? regionalPlacement(region, rules.countyIndex) : undefined;
 }

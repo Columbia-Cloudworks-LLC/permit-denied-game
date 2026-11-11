@@ -6,6 +6,7 @@ import type { DistrictId } from '../game/session';
 import { cellPresent, cellWorldBox, type WorldEvent } from '../structure/types';
 import { edgeExitNodes } from '../world/edgeRoads';
 import { indexNetwork, offsetPoint, polylineLength, roadSurfaceAt, samplePolyline, type Lane, type RoadNetwork, type RoadSegment } from '../world/roads';
+import { policeMayLeaveRoad } from '../world/routing';
 import type { Town } from '../world/town';
 import { dozerSpeed, type Dozer } from './dozer';
 import { vehicleDefinition } from './definitions';
@@ -22,9 +23,9 @@ import type { TrafficAgent, TrafficRole, VehicleState } from './types';
 export interface TrafficConfig {
   /** Most civilian cars on the map at once. */
   civilians: number;
-  /** Most police cars at once; zero turns automatic dispatch off. */
+  /** Most Code Enforcement cruisers at once; zero turns dispatch off. */
   police: number;
-  /** Seconds before the first police car is dispatched. */
+  /** Seconds from an enforcement alert to its cruiser reaching the map edge. */
   policeDelay: number;
   /** Seconds between a police car going down and the next one arriving. */
   policeCooldown: number;
@@ -40,6 +41,8 @@ export interface TrafficState {
   time: number;
   spawnT: number;
   policeT: number;
+  /** Code Enforcement alert: cruisers dispatch wants on the map (0 until the run earns one). */
+  alert: number;
   /** Police requested by the sandbox key, waiting for a clear entrance. */
   policeQueued: number;
   exits: Exit[];
@@ -75,7 +78,7 @@ const DISTRICT_DENSITY: Record<DistrictId, number> = { classic: 2, d10: 3, d30: 
 export function trafficConfigFor(town: Pick<Town, 'campaignLevel' | 'district'>, police: boolean): TrafficConfig {
   const civilians = town.campaignLevel ? DENSITY[town.campaignLevel] : DISTRICT_DENSITY[town.district];
   const city = town.campaignLevel === 'city-borough' || town.campaignLevel === 'city-downtown' || town.district === 'd100';
-  return { civilians, police: police ? (city ? 2 : 1) : 0, policeDelay: 25, policeCooldown: 14, city };
+  return { civilians, police: police ? 2 : 0, policeDelay: 4, policeCooldown: 14, city };
 }
 
 /** Traffic for a generated town; null when it has no road out to the edge. */
@@ -83,11 +86,31 @@ export function createTraffic(town: Town, config: TrafficConfig): TrafficState |
   const exits = findExits(town);
   if (!exits.length) return null;
   const state: TrafficState = {
-    config, rng: new Rng(town.seed ^ 0x7af1c), time: 0, spawnT: 1, policeT: config.policeDelay,
+    config, rng: new Rng(town.seed ^ 0x7af1c), time: 0, spawnT: 1, policeT: config.policeDelay, alert: 0,
     policeQueued: 0, exits, laneBlocked: new Set(), blockT: 0, roadProps: [], junctions: new Map(),
   };
   seedTraffic(town, state);
   return state;
+}
+
+/**
+ * Raise the Code Enforcement alert (1: one cruiser, 2: two), capped by the config. It never
+ * lowers; returns whether this call escalated.
+ */
+export function raiseEnforcement(state: TrafficState, level: number): boolean {
+  const next = Math.min(state.config.police, level);
+  if (next <= state.alert) return false;
+  state.alert = next;
+  state.policeT = Math.min(state.policeT, state.config.policeDelay);
+  return true;
+}
+
+/** Rubble heaped between a cruiser and the dozer is cover: no straight charge across it. */
+export function rubbleBetween(town: Pick<Town, 'pile'>, x0: number, y0: number, x1: number, y1: number): boolean {
+  const n = Math.ceil(Math.hypot(x1 - x0, y1 - y0));
+  // The last few metres are the dozer's own work face.
+  for (let i = 1; i < n - 3; i++) if (town.pile.heightAt(x0 + (x1 - x0) * i / n, y0 + (y1 - y0) * i / n) > 0.5) return true;
+  return false;
 }
 
 /** Ask for one police car at an edge, now or as soon as an entrance is clear. */
@@ -378,8 +401,8 @@ function stepSpawns(town: Town, state: TrafficState, dozer: Dozer, dt: number): 
   }
   const active = police(town);
   if (state.policeQueued > 0 && spawnAtEdge(town, state, dozer, 'police')) state.policeQueued--;
-  if (!state.config.police) return;
-  if (active >= state.config.police) {
+  if (!state.alert) return;
+  if (active >= state.alert) {
     state.policeT = Math.max(state.policeT, state.config.policeCooldown);
     return;
   }
@@ -739,7 +762,11 @@ function stepPolice(town: Town, state: TrafficState, v: VehicleState, a: Traffic
     if (a.modeT > 0.9) { a.mode = dist < 20 ? 'ram' : 'pursue'; a.modeT = 0; }
     return;
   }
-  if (a.mode === 'pursue' && state.time >= a.ramAfter && (dist < 9 || (dist < 22 && seesDozer(town, v, dozer)))) { a.mode = 'ram'; a.modeT = 0; }
+  // Lanes first; the cruiser leaves the road only at close range with a clear line to the dozer.
+  if (a.mode === 'pursue' && policeMayLeaveRoad({
+    dozerNearby: dist < 22, pursuitAllowed: state.time >= a.ramAfter,
+    offRoadBlocked: (dist >= 9 && !seesDozer(town, v, dozer)) || rubbleBetween(town, v.x, v.y, dozer.x, dozer.y),
+  })) { a.mode = 'ram'; a.modeT = 0; }
   if (a.mode === 'ram') {
     noseStrike(v, a, dozer);
     if (dist > 28) { a.mode = 'pursue'; a.repathAt = 0; }

@@ -5,7 +5,7 @@ import { ParticlePool } from '../fx/particles';
 import { stepWorld } from '../sim/worldSim';
 import { createTown } from '../world/town';
 import { createDozer, type Dozer } from './dozer';
-import { createTraffic, requestPolice, seesDozer, sightBlocked, trafficConfigFor, type TrafficConfig } from './traffic';
+import { createTraffic, raiseEnforcement, requestPolice, rubbleBetween, seesDozer, sightBlocked, trafficConfigFor, type TrafficConfig } from './traffic';
 import type { VehicleState } from './types';
 
 
@@ -34,7 +34,8 @@ describe('traffic', () => {
     const township = trafficConfigFor({ campaignLevel: 'township', district: 'd30' }, true);
     expect(downtown.civilians).toBeGreaterThan(township.civilians);
     expect(township.civilians).toBeGreaterThan(county.civilians);
-    expect(downtown.police).toBeGreaterThan(county.police);
+    // Code Enforcement caps at two cruisers on every Time Challenge map; the run's alert decides how many roll.
+    expect([county.police, downtown.police]).toEqual([2, 2]);
     expect(trafficConfigFor({ campaignLevel: 'county', district: 'd30' }, false).police).toBe(0);
   });
 
@@ -92,6 +93,7 @@ describe('traffic', () => {
 
   it('sends police that chase the dozer and wreck after three hits', () => {
     const t = trafficTown('county', { civilians: 0, policeDelay: 1 }, true);
+    raiseEnforcement(t.town.traffic!, 1);
     t.town.vehicles = t.town.vehicles.filter(v => !v.traffic);
     t.dozer = createDozer((t.town.minX + t.town.maxX) / 2, (t.town.minY + t.town.maxY) / 2, 0);
     let closest = Infinity, hits = 0;
@@ -107,6 +109,61 @@ describe('traffic', () => {
     expect(t.dozer.heat + t.dozer.track).toBeGreaterThan(startHeat);
     const wrecks = t.town.vehicles.filter(v => v.traffic?.role === 'police' && v.status === 'wreck');
     for (const w of wrecks) expect(w.hits).toBe(3);
+  });
+
+  it('holds Code Enforcement back until the run raises an alert, then escalates to two cruisers and never stands down', () => {
+    const t = trafficTown('county', { civilians: 0, policeDelay: 1, policeCooldown: 1 }, true);
+    t.town.vehicles = t.town.vehicles.filter(v => !v.traffic);
+    t.dozer = createDozer((t.town.minX + t.town.maxX) / 2, (t.town.minY + t.town.maxY) / 2, 0);
+    const cruisers = () => t.town.vehicles.filter(v => v.traffic?.role === 'police').length;
+    run(t, 12);
+    expect(cruisers()).toBe(0);
+    expect(raiseEnforcement(t.town.traffic!, 1)).toBe(true);
+    expect(raiseEnforcement(t.town.traffic!, 1)).toBe(false);
+    run(t, 4);
+    expect(cruisers()).toBe(1);
+    expect(raiseEnforcement(t.town.traffic!, 5)).toBe(true);
+    expect(t.town.traffic!.alert).toBe(2);
+    run(t, 6);
+    expect(cruisers()).toBeGreaterThanOrEqual(2);
+    expect(raiseEnforcement(t.town.traffic!, 0)).toBe(false);
+    expect(t.town.traffic!.alert).toBe(2);
+  });
+
+  it('runs the same pursuit twice from the same seed and alert times (replay determinism)', () => {
+    const play = () => {
+      const t = trafficTown('township', { policeDelay: 1, policeCooldown: 2 }, true);
+      t.dozer = createDozer((t.town.minX + t.town.maxX) / 2, (t.town.minY + t.town.maxY) / 2, 0);
+      run(t, 3);
+      raiseEnforcement(t.town.traffic!, 1);
+      run(t, 6);
+      raiseEnforcement(t.town.traffic!, 2);
+      run(t, 10);
+      return JSON.stringify([t.dozer.x, t.dozer.y, t.dozer.heat, t.dozer.track,
+        t.town.vehicles.map(v => [v.id, v.definitionId, v.status, v.x, v.y, v.heading, v.traffic?.role, v.traffic?.mode])]);
+    };
+    expect(play()).toBe(play());
+  });
+
+  it('never dispatches Code Enforcement where the cap is zero (Sandbox)', () => {
+    const t = trafficTown('county', { civilians: 0 }, false);
+    expect(raiseEnforcement(t.town.traffic!, 2)).toBe(false);
+    run(t, 8);
+    expect(agents(t.town.vehicles, 'police')).toHaveLength(0);
+  });
+
+  it('treats rubble heaped between cruiser and dozer as cover, but not the dozer\'s own work face', () => {
+    const t = trafficTown('county', { civilians: 0 }, true);
+    const x = (t.town.minX + t.town.maxX) / 2, y = (t.town.minY + t.town.maxY) / 2;
+    const heights = new Map<string, number>();
+    const pile = { heightAt: (px: number, py: number) => heights.get(`${Math.round(px)},${Math.round(py)}`) ?? 0 };
+    const town = { pile } as unknown as Pick<typeof t.town, 'pile'>;
+    expect(rubbleBetween(town, x, y, x + 16, y)).toBe(false);
+    heights.set(`${Math.round(x + 8)},${Math.round(y)}`, 1.2);
+    expect(rubbleBetween(town, x, y, x + 16, y)).toBe(true);
+    heights.clear();
+    heights.set(`${Math.round(x + 15)},${Math.round(y)}`, 1.2);
+    expect(rubbleBetween(town, x, y, x + 16, y)).toBe(false);
   });
 
   it('queues a sandbox police car on request', () => {

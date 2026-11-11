@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "id": "mega-beaver-travel-plaza",
+  "label": "MEGA BEAVER TRAVEL PLAZA",
+  "w": 12,
+  "d": 8,
+  "floors": 1,
+  "kind": "industrial",
+  "construction": "steel-hall",
+  "roof": "flat",
+  "theme": "warehouse",
+  "windowStride": 8,
+  "features": {"porch": false, "awning": false, "parapet": false, "chimney": false, "garage": false},
+  "zones": {"residential": 0, "commercial": 0, "industrial": 0},
+  "fasciaColor": 13382451,
+  "traits": {"use": ["fuel-canopy", "travel-plaza", "landmark"], "form": ["open-frame", "mega-canopy"], "scale": ["regional"]},
+  "campaign": {"levels": {"village": 1}, "landmarkOnly": true, "urbanBands": ["village-main-street"]},
+  "footprint": [
+    ["############", "############", "############", "############", "############", "############", "############", "############"]
+  ],
+  "layout": "canopy.layout.json",
+  "openings": [],
+  "canopy": {"columns": [{"x": 1, "y": 1}, {"x": 4, "y": 1}, {"x": 7, "y": 1}, {"x": 10, "y": 1}, {"x": 1, "y": 6}, {"x": 4, "y": 6}, {"x": 7, "y": 6}, {"x": 10, "y": 6}]},
+  "facadeDetails": [
+    {"id": "beaver-sign", "kind": "rooftop-sign", "floor": 0, "gx": 5, "gy": 7, "side": "south", "width": 3, "text": "MEGA BEAVER", "faceColor": 13382451, "trimColor": 1710618, "textColor": 16766720},
+    {"id": "beaver-sign-east", "kind": "rooftop-sign", "floor": 0, "gx": 11, "gy": 3, "side": "east", "width": 3, "text": "MEGA BEAVER", "faceColor": 13382451, "trimColor": 1710618, "textColor": 16766720}
+  ]
+}

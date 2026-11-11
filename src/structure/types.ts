@@ -177,6 +177,10 @@ export interface Building {
   canopy?: boolean;
   elevatedTank?: import('./elevatedTank').ElevatedTankState;
   facadeDetails: import('./facadeDetails').FacadeDetailDef[];
+  /** Brand trim: flat/canopy roof eaves and awnings. Stamping it after creation must bump `visualRevision`. */
+  fasciaColor?: number;
+  /** Regional brand skin id, recorded as a Trophy Lot souvenir when the building falls. */
+  brandId?: string;
   coreCollapse?: import("./coreCollapse").CoreCollapseState;
   visualRevision: number;
   retired: boolean;

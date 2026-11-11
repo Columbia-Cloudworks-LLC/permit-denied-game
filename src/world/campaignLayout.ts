@@ -40,7 +40,13 @@ function generateEstateLayout(level: CampaignLevelDef, seed: number, environment
   const originX = 8;
   const originY = 8;
   const placed = instantiateBuildingSite(site, originX + 6, originY + 8);
-  const mansion = placed.buildings.find(building => building.archetypeId === 'governors-mansion');
+  let mansion = placed.buildings.find(building => building.archetypeId === 'governors-mansion');
+  if (mansion && level.landmark.buildingId !== mansion.archetypeId) {
+    // A regional capitol (a statehouse) stands on the mansion's pad; it is authored to the same footprint.
+    const swap = createBuildingFromArchetype(level.landmark.buildingId, mansion.name, mansion.x, mansion.y);
+    placed.buildings[placed.buildings.indexOf(mansion)] = swap;
+    mansion = swap;
+  }
   if (mansion) {
     mansion.campaignLandmark = true;
     mansion.name = level.landmark.label.toUpperCase();

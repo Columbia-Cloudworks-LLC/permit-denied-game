@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "id": "brewery-brickworks",
+  "label": "RIVERSIDE BREWERY BRICKWORKS",
+  "w": 8,
+  "d": 8,
+  "floors": 7,
+  "kind": "industrial",
+  "construction": "brick-mixed-use",
+  "roof": "flat",
+  "theme": "warehouse",
+  "windowStride": 2,
+  "features": {"porch": false, "awning": false, "parapet": true, "chimney": false, "garage": false},
+  "zones": {"residential": 0, "commercial": 0, "industrial": 0},
+  "traits": {"use": ["brewery", "landmark"], "form": ["stepped-brew-tower"], "style": ["brick-industrial"], "scale": ["city"]},
+  "campaign": {"levels": {"city-borough": 1}, "landmarkOnly": true, "urbanBands": ["borough-mixed"]},
+  "partitions": false,
+  "connections": [],
+  "sections": [
+    {"id": "brewhouse", "role": "brewhouse", "x": 0, "y": 0, "w": 8, "d": 8, "floor": 0, "floors": 1, "layout": "brewhouse.layout.json"},
+    {"id": "cellars", "role": "fermenting", "x": 0, "y": 0, "w": 8, "d": 8, "floor": 1, "floors": 2, "layout": "shell.layout.json"},
+    {"id": "tower", "role": "brew-tower", "x": 2, "y": 2, "w": 5, "d": 5, "floor": 3, "floors": 2, "layout": "shell.layout.json"},
+    {"id": "lantern", "role": "clock-lantern", "x": 3, "y": 3, "w": 3, "d": 3, "floor": 5, "floors": 2, "layout": "shell.layout.json"}
+  ],
+  "openings": [
+    {"floor": 0, "side": "south", "at": 0.5, "kind": "door"},
+    {"floor": 0, "side": "south", "at": 0.85, "kind": "loading"}
+  ],
+  "facadeDetails": [
+    {"id": "dock-door", "kind": "roll-up-door", "floor": 0, "gx": 5, "gy": 7, "side": "south", "width": 3},
+    {"id": "brewery-board", "kind": "signboard", "floor": 2, "gx": 2, "gy": 7, "side": "south", "width": 4, "text": "BREWERY", "faceColor": 1447446, "trimColor": 9127187, "textColor": 16766720},
+    {"id": "south-clock", "kind": "clock-face", "floor": 5, "gx": 3, "gy": 5, "side": "south", "width": 3},
+    {"id": "east-clock", "kind": "clock-face", "floor": 5, "gx": 5, "gy": 3, "side": "east", "width": 3},
+    {"id": "brewery-sign", "kind": "rooftop-sign", "floor": 6, "gx": 3, "gy": 5, "side": "south", "width": 3, "text": "BREWERY", "faceColor": 1447446, "trimColor": 9127187, "textColor": 16766720}
+  ]
+}

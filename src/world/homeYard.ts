@@ -1,5 +1,7 @@
 import type { HomeYardLayoutInputs } from '../game/session';
-import { createBuildingFromArchetype } from '../structure/building';
+import { createBuilding, createBuildingFromArchetype } from '../structure/building';
+import { archetypeById } from './archetypes';
+import { brandById, type BrandSpec } from './regionalCatalog';
 import type { Building } from '../structure/types';
 import { PileField } from '../sim/pile';
 import { invalidateWorldCollision } from '../sim/worldSim';
@@ -163,6 +165,33 @@ function dressTrophies(town: Town, lot: HomeZone, options: HomeYardOptions): voi
     town.props.push(spawnAsset(asset, x, lot.y + 1.5));
     x += 3.2;
   }
+  dressBrandSigns(town, lot, options.brands ?? []);
+}
+
+/** Most salvaged signs the lot hangs; the newest souvenirs win a place. */
+export const TROPHY_SIGN_SLOTS = 8;
+
+/**
+ * Salvaged regional signs: one short masonry rack per demolished brand, in two rows along the
+ * lot's south edge, each carrying that chain's signboard in its own colours. Unknown ids
+ * (a brand since retired) are skipped.
+ */
+function dressBrandSigns(town: Town, lot: HomeZone, ids: readonly string[]): void {
+  const brands = ids.map(brandById).filter((spec): spec is BrandSpec => !!spec).slice(-TROPHY_SIGN_SLOTS);
+  const host = archetypeById('pump-house');
+  brands.forEach((spec, i) => {
+    const rack = createBuilding({
+      construction: host.construction, layout: { partitions: false, rooms: [{ id: 'rack', kind: 'production', floor: 0, x: 0, y: 0, w: 1, d: 1, finish: 'concrete', contents: [] }] }, openings: [], kind: 'shop',
+      name: `${spec.label.toUpperCase()} SIGN`, x: lot.x + 0.5 + (i % 4) * 4, y: lot.y + lot.d + 1 + Math.floor(i / 4) * 2.4,
+      w: 3, d: 1, floors: 1, roof: 'flat', theme: 'storefront',
+      facadeDetails: [{ id: 'salvaged-sign', kind: 'signboard', floor: 0, gx: 0, gy: 0, side: 'south', width: 3,
+        text: spec.signText, faceColor: spec.faceColor, trimColor: spec.trimColor, textColor: spec.textColor }],
+    });
+    rack.fasciaColor = spec.fasciaColor;
+    rack.brandId = spec.id;
+    owners.set(rack, 'trophy');
+    town.buildings.push(rack);
+  });
 }
 
 /**
