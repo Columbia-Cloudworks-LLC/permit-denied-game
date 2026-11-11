@@ -40,7 +40,6 @@ const VENDOR_CHUNKS: [string, string[]][] = [
 const testShared = {
   environment: "node" as const,
   pool: "forks" as const,
-  ...(process.env.CI ? { maxWorkers: 1 } : {}),
 };
 
 export default defineConfig({
@@ -138,8 +137,6 @@ export default defineConfig({
           ...testShared,
           name: "integration",
           include: INTEGRATION_TESTS,
-          maxWorkers: 1,
-          fileParallelism: false,
           testTimeout: 240_000,
           hookTimeout: 240_000,
           teardownTimeout: 240_000,

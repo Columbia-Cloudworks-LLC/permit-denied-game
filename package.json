@@ -11,7 +11,7 @@
     "check": "tsc --noEmit && tsc -p tsconfig.scripts.json",
     "analyze:bundle": "node scripts/analyze-bundle.mjs",
     "test": "vitest run --project unit",
-    "test:integration": "vitest run --project integration --maxWorkers=1",
+    "test:integration": "vitest run --project integration",
     "test:soak": "vitest run --project soak --maxWorkers=1",
     "test:bench": "vitest run --project bench --maxWorkers=1",
     "test:all": "vitest run",
