@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "id": "giant-water-tower",
+  "label": "GIANT ROADSIDE WATER TOWER",
+  "w": 9,
+  "d": 7,
+  "floors": 6,
+  "kind": "industrial",
+  "construction": "steel-hall",
+  "roof": "flat",
+  "theme": "warehouse",
+  "windowStride": 8,
+  "features": {"porch": false, "awning": false, "parapet": false, "chimney": false, "garage": false},
+  "zones": {"residential": 0, "commercial": 0, "industrial": 0},
+  "traits": {"use": ["water-storage", "landmark"], "form": ["exposed-legs", "roadside-oddity"], "scale": ["regional"]},
+  "campaign": {"levels": {"village": 1}, "landmarkOnly": true, "urbanBands": ["village-main-street"]},
+  "footprint": [
+    ["#.......#", ".........", ".........", ".........", ".........", ".........", "#.......#"],
+    ["#.......#", ".........", ".........", ".........", ".........", ".........", "#.......#"],
+    ["#.......#", ".........", ".........", ".........", ".........", ".........", "#.......#"],
+    ["#.......#", ".........", ".........", ".........", ".........", ".........", "#.......#"],
+    ["#.......#", ".........", ".........", ".........", ".........", ".........", "#.......#"],
+    ["#.......#", ".........", ".........", ".........", ".........", ".........", "#.......#"]
+  ],
+  "layout": "frame.layout.json",
+  "openings": [],
+  "elevatedTank": {"radius": 4, "height": 4, "minimumLegs": 3, "warningDuration": 0.8, "fallDuration": 3.2}
+}

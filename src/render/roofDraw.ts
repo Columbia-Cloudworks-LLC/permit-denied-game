@@ -75,14 +75,16 @@ function drawRoofSection(
   const verts = applyBrokenRoofEdge(b, roof, displacedRoofVerts(roof));
   const cols = roofColors(b, roof, verts, season);
   const faded = (roof.state === "falling" ? alpha * 0.9 : alpha) * (roof.material === 'glass' ? .28 : 1);
+  // A brand fascia paints the eave band of a flat or canopy roof; the underside keeps the roof's own edge colour.
+  const rim = roof.style === "flat" ? b.fasciaColor ?? cols.edge : cols.edge;
   drawSawtoothClosures(g, roof, cols.edge, faded);
   if (!roof.bay) {
     // A flat slab's underside draws slightly fainter than its edges.
-    drawRoofSlab(g, verts, cols.edge, faded, faded * 0.95);
+    drawRoofSlab(g, verts, cols.edge, faded, faded * 0.95, rim);
     beforeCover?.();
     drawSlopedQuad(g, verts, cols.top, cols.edge, faded);
   } else if (verts.length === 4) {
-    drawFoldedBay(g, b, roof, verts, cols, faded, beforeCover);
+    drawFoldedBay(g, b, roof, verts, cols, faded, beforeCover, rim);
   } else {
     drawSlopedQuad(g, verts, cols.top, cols.edge, faded);
   }
@@ -105,17 +107,17 @@ function drawSawtoothClosures(g: Graphics, roof: RoofSection, edge: number, fade
 }
 
 /** Underside and edge faces of a roof face, so it reads as a slab rather than a sheet. */
-function drawRoofSlab(g: Graphics, face: Vert[], edge: number, alpha: number, underAlpha = alpha): void {
+function drawRoofSlab(g: Graphics, face: Vert[], edge: number, alpha: number, underAlpha = alpha, rim = edge): void {
   const under = face.map((v) => ({ ...v, z: v.z - ROOF_THICK }));
   drawSlopedQuad(g, under.slice().reverse(), edge, edge, underAlpha);
   for (let i = 0; i < face.length; i++) {
     const n = (i + 1) % face.length;
-    drawSlopedQuad(g, [face[i]!, face[n]!, under[n]!, under[i]!], edge, edge, alpha);
+    drawSlopedQuad(g, [face[i]!, face[n]!, under[n]!, under[i]!], rim, rim, alpha);
   }
 }
 
 /** A falling bay buckles along its middle into two folded halves. */
-function drawFoldedBay(g: Graphics, b: Building, roof: RoofSection, verts: Vert[], cols: RoofColors, faded: number, beforeCover?: () => void): void {
+function drawFoldedBay(g: Graphics, b: Building, roof: RoofSection, verts: Vert[], cols: RoofColors, faded: number, beforeCover?: () => void, rim = cols.edge): void {
   // Shrinking the torn covering slightly reveals the short steel members underneath.
   const cx = verts.reduce((s, v) => s + v.x, 0) / 4;
   const cy = verts.reduce((s, v) => s + v.y, 0) / 4;
@@ -127,7 +129,7 @@ function drawFoldedBay(g: Graphics, b: Building, roof: RoofSection, verts: Vert[
   const mid = (p: Vert, q: Vert) => ({ x: (p.x + q.x) / 2, y: (p.y + q.y) / 2, z: Math.max(.16, (p.z + q.z) / 2 - buckle) });
   const ab = mid(a, b0), dc = mid(d, c);
   // Give each folded half its own underside, rather than a rigid slab across the crease.
-  for (const face of [[a, ab, dc, d], [ab, b0, c, dc]]) drawRoofSlab(g, face, cols.edge, faded);
+  for (const face of [[a, ab, dc, d], [ab, b0, c, dc]]) drawRoofSlab(g, face, cols.edge, faded, faded, rim);
   beforeCover?.();
   drawSlopedQuad(g, [a, ab, dc, d], cols.top, cols.top, faded);
   drawSlopedQuad(g, [ab, b0, c, dc], shade(cols.top, 1 - buckle * .2), cols.top, faded);

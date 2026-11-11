@@ -2,6 +2,8 @@ import { createTown } from '../world/town';
 import { createDozer } from '../vehicle/dozer';
 import { stepWorld } from '../sim/worldSim';
 import { archetypeById, validateBuildingDefinition } from '../world/archetypes';
+// Frank Grimes is a regional landmark now: its package registers with the lazy landmark pack.
+import '../world/landmarkPack';
 import { fixtureSupported } from './interior';
 import { expect, it } from 'vitest';
 import { createBuildingFromArchetype, applyCellDamage, stepStructures } from './building';

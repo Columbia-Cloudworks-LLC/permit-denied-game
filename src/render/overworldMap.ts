@@ -2,7 +2,8 @@ import type { CountyProgress } from '../game/countyProgress';
 import type { SessionKind } from '../game/session';
 import type { AtlasData, AtlasRegion } from '../world/atlas';
 import { CAPITOL_COUNTY_INDEX, COUNTIES_PER_REGION, regionCounties, type CountyDef } from '../world/counties';
-import { REGIONAL_FLAVORS } from '../world/regionalCatalog';
+import { hazardPayLabel, weatherRisk } from '../game/weatherRisk';
+import { brandsForRegion, REGIONAL_FLAVORS } from '../world/regionalCatalog';
 import type { RegionDef } from '../world/regions';
 import { MENU_ICONS } from './menuIcons';
 import {
@@ -79,6 +80,7 @@ const ICO = {
   clock: ico('<circle cx="12" cy="12" r="8"/><path d="M12 7.5V12l3 2"/>'),
   pin: ico('<path d="M12 21s-6-5.6-6-10.5a6 6 0 0 1 12 0C18 15.4 12 21 12 21z"/><circle cx="12" cy="10.5" r="2"/>'),
   eye: fromMenu(MENU_ICONS.eye),
+  shop: ico('<path d="M4 10h16v10H4zM3 10l2-5h14l2 5M9.5 20v-6h5v6"/>'),
   caution: fromMenu(MENU_ICONS.caution),
   playing: fromMenu(MENU_ICONS.play),
 } as const;
@@ -399,6 +401,8 @@ export function countyCardHtml(region: RegionDef, progress: CountyProgress, view
   const level = county.level;
   const flavor = REGIONAL_FLAVORS[region.flavor];
   const signatures = [...flavor.signatures, ...county.archetype.signatures].slice(0, 3).map(spec => `<li>${escapeHtml(spec.label)}</li>`).join('');
+  // The chains this state or province actually stamps onto its storefronts, diners and canopies.
+  const brands = brandsForRegion(region).slice(0, 5).map(spec => `<li>${escapeHtml(spec.label)}</li>`).join('');
   const fact = (icon: string, label: string, value: string) => `<div><dt title="${label}">${icon}${sr(label)}</dt><dd>${value}</dd></div>`;
   const objective = view.kind === 'challenge'
     ? fact(ICO.target, 'Objective', `${sr('Demolish ')}${escapeHtml(level.landmark.label)}`)
@@ -421,6 +425,7 @@ export function countyCardHtml(region: RegionDef, progress: CountyProgress, view
 ${objective}
 ${fact(ICO.pin, 'Region', escapeHtml(flavor.label))}
 ${fact(ICO.eye, 'Watch for', `<ul class="watch-list">${signatures}</ul>`)}
+${brands ? fact(ICO.shop, 'Establishments', `<ul class="watch-list brand-list">${brands}</ul>`) : ''}
 </dl></details>
 ${lockNote}${runNote}
 </section>`;
@@ -437,7 +442,10 @@ export function sheetBarHtml(region: RegionDef, progress: CountyProgress, view: 
   const weather = view.weather(county.index);
   const effectOptions = WEATHER_DETAILS.map(id => `<option value="${id}"${id === effects ? ' selected' : ''}>${DETAIL_LABELS[id]}</option>`).join('');
   const weatherOptions = WEATHER_CONDITIONS.map(id => `<option value="${id}"${id === weather ? ' selected' : ''}>${weatherConditionLabel(view.season, id)}</option>`).join('');
-  const center = `<ol class="county-badges single">${badgeHtml(county, status)}</ol><div class="atlas-bar-intel"><p class="atlas-bar-title">${escapeHtml(county.shortName)}</p><label class="atlas-weather" title="Weather">${ICO.weather}${sr('Weather')}<select id="county-weather">${weatherOptions}</select></label><button type="button" class="weather-cycle" data-weather-cycle data-menu-action="cycle-weather" aria-label="Next weather" title="Next weather">↻</button><label class="atlas-weather" title="Weather effects">${ICO.effects}${sr('Effects')}<select id="county-effects">${effectOptions}</select></label></div>`;
+  // Weather only has stakes, and pay, in Time Challenge; Sandbox keeps it cosmetic and shows no badge.
+  const pay = view.kind === 'challenge' ? hazardPayLabel(weatherRisk(view.season, weather)) : '';
+  const hazard = pay ? `<span class="hazard-pay" title="Hazard Pay: bonus on this run's settled cash for working in this weather">${pay}</span>` : '';
+  const center = `<ol class="county-badges single">${badgeHtml(county, status)}</ol><div class="atlas-bar-intel"><p class="atlas-bar-title">${escapeHtml(county.shortName)}</p><label class="atlas-weather" title="Weather">${ICO.weather}${sr('Weather')}<select id="county-weather">${weatherOptions}</select></label><button type="button" class="weather-cycle" data-weather-cycle data-menu-action="cycle-weather" aria-label="Next weather" title="Next weather">↻</button>${hazard}<label class="atlas-weather" title="Weather effects">${ICO.effects}${sr('Effects')}<select id="county-effects">${effectOptions}</select></label></div>`;
   let go: string;
   if (run.current) go = `<button type="button" class="primary atlas-go" data-menu-action="resume">Resume ${escapeHtml(county.mapName)}</button>`;
   else if (status === 'locked') go = '<button type="button" class="primary atlas-go" data-menu-action="deploy" disabled aria-describedby="county-lock-note">Locked: Clear Counties 1–6</button>';

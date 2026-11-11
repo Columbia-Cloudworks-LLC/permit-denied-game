@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "id": "terminal-grain-coop",
+  "label": "TERMINAL GRAIN CO-OP",
+  "w": 14,
+  "d": 8,
+  "floors": 8,
+  "kind": "industrial",
+  "construction": "concrete-bearing",
+  "roof": "flat",
+  "theme": "warehouse",
+  "windowStride": 4,
+  "features": {"porch": false, "awning": false, "parapet": false, "chimney": false, "garage": false},
+  "zones": {"residential": 0, "commercial": 0, "industrial": 0},
+  "traits": {"use": ["grain-storage", "landmark"], "form": ["terminal-elevator", "headhouse-and-cylinders"], "scale": ["regional"]},
+  "campaign": {"levels": {"county": 1, "township": 1}, "landmarkOnly": true, "urbanBands": ["rural", "village-main-street", "suburban"]},
+  "partitions": false,
+  "connections": [],
+  "sections": [
+    {"id": "headhouse", "role": "elevator-machinery", "x": 5, "y": 0, "w": 4, "d": 8, "floor": 0, "floors": 1, "layout": "workhouse.layout.json"},
+    {"id": "legs", "role": "elevator-legs", "x": 5, "y": 0, "w": 4, "d": 8, "floor": 1, "floors": 6, "layout": "shell.layout.json"},
+    {"id": "cupola", "role": "distributor", "x": 5, "y": 2, "w": 4, "d": 4, "floor": 7, "floors": 1, "layout": "shell.layout.json"},
+    {"id": "bin-west", "role": "silo-base", "x": 0, "y": 3, "w": 5, "d": 5, "floor": 0, "floors": 1, "layout": "shell.layout.json"},
+    {"id": "bin-east", "role": "silo-base", "x": 9, "y": 3, "w": 5, "d": 5, "floor": 0, "floors": 1, "layout": "shell.layout.json"},
+    {"id": "scale-house", "role": "office", "x": 9, "y": 0, "w": 5, "d": 3, "floor": 0, "floors": 2, "layout": "shell.layout.json"},
+    {"id": "dryer", "role": "dryer", "x": 0, "y": 0, "w": 5, "d": 3, "floor": 0, "floors": 3, "layout": "shell.layout.json"}
+  ],
+  "silos": [
+    {"id": "bin-west", "gx": 0, "gy": 3, "diameter": 5, "height": 12.5, "minimumSupports": 5, "feed": {"gx": 5, "gy": 4, "floor": 6}},
+    {"id": "bin-east", "gx": 9, "gy": 3, "diameter": 5, "height": 11.5, "minimumSupports": 5, "feed": {"gx": 8, "gy": 4, "floor": 6}}
+  ],
+  "openings": [
+    {"floor": 0, "side": "south", "at": 0.5, "kind": "loading", "cell": {"x": 6, "y": 7}}
+  ],
+  "facadeDetails": [
+    {"id": "pit-door", "kind": "roll-up-door", "floor": 0, "gx": 5, "gy": 7, "side": "south", "width": 3},
+    {"id": "coop-sign", "kind": "rooftop-sign", "floor": 7, "gx": 5, "gy": 5, "side": "south", "width": 3, "text": "GRAIN CO OP", "faceColor": 15658734, "trimColor": 3355443, "textColor": 2263842},
+    {"id": "coop-board", "kind": "signboard", "floor": 5, "gx": 8, "gy": 2, "side": "east", "width": 4, "text": "GRAIN CO OP", "faceColor": 15658734, "trimColor": 3355443, "textColor": 2263842}
+  ]
+}

@@ -2,7 +2,7 @@ import { FLOOR_Z } from '../game/constants';
 import { materialHp, type Building, type Cell } from './types';
 import { displacedRoofVerts, roofCoverage, heightOnPoly } from './roof';
 
-export const FACADE_DETAIL_KINDS = ['signboard', 'marquee', 'clock-face', 'roll-up-door', 'porch', 'fire-escape', 'entry-steps', 'display-glazing', 'roof-duct', 'dormer'] as const;
+export const FACADE_DETAIL_KINDS = ['signboard', 'marquee', 'clock-face', 'roll-up-door', 'porch', 'fire-escape', 'entry-steps', 'display-glazing', 'roof-duct', 'dormer', 'rooftop-sign'] as const;
 export interface FacadeDetailDef {
   id: string;
   kind: typeof FACADE_DETAIL_KINDS[number];
@@ -11,17 +11,23 @@ export interface FacadeDetailDef {
   /** Integer span along the frontage, in cells. Every cell is a required mounting point. */
   width: number;
   text?: string;
+  /** Sign colours (signboard, marquee, rooftop-sign): panel, frame and lettering. Defaults apply when omitted. */
+  faceColor?: number; trimColor?: number; textColor?: number;
 }
 
+/** Roof-mounted kinds: owned by the covering roof panel, not a wall. */
+export const onRoof = (d: FacadeDetailDef): boolean => d.kind === 'roof-duct' || d.kind === 'dormer' || d.kind === 'rooftop-sign';
+
 export function facadeDetailSupports(b: Building, d: FacadeDetailDef): Cell[] {
-  if ((d.kind === 'roof-duct' || d.kind === 'dormer')) return (detailRoof(b, d)?.support ?? []).map(p => b.grid[d.floor]?.[p.gx]?.[p.gy]).filter((c): c is Cell => Boolean(c));
+  if (onRoof(d)) return (detailRoof(b, d)?.support ?? []).map(p => b.grid[d.floor]?.[p.gx]?.[p.gy]).filter((c): c is Cell => Boolean(c));
   return Array.from({ length: d.width }, (_, i) =>
     b.grid[d.floor]?.[d.gx + (d.side === 'south' ? i : 0)]?.[d.gy + (d.side === 'east' ? i : 0)])
     .filter((c): c is Cell => Boolean(c));
 }
 
-function detailRoof(b: Building, d: FacadeDetailDef) {
-  return b.roofs.find(r => r.floor === d.floor && roofCoverage(r).some(p => p.gx === d.gx && p.gy === d.gy));
+function detailRoof(b: Building, d: FacadeDetailDef, i = 0) {
+  const gx = d.gx + (d.side === 'south' ? i : 0), gy = d.gy + (d.side === 'east' ? i : 0);
+  return b.roofs.find(r => r.floor === d.floor && roofCoverage(r).some(p => p.gx === gx && p.gy === gy));
 }
 
 /** Roof attachments start on the original covering plane and share its hinge/drop. */
@@ -41,11 +47,13 @@ export function initializeFacadeDetails(b:Building) {
  * Display glass uses the mount's explicit glass cladding HP; the frame remains after a pane breaks.
  * Any lost mounting point tears the detail away; it disappears with the falling wall debris. */
 export function facadeDetailPose(b: Building, d: FacadeDetailDef) {
-  if ((d.kind === 'roof-duct' || d.kind === 'dormer')) {
+  if (onRoof(d)) {
     const roof = detailRoof(b, d);
     if (!roof || roof.state === 'gone') return null;
+    // A wide rooftop sign needs every panel under its span; it follows the first one's hinge.
+    for (let i = 1; i < d.width; i++) if ((detailRoof(b, d, i)?.state ?? 'gone') === 'gone') return null;
     return { ...roofDetailPoint(b, d, 0, 0, 0), scaleZ: 1 - roof.fallT * .85,
-      width: b.cellSize, damaged: roof.state !== 'intact', fallT: roof.fallT, panes: undefined };
+      width: d.width * b.cellSize, damaged: roof.state !== 'intact', fallT: roof.fallT, panes: undefined };
   }
   const supports = facadeDetailSupports(b, d);
   if (supports.length !== d.width || supports.some(c => c.state === 'gone')) return null;

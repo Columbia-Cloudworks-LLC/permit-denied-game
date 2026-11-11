@@ -11,6 +11,7 @@ export function mapGroundCondition(biome: BiomeProfile | BiomeId): GroundConditi
     case "temperate-broadleaf":
     case "mixed-woodland":
     case "agricultural-plain":
+    case "arid-scrub":
       return "clear";
     default: {
       const _never: never = id;

@@ -1,0 +1,6 @@
+{
+  "partitions": false,
+  "rooms": [
+    {"id": "machinery", "kind": "production", "floor": 0, "x": 0, "y": 0, "w": 1, "d": 1, "finish": "concrete", "contents": [{"id": "leg-drive", "kind": "machine", "x": 0.15, "y": 0.08, "w": 0.5, "d": 0.2, "h": 1.5, "rotation": 0}, {"id": "sack-pallet", "kind": "pallet", "x": 0.2, "y": 0.5, "w": 0.4, "d": 0.15, "h": 0.8, "rotation": 0}]}
+  ]
+}

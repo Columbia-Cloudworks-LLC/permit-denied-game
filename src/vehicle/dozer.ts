@@ -120,6 +120,8 @@ export interface DriveInput {
   turnMul?: number;
   /** JATO burn: forced full throttle at this speed with this share of steering. */
   boost?: { speed: number; turn: number };
+  /** Lateral grip multiplier; wet Time Challenge ground off the pavement runs below 1. */
+  grip?: number;
 }
 
 export function stepDozer(d: Dozer, input: DriveInput, dt: number): void {
@@ -140,7 +142,7 @@ export function stepDozer(d: Dozer, input: DriveInput, dt: number): void {
   const nextAlong = nextAlongSpeed(d, input, along, Math.min(1, Math.abs(d.yaw) / DOZER.steer), dt);
   const latX = d.vx - along * f.x;
   const latY = d.vy - along * f.y;
-  const latScale = Math.max(0, 1 - DOZER.lateralGrip * dt);
+  const latScale = Math.max(0, 1 - DOZER.lateralGrip * (input.grip ?? 1) * dt);
   d.vx = nextAlong * f.x + latX * latScale;
   d.vy = nextAlong * f.y + latY * latScale;
   capDozerSpeed(d, input);

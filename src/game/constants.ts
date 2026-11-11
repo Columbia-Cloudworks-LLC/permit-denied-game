@@ -15,6 +15,11 @@ export const ISO_Z = 14;
 
 /** Police cruise speed: the fastest thing on the county's roads, and the yardstick for Drivetrain upgrades. */
 export const POLICE_CRUISE = 16;
+/** Cash for wrecking a Code Enforcement cruiser, paid into run escrow. */
+export const CRUISER_BOUNTY = 150;
+/** The demolition spree meter drains this many cells a second; past `SPREE_BACKUP` a second cruiser rolls. */
+export const SPREE_DRAIN = 6;
+export const SPREE_BACKUP = 120;
 
 export const MATCH_SECONDS = 180;
 export const CASH_TARGET = 1800;

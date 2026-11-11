@@ -233,7 +233,7 @@ function drawDoorBay(bay: SouthBay, b: Building, cell: Cell): void {
   }
   const { g, x0, y1, cs, z0 } = bay;
   if (b.features.awning) {
-    drawIsoBox(g, x0 - 0.04, y1 - cs * 0.28, cs + 0.08, 0.38, z0 + STORY_H * 0.62, 0.1, PAL.awning, PAL.brickDark, PAL.awning, alpha);
+    drawIsoBox(g, x0 - 0.04, y1 - cs * 0.28, cs + 0.08, 0.38, z0 + STORY_H * 0.62, 0.1, b.fasciaColor ?? PAL.awning, PAL.brickDark, b.fasciaColor ?? PAL.awning, alpha);
   }
   if (b.features.porch) {
     drawIsoBox(g, x0 + cs * 0.15, y1 - cs * 0.18, cs * 0.7, 0.55, 0, 0.12, PAL.woodTop, PAL.woodDark, PAL.wood, alpha);

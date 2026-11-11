@@ -951,6 +951,7 @@ dt { color: #d9b96f; font: bold 11px/1.5 var(--mono); } dd { margin: 0; color: #
 .county-card .credits-list.county-facts > div { grid-template-columns: 22px minmax(0, 1fr); gap: 8px; align-items: start; }
 .county-card dt { display: grid; place-items: center; height: 20px; }
 .county-card dt .atlas-ico { width: 17px; height: 17px; }
+.hazard-pay { padding: 5px 8px; border: 1px solid #f2c218; border-radius: 3px; background: #2a2418; color: #f2c218; font: 700 11px/1.2 var(--mono); letter-spacing: .08em; white-space: nowrap; }
 .watch-list { display: flex; flex-wrap: wrap; gap: 4px; margin: 0; padding: 0; list-style: none; }
 .watch-list li { padding: 1px 7px; border: 1px solid #2c252055; border-radius: 3px; background: #fff8e666; font-size: 12px; }
 .dossier-status { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; }

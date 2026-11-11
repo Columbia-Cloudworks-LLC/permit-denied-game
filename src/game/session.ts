@@ -238,6 +238,8 @@ export interface HomeYardLayoutInputs {
   yardTier: number;
   countiesCleared: number;
   lifetimeEarned: number;
+  /** Demolished regional brand ids; the Trophy Lot hangs one salvaged sign for each. */
+  brands?: string[];
 }
 
 export function homeYardRules(seed: number, homeYard?: HomeYardLayoutInputs): SessionRules {

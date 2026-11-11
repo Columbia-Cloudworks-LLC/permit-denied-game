@@ -3,7 +3,7 @@ import { SIM_DT } from '../game/constants';
 import { ParticlePool } from '../fx/particles';
 import { ARCHETYPES, validateBuildingDefinition } from '../world/archetypes';
 import { applyCellDamage, createBuildingFromDefinition, stepStructures } from './building';
-import { facadeDetailPose, facadeDetailSupports, FACADE_DETAIL_KINDS } from './facadeDetails';
+import { facadeDetailPose, facadeDetailSupports, FACADE_DETAIL_KINDS, onRoof } from './facadeDetails';
 
 describe('mounted facade details', () => {
   it.each(['roof-duct', 'dormer'] as const)('rejects %s on the wrong roof or spanning multiple mounting cells', kind => {
@@ -34,7 +34,7 @@ describe('mounted facade details', () => {
     for (let i = 0; i < 180; i++) stepStructures([b], SIM_DT, particles, []);
     expect(facadeDetailPose(b, detail)).toEqual(initial);
     const mounts = facadeDetailSupports(b, detail);
-    for (const c of (kind === 'roof-duct' || kind === 'dormer') ? mounts : mounts.slice(0, 1))
+    for (const c of onRoof(detail) ? mounts : mounts.slice(0, 1))
       applyCellDamage(b, c, 10000, 0, 1, new ParticlePool(), []);
     let sawMovement = false;
     for (let i = 0; i < 300; i++) {
@@ -48,6 +48,39 @@ describe('mounted facade details', () => {
     // Tall shells absorb local facade loss directly into the aggregate pile.
     expect(sawMovement).toBe(!b.coreCollapse);
     expect(facadeDetailPose(b, detail)).toBeNull();
+  });
+
+  it('mounts a rooftop sign 1-3 cells wide on a flat or canopy roof edge only', () => {
+    const a = structuredClone(ARCHETYPES.find(a => a.id === 'service-station-canopy')!);
+    const sign = a.facadeDetails!.find(d => d.kind === 'rooftop-sign')!;
+    expect(validateBuildingDefinition(a)).toEqual([]);
+    sign.width = 3;
+    expect(validateBuildingDefinition(a)).toEqual([]);
+    sign.width = 4;
+    expect(validateBuildingDefinition(a).join(' ')).toContain('Rooftop signs span 1-3 cells');
+    sign.width = 2; sign.gy = 3;
+    expect(validateBuildingDefinition(a).join(' ')).toContain('exposed mounting cells');
+    sign.gy = 6; a.roof = 'gable';
+    expect(validateBuildingDefinition(a).join(' ')).toContain('Rooftop signs span 1-3 cells');
+  });
+
+  it('accepts sign colours as 24-bit integers and rejects anything else', () => {
+    const a = structuredClone(ARCHETYPES.find(a => a.id === 'service-station-canopy')!);
+    const sign = a.facadeDetails!.find(d => d.kind === 'rooftop-sign')!;
+    Object.assign(sign, { faceColor: 0xc8102e, trimColor: 0, textColor: 0xffffff });
+    expect(validateBuildingDefinition(a)).toEqual([]);
+    for (const bad of [-1, 0x1000000, 1.5]) {
+      sign.faceColor = bad;
+      expect(validateBuildingDefinition(a).join(' ')).toContain('Invalid facade detail');
+    }
+  });
+
+  it('spans the rooftop sign across its cells and drops it when any panel under it is gone', () => {
+    const a = ARCHETYPES.find(a => a.id === 'service-station-canopy')!;
+    const b = createBuildingFromDefinition(a, 'CANOPY', 0, 0), sign = b.facadeDetails.find(d => d.kind === 'rooftop-sign')!;
+    expect(facadeDetailPose(b, sign)!.width).toBe(sign.width * b.cellSize);
+    b.roofs.forEach(roof => { roof.state = 'gone'; });
+    expect(facadeDetailPose(b, sign)).toBeNull();
   });
 
   it('rejects mounting inside the footprint and unknown lettering', () => {

@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "id": "granite-statehouse",
+  "label": "GRANITE STATEHOUSE",
+  "w": 8,
+  "d": 7,
+  "floors": 6,
+  "kind": "shop",
+  "construction": "concrete-bearing",
+  "roof": "flat",
+  "theme": "civic",
+  "windowStride": 2,
+  "features": {"porch": false, "awning": false, "parapet": true, "chimney": false, "garage": false},
+  "zones": {"residential": 0, "commercial": 0, "industrial": 0},
+  "traits": {"use": ["statehouse", "landmark"], "form": ["stepped-capitol"], "style": ["civic"], "scale": ["capitol"]},
+  "campaign": {"levels": {"governors-mansion": 1}, "landmarkOnly": true, "urbanBands": ["estate"]},
+  "partitions": false,
+  "connections": [],
+  "sections": [
+    {"id": "rotunda", "role": "rotunda", "x": 0, "y": 0, "w": 8, "d": 7, "floor": 0, "floors": 1, "layout": "rotunda.layout.json"},
+    {"id": "chambers", "role": "chambers", "x": 0, "y": 0, "w": 8, "d": 7, "floor": 1, "floors": 1, "layout": "shell.layout.json"},
+    {"id": "tower", "role": "tower", "x": 2, "y": 1, "w": 4, "d": 4, "floor": 2, "floors": 3, "layout": "shell.layout.json"},
+    {"id": "lantern", "role": "lantern", "x": 3, "y": 2, "w": 2, "d": 2, "floor": 5, "floors": 1, "layout": "shell.layout.json"}
+  ],
+  "openings": [
+    {"floor": 0, "side": "south", "at": 0.5, "kind": "door"}
+  ],
+  "facadeDetails": [
+    {"id": "portico", "kind": "porch", "floor": 0, "gx": 2, "gy": 6, "side": "south", "width": 4},
+    {"id": "capitol-steps", "kind": "entry-steps", "floor": 0, "gx": 2, "gy": 6, "side": "south", "width": 4},
+    {"id": "state-sign", "kind": "signboard", "floor": 1, "gx": 2, "gy": 6, "side": "south", "width": 4, "text": "STATEHOUSE"},
+    {"id": "south-clock", "kind": "clock-face", "floor": 4, "gx": 2, "gy": 4, "side": "south", "width": 4},
+    {"id": "east-clock", "kind": "clock-face", "floor": 4, "gx": 5, "gy": 1, "side": "east", "width": 4}
+  ]
+}

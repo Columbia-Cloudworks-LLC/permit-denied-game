@@ -32,6 +32,10 @@ export interface PlayerCareerProfile {
   walletBalance: number;
   lifetimeEarnedCash: number;
   lifetimeCellsDestroyed: number;
+  /** Code Enforcement cruisers wrecked in paying runs. */
+  lifetimeCruisersWrecked: number;
+  /** Regional brand ids demolished in paying runs; the Trophy Lot hangs their signs. */
+  brandTrophies: string[];
   coreUpgrades: Record<CoreTrack, number>;
   attachments: {
     unlockedTiers: Partial<Record<AttachmentId, AttachmentTier>>;
@@ -68,6 +72,8 @@ export function emptyProfile(): PlayerCareerProfile {
     walletBalance: 0,
     lifetimeEarnedCash: 0,
     lifetimeCellsDestroyed: 0,
+    lifetimeCruisersWrecked: 0,
+    brandTrophies: [],
     coreUpgrades: { drivetrain: 0, ballast: 0, hydraulics: 0, salvage: 0 },
     attachments: { unlockedTiers: {}, equippedBladeSlot: null, equippedAuxSlot: null },
     cosmetics: { unlockedIds: [DEFAULT_LIVERY], activeLiveryId: DEFAULT_LIVERY, yardTier: 0 },
@@ -76,6 +82,8 @@ export function emptyProfile(): PlayerCareerProfile {
 }
 
 const wholeDollars = (value: unknown): number => (typeof value === 'number' && Number.isFinite(value) && value > 0 ? Math.floor(value) : 0);
+/** Unique brand slugs, oldest first, capped so a profile cannot grow without bound. */
+const brandIds = (value: unknown): string[] => [...new Set(Array.isArray(value) ? value.filter((id): id is string => typeof id === 'string' && /^[a-z0-9-]{1,32}$/.test(id)) : [])].slice(0, 64);
 const level = (value: unknown, max: number): number => (typeof value === 'number' && Number.isFinite(value) ? Math.max(0, Math.min(max, Math.floor(value))) : 0);
 
 /** Accepts anything from storage; a corrupt or foreign record becomes a valid profile. */
@@ -87,6 +95,9 @@ export function normalizeProfile(raw: unknown): PlayerCareerProfile {
   profile.walletBalance = wholeDollars(r.walletBalance);
   profile.lifetimeEarnedCash = wholeDollars(r.lifetimeEarnedCash);
   profile.lifetimeCellsDestroyed = wholeDollars(r.lifetimeCellsDestroyed);
+  // Both fields postdate the first v1 records; a record without them loads as zero and none.
+  profile.lifetimeCruisersWrecked = wholeDollars(r.lifetimeCruisersWrecked);
+  profile.brandTrophies = brandIds(r.brandTrophies);
   for (const track of CORE_TRACKS) profile.coreUpgrades[track] = level(r.coreUpgrades?.[track], CORE_MAX_LEVEL);
   for (const id of ATTACHMENT_IDS) {
     const tier = level(r.attachments?.unlockedTiers?.[id], 3);
@@ -199,6 +210,8 @@ export interface SettlementInput {
   replay: boolean;
   /** First clear of a capitol (County 7) county. */
   capitolFirstClear: boolean;
+  /** Time Challenge weather bonus on escrow, e.g. 0.2 for a storm. */
+  hazardPay?: number;
 }
 
 export interface Settlement {
@@ -206,6 +219,8 @@ export interface Settlement {
   escrow: number;
   timeBonus: number;
   bounty: number;
+  /** Weather Hazard Pay, already folded into `escrow`. */
+  hazard: number;
   rate: number;
   replayMul: number;
   label: string;
@@ -215,19 +230,22 @@ export const TIME_BONUS_PER_SECOND = price(250);
 export const CAPITOL_BOUNTY = price(35000);
 
 export function settleRun(input: SettlementInput): Settlement {
-  const escrow = Math.max(0, Math.floor(input.escrow));
+  const base = Math.max(0, Math.floor(input.escrow));
   if (input.mode === 'sandbox') {
-    return { payout: Math.floor(0.25 * escrow), escrow, timeBonus: 0, bounty: 0, rate: 0.25, replayMul: 1, label: 'Sandbox salvage (25%)' };
+    return { payout: Math.floor(0.25 * base), escrow: base, timeBonus: 0, bounty: 0, hazard: 0, rate: 0.25, replayMul: 1, label: 'Sandbox salvage (25%)' };
   }
+  const hazard = Math.floor(base * Math.max(0, input.hazardPay ?? 0));
+  const escrow = base + hazard;
   const replayMul = input.replay ? 0.5 : 1;
+  const pay = hazard ? ' · hazard pay +$' + hazard.toLocaleString('en-US') : '';
   if (input.outcome === 'win') {
     const timeBonus = Math.floor(TIME_BONUS_PER_SECOND * Math.max(0, input.timeRemaining));
     const bounty = input.capitolFirstClear ? CAPITOL_BOUNTY : 0;
     const payout = Math.floor((escrow + timeBonus) * replayMul) + bounty;
-    return { payout, escrow, timeBonus, bounty, rate: 1, replayMul, label: input.replay ? 'Contract settled (replay ×0.5)' : 'Contract settled' };
+    return { payout, escrow, timeBonus, bounty, hazard, rate: 1, replayMul, label: (input.replay ? 'Contract settled (replay ×0.5)' : 'Contract settled') + pay };
   }
-  return { payout: Math.floor(0.2 * escrow * replayMul), escrow, timeBonus: 0, bounty: 0, rate: 0.2, replayMul,
-    label: input.outcome === 'bailout' ? 'Bailout salvage (20%)' : 'Failed contract salvage (20%)' };
+  return { payout: Math.floor(0.2 * escrow * replayMul), escrow, timeBonus: 0, bounty: 0, hazard, rate: 0.2, replayMul,
+    label: (input.outcome === 'bailout' ? 'Bailout salvage (20%)' : 'Failed contract salvage (20%)') + pay };
 }
 
 export interface CareerStoreBackend {
@@ -276,8 +294,10 @@ export class CareerStore {
     return careerLoadout(this.profile);
   }
 
-  bank(payout: number, cellsDestroyed: number, wear: number): void {
+  bank(payout: number, cellsDestroyed: number, wear: number, cruisers = 0, brands: readonly string[] = []): void {
     const dollars = wholeDollars(payout);
+    this.profile.lifetimeCruisersWrecked += wholeDollars(cruisers);
+    this.profile.brandTrophies = brandIds([...this.profile.brandTrophies, ...brands]);
     this.profile.walletBalance += dollars;
     this.profile.lifetimeEarnedCash += dollars;
     this.profile.lifetimeCellsDestroyed += wholeDollars(cellsDestroyed);

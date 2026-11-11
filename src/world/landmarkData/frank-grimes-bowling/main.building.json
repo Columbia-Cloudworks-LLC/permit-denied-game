@@ -34,6 +34,15 @@
       "storefront"
     ]
   },
+  "campaign": {
+    "levels": {
+      "suburb": 1
+    },
+    "landmarkOnly": true,
+    "urbanBands": [
+      "suburban"
+    ]
+  },
   "partitions": true,
   "sections": [
     {

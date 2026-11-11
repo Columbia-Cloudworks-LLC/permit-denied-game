@@ -64,6 +64,9 @@
       }
     ]
   },
+  "facadeDetails": [
+    { "id": "canopy-sign", "kind": "rooftop-sign", "floor": 0, "gx": 3, "gy": 6, "side": "south", "width": 2, "text": "GAS" }
+  ],
   "campaign": {
     "levels": {
       "county": 1,

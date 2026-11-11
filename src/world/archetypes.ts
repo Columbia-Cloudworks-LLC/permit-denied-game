@@ -12,6 +12,7 @@ export interface Archetype {
   floorVoids?: { floor:number; x:number; y:number; w:number; d:number }[];
   elevatedTank?: import('../structure/elevatedTank').ElevatedTankDef;
   facadeDetails?: FacadeDetailDef[];
+  fasciaColor?: number;
   id: string;
   kind: BuildingKind;
   label: string;
@@ -76,10 +77,10 @@ const buildingShape: Shape = { version: 'number', id: 'string', kind: 'string', 
   'silos?': [{ id:'string',gx:'number',gy:'number',diameter:'number',height:'number',minimumSupports:'number',feed:{gx:'number',gy:'number',floor:'number'} }],
   'openDecks?': { columns: [{ x: 'number', y: 'number' }] },
   'floorVoids?': [{ floor:'number', x:'number', y:'number', w:'number', d:'number' }],
-  'cellSize?': 'number', 'generationOrder?': 'number',
+  'cellSize?': 'number', 'generationOrder?': 'number', 'fasciaColor?': 'number',
   'traits?': { 'use?': ['string'], 'form?': ['string'], 'construction?': ['string'], 'style?': ['string'], 'era?': ['string'], 'scale?': ['string'] },
   features: { porch: 'boolean', awning: 'boolean', parapet: 'boolean', chimney: 'boolean', garage: 'boolean' },
-  'facadeDetails?': [{ id: 'string', kind: 'string', floor: 'number', gx: 'number', gy: 'number', side: 'string', width: 'number', 'text?': 'string' }],
+  'facadeDetails?': [{ id: 'string', kind: 'string', floor: 'number', gx: 'number', gy: 'number', side: 'string', width: 'number', 'text?': 'string', 'faceColor?': 'number', 'trimColor?': 'number', 'textColor?': 'number' }],
   zones: { residential: 'number', commercial: 'number', industrial: 'number' },
   'campaign?': { levels: { '*': 'number' }, 'maxRepeats?': 'number', 'landmarkOnly?': 'boolean', 'zones?': ['string'], 'family?': 'string', 'exception?': 'boolean', 'urbanBands?': ['string'], 'streetRole?': 'string' } };
 
@@ -208,11 +209,13 @@ function facadeDetailIssues(a: Archetype, issues: string[]): void {
 function facadeDetailValid(a: Archetype, detail: FacadeDetailDef): boolean {
   return !!detail.id.trim() && FACADE_DETAIL_KINDS.includes(detail.kind) && DETAIL_SIDES.includes(detail.side) &&
     [detail.floor, detail.gx, detail.gy, detail.width].every(Number.isInteger) && within(detail.width, 1, 4) && detail.floor >= 0 && detail.floor < a.floors &&
-    (detail.text === undefined || /^[A-Z0-9 ]{1,16}$/.test(detail.text));
+    (detail.text === undefined || /^[A-Z0-9 ]{1,16}$/.test(detail.text)) &&
+    [detail.faceColor, detail.trimColor, detail.textColor].every(c => c === undefined || (Number.isInteger(c) && within(c, 0, 0xffffff)));
 }
 const topRoofMount = (a: Archetype, detail: FacadeDetailDef, roof: RoofStyle): boolean => a.roof === roof && detail.width === 1 && detail.floor === a.floors - 1;
 function facadeDetailMountIssues(a: Archetype, detail: FacadeDetailDef, issues: string[]): void {
   if (detail.kind === 'roof-duct' && !topRoofMount(a, detail, 'flat')) issues.push('Roof ducts require a single mounting cell on the top flat roof');
+  if (detail.kind === 'rooftop-sign' && !(a.roof === 'flat' && detail.width <= 3 && detail.floor === a.floors - 1)) issues.push('Rooftop signs span 1-3 cells on the top flat roof');
   if (detail.kind === 'dormer' && !topRoofMount(a, detail, 'gable')) issues.push('Dormers require a single mounting cell on the top gable roof');
   if ((detail.kind === 'fire-escape' && detail.floor === 0) || (GROUND_DETAILS.includes(detail.kind) && detail.floor !== 0))
     issues.push('Invalid mounting floor for facade detail ' + detail.id);
@@ -463,6 +466,10 @@ export function occupiedMask(a: Archetype, w = a.w, d = a.d, floors = a.floors):
 export const BUILDING_FILES = parseContentFiles(import.meta.glob<string>(['./data/**/*.building.json', './data/**/*.layout.json', './data/**/*.construction.json'], { eager: true, query: '?raw', import: 'default' }));
 export const ARCHETYPES = parseBuildingPackages(BUILDING_FILES);
 const BY_ID = new Map(ARCHETYPES.map(a => [a.id, a]));
+/** Lazily loaded packages (regional landmarks) join the id lookup; `ARCHETYPES` stays the eager roster. */
+export function registerArchetypes(extra: readonly Archetype[]): void {
+  for (const a of extra) BY_ID.set(a.id, a);
+}
 export function archetypeById(id: string): Archetype {
   const found = BY_ID.get(id);
   if (!found) throw new Error(`Unknown archetype ${id}`);

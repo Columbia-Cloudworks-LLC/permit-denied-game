@@ -31,7 +31,9 @@ import { stepWorld } from "../sim/worldSim";
 import type { Bird, WorldEvent } from "../structure/types";
 import { createDozer, dozerForward, dozerSpeed, stepDozer } from "../vehicle/dozer";
 import { createRoadVehicle, replaceRoadVehicle } from "../vehicle/roadVehicle";
-import { createTraffic, requestPolice, trafficConfigFor } from "../vehicle/traffic";
+import { createTraffic, raiseEnforcement, requestPolice, trafficConfigFor } from "../vehicle/traffic";
+import { roadSurfaceAt } from "../world/roads";
+import { weatherRisk, type WeatherRisk } from "./weatherRisk";
 import { pickVerificationRoute } from "../world/routing";
 import { worldBoundsToScreen, worldToScreen } from "../world/iso";
 import { createTown, type Town } from "../world/town";
@@ -58,7 +60,7 @@ import {
   startCampaign,
   type CampaignRun,
 } from "./campaignRun";
-import { CAMPAIGN_LEVELS, type CampaignLevelId } from "./campaign";
+import { CAMPAIGN_LEVELS, type CampaignLevelDef, type CampaignLevelId } from "./campaign";
 import { frameTownOverview } from "./overviewFrame";
 import { generationLevel, rulesForTestMap, showCampaignHud } from "./sessionTransition";
 import { urbanDebugDump } from "../world/urbanGeography";
@@ -67,8 +69,11 @@ import {
   CASH_TARGET,
   CELL,
   COPY,
+  CRUISER_BOUNTY,
   DOZER,
   MATCH_SECONDS,
+  SPREE_BACKUP,
+  SPREE_DRAIN,
   SIM_DT,
   SIM_MAX_STEPS,
   SIM_STEP_BUDGET_MS,
@@ -96,7 +101,7 @@ import { PlaythroughRun, playthroughDigest } from "./playthroughRun";
 import type { Playthrough, PlaythroughAction } from "../debug/playthrough";
 import { downloadPlaythrough, PlaythroughPanel } from "../render/playthroughPanel";
 import { version as buildVersion } from "../../package.json";
-import { SIGNATURE_BONUS, type RegionalPlacement } from "../world/regionalPlacement";
+import { regionalLevel, SIGNATURE_BONUS, type RegionalPlacement } from "../world/regionalPlacement";
 import { loadOverworld, type OverworldModule } from "./overworldLoader";
 import type { CountyProgress } from "./countyProgress";
 import type { CountyDeployment } from "./session";
@@ -176,6 +181,12 @@ class Game {
   private cashCarry = 0;
   private escrow = 0;
   private runCells = 0;
+  /** Code Enforcement cruisers wrecked this run; each paid `CRUISER_BOUNTY` into escrow. */
+  private runCruisers = 0;
+  /** Recent demolition, in cells, draining at `SPREE_DRAIN` a second: a spike calls for backup. */
+  private spree = 0;
+  /** Weather stakes for a Time Challenge county whose weather was set on the state sheet. */
+  private risk: WeatherRisk | null = null;
   private runCountyCleared = false;
   private settled = false;
   /** This run was rebuilt from a recording; it stays non-paying for its whole life. */
@@ -407,12 +418,12 @@ class Game {
       showcase: !!this.rules.demo,
       testMap: this.rules.testMap,
       topology: this.rules.topology,
-      campaign: level,
+      campaign: level && regionalLevel(level, this.placement = this.regionalPlacement()),
       season: this.rules.season,
       biome: biomeById(this.rules.biomeId),
       weatherDetail: this.rules.weatherDetail,
       weather: this.rules.weather,
-      regional: this.regionalPlacement(),
+      regional: this.placement,
     });
     const ranch = this.rules.demo || this.rules.ranchFocus
       ? this.town.buildings.find((b) => b.archetypeId === (this.rules.demo ?? "ranch"))
@@ -436,6 +447,17 @@ class Game {
    * would quietly build a different town (and drift any replay). Every path that sets county
    * rules loads the overworld first.
    */
+  /** The built town's regional placement, and the level as that county plays it (regional landmark included). */
+  private placement: RegionalPlacement | undefined;
+  private countyLevel: CampaignLevelDef | undefined;
+
+  private levelOf(campaign: CampaignRun): CampaignLevelDef {
+    const base = currentLevel(campaign), landmark = this.placement?.landmark;
+    if (!landmark) return base;
+    if (this.countyLevel?.id !== base.id || this.countyLevel.landmark !== landmark) this.countyLevel = regionalLevel(base, this.placement);
+    return this.countyLevel;
+  }
+
   private regionalPlacement(): RegionalPlacement | undefined {
     if (!this.rules.regionId || !this.rules.countyIndex) return undefined;
     if (!this.overworld) throw new Error(`County ${this.rules.regionId}#${this.rules.countyIndex} built before the overworld loaded`);
@@ -543,6 +565,9 @@ class Game {
     this.cashCarry = 0;
     this.escrow = 0;
     this.runCells = 0;
+    this.runCruisers = 0;
+    this.spree = 0;
+    this.risk = this.rules.weather && showCampaignHud(this.rules, campaign) ? weatherRisk(this.town.season, this.rules.weather) : null;
     this.settled = false;
     this.replayRun = false;
     this.runEligible = !this.rules.home && !this.rules.testMap && !this.rules.job && !this.rules.towerTest && !this.rules.demo;
@@ -607,10 +632,12 @@ class Game {
       timeRemaining: this.timeLeft,
       replay: this.runCountyCleared,
       capitolFirstClear: outcome === "win" && !!county && county.index === CAPITOL_INDEX && !this.runCountyCleared,
+      hazardPay: this.risk?.hazardPay,
     });
     this.settlement = settlement;
     this.bankedUntil = performance.now() + 6000;
-    this.career.bank(settlement.payout, this.runCells, Math.min(1, this.runCells / 600));
+    const brands = this.town.buildings.filter(b => b.brandId && b.collapseBonusPaid).map(b => b.brandId!);
+    this.career.bank(settlement.payout, this.runCells, Math.min(1, this.runCells / 600), this.runCruisers, brands);
   }
 
   /** The yard's layout inputs: the snapshot taken on entry (and recorded with it), else the live career. */
@@ -620,7 +647,7 @@ class Game {
 
   private liveHomeOptions(): HomeYardLayoutInputs {
     const profile = this.career.profile;
-    return { yardTier: profile.cosmetics.yardTier, countiesCleared: this.countyProgress?.totalCleared() ?? 0, lifetimeEarned: profile.lifetimeEarnedCash };
+    return { yardTier: profile.cosmetics.yardTier, countiesCleared: this.countyProgress?.totalCleared() ?? 0, lifetimeEarned: profile.lifetimeEarnedCash, brands: [...profile.brandTrophies] };
   }
 
   private async ensureHomeBase(): Promise<HomeBaseModule> {
@@ -682,9 +709,9 @@ class Game {
     }
   }
 
-  private wreckCount(): number {
+  private wreckCount(police = false): number {
     let n = 0;
-    for (const v of this.town.vehicles) if (v.status === "wreck") n++;
+    for (const v of this.town.vehicles) if (v.status === "wreck" && (!police || v.traffic?.role === "police")) n++;
     return n;
   }
 
@@ -942,10 +969,12 @@ class Game {
       accel: this.loadout.accel,
       turnMul: this.loadout.turnMul,
       boost: burning && aux && kit ? { speed: kit.JATO_TIERS[aux.tier].speed, turn: kit.JATO_TURN } : undefined,
+      // Rain, snow and storms slick the lots and fields; pavement keeps its grip.
+      grip: this.risk?.slip && !roadSurfaceAt(this.town.network, this.dozer.x, this.dozer.y).on ? 1 - this.risk.slip : 1,
     };
 
-    const beforeHeat = this.dozer.heat;
-    const wrecksBefore = this.wreckCount();
+    const beforeHeat = this.dozer.heat, beforeTrack = this.dozer.track;
+    const wrecksBefore = this.wreckCount(), cruisersBefore = this.wreckCount(true);
     // Anti-tunneling: a step that would carry the hull more than 0.45 of a cell is split, so the
     // blade sweep never skips a thin wall at Drivetrain or rocket speed.
     const pace = Math.max(dozerSpeed(this.dozer), driveInput.boost?.speed ?? 0) + this.loadout.accel * dt;
@@ -963,8 +992,20 @@ class Game {
       this.lastMetrics = out.metrics;
     }
     if (rig && kit) cash += kit.stepAttachmentEffects(this.town, this.dozer, this.particles, events, rig, dt);
+    const risk = this.risk, dz = this.dozer;
+    if (risk) {
+      // Summer sun cooks a loaded engine; storm-soaked rubble chews the tracks.
+      if (dz.heat > beforeHeat) dz.heat += (dz.heat - beforeHeat) * risk.heat;
+      if (dz.track > beforeTrack && this.town.pile.heightAt(dz.x, dz.y) > 0.05) dz.track += (dz.track - beforeTrack) * risk.track;
+    }
+    const cruisers = this.wreckCount(true) - cruisersBefore;
+    if (cruisers > 0) {
+      this.runCruisers += cruisers;
+      cash += cruisers * CRUISER_BOUNTY;
+    }
     let cells = 0;
     for (const e of events) if (e.kind === "breach") cells++;
+    this.spree = Math.max(0, this.spree - SPREE_DRAIN * dt) + cells;
     if (rig && kit) kit.stepRig(rig, dt, { cellsDestroyed: cells, vehiclesWrecked: Math.max(0, this.wreckCount() - wrecksBefore) });
     this.combo.hit(cells, this.loadout.comboWindow);
     this.combo.step(dt);
@@ -1070,7 +1111,7 @@ class Game {
   }
 
   private judgeCampaign(campaign: CampaignRun): void {
-    const level = currentLevel(campaign);
+    const level = this.levelOf(campaign);
     const landmark = landmarkDemolitionStatus(this.town.buildings, level);
     const outcome = evaluateCampaignStep({
       timeLeft: this.timeLeft,
@@ -1081,6 +1122,16 @@ class Game {
       expired: campaign.expired,
       alreadyComplete: campaign.complete,
     });
+    // Code Enforcement: the first landmark breach or half the dollar target brings one cruiser;
+    // a fallen landmark or a demolition spree brings a second. Time Challenge only (the cap is 0 elsewhere).
+    const traffic = this.town.traffic;
+    if (traffic?.config.police) {
+      const want = landmark.progress >= 1 || this.spree > SPREE_BACKUP ? 2 : landmark.progress > 0 || campaign.levelEarned >= level.dollarTarget / 2 ? 1 : 0;
+      if (raiseEnforcement(traffic, want)) {
+        this.fieldNotice = want > 1 ? "CODE ENFORCEMENT · BACKUP EN ROUTE" : "CODE ENFORCEMENT DISPATCHED";
+        this.fieldNoticeUntil = FIELD_NOTICE_SECONDS;
+      }
+    }
     const death = applyCampaignOutcome(campaign, outcome);
     if (outcome === 'win' && campaign.county) this.countyProgress?.markCleared(campaign.county.regionId, campaign.county.index);
     if (outcome !== 'continue') this.finish(death ?? '', outcome === 'win');
@@ -1105,7 +1156,15 @@ class Game {
   private syncFieldNotice(dt: number): void {
     this.fieldNoticeUntil = Math.max(0, this.fieldNoticeUntil - dt);
     for (const feature of this.town.features) if (feature.kind === "field") this.noticeField(feature as FieldFeature);
-    for (const building of this.town.buildings) if (building.regionalSignature) this.noticeSignature(building);
+    for (const building of this.town.buildings) {
+      if (building.regionalSignature) this.noticeSignature(building);
+      else if (building.brandId && building.collapseBonusPaid && !building.signatureNoticed) {
+        // An ordinary branded establishment: its sign goes home to the Trophy Lot.
+        building.signatureNoticed = "down";
+        this.fieldNotice = `${building.name} DOWN · SIGN SALVAGED`;
+        this.fieldNoticeUntil = FIELD_CLEARED_SECONDS;
+      }
+    }
     if (this.fieldNoticeUntil <= 0) this.fieldNotice = "";
   }
 
@@ -1541,7 +1600,7 @@ class Game {
   }
 
   private campaignHud(campaign: CampaignRun): CampaignHud {
-    const level = currentLevel(campaign);
+    const level = this.levelOf(campaign);
     const landmark = landmarkDemolitionStatus(this.town.buildings, level);
     const county = campaign.county ? this.overworld?.countyAt(campaign.county.regionId, campaign.county.index) : undefined;
     const briefingCounty = county && campaign.county ? { name: county.name, weather: campaign.county.weather } : undefined;
