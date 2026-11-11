@@ -279,8 +279,14 @@ export class OperatorMenu {
     return this.mode === 'pause' && this.runMap && run && run.regionId === this.regionId ? run.countyIndex : undefined;
   }
 
+  /**
+   * Resume and Restart belong to the paused run, so they apply only while the sheet shows the
+   * run's own mode. Switched to the other mode, the run's county is a fresh deployment like any
+   * other: it deploys, warns that it ends the run, or stays locked as that mode decides. The
+   * county keeps its "playing now" outline either way.
+   */
   private isRunningCounty(index: number | undefined): boolean {
-    return index !== undefined && this.runCountyHere() === index;
+    return index !== undefined && this.runCountyHere() === index && this.session === this.runningSetup?.session;
   }
 
   /** Only the map pages read this; they render after the chunk has loaded. */

@@ -462,6 +462,36 @@ it('browses the world map from pause, warns before replacing the run, and steps 
   expect(actions.start).toHaveBeenCalledWith(expect.objectContaining({ kind: 'challenge', season: 'winter', regionId: 'US-OH', countyIndex: 2, mapSeed: 42 }));
 });
 
+it('offers Resume and Restart only in the run\'s own mode', async () => {
+  // A Sandbox run in the Michigan capitol, which Time Challenge keeps locked until 1–6 clear.
+  menu.show('pause', { ...running, session: 'sandbox', countyIndex: 7 });
+  await pauseMap('state-map');
+  expect(pressed('mode')).toEqual(['sandbox']);
+  expect(go().textContent).toMatch(/^Resume /);
+  expect(menu.root.querySelector('.county-card [data-menu-action="deploy"]')!.textContent).toBe('Restart County 7');
+  mode('challenge');
+  // The run's county is now a locked Time Challenge county: no Resume, no Restart that does nothing.
+  expect(menu.root.querySelector(county(7))!.classList.contains('current')).toBe(true);
+  expect(go().textContent).not.toMatch(/^Resume /);
+  expect(go().disabled).toBe(true);
+  expect(menu.root.querySelector('.county-card [data-menu-action="deploy"]')).toBeNull();
+  expect(menu.root.querySelector('#county-lock-note')).not.toBeNull();
+  tap(county(7));
+  tap(county(7));
+  expect(actions.resume).not.toHaveBeenCalled();
+  expect(actions.start).not.toHaveBeenCalled();
+  // An open county in the other mode deploys fresh, with the replace warning.
+  tap(county(2));
+  expect(go().textContent).toMatch(/^Go to /);
+  expect(menu.root.querySelector('#deploy-replace-note')).not.toBeNull();
+  // Back in the run's mode, Resume returns.
+  mode('sandbox');
+  tap(county(7));
+  expect(go().textContent).toMatch(/^Resume /);
+  go().click();
+  expect(actions.resume).toHaveBeenCalledOnce();
+});
+
 it('restarts the running county from its card with the chosen weather', async () => {
   menu.show('pause', running);
   await pauseMap('state-map');
