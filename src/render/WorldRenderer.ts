@@ -746,12 +746,15 @@ export class WorldRenderer {
   private pushRoofs(visit: BuildingVisit): void {
     const { frame, b, lod } = visit;
     const { view } = frame;
-    if (!view.roofs || !b.roofs.some((roof) => roof.state !== "gone" && roof.floor <= view.maxFloor)) return;
-    const plan = flatRoofDecks(b);
-    for (const deck of plan.decks) if (deck.floor <= view.maxFloor) this.pushDeck(visit, deck);
-    for (const roof of plan.loose) if (roof.floor <= view.maxFloor) this.pushRoof(visit, roof);
+    if (!view.roofs) return;
+    if (b.roofs.some((roof) => roof.state !== "gone" && roof.floor <= view.maxFloor)) {
+      const plan = flatRoofDecks(b);
+      for (const deck of plan.decks) if (deck.floor <= view.maxFloor) this.pushDeck(visit, deck);
+      for (const roof of plan.loose) if (roof.floor <= view.maxFloor) this.pushRoof(visit, roof);
+      if (b.features.chimney && lod !== "overview") this.pushChimney(frame, b);
+    }
+    // Gear still dropping through the floors stays drawn after the last roof panel has gone.
     if (view.gear) for (const fixture of b.rooftop) if (fixture.floor <= view.maxFloor) this.pushRooftopFixture(visit, fixture);
-    if (b.features.chimney && lod !== "overview") this.pushChimney(frame, b);
   }
 
   private pushDeck({ frame, b, live, needsDetails, fadeBox }: BuildingVisit, deck: FlatDeck): void {

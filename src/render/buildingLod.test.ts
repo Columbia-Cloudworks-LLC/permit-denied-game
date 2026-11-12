@@ -51,6 +51,10 @@ describe("building render lod", () => {
     expect(debugViewSignature(view)).toBe(debugViewSignature(defaultDebugView()));
   });
 
+  it("rebuilds cached buildings when the rooftop equipment switch flips", () => {
+    expect(debugViewSignature({ ...view, gear: false })).not.toBe(debugViewSignature(view));
+  });
+
   it("counts a still wreck as cacheable and falling or sagging pieces as moving", () => {
     const ranch = createBuildingFromArchetype("ranch", "RANCH", 0, 0);
     expect(buildingAnimating(ranch)).toBe(false);

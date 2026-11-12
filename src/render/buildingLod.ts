@@ -11,6 +11,7 @@ export function debugViewSignature(view: DebugView): string {
     view.floors ? 1 : 0,
     view.contents ? 1 : 0,
     view.details ? 1 : 0,
+    view.gear ? 1 : 0,
     view.reveal ? 1 : 0,
     view.overview ? 1 : 0,
     view.maxFloor,

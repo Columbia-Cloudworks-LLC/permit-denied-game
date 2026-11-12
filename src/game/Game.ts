@@ -153,6 +153,8 @@ class Game {
   private campaign: CampaignRun | null = null;
   /** Lazily loaded overworld: present once the map opened, a county deployed, or a county link booted. */
   private overworld?: OverworldModule;
+  /** The rules and county whose environment is already applied; see `followCountyEnvironment`. */
+  private countyEnvironmentFor?: { rules: SessionRules; county: string };
   private countyProgress?: CountyProgress;
   private resubmission = new Resubmission();
   private timeLeft = MATCH_SECONDS;
@@ -258,7 +260,10 @@ class Game {
     this.renderer.debug.perf = this.perf.enabled;
     this.syncDebug();
     // A county link needs the overworld manifest before the first town is built.
-    if (this.rules.regionId) (await this.ensureOverworld()).resolveCountyLink(this.rules, window.location.search);
+    if (this.rules.regionId) {
+      (await this.ensureOverworld()).resolveCountyLink(this.rules, window.location.search);
+      this.settleCountyEnvironment();
+    }
     if (this.rules.home) await this.ensureHomeBase();
     const startLoadout = this.career.loadout();
     if (startLoadout.blade || startLoadout.aux) await this.ensureKit();
@@ -410,13 +415,30 @@ class Game {
     this.followCountyEnvironment();
   }
 
-  /** A county plays its own biome and climate zone, so a run that moves county moves both. */
+  /**
+   * A county plays its own biome and climate zone, so a run that moves county moves both.
+   * Rebuilding the same county on the same rules keeps what is there, so a link's explicit
+   * `biome=` / `climate=` and a replay's recorded environment survive every restart.
+   */
   private followCountyEnvironment(): void {
     const { regionId, countyIndex } = this.rules;
     const region = regionId && countyIndex ? this.overworld?.regionById(regionId) : undefined;
     if (!region || !countyIndex) return;
+    if (this.environmentSettled()) return;
     Object.assign(this.rules, this.overworld!.countyEnvironment(region, countyIndex));
     if (this.campaign) this.campaign.biomeId = this.rules.biomeId!;
+    this.settleCountyEnvironment();
+  }
+
+  /** Record that these rules already carry their county's environment (defaults or overrides). */
+  private settleCountyEnvironment(): void {
+    const { regionId, countyIndex } = this.rules;
+    this.countyEnvironmentFor = { rules: this.rules, county: `${regionId}#${countyIndex}` };
+  }
+
+  private environmentSettled(): boolean {
+    const settled = this.countyEnvironmentFor;
+    return !!settled && settled.rules === this.rules && settled.county === `${this.rules.regionId}#${this.rules.countyIndex}`;
   }
 
   /** Generate the town for the current rules and place the dozer; returns the focused ranch, if any. */
@@ -1378,6 +1400,8 @@ class Game {
     const setup = structuredClone({ rules: playthrough.rules, campaign: playthrough.campaign });
     this.rules = setup.rules;
     this.campaign = setup.campaign;
+    // The recording carries the environment it was played in; replay that, not the county default.
+    this.settleCountyEnvironment();
     this.pendingLoadout = playthrough.loadout ?? STOCK_LOADOUT;
     this.reset("same");
     this.syncSessionUrl();
