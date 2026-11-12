@@ -14,9 +14,11 @@ import {SEASONS,permittedFieldStates} from './season';
 import {resolveTraversal,type TerrainFeature} from './terrainFeatures';
 import {planForestMasses} from '../render/forestCanopy';
 import {createSurfaceGrid,SURFACE_ID} from './terrain';
+import {pumpVitestRpc} from '../sim/benchSupport';
 
-it('every campaign target is attainable without crop income in every season',()=>{
+it('every campaign target is attainable without crop income in every season',async()=>{
  for(const level of CAMPAIGN_LEVELS) for(const season of SEASONS){
+  await pumpVitestRpc();
   const town=createTown({district:"d30",seed:19,campaign:level,season,biome:BIOME_PROFILES['agricultural-plain']});
   expect(availableTownValue(town),`${level.id} ${season}`).toBeGreaterThanOrEqual(level.dollarTarget);
   for(const field of town.features)if(field.kind==='field')expect(permittedFieldStates(season)).toContain(field.state);
@@ -43,8 +45,9 @@ it('overview forest masses preserve species and collision footprints',()=>{
  const scrub=planForestMasses(grid,BIOME_PROFILES['arid-scrub'],19);
  expect(scrub.length).toBeGreaterThan(0);expect(scrub.every(m=>m.species==='scrub')).toBe(true);
 });
-it('an arid-scrub county generates in every season with only desert vegetation',()=>{
+it('an arid-scrub county generates in every season with only desert vegetation',async()=>{
  for(const season of ['spring','summer','autumn','winter'] as const){
+  await pumpVitestRpc();
   const town=createTown({district:"d30",seed:19,campaign:campaignLevelById('village'),season,biome:BIOME_PROFILES['arid-scrub']});
   expect(town.biome?.id).toBe('arid-scrub');
   expect(town.diagnostic.ok,season).toBe(true);
@@ -58,8 +61,9 @@ const COLD:readonly [ClimateId,keyof typeof BIOME_PROFILES][]=[['temperate','tem
 const CLEAR_COLORS=new Set(COVER_KINDS.flatMap(cover=>SEASONS.filter(season=>season!=='winter').map(season=>coverColor(cover,'clear',season))));
 const SNOW_COLORS=new Set(COVER_KINDS.map(cover=>coverColor(cover,'snow')).filter(color=>!CLEAR_COLORS.has(color)));
 
-it('warm-arid and subtropical counties never show snow or ice in winter, and still play their own hazards',()=>{
+it('warm-arid and subtropical counties never show snow or ice in winter, and still play their own hazards',async()=>{
  for(const [id,biome] of WARM){
+  await pumpVitestRpc();
   const climate=CLIMATES[id];
   const town=createTown({district:'d30',seed:19,campaign:campaignLevelById('village'),season:'winter',biome:BIOME_PROFILES[biome],climate});
   expect(town.diagnostic.ok,id).toBe(true);
@@ -98,7 +102,7 @@ it('warm-arid and subtropical counties never show snow or ice in winter, and sti
  }
 },240000);
 
-it('water in a snowless winter town stops the dozer, and ice in a cold one carries it',()=>{
+it('water in a snowless winter town stops the dozer, and ice in a cold one carries it',async()=>{
  const drive=(id:ClimateId,biome:keyof typeof BIOME_PROFILES)=>{
   const town=createTown({district:'d30',seed:19,campaign:campaignLevelById('village'),season:'winter',biome:BIOME_PROFILES[biome],climate:CLIMATES[id]});
   const pond:TerrainFeature={kind:'pond',id:'tank',seed:1,poly:[0,1,2,3].map(i=>({x:town.spawnX+(i===1||i===2?3:1.2),y:town.spawnY+(i>1?1.5:-1.5)}))};
@@ -110,8 +114,9 @@ it('water in a snowless winter town stops the dozer, and ice in a cold one carri
  expect(drive('temperate','temperate-broadleaf').blocked).toBe(false);
 },120000);
 
-it('cold, temperate and alpine counties keep snowfall, snow cover and ice',()=>{
+it('cold, temperate and alpine counties keep snowfall, snow cover and ice',async()=>{
  for(const [id,biome] of COLD){
+  await pumpVitestRpc();
   const climate=CLIMATES[id];
   const town=createTown({district:'d30',seed:19,campaign:campaignLevelById('village'),season:'winter',biome:BIOME_PROFILES[biome],climate,weather:'precip'});
   expect(town,id).toMatchObject({season:'winter',look:'winter',groundCondition:'snow',frozen:true});

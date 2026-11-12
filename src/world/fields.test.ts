@@ -35,6 +35,7 @@ import { BIOME_PROFILES } from "./biomes";
 import { CLIMATES } from "./climate";
 import type { TopologyFamily } from "./rural";
 import type { Lot } from "../structure/types";
+import { pumpVitestRpc } from "../sim/benchSupport";
 
 const MATRIX: TopologyFamily[] = ["county", "curve-farm", "frontage"];
 const SEEDS = [1, 7, 11, 19, 23, 29, 37, 41, 47, 53, 67, 71, 77, 83, 89, 97, 101, 107, 334353, 0x51a11];
@@ -184,11 +185,12 @@ function tallyFarmland(town: ReturnType<typeof createTown>, tally: FarmlandTally
 }
 
 describe("rural farmland matrix", () => {
-  it("keeps crop complexes property-scale, near farms, and off developed ground", () => {
+  it("keeps crop complexes property-scale, near farms, and off developed ground", async () => {
     const shares: number[] = [];
     const tally: FarmlandTally = { agPrimary: 0, agTowns: 0, near: 0, totalFields: 0 };
     for (const topology of MATRIX) {
       for (const seed of SEEDS) {
+        await pumpVitestRpc();
         const town = createTown({ district: "d10", seed, topology });
         shares.push(undevelopedFieldShare(town.surface));
         tallyFarmland(town, tally);

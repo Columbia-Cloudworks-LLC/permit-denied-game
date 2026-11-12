@@ -14,6 +14,7 @@ import { rockBetween } from "./routing";
 import { countNatural, neighbors4, SURFACE_ID, surfaceAt, traversalAt } from "./terrain";
 import { movementBlocked, terrainTraversalAt, type MesaFeature } from "./terrainFeatures";
 import { createTown, type Town } from "./town";
+import { pumpVitestRpc } from "../sim/benchSupport";
 
 const SEEDS = [3, 19, 42];
 
@@ -175,10 +176,11 @@ describe("arid landforms", () => {
 });
 
 describe("landform reachability", () => {
-  it("keeps every campaign level valid and every lot reachable under mesas, washes and boulders", () => {
+  it("keeps every campaign level valid and every lot reachable under mesas, washes and boulders", async () => {
     for (const level of CAMPAIGN_LEVELS) {
       for (const climate of ["canyonlands", "sonoran-desert"] as const) {
         for (const seed of [3, 19]) {
+          await pumpVitestRpc();
           const town = townIn(climate, seed, level.id);
           const label = `${level.id} ${climate} ${seed}`;
           const report = validateTown(town);
