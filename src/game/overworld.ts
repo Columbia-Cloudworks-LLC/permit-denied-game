@@ -3,13 +3,14 @@
  * county generator, regional flavor data, progress store, road atlas loader, and map markup. Nothing in the
  * startup graph may import this module statically, or the chunk folds back into the initial JS.
  */
-import { countyAt, regionBiome } from '../world/counties';
+import { countyAt, countyEnvironment } from '../world/counties';
 import { regionalPlacement } from '../world/regionalCatalog';
 import { regionById } from '../world/regions';
 import type { SessionRules } from './session';
 
 export { CountyProgress, sharedCountyProgress } from './countyProgress';
-export { countyAt, countyId, countySeed, countyWeather, regionBiome, regionCounties } from '../world/counties';
+export { countyAt, countyEnvironment, countyId, countySeed, countyWeather, regionCounties } from '../world/counties';
+export { countyClimate, regionClimate } from '../world/regionClimate';
 export { regionalPlacement } from '../world/regionalCatalog';
 export { regionById, REGIONS } from '../world/regions';
 export { loadAtlas, type AtlasData } from '../world/atlas';
@@ -32,7 +33,9 @@ export function resolveCountyLink(rules: SessionRules, search: string): void {
   const params = new URLSearchParams(search.startsWith('?') ? search.slice(1) : search);
   if (!params.has('level')) rules.level = county.level.id;
   if (!params.has('seed')) rules.seed = county.seed;
-  if (!params.has('biome')) rules.biomeId = regionBiome(region);
+  const environment = countyEnvironment(region, county.index);
+  if (!params.has('biome')) rules.biomeId = environment.biomeId;
+  if (!params.has('climate')) rules.climateId = environment.climateId;
 }
 
 /** Regional flavor for the rules' county; none on legacy level links. */

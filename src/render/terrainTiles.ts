@@ -12,6 +12,8 @@ import type { GroundCondition } from "../world/groundCondition";
 import type { SeasonId } from "../world/season";
 import { ICE_COLOR, ICE_CRACK } from "../world/season";
 import { BLOB47_MASKS } from "./blobMask";
+import type { GroundTone } from "./coverPalette";
+import { shade } from "./palette";
 
 const BLOB47_INDEX = (() => {
   const table = new Int16Array(256);
@@ -83,6 +85,10 @@ const SOLID_SURFACES: readonly TerrainSurface[] = [
   "field",
   "wet-edge",
   "water",
+  "rock",
+  "talus",
+  "wash",
+  "sand",
 ];
 
 const DIRT_FROM: readonly TerrainSurface[] = ["grass", "prairie", "leaf-litter", "duff", "scrub"];
@@ -180,25 +186,60 @@ export function buildTerrainChunks(
   atlas?: TerrainAtlas | null,
   condition: GroundCondition = "clear",
   season: SeasonId = "summer",
+  tone?: GroundTone,
 ): number {
   parent.removeChildren().forEach((child) => {
     child.destroy({ children: true });
   });
-  paintTerrainSkirt(parent, grid);
+  // Snow buries the desert floor like any other; without it arid ground shows its soil.
+  const arid = !!tone?.arid && condition !== "snow";
+  paintTerrainSkirt(parent, grid, arid ? tone : undefined);
   const sheet = atlas ?? loadedAtlas ?? fallbackAtlas();
   const chunksX = Math.ceil(grid.cols / SURFACE_CHUNK);
   const chunksY = Math.ceil(grid.rows / SURFACE_CHUNK);
   for (let cy = 0; cy < chunksY; cy++) {
     for (let cx = 0; cx < chunksX; cx++) {
-      const mesh = buildChunkMesh(grid, cx, cy, sheet, condition, season);
+      const mesh = buildChunkMesh(grid, cx, cy, sheet, condition, season, arid);
       if (mesh) parent.addChild(mesh);
     }
   }
-  if (condition === "snow" || season === "winter") paintFrozenWater(parent, grid);
+  if (arid) paintSoilWash(parent, grid, tone.soil.verge);
+  if (tone ? tone.frozen : condition === "snow") paintFrozenWater(parent, grid);
   return chunksX * chunksY;
 }
 
-function paintTerrainSkirt(parent: Container, grid: SurfaceGrid): void {
+/** Turf and woodland floor take the soil wash. Water, irrigated fields, pads and bare-rock landforms keep their own colour. */
+const WASH_SURFACES: ReadonlySet<number> = new Set(
+  (["grass", "scrub", "dirt", "prairie", "leaf-litter", "duff", "forest-floor", "forest-core"] as const).map((surface) => SURFACE_ID[surface]),
+);
+const SOIL_WASH_ALPHA = 0.55;
+
+/**
+ * Desert floor: a translucent layer of the zone's soil over the tile sheet, in row runs, so
+ * the sheet's texture still reads through caliche, sandstone or sand.
+ */
+function paintSoilWash(parent: Container, grid: SurfaceGrid, color: number): void {
+  const g = new Graphics();
+  for (let iy = 0; iy < grid.rows; iy++) {
+    let run = -1;
+    for (let ix = 0; ix <= grid.cols; ix++) {
+      const open = ix < grid.cols && WASH_SURFACES.has(grid.surface[iy * grid.cols + ix]!);
+      if (open && run < 0) run = ix;
+      if (open || run < 0) continue;
+      const x0 = grid.ox + run, x1 = grid.ox + ix, y0 = grid.oy + iy;
+      drawWorldPoly(g, [
+        { x: x0, y: y0, z: 0.005 },
+        { x: x1, y: y0, z: 0.005 },
+        { x: x1, y: y0 + 1, z: 0.005 },
+        { x: x0, y: y0 + 1, z: 0.005 },
+      ], color, SOIL_WASH_ALPHA);
+      run = -1;
+    }
+  }
+  parent.addChild(g);
+}
+
+function paintTerrainSkirt(parent: Container, grid: SurfaceGrid, arid?: GroundTone): void {
   const g = new Graphics();
   const pad = 8;
   const x0 = grid.ox - pad;
@@ -210,13 +251,13 @@ function paintTerrainSkirt(parent: Container, grid: SurfaceGrid): void {
     { x: x1, y: y0, z: -0.04 },
     { x: x1, y: y1, z: -0.04 },
     { x: x0, y: y1, z: -0.04 },
-  ], 0x243218, 1);
+  ], arid ? shade(arid.soil.verge, 0.6) : 0x243218, 1);
   drawWorldPoly(g, [
     { x: grid.ox, y: grid.oy, z: -0.02 },
     { x: grid.ox + grid.cols, y: grid.oy, z: -0.02 },
     { x: grid.ox + grid.cols, y: grid.oy + grid.rows, z: -0.02 },
     { x: grid.ox, y: grid.oy + grid.rows, z: -0.02 },
-  ], 0x5a7340, 1);
+  ], arid ? arid.soil.verge : 0x5a7340, 1);
   parent.addChild(g);
 }
 
@@ -251,8 +292,8 @@ function paintFrozenWater(parent: Container, grid: SurfaceGrid): void {
 type TileQuad = { x: number; y: number; frame: AtlasFrame };
 
 /** A cell's base tile, then its overlay; a missing variant falls back to variant 0 (or grass). */
-function pushCellQuads(quads: TileQuad[], grid: SurfaceGrid, ix: number, iy: number, atlas: TerrainAtlas, condition: GroundCondition, season: SeasonId): void {
-  const cell = describeCell(grid, ix, iy, condition, season);
+function pushCellQuads(quads: TileQuad[], grid: SurfaceGrid, ix: number, iy: number, atlas: TerrainAtlas, condition: GroundCondition, season: SeasonId, arid: boolean): void {
+  const cell = describeCell(grid, ix, iy, condition, season, arid);
   if (!cell) return;
   const wx = grid.ox + ix;
   const wy = grid.oy + iy;
@@ -270,6 +311,7 @@ function buildChunkMesh(
   atlas: TerrainAtlas,
   condition: GroundCondition,
   season: SeasonId,
+  arid: boolean,
 ): Mesh | null {
   const x0 = cx * SURFACE_CHUNK;
   const y0 = cy * SURFACE_CHUNK;
@@ -277,7 +319,7 @@ function buildChunkMesh(
   const y1 = Math.min(grid.rows, y0 + SURFACE_CHUNK);
   const quads: TileQuad[] = [];
   for (let iy = y0; iy < y1; iy++) {
-    for (let ix = x0; ix < x1; ix++) pushCellQuads(quads, grid, ix, iy, atlas, condition, season);
+    for (let ix = x0; ix < x1; ix++) pushCellQuads(quads, grid, ix, iy, atlas, condition, season, arid);
   }
   if (!quads.length) return null;
   const positions = new Float32Array(quads.length * 8);
@@ -326,6 +368,7 @@ export function describeCell(
   iy: number,
   condition: GroundCondition = "clear",
   season: SeasonId = "summer",
+  arid = false,
 ): { base: string; overlay?: string } | null {
   const i = iy * grid.cols + ix;
   const id = grid.surface[i]!;
@@ -338,11 +381,15 @@ export function describeCell(
     return { base: terrainSolidFrame("duff", variant, condition) };
   }
   const baseKind = baseSurface(surface);
-  const framed = season === "autumn" && (baseKind === "grass" || baseKind === "prairie") ? "leaf-litter" : baseKind;
+  const turf = baseKind === "grass" || baseKind === "prairie" || baseKind === "leaf-litter";
+  // Snowless desert has no turf or leaf fall: open ground is bare dirt under the soil wash.
+  const bare = arid && condition !== "snow" && turf && surface !== "field";
+  const framed = bare ? "dirt" : season === "autumn" && (baseKind === "grass" || baseKind === "prairie") ? "leaf-litter" : baseKind;
   const base = terrainSolidFrame(framed, variant, condition);
   if (condition === "snow" && surface !== "water") {
     return { base };
   }
+  if (bare && surface !== "wet-edge") return { base };
   const overlay = pickOverlay(grid, ix, iy, surface);
   return overlay ? { base, overlay } : { base };
 }
@@ -366,6 +413,10 @@ function baseSurface(surface: TerrainSurface): Exclude<TerrainSurface, "develope
     case "leaf-litter":
     case "gravel":
     case "water":
+    case "rock":
+    case "talus":
+    case "wash":
+    case "sand":
       return surface;
     case "forest-floor":
     case "forest-core":

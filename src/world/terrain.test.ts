@@ -86,6 +86,10 @@ describe("terrain surface grid", () => {
       "wet-edge": undefined,
       water: undefined,
       developed: undefined,
+      rock: undefined,
+      talus: undefined,
+      wash: undefined,
+      sand: undefined,
     };
     for (let iy = 0; iy < grid.rows; iy++) {
       for (let ix = 0; ix < grid.cols; ix++) {

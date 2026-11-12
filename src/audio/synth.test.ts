@@ -122,3 +122,37 @@ it('plays effects through fresh voices, and the title sounds only while running 
   bus.grindLevel(.5);
   expect(ctx.gains[2]!.gain.value).toBe(.16);
 });
+
+it('gates machine-break cues so a collapsing plant room cannot stack voices', async () => {
+  const { CueGate, MACHINE_VOICES } = await import('./synth');
+  const gate = new CueGate();
+  expect(gate.admit('hiss', 1)).toBe(true);
+  // The same cue inside its cooldown is dropped; a different cue still sounds.
+  expect(gate.admit('hiss', 1.05)).toBe(false);
+  expect(gate.admit('crunch', 1.05)).toBe(true);
+  expect(gate.admit('snap', 1.06)).toBe(true);
+  // Three voices ringing: nothing else is admitted until one ends.
+  expect(MACHINE_VOICES).toBe(3);
+  expect(gate.admit('snap', 1.17)).toBe(false);
+  expect(gate.admit('snap', 1.2)).toBe(true);
+  // Sixty break events in one step make at most three sounds.
+  const burst = new CueGate();
+  let sounded = 0;
+  for (let i = 0; i < 60; i++) if (burst.admit((['hiss', 'crunch', 'snap'] as const)[i % 3]!, 5)) sounded++;
+  expect(sounded).toBe(MACHINE_VOICES);
+  // A fresh audio clock does not leave a cue locked out.
+  expect(burst.admit('hiss', 0.5)).toBe(true);
+
+  const bus = new AudioBus();
+  await bus.unlock();
+  const ctx = FakeContext.created.at(-1)!, before = ctx.sources.length + ctx.oscillators.length;
+  for (let i = 0; i < 20; i++) { bus.refrigerantHiss(1); bus.ductCrunch(1); bus.electricSnap(1); }
+  const voices = ctx.sources.length + ctx.oscillators.length - before;
+  expect(voices).toBeGreaterThan(0);
+  // One hiss (1 source), one crunch (2 blips + noise), one snap (noise + blip).
+  expect(voices).toBe(6);
+  bus.setMuted(true);
+  ctx.currentTime += 5;
+  bus.refrigerantHiss(1);
+  expect(ctx.sources.length + ctx.oscillators.length - before).toBe(6);
+});

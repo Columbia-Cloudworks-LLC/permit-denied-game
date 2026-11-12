@@ -28,6 +28,18 @@ try {
    reports.push({biome:town.biomeId,season,fields:fields.map(f=>({crop:f.crop,state:f.state})),lots:town.lots.length,weather:town.weather});console.log(biome,season,'verified');
   }
  }
+ // Snowless climates: a desert or Gulf winter never shows snow, ice, flurries or bare woods.
+ for(const [biome,climate] of [['arid-scrub','sonoran-desert'],['arid-scrub','mojave-desert'],['subtropical-coast','gulf-subtropical']]) {
+  for(const season of seasons){
+   await page.goto(`${base}/?sandbox=1&seed=19&level=county&biome=${biome}&climate=${climate}&season=${season}&debug=1`);await page.waitForFunction(()=>window.__pd?.ready());
+   const town=await page.evaluate(()=>window.__pd.townSnapshot());
+   assert.equal(town.climateId,climate);assert.equal(town.season,season);
+   assert.equal(town.groundCondition,'clear');assert.equal(town.frozen,false);assert.notEqual(town.look,'winter');assert.notEqual(town.weather,'flurries');
+   if(biome==='arid-scrub')assert.equal(town.features.filter(f=>f.kind==='forest').length,0);
+   await page.evaluate(()=>window.__pd.lookAtTown('overview'));await page.screenshot({path:`${out}/${climate}-${season}-overview.png`});
+   reports.push({climate,season,look:town.look,weather:town.weather,mesas:town.features.filter(f=>f.kind==='mesa').length});console.log(climate,season,'verified');
+  }
+ }
  // Production input drives a fixed ranch benchmark through its wall. This also
  // exercises real cash rollover, destruction, tracks, clock and restart state.
  for(const season of seasons){

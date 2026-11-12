@@ -174,7 +174,7 @@ function gablePlanes(
 ): RoofSection[] {
   const b = bbox(cells);
   const eaveZ = wallTopZ(building.floors);
-  const ridgeZ = eaveZ + 1.08;
+  const ridgeZ = eaveZ + gableRise(building);
   const oh = 0.14;
   const box = worldBox(building, b.minX, b.maxX, b.minY, b.maxY, oh);
   const mat = roofMaterial(building);
@@ -261,7 +261,7 @@ function gableBays(
   }
   const b = bbox(cells);
   const eaveZ = wallTopZ(building.floors);
-  const ridgeZ = eaveZ + 1.08;
+  const ridgeZ = eaveZ + gableRise(building);
   const oh = 0.14;
   const full = worldBox(building, b.minX, b.maxX, b.minY, b.maxY, oh);
   const ridgeY = (full.y0 + full.y1) * 0.5;
@@ -410,6 +410,46 @@ function cellRectangles(cells: { gx: number; gy: number }[]): { gx0: number; gx1
 }
 
 const GABLE_RISE = 1.08;
+/** Ridge height above the eave: a regional roof form can flatten the classic pitch. */
+function gableRise(building: Building): number {
+  return building.roofForm?.rise ?? GABLE_RISE;
+}
+
+/**
+ * Hipped roof over a solid rectangle: two trapezoids along the ridge and a triangle closing each
+ * end, all at one pitch. A square plan degenerates to a pyramid with no ridge.
+ */
+function hipPlanes(building: Building, cells: { gx: number; gy: number }[], axis: RoofAxis, id0: number): RoofSection[] {
+  const b = bbox(cells), eaveZ = wallTopZ(building.floors), ridgeZ = eaveZ + gableRise(building);
+  const box = worldBox(building, b.minX, b.maxX, b.minY, b.maxY, GABLE_OVERHANG);
+  // Work along (u) and across (v) the ridge, then map back to world axes.
+  const alongX = axis === "x";
+  const u0 = alongX ? box.x0 : box.y0, u1 = alongX ? box.x1 : box.y1;
+  const v0 = alongX ? box.y0 : box.x0, v1 = alongX ? box.y1 : box.x1;
+  const vm = (v0 + v1) / 2, run = Math.min((v1 - v0) / 2, (u1 - u0) / 2);
+  const peakZ = eaveZ + (ridgeZ - eaveZ) * (run / ((v1 - v0) / 2));
+  const pt = (u: number, v: number, z: number) => (alongX ? { x: u, y: v, z } : { x: v, y: u, z });
+  const ra = pt(u0 + run, vm, peakZ), rb = pt(u1 - run, vm, peakZ);
+  const ridge = u1 - u0 - run * 2 > 1e-6 ? { ax: ra.x, ay: ra.y, az: peakZ, bx: rb.x, by: rb.y, bz: peakZ } : undefined;
+  const mat = roofMaterial(building);
+  const planes = [
+    [pt(u0, v0, eaveZ), pt(u1, v0, eaveZ), rb, ra],
+    [ra, rb, pt(u1, v1, eaveZ), pt(u0, v1, eaveZ)],
+    [pt(u0, v0, eaveZ), ra, pt(u0, v1, eaveZ)],
+    [pt(u1, v0, eaveZ), pt(u1, v1, eaveZ), rb],
+  ];
+  return planes.map((verts, i) => ({
+    ...makeSection(id0 + i, "gable", cells, dedupeVerts(verts), mat, i < 2 ? ridge : undefined),
+    hip: true,
+  }));
+}
+
+function dedupeVerts(verts: RoofSection["verts"]): RoofSection["verts"] {
+  return verts.filter((v, i) => {
+    const p = verts[(i + verts.length - 1) % verts.length]!;
+    return Math.hypot(v.x - p.x, v.y - p.y, v.z - p.z) > 1e-8;
+  });
+}
 const GABLE_OVERHANG = 0.08;
 /** Gable height at fraction t across the span: eave at both edges, ridge in the middle. */
 const gableZ = (t: number, eaveZ: number, ridgeZ: number): number => eaveZ + (ridgeZ - eaveZ) * (1 - Math.abs(t - 0.5) / 0.5);
@@ -417,7 +457,7 @@ const gableZ = (t: number, eaveZ: number, ridgeZ: number): number => eaveZ + (ri
 /** Shared gable setup: footprint bounds, eave and ridge heights, cell size, overhang and material. */
 function gableFrame(building: Building, cells: { gx: number; gy: number }[], axis: "x" | "y") {
   const eaveZ = wallTopZ(building.floors);
-  const b = bbox(cells), cs = building.cellSize, oh = GABLE_OVERHANG, ridgeZ = eaveZ + GABLE_RISE;
+  const b = bbox(cells), cs = building.cellSize, oh = GABLE_OVERHANG, ridgeZ = eaveZ + gableRise(building);
   return { b, eaveZ, ridgeZ, cs, oh, mat: roofMaterial(building), ridge: gableRidge(building, b, axis, ridgeZ) };
 }
 
@@ -593,11 +633,13 @@ function cellTile(
     y1,
     false,
   );
-  if (verts.length < 3 || polygonAreaXY(verts) < cs * cs * 0.08) return undefined;
+  // Hip lines cut cells on the diagonal, so their slivers must stay or the roof shows holes.
+  if (verts.length < 3 || polygonAreaXY(verts) < cs * cs * (section.hip ? 0.002 : 0.08)) return undefined;
   return {
     ...makeSection(id, section.style, section.support, verts, section.material, clipTileRidge(section, verts)),
     coverage: [{ gx, gy }],
     tooth: section.tooth,
+    ...(section.hip ? { hip: true } : {}),
   };
 }
 
@@ -712,7 +754,8 @@ function generateRoofLayer(building: Building): RoofSection[] {
       if (building.roof === "flat") sections.push(flatPlane(building, comp, nextId++));
       else if (building.roof === "shed") sections.push(shedPlane(building, comp, axis, nextId++));
       else {
-        const planes = gableBays(building, comp, axis, nextId);
+        const planes = building.roofForm?.hip && !industrialRoofBuilding(building)
+          ? hipPlanes(building, comp, axis, nextId) : gableBays(building, comp, axis, nextId);
         nextId += planes.length;
         sections.push(...planes);
       }
@@ -1226,7 +1269,7 @@ export function gableEndCaps(building: Building, floor = building.floors - 1): G
     (r) => r.floor === floor && r.style === "gable" && (r.state === "intact" || r.state === "sagging"),
   );
   const live = floorGables.filter((r) => r.ridge);
-  if (live.length === 0) return [];
+  if (live.length === 0 || floorGables.some((r) => r.hip)) return [];
   const ridge = live[0]!.ridge!;
   const cells = floorGables.flatMap((r) => roofCoverage(r));
   if (cells.length === 0) return [];

@@ -1,15 +1,17 @@
 import type { Graphics } from "pixi.js";
 import type { FieldCropId } from "../world/biomes";
 import { CHURN_SWATH, CHURN_TRACK, fieldRunCenter, forEachFieldRun } from "../world/fields";
-import type { GroundCondition } from "../world/groundCondition";
-import { seasonTrackColor, type SeasonId } from "../world/season";
+import { SOILS } from "../world/climate";
+import { trackColor, type GroundCondition } from "../world/groundCondition";
+import type { SeasonId } from "../world/season";
 import { groundPatchContains } from "../world/terrain";
 import type { FieldFeature, TerrainFeature } from "../world/terrainFeatures";
 import type { Material } from "../structure/materials";
 import type { CollapsedSite, GroundKind, GroundMark, GroundPatch, SiteMarkKind } from "../structure/types";
-import { coverColor, coverDark } from "./coverPalette";
+import { coverColor, coverDark, type GroundTone } from "./coverPalette";
 import { drawGroundPoly, drawIsoBox, drawOrientedGround, drawOrientedIsoBox, drawWorldPoly, PAL } from "./drawIso";
 import { worldToScreen } from "../world/iso";
+import { drawMesaShadow, drawWash } from "./landformDraw";
 import { shade } from "./palette";
 
 const SITE_MARK_STYLE: Record<SiteMarkKind, { color: number; alpha: number }> = {
@@ -33,18 +35,19 @@ export function drawCollapsedSite(g: Graphics, site: CollapsedSite): void {
   }
 }
 
-export function drawCover(g: Graphics, patch: GroundPatch, condition: GroundCondition, season: SeasonId = "summer"): void {
-  drawCoverFill(g, patch, coverColor(patch.cover, condition, season));
+/** `season` is the paint season (`Town.look`); `tone` carries ice and soil, and absent means snow cover freezes water. */
+export function drawCover(g: Graphics, patch: GroundPatch, condition: GroundCondition, season: SeasonId = "summer", tone?: GroundTone): void {
+  drawCoverFill(g, patch, coverColor(patch.cover, condition, season, tone));
   if (patch.cover.startsWith("field-")) {
     drawFieldRows(g, patch, condition, season);
     return;
   }
   if (patch.cover === "water") {
-    if (condition === "snow" || season === "winter") drawIceCracks(g, patch);
+    if (tone ? tone.frozen : condition === "snow") drawIceCracks(g, patch);
     return;
   }
   if (patch.cover === "forest-floor") return;
-  drawCoverSpeckle(g, patch, coverDark(patch.cover, condition, season));
+  drawCoverSpeckle(g, patch, coverDark(patch.cover, condition, season, tone));
 }
 
 function drawCoverFill(g: Graphics, patch: GroundPatch, color: number): void {
@@ -109,6 +112,12 @@ export function drawTerrainFeatures(g: Graphics, features: readonly TerrainFeatu
       case "lake":
       case "river":
         break;
+      case "mesa":
+        drawMesaShadow(g, feature);
+        break;
+      case "wash":
+        drawWash(g, feature, condition === "snow");
+        break;
       default: {
         const _never: never = feature;
         return _never;
@@ -144,7 +153,7 @@ const CROP_PALETTES: Record<FieldCropId, CropPalette> = {
 const WINTER_ROW_HEIGHT: Record<FieldFeature["state"], number> = { mature: 0.12, stubble: 0.12, short: 0.08, tilled: 0.04 };
 
 function cropRowStyle(feature: FieldFeature, condition: GroundCondition, season: SeasonId): CropRowStyle {
-  if (condition === "snow" || season === "winter") {
+  if (condition === "snow") {
     return { top: 0xd0d8de, left: 0x8a9094, right: 0xa0a8ac, h: WINTER_ROW_HEIGHT[feature.state], thick: 0.2 };
   }
   const stage = cropStage(feature, season);
@@ -229,9 +238,10 @@ const MARK_COLORS: Record<Exclude<GroundKind, "chip" | "splinter" | "season-trac
 };
 const CHIP_MARK_COLORS: Partial<Record<Material, number>> = { wood: PAL.woodDark, brick: PAL.brickDark, metal: PAL.metalDark };
 
+/** Tracks carry their soil tint from the sim; an untinted one falls back to loam, or packed snow in a winter look. */
 function markColor(mark: GroundMark, season: SeasonId = "summer"): number {
   if (mark.tint !== undefined) return mark.tint;
-  if (mark.kind === "season-track") return seasonTrackColor(season);
+  if (mark.kind === "season-track") return trackColor(season === "winter" ? "snow" : "dry", SOILS["dark-loam"]);
   if (mark.kind === "chip" || mark.kind === "splinter") return CHIP_MARK_COLORS[mark.material] ?? PAL.concreteDark;
   return MARK_COLORS[mark.kind];
 }

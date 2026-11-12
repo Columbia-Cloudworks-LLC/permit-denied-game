@@ -3,7 +3,8 @@ import { Rng } from "../game/rng";
 import type { CoverKind, GroundPatch, Lot, LotIdentity, Prop } from "../structure/types";
 import type { Building } from "../structure/types";
 import { getAsset, spawnAsset, type LotCompat } from "./catalog";
-import { drivewayStyle } from "./drivewayStyle";
+import { drivewayStyle, lotCover } from "./drivewayStyle";
+import { SERVICE_YARD_MAX, serviceYardCandidates, serviceYardSeed } from "./serviceYards";
 
 export interface DressSlot {
   assetId: string;
@@ -273,11 +274,12 @@ export function dressLots(
   budget: number,
   corridors?: readonly { x: number; y: number }[][],
   eligible?: DressEligible,
+  arid = false,
 ): { props: Prop[]; patches: GroundPatch[] } {
   const props: Prop[] = [];
   const patches: GroundPatch[] = [];
   for (let i = 0; i < lots.length; i++) {
-    const dressed = dressLot(lots[i]!, buildings[i], rng, { boxes: occBoxes }, budget, corridors, eligible);
+    const dressed = dressLot(lots[i]!, buildings[i], rng, { boxes: occBoxes }, budget, corridors, eligible, arid);
     props.push(...dressed.props);
     patches.push(...dressed.patches);
     for (const p of dressed.props) occBoxes.push({ x: p.x, y: p.y, w: p.w, d: p.d });
@@ -293,6 +295,8 @@ export function dressLot(
   budget: number,
   corridors: readonly { x: number; y: number }[][] = [],
   eligible?: DressEligible,
+  /** Arid lots swap turf for xeriscape, caliche and gravel (`lotCover`). Other climates dress exactly as before. */
+  arid = false,
 ): { props: Prop[]; patches: GroundPatch[] } {
   const stored = DRESS_TEMPLATES.find((t) => t.id === lot.templateId);
   const storedOk = !!stored
@@ -302,7 +306,10 @@ export function dressLot(
   lot.templateId = template.id;
   if (building) building.lotId = lot.id;
   const drive = drivewayPatch(lot);
-  const props = placeTemplateSlots(lot, building, template, rng, occ, Math.min(template.maxAssets, budget), corridors, eligible);
+  const cap = Math.min(template.maxAssets, budget);
+  const props = placeTemplateSlots(lot, building, template, rng, occ, cap, corridors, eligible);
+  if (building) placeServiceYard(lot, building, props, occ, cap, corridors, eligible);
+  const cover = lotCover(template.cover, arid);
 
   const patches: GroundPatch[] = [
     {
@@ -311,14 +318,14 @@ export function dressLot(
       w: lot.w,
       d: lot.d,
       heading: 0,
-      cover: template.cover,
+      cover,
       seed: rng.int(1, 1_000_000),
       z: 0,
       poly: lot.boundary.length >= 3 ? lot.boundary.map((p) => ({ x: p.x, y: p.y })) : undefined,
     },
-    { ...drive, heading: lot.heading, cover: "driveway", seed: rng.int(1, 1_000_000), z: 0.01 },
+    { ...drive, heading: lot.heading, cover: arid ? drivewayStyle(lot.identity, true).cover : "driveway", seed: rng.int(1, 1_000_000), z: 0.01 },
   ];
-  wearPatches(lot, template.cover, rng, patches);
+  wearPatches(lot, cover, rng, patches);
   return { props, patches };
 }
 
@@ -363,6 +370,55 @@ function placeTemplateSlots(
   return props;
 }
 
+/**
+ * Occupancy service yard: the gear a building's use puts behind and beside it (`SERVICE_YARDS`).
+ * It rolls on its own seed, so the layout's shared stream is untouched, and it lives inside the
+ * lot's existing cap: yard props supersede the generic template props they replace or overlap,
+ * then the lightest template slots give way.
+ */
+function placeServiceYard(
+  lot: Lot,
+  building: Building,
+  props: Prop[],
+  occ: Occupancy,
+  cap: number,
+  corridors: readonly { x: number; y: number }[][],
+  eligible: DressEligible | undefined,
+): void {
+  const limit = Math.min(cap, SERVICE_YARD_MAX);
+  const candidates = limit > 0 ? serviceYardCandidates(lot, building).filter(c => !eligible || eligible(c.assetId)) : [];
+  if (!candidates.length) return;
+  const rng = new Rng(serviceYardSeed(lot, building));
+  const driveW = drivewayStyle(lot.identity).width * 0.85;
+  const yard: Prop[] = [];
+  const replaced = new Set<string>();
+  for (const candidate of candidates) {
+    if (yard.length >= limit) break;
+    if (!rng.chance(candidate.chance)) continue;
+    const def = getAsset(candidate.assetId);
+    const { w, d } = def.footprint;
+    const spot = candidate.spots.find(s => insideLotYard(lot, s.x, s.y, w, d)
+      && !blocked(s.x, s.y, w, d, occ, yard)
+      && !touchesCorridor(s.x, s.y, w, d, corridors)
+      && !sealsAccess(lot, building, [...yard, { x: s.x, y: s.y, w, d }], driveW));
+    if (!spot) continue;
+    const prop = spawnAsset(candidate.assetId, spot.x, spot.y, candidate.heading, rng.int(0, def.variants - 1));
+    prop.lotId = lot.id;
+    yard.push(prop);
+    if (candidate.replaces) replaced.add(candidate.replaces);
+  }
+  if (!yard.length) return;
+  const kept = props.filter(p => !replaced.has(p.assetId) && !yard.some(y => aabbOverlap(p.x, p.y, p.w, p.d, y.x, y.y, y.w, y.d)));
+  kept.length = Math.min(kept.length, cap - yard.length);
+  props.splice(0, props.length, ...kept, ...yard);
+}
+
+/** Centre or any corner of the footprint inside a driveway corridor. */
+function touchesCorridor(x: number, y: number, w: number, d: number, corridors: readonly { x: number; y: number }[][]): boolean {
+  const points = [[x + w / 2, y + d / 2], [x, y], [x + w, y], [x, y + d], [x + w, y + d]];
+  return corridors.some(poly => points.some(([px, py]) => pointInPoly(px!, py!, poly as { x: number; y: number }[])));
+}
+
 /** One worn or planted patch around `at`, kept inside the parcel. `jitter` rolls a heading wobble only when it lands. */
 interface WearPatch { dx: number; dy: number; w: number; d: number; cover: GroundPatch['cover']; z: number; turn?: number; jitter?: number }
 function pushWearPatch(lot: Lot, rng: Rng, patches: GroundPatch[], at: { x: number; y: number }, patch: WearPatch): void {
@@ -396,6 +452,13 @@ function wearPatches(lot: Lot, cover: GroundPatch['cover'], rng: Rng, patches: G
     pushWearPatch(lot, rng, patches, lotLocalToWorld(lot, 0.55, 0.32), { dx: 0.45, dy: 0.35, w: 0.9, d: 0.7, cover: "planted", z: 0.012 });
   }
   if (lot.identity === "shop" || lot.identity === "service") commercialWearPatches(lot, rng, patches);
+  // Desert yards: a bare caliche wear patch and a raked gravel bed where turf lots keep a lawn and planting.
+  if (cover === "xeriscape" && rng.chance(0.65)) {
+    pushWearPatch(lot, rng, patches, lotLocalToWorld(lot, 0.35, 0), { dx: 0.7, dy: 0.3, w: 1.6, d: 0.6, cover: "caliche", z: 0.012 });
+  }
+  if (cover === "xeriscape" && rng.chance(0.55)) {
+    pushWearPatch(lot, rng, patches, lotLocalToWorld(lot, 0.55, 0.32), { dx: 0.5, dy: 0.4, w: 1.0, d: 0.8, cover: "gravel", z: 0.012 });
+  }
   if (cover === "gravel" && rng.chance(0.75)) {
     const worn = lotLocalToWorld(lot, 0.4, rng.chance(0.5) ? 0.16 : -0.16);
     pushWearPatch(lot, rng, patches, worn, { dx: 0.8, dy: 0.35, w: 1.7, d: 0.7, cover: "dirt", z: 0.013 });

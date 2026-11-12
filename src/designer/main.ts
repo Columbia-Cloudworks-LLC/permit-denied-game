@@ -14,6 +14,8 @@ import {
   type TemplateKind,
 } from './package';
 import { bootIsolatePreview, type IsolatePreview, type PreviewView } from './preview';
+import { CLIMATE_IDS, CLIMATES } from '../world/climate';
+import { isSeasonId, SEASONS, seasonLabel } from '../world/season';
 
 initPrivacy(true);
 hydrateSiteChrome('designer');
@@ -26,6 +28,9 @@ const editor = element<HTMLTextAreaElement>('file-editor');
 const errors = element('parse-errors');
 const status = element('preview-status');
 const viewSelect = element<HTMLSelectElement>('preview-view');
+const climateSelect = element<HTMLSelectElement>('preview-climate');
+const seasonSelect = element<HTMLSelectElement>('preview-season');
+const gearToggle = element<HTMLInputElement>('preview-gear');
 const packages = listBuildingPackages();
 let draft: DraftPackage = newFromTemplate('porch-house', nextDraftId('porch-house'));
 let active = 0;
@@ -103,7 +108,12 @@ async function applyParse(): Promise<void> {
 async function showPreview(definition: Parameters<IsolatePreview['show']>[0]): Promise<void> {
   try {
     preview ??= await bootIsolatePreview(element('preview-host'));
-    preview.show(definition, viewSelect.value as PreviewView);
+    preview.show(definition, {
+      view: viewSelect.value as PreviewView,
+      climateId: climateSelect.value,
+      season: isSeasonId(seasonSelect.value) ? seasonSelect.value : 'summer',
+      gear: gearToggle.checked,
+    });
   } catch (error) {
     showError(String(error instanceof Error ? error.message : error));
   }
@@ -125,7 +135,11 @@ openSelect.onchange = () => {
   setDraft(openBuildingPackage(openSelect.value));
 };
 
-viewSelect.onchange = () => { void applyParse(); };
+/** Climate presets show a package under each zone's regional roof, wall palette, rooftop kit and winter. */
+climateSelect.append(new Option('As authored', ''), ...CLIMATE_IDS.map(id => new Option(CLIMATES[id].label, id)));
+seasonSelect.append(...SEASONS.map(id => new Option(seasonLabel(id), id)));
+seasonSelect.value = 'summer';
+for (const control of [viewSelect, climateSelect, seasonSelect, gearToggle]) control.onchange = () => { void applyParse(); };
 editor.oninput = () => scheduleParse();
 
 element<HTMLButtonElement>('download-files').onclick = () => {

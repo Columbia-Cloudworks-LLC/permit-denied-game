@@ -1,4 +1,5 @@
 import { CONTENT_ASSETS } from "./contents";
+import { SERVICE_YARD_ASSETS } from "./serviceYardAssets";
 import { CAMPAIGN_LEVEL_IDS, type CampaignLevelId } from "../game/campaign";
 import type { CampaignPlacement } from "./campaignPlacement";
 import type {
@@ -7,9 +8,11 @@ import type {
   DebrisShape,
   DestructionProfile,
   LotZone,
+  MachineFx,
   Material,
   Prop,
   PropPose,
+  SalvageKind,
 } from "../structure/types";
 
 export type LotCompat = LotZone | "agricultural" | "roadside" | "yard" | "driveway" | "frontage" | "utility";
@@ -62,6 +65,12 @@ export interface AssetDef {
   explodeImpulse: number;
   explodeDamage: number;
   yawResist: number;
+  /** Scrap value class: destroying the asset pays its cash as a labelled copper or mechanical salvage popup. */
+  salvage?: SalvageKind;
+  /** Burst and sound when the asset breaks: venting refrigerant, exhaust soot, or an electrical arc. */
+  breakFx?: MachineFx;
+  /** Fixed scenery such as a house-sized boulder: hits never wear it down, so it stays a solid obstacle. */
+  immovable?: boolean;
   campaign?: CampaignPlacement;
 }
 
@@ -184,8 +193,133 @@ function aridPlant(id: string, w: number, h: number, hp: number, mass: number, c
   });
 }
 
+const SANDSTONE = { t: 0xc98a5a, l: 0x7e4a2c, r: 0xa86a40 };
+const GRANITE = { t: 0xa3a39c, l: 0x57585c, r: 0x7e7f7c };
+const SAGE = { t: 0x9aa58a, l: 0x566050, r: 0x78836c };
+const CREOSOTE = { t: 0x7a8a48, l: 0x414a26, r: 0x5e6c38 };
+const PALM_FROND = { t: 0x5c9a4c, l: 0x2c5428, r: 0x447a3a };
+const CITRUS = { t: 0x3f7f36, l: 0x1f451e, r: 0x2f6229 };
+const GALV = { t: 0xb4bcc0, l: 0x687074, r: 0x8e989c };
+const PANEL_GLASS = { t: 0x24406e, l: 0x16264a, r: 0x1c325c };
+const EVERYWHERE: CampaignPlacement = { levels: ALL_CAMPAIGN_LEVELS };
+
+/** Landscape flora beyond the base arid set: the same plant recipe, legal on every campaign level. */
+function wildPlant(id: string, w: number, h: number, hp: number, mass: number, cash: number, destruction: "topple" | "crush", boxes: AssetDef["boxes"]): AssetDef {
+  return { ...aridPlant(id, w, h, hp, mass, cash, destruction, boxes), campaign: EVERYWHERE };
+}
+
+/**
+ * Weathered rock. A small one breaks loose on the first shove and rolls ahead of the blade as a
+ * remnant; a large one is `immovable`, a solid the dozer and traffic deflect off.
+ */
+function boulder(id: string, size: number, h: number, tone: typeof SANDSTONE, fixed: boolean): AssetDef {
+  return {
+    id, family: "roadside", tags: fixed ? ["tall"] : ["rollable"],
+    footprint: { w: size, d: size * 0.9, h }, collision: { w: size, d: size * 0.9 }, material: "concrete",
+    hp: fixed ? 400 : 5, mass: fixed ? 40 : 2.4, resistance: fixed ? 9 : 0.7, bladeMul: 1, trackHazard: 0,
+    cash: fixed ? 0 : 4, destruction: fixed ? "crush" : "roll",
+    debris: fixed ? debris(1, 2, 6, 0.8, 1.2, "chunk") : debris(1, 0, 3, 0.9, 0, "chunk"), variants: 3,
+    boxes: [
+      box(0, 0, 0, size * 0.94, size * 0.84, h * 0.62, tone.r, tone.l, tone.r),
+      box(-size * 0.06, size * 0.04, h * 0.5, size * 0.7, size * 0.62, h * 0.34, tone.t, tone.l, tone.r),
+      box(size * 0.1, -size * 0.06, h * 0.78, size * 0.4, size * 0.36, h * 0.22, tone.t, tone.l, tone.r),
+    ],
+    zones: ["agricultural", "yard"], roadsideOk: false, minClear: fixed ? 0.8 : 0.3,
+    sparks: false, birdGag: false, explodeRadius: 0, explodeImpulse: 0, explodeDamage: 0, yawResist: fixed ? 1 : 0,
+    immovable: fixed || undefined, campaign: EVERYWHERE,
+  };
+}
+
+/** Rangeland and solar-farm equipment: metal or glass, standing on open rural ground. */
+function ranchGear(id: string, footprint: AssetDef["footprint"], material: Material, hp: number, mass: number, cash: number, destruction: DestructionProfile, recipe: DebrisRecipe, boxes: AssetDef["boxes"]): AssetDef {
+  return {
+    id, family: "agricultural", tags: footprint.h > 2 ? ["agricultural", "utility", "tall"] : ["agricultural", "utility"],
+    footprint, collision: { w: footprint.w, d: footprint.d }, material, hp, mass, resistance: 0.6, bladeMul: 1, trackHazard: 0,
+    cash, destruction, debris: recipe, variants: 1, boxes, zones: ["agricultural", "utility"], roadsideOk: false, minClear: 0.4,
+    sparks: material === "metal", birdGag: false, explodeRadius: 0, explodeImpulse: 0, explodeDamage: 0, yawResist: 0.2,
+    campaign: EVERYWHERE,
+  };
+}
+
+/** Desert, canyon, plains, alpine and coastal landscape props placed by `src/world/landforms.ts`. */
+const LANDSCAPE_ASSETS: readonly AssetDef[] = [
+  boulder("sandstone-rock", 0.62, 0.42, SANDSTONE, false),
+  boulder("sandstone-boulder", 1.7, 1.35, SANDSTONE, true),
+  boulder("granite-rock", 0.6, 0.4, GRANITE, false),
+  boulder("granite-boulder", 1.6, 1.25, GRANITE, true),
+  wildPlant("prickly-pear", 0.8, 0.6, 6, 0.3, 6, "crush", [
+    box(0, 0, 0, 0.5, 0.24, 0.4, CACTUS.t, CACTUS.l, CACTUS.r),
+    box(0.2, 0.12, 0.22, 0.3, 0.2, 0.36, CACTUS.t, CACTUS.l, CACTUS.r),
+    box(-0.18, -0.1, 0.2, 0.26, 0.2, 0.3, CACTUS.t, CACTUS.l, CACTUS.r),
+    box(0.22, 0.12, 0.56, 0.1, 0.1, 0.07, 0xc84a78, 0x7a2848, 0xa83a60),
+  ]),
+  wildPlant("agave", 0.9, 0.7, 7, 0.34, 7, "crush", [
+    box(0, 0, 0, 0.84, 0.2, 0.3, YUCCA.t, YUCCA.l, YUCCA.r),
+    box(0, 0, 0, 0.2, 0.84, 0.3, YUCCA.t, YUCCA.l, YUCCA.r),
+    box(0, 0, 0.24, 0.34, 0.34, 0.42, SAGE.t, SAGE.l, SAGE.r),
+  ]),
+  wildPlant("creosote-bush", 0.9, 0.8, 5, 0.2, 4, "crush", [
+    box(0, 0, 0, 0.8, 0.74, 0.4, CREOSOTE.t, CREOSOTE.l, CREOSOTE.r),
+    box(0.08, -0.06, 0.34, 0.5, 0.46, 0.36, CREOSOTE.t, CREOSOTE.l, CREOSOTE.r),
+  ]),
+  wildPlant("sagebrush", 0.8, 0.55, 5, 0.18, 4, "crush", [
+    box(0, 0, 0, 0.74, 0.68, 0.32, SAGE.t, SAGE.l, SAGE.r),
+    box(-0.06, 0.05, 0.26, 0.44, 0.4, 0.24, SAGE.t, SAGE.l, SAGE.r),
+  ]),
+  wildPlant("joshua-tree", 0.9, 2.3, 18, 2, 16, "topple", [
+    box(0, 0, 0, 0.26, 0.26, 1.3, OAK_TRUNK.t, OAK_TRUNK.l, OAK_TRUNK.r),
+    box(0.26, 0, 1.1, 0.3, 0.2, 0.7, OAK_TRUNK.t, OAK_TRUNK.l, OAK_TRUNK.r),
+    box(-0.24, 0.06, 1.2, 0.26, 0.2, 0.5, OAK_TRUNK.t, OAK_TRUNK.l, OAK_TRUNK.r),
+    box(0.3, 0, 1.76, 0.44, 0.44, 0.4, YUCCA.t, YUCCA.l, YUCCA.r),
+    box(-0.28, 0.06, 1.66, 0.4, 0.4, 0.36, YUCCA.t, YUCCA.l, YUCCA.r),
+    box(0, 0, 1.3, 0.38, 0.38, 0.36, YUCCA.t, YUCCA.l, YUCCA.r),
+  ]),
+  wildPlant("mesquite", 1.5, 2.2, 20, 2.2, 14, "topple", [
+    box(0, 0, 0, 0.24, 0.24, 1.1, PINE_TRUNK.t, PINE_TRUNK.l, PINE_TRUNK.r),
+    box(0, 0, 1, 1.4, 1.3, 0.6, CREOSOTE.t, CREOSOTE.l, CREOSOTE.r),
+    box(0.1, -0.08, 1.5, 0.9, 0.8, 0.5, CREOSOTE.t, CREOSOTE.l, CREOSOTE.r),
+  ]),
+  wildPlant("palmetto-scrub", 0.9, 0.8, 6, 0.26, 5, "crush", [
+    box(0, 0, 0, 0.84, 0.3, 0.4, PALM_FROND.t, PALM_FROND.l, PALM_FROND.r),
+    box(0, 0, 0.06, 0.3, 0.84, 0.44, PALM_FROND.t, PALM_FROND.l, PALM_FROND.r),
+    box(0, 0, 0.36, 0.36, 0.36, 0.36, PALM_FROND.t, PALM_FROND.l, PALM_FROND.r),
+  ]),
+  wildPlant("sabal-palm", 1.3, 4, 28, 3.4, 22, "topple", [
+    box(0, 0, 0, 0.34, 0.34, 3.3, OAK_TRUNK.t, OAK_TRUNK.l, OAK_TRUNK.r),
+    box(0, 0, 3.2, 1.7, 0.5, 0.24, PALM_FROND.t, PALM_FROND.l, PALM_FROND.r),
+    box(0, 0, 3.26, 0.5, 1.7, 0.24, PALM_FROND.t, PALM_FROND.l, PALM_FROND.r),
+    box(0, 0, 3.4, 0.8, 0.8, 0.44, PALM_FROND.t, PALM_FROND.l, PALM_FROND.r),
+  ]),
+  wildPlant("citrus-tree", 1.3, 1.9, 16, 1.6, 20, "topple", [
+    box(0, 0, 0, 0.2, 0.2, 0.8, OAK_TRUNK.t, OAK_TRUNK.l, OAK_TRUNK.r),
+    box(0, 0, 0.7, 1.2, 1.2, 0.8, CITRUS.t, CITRUS.l, CITRUS.r),
+    box(0, 0, 1.4, 0.8, 0.8, 0.4, CITRUS.t, CITRUS.l, CITRUS.r),
+    box(0.4, 0.3, 1.1, 0.12, 0.12, 0.12, 0xf0a020, 0xa86810, 0xd88818),
+    box(-0.36, -0.4, 0.96, 0.12, 0.12, 0.12, 0xf0a020, 0xa86810, 0xd88818),
+  ]),
+  ranchGear("windpump", { w: 1, d: 1, h: 4.6 }, "metal", 30, 3, 45, "bend-snap", debris(2, 4, 8, 1, 0.5, "beam"), [
+    ...[[-0.36, -0.36], [0.36, -0.36], [-0.36, 0.36], [0.36, 0.36]].map(([along, across]) => box(along!, across!, 0, 0.07, 0.07, 3.5, MET.t, MET.l, MET.r)),
+    ...[0.9, 1.9, 2.9].flatMap(z => [box(0, -0.36, z, 0.78, 0.05, 0.06, MET.t, MET.l, MET.r), box(0.36, 0, z, 0.05, 0.78, 0.06, MET.t, MET.l, MET.r)]),
+    box(0, 0, 3.5, 0.3, 0.3, 0.2, GALV.t, GALV.l, GALV.r),
+    box(0.22, 0, 3.1, 0.05, 1.3, 1.3, GALV.t, GALV.l, GALV.r),
+    box(-0.5, 0, 3.6, 0.7, 0.04, 0.34, RED.t, RED.l, RED.r),
+  ]),
+  ranchGear("stock-tank", { w: 1.8, d: 1.8, h: 0.62 }, "metal", 22, 2.2, 24, "crush", debris(1, 2, 6, 0.7, 0.4, "panel"), [
+    box(0, 0, 0, 1.76, 1.3, 0.6, GALV.t, GALV.l, GALV.r),
+    box(0, 0, 0, 1.3, 1.76, 0.6, GALV.t, GALV.l, GALV.r),
+    box(0, 0, 0.5, 1.5, 1.1, 0.06, 0x5a86a8, 0x3a5a78, 0x4a6a88),
+    box(0, 0, 0.5, 1.1, 1.5, 0.06, 0x5a86a8, 0x3a5a78, 0x4a6a88),
+  ]),
+  ranchGear("solar-panel", { w: 2.3, d: 1.3, h: 1.1 }, "glass", 12, 1.6, 55, "panel-collapse", debris(1, 4, 10, 0.8, 0.3, "panel"), [
+    box(-0.8, 0, 0, 0.08, 0.08, 0.7, MET.t, MET.l, MET.r),
+    box(0.8, 0, 0, 0.08, 0.08, 0.7, MET.t, MET.l, MET.r),
+    { ...box(0, 0, 0.42, 2.24, 1.24, 0.62, PANEL_GLASS.t, GALV.l, GALV.r), slope: true },
+  ]),
+];
+
 export const ASSET_CATALOG: readonly AssetDef[] = [
   ...CONTENT_ASSETS,
+  ...SERVICE_YARD_ASSETS,
   asset({
     id: 'loading-dock-bumpers', family: 'commercial', tags: ['commercial', 'utility'],
     footprint: { w: 1.8, d: .28, h: .62 }, collision: { w: 1.8, d: .28 },
@@ -940,6 +1074,8 @@ export const ASSET_CATALOG: readonly AssetDef[] = [
     explodeImpulse: 0,
     explodeDamage: 0,
     yawResist: 0.25,
+    salvage: "mechanical",
+    breakFx: "refrigerant",
   }),
   asset({
     id: "utility-cabinet",
@@ -1111,6 +1247,8 @@ export const ASSET_CATALOG: readonly AssetDef[] = [
     explodeImpulse: 0,
     explodeDamage: 0,
     yawResist: 0.2,
+    salvage: "copper",
+    breakFx: "arc",
   }),
   asset({
     id: "guardrail",
@@ -1485,6 +1623,7 @@ export const ASSET_CATALOG: readonly AssetDef[] = [
     explodeDamage: 0,
     yawResist: 0,
   }),
+  ...LANDSCAPE_ASSETS,
 ];
 
 const BY_ID = new Map(ASSET_CATALOG.map((a) => [a.id, a]));

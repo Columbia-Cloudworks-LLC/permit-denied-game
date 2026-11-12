@@ -5,6 +5,7 @@ import { MATERIALS } from './materials';
 import { cellPresent, type Building, type Cell, type Material, type WorldEvent } from './types';
 import type { StructureStepResult } from './building';
 import { cashFor } from './cellCash';
+import { collapseRooftop } from './rooftop';
 
 function siloFootprint(b: Building, x: number, y: number): boolean {
   return !!siloAt((b.silos ?? []).map(s => s.definition), x, y);
@@ -79,7 +80,7 @@ export function stepCoreCollapse(b: Building, dt: number, result: StructureStepR
     if (s.phase === 'standing') return;
     s.elapsed += dt;
     if (s.elapsed < def.warningDuration) return;
-    beginCoreFall(b, s, result);
+    beginCoreFall(b, s, result, particles, events);
   }
   advanceCoreFall(b, s, dt, result);
 }
@@ -108,8 +109,8 @@ function addCoreMass(s: CoreCollapseState, m: Material, amount: number): void {
   s.mass[m] = (s.mass[m] ?? 0) + amount;
 }
 
-/** Everything above ground becomes falling mass: walls, slabs, fixtures and roofs. */
-function beginCoreFall(b: Building, s: CoreCollapseState, result: StructureStepResult): void {
+/** Everything above ground becomes falling mass: walls, slabs, fixtures, roofs and the plant on them. */
+function beginCoreFall(b: Building, s: CoreCollapseState, result: StructureStepResult, particles: ParticlePool, events: WorldEvent[]): void {
   s.phase = 'falling'; s.elapsed = 0;
   for (const c of b.cells) if (c.state !== 'gone' && !c.silo) {
     result.cash += cashFor(c, 'collapse');
@@ -117,6 +118,10 @@ function beginCoreFall(b: Building, s: CoreCollapseState, result: StructureStepR
     c.state = 'gone'; c.hp = 0;
   }
   collapseInterior(b, s);
+  // Rooftop plant rides the stack down: its scrap is paid here, once, and its mass joins the mound.
+  const plant = collapseRooftop(b, particles, events);
+  result.cash += plant.cash;
+  if (plant.mass) addCoreMass(s, 'metal', plant.mass * .5);
   b.collisionDirty = true;
 }
 

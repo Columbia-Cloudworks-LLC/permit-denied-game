@@ -3,7 +3,7 @@ import { orientedRect } from "../game/math";
 import type { Material } from "../structure/types";
 import { ISO_H, ISO_W, ISO_Z } from "../game/constants";
 import { depthKey, isoQuad, worldToScreen } from "../world/iso";
-import { roofSlopeLight } from "./lighting";
+import { roofSlopeLight, shadowFill } from "./lighting";
 import { PAL, matColors, shade } from "./palette";
 
 export function headingOffset(
@@ -245,7 +245,8 @@ export function drawShadow(
   d: number,
   alpha = 0.28,
 ): void {
-  drawGroundPoly(g, x, y, w, d, PAL.shadow, alpha);
+  const fill = shadowFill(alpha);
+  drawGroundPoly(g, x, y, w, d, fill.color, fill.alpha);
 }
 
 export function cellColors(material: Material, cracked: boolean): { top: number; left: number; right: number } {

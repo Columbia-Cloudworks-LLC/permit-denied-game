@@ -22,7 +22,7 @@ export function retireStructures(town: Town, dozer: Dozer, dt: number): number {
     b.settledAwayTime += dt;
     if (b.settledAwayTime < DEBRIS.retireDelay) continue;
     if (!town.collapsedSites.some(s => s.buildingId === b.id)) continue;
-    b.cells = []; b.grid = []; b.roofs = []; b.floorTiles = []; b.fixtures = []; b.decorBoxes = [];
+    b.cells = []; b.grid = []; b.roofs = []; b.rooftop = []; b.floorTiles = []; b.fixtures = []; b.decorBoxes = [];
     releaseInteriorCache(b);
     b.retired = true;
     retired++;

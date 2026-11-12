@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cashAnchor, CashPopups, POPUP_SECONDS } from "./cashPopups";
+import { cashAnchor, CashPopups, popupText, POPUP_SECONDS } from "./cashPopups";
 
 describe("cash popups", () => {
   it("merges nearby credits, stacks distant ones, and releases them after the fade", () => {
@@ -14,6 +14,20 @@ describe("cash popups", () => {
     popups.draw(POPUP_SECONDS, 1);
     expect(popups.count).toBe(0);
     expect(popups.root.children).toHaveLength(0);
+  });
+
+  it("labels salvage as copper or scrap and keeps it apart from plain cash", () => {
+    const popups = new CashPopups();
+    popups.credit(40, 10, 10, 1);
+    popups.credit(120, 10, 10, 1, "copper");
+    popups.credit(30, 10.5, 10, 1, "copper");
+    popups.credit(80, 10, 10, 1, "mechanical");
+    popups.draw(0.1, 1);
+    const nodes = popups.root.children as unknown as { text: string; style: { fill: unknown } }[];
+    expect(nodes.map((node) => node.text)).toEqual(["+$40", "+$150 COPPER", "+$80 SCRAP"]);
+    expect(new Set(nodes.map((node) => String(node.style.fill))).size).toBe(3);
+    expect(popupText(1250, "mechanical")).toBe("+$1,250 SCRAP");
+    expect(popupText(7)).toBe("+$7");
   });
 
   it("anchors on the paying event, else the latest damage", () => {

@@ -6,6 +6,8 @@ import { groundPatchContains, surfaceAt } from "../world/terrain";
 import type { Town } from "../world/town";
 import type { ParticlePool } from "../fx/particles";
 import { pointOnRoad } from "../world/roads";
+import { SOILS } from "../world/climate";
+import { groundState, trackColor } from "../world/groundCondition";
 import { fadeTreadMarks } from "../world/seasonTracks";
 import { addSurfaceMark } from "./debris";
 
@@ -37,7 +39,12 @@ export function coverAtPoint(town: Town, x: number, y: number): CoverKind | unde
     case "forest-core":
       return "forest-floor";
     case "gravel":
+    case "rock":
+    case "talus":
+    case "wash":
       return "gravel";
+    case "sand":
+      return "dirt";
     case "field":
       return "planted";
     case "water":
@@ -130,9 +137,31 @@ function movingCues(town: Town, dozer: Dozer, particles: ParticlePool, events: W
 
 /** Clumps a pivoting track throws: snow, gravel, or the tread tint of the soft cover. */
 function churnTint(town: Town, cover: CoverKind): number | undefined {
-  if (town.groundCondition === "snow" || town.season === "winter") return 0xe6ecef;
+  if (town.groundCondition === "snow") return 0xe6ecef;
   if (cover === "gravel") return 0x8a8478;
-  return TREAD_TINT[cover];
+  return treadTint(town, cover);
+}
+
+/** Loose dust off the tracks takes the zone's soil: red sandstone, pale caliche, coastal sand, dark loam. */
+function soilDust(town: Town): number {
+  return SOILS[town.climate.soil].dust;
+}
+
+/**
+ * The pressed tread on a soft cover. Loam keeps its per-cover mud and crushed-sod tints; every
+ * other soil presses to its own compacted colour, or its mud under rain.
+ */
+function treadTint(town: Town, cover: CoverKind): number | undefined {
+  const legacy = TREAD_TINT[cover];
+  if (legacy === undefined || town.climate.soil === "dark-loam") return legacy;
+  const footing = groundState(town.season, town.weather.condition, town.climate).footing;
+  return shadeSoil(trackColor(footing === "snow" ? "dry" : footing, SOILS[town.climate.soil]));
+}
+
+/** A fresh impression is damper and darker than the weathered track around it. */
+function shadeSoil(color: number): number {
+  const dim = (shift: number) => Math.round(((color >> shift) & 255) * 0.72) << shift;
+  return dim(16) | dim(8) | dim(0);
 }
 
 /**
@@ -148,7 +177,7 @@ function pivotCue(town: Town, dozer: Dozer, particles: ParticlePool, events: Wor
   if (!cover || PAVED.has(cover) || cover === "tracks" || cover === "water" || pointOnRoad(town.network, x, y)) return;
   const tint = churnTint(town, cover);
   particles.spawn("crop", x, y, 0.08, 3, 1.1, 1.9, undefined, tint);
-  particles.spawn("dust", x, y, 0.1, 1, 0.5, 0.6);
+  particles.spawn("dust", x, y, 0.1, 1, 0.5, 0.6, undefined, soilDust(town));
 }
 
 /** Churned mud on bare ground; crushed, greener sod on grass and scrub. */
@@ -158,9 +187,9 @@ function treadCue(town: Town, dozer: Dozer, particles: ParticlePool, cover: Cove
   fadeTreadMarks(town, "tire");
   for (const side of TRACK_SIDES) {
     addSurfaceMark(town, dozer.x - f.y * 0.62 * side, dozer.y + f.x * 0.62 * side, "tire", "concrete", dozer.heading);
-    town.marks[town.marks.length - 1]!.tint = TREAD_TINT[cover];
+    town.marks[town.marks.length - 1]!.tint = treadTint(town, cover);
   }
-  particles.spawn("dust", dozer.x, dozer.y, 0.12, load ? 3 : 1, 0.35 + speed * 0.08, 0.7);
+  particles.spawn("dust", dozer.x, dozer.y, 0.12, load ? 3 : 1, 0.35 + speed * 0.08, 0.7, undefined, soilDust(town));
 }
 
 function scrapeCue(town: Town, dozer: Dozer, particles: ParticlePool, f: { x: number; y: number }): void {

@@ -174,7 +174,7 @@ it('defaults to Time Challenge, switches mode on the state sheet, and deploys wh
   expect(menu.root.querySelector(county(7))!.classList.contains('locked')).toBe(false);
   expect(menu.root.querySelector(county(7))!.getAttribute('aria-pressed')).toBe('true');
   expect(go().disabled).toBe(false);
-  expect([...menu.root.querySelectorAll('.county-card .county-facts dt')].map(dt => dt.textContent)).toEqual(['Landmark', 'Region', 'Watch for', 'Establishments']);
+  expect([...menu.root.querySelectorAll('.county-card .county-facts dt')].map(dt => dt.textContent)).toEqual(['Landmark', 'Region', 'Climate', 'Watch for', 'Establishments']);
   go().click();
   expect(actions.start).toHaveBeenLastCalledWith(expect.objectContaining({ kind: 'sandbox', season: 'autumn', regionId: 'US-IL', countyIndex: 7 }));
   // The choice carries to the next sheet opened from this map.
@@ -251,8 +251,8 @@ it('circles the picked county and shows its facts as icon rows', async () => {
   expect(loop.hasAttribute('hidden')).toBe(false);
   expect(loop.getAttribute('d')).toMatch(/^M[\d.-]+ [\d.-]+C/);
   const facts = [...menu.root.querySelectorAll('.county-card .county-facts dt')].map(dt => dt.textContent);
-  expect(facts).toEqual(['Objective', 'Earn', 'County clock', 'Region', 'Watch for', 'Establishments']);
-  expect(menu.root.querySelectorAll('.county-card .county-facts dt svg')).toHaveLength(6);
+  expect(facts).toEqual(['Objective', 'Earn', 'County clock', 'Region', 'Climate', 'Watch for', 'Establishments']);
+  expect(menu.root.querySelectorAll('.county-card .county-facts dt svg')).toHaveLength(7);
   tap(county(4));
   expect(menu.root.querySelector('.atlas-sheet .atlas-selection')!.getAttribute('d')).not.toBe(loop.getAttribute('d'));
 });
@@ -692,4 +692,71 @@ it('offers Bail Out to Yard from the pause menu during a run', () => {
   menu.show('pause', running);
   button('[data-menu-action="home-yard"]').click();
   expect(actions.homeYard).toHaveBeenCalledTimes(1);
+});
+
+it('cycles only the skies a county\'s climate can roll: no snow or blizzard in a desert winter', async () => {
+  menu.show('title');
+  await openMap();
+  season('winter');
+  openRegion('US-AZ');
+  mode('sandbox');
+  tap(county(2));
+  const { countyClimate } = await loadOverworld();
+  expect(countyClimate('US-AZ', 2).id).toBe('sonoran-desert');
+  const weather = () => menu.root.querySelector<HTMLSelectElement>('#county-weather')!;
+  const options = () => [...weather().options].map(option => ({ value: option.value, label: option.textContent! }));
+  expect(options().map(option => option.value)).toEqual(['clear', 'overcast', 'precip', 'fog', 'dust']);
+  expect(options().map(option => option.label).join(' ')).not.toMatch(/snow|blizzard|ice|frost/i);
+  expect(options().find(option => option.value === 'precip')!.label).toBe('Rain');
+  expect(options().find(option => option.value === 'dust')!.label).toBe('Haboob');
+  // A full lap of the cycle button visits every legal sky once and never a storm.
+  const seen: string[] = [];
+  for (let i = 0; i < 5; i++) {
+    button('[data-weather-cycle]').click();
+    seen.push(weather().value);
+    expect(menu.root.querySelector('.atlas-bar')!.innerHTML).not.toMatch(/weather-(snow|blizzard)/);
+  }
+  expect([...seen].sort()).toEqual(['clear', 'dust', 'fog', 'overcast', 'precip']);
+  // A sky the climate cannot roll is refused, not deployed.
+  const before = weather().value;
+  select('county-weather', 'storm');
+  expect(weather().value).toBe(before);
+  go().click();
+  expect(actions.start).toHaveBeenLastCalledWith(expect.objectContaining({ regionId: 'US-AZ', countyIndex: 2, season: 'winter', weather: before }));
+});
+
+it('drops a picked sky when the season makes it illegal, and offers hazards in theirs', async () => {
+  menu.show('title');
+  await openMap();
+  season('summer');
+  openRegion('US-AZ');
+  tap(county(2));
+  const weather = () => menu.root.querySelector<HTMLSelectElement>('#county-weather')!;
+  const values = () => [...weather().options].map(option => option.value);
+  expect(values()).toEqual(expect.arrayContaining(['storm', 'dust', 'heat']));
+  select('county-weather', 'heat');
+  expect(weather().value).toBe('heat');
+  expect(menu.root.querySelector('.atlas-bar .hazard-pay')!.textContent).toBe('+15% HAZARD PAY');
+  expect(menu.root.querySelector('.atlas-bar [data-weather="heat"]')).not.toBeNull();
+  // Back out to the atlas, turn the calendar to winter, and return: heat is gone.
+  button('.atlas-sheet [data-menu-action="back"], .atlas-sheet .atlas-back').click();
+  season('winter');
+  openRegion('US-AZ');
+  tap(county(2));
+  expect(values()).not.toContain('heat');
+  expect(weather().value).toBe(countyWeather(1234, 'winter', 'US-AZ', 2));
+});
+
+it('keeps snow and blizzards on a Michigan winter sheet', async () => {
+  menu.show('title');
+  await openMap();
+  season('winter');
+  openRegion('US-MI');
+  tap(county(3));
+  const weather = () => menu.root.querySelector<HTMLSelectElement>('#county-weather')!;
+  const labels = [...weather().options].map(option => option.textContent);
+  expect(labels).toEqual(expect.arrayContaining(['Snow', 'Blizzard']));
+  select('county-weather', 'storm');
+  expect(menu.root.querySelector('.atlas-bar [data-weather="blizzard"]')).not.toBeNull();
+  expect(menu.root.querySelector('.atlas-bar .hazard-pay')!.textContent).toBe('+20% HAZARD PAY');
 });

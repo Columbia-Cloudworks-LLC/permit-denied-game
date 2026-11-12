@@ -7,6 +7,7 @@ import type { Prop, WorldEvent } from "../structure/types";
 import { getAsset, type AssetDef } from "../world/catalog";
 import type { Town } from "../world/town";
 import { addDebrisBody } from "./debris";
+import { machineBreak } from "../structure/rooftop";
 
 export function applyAssetHit(prop: Prop, amount: number, nx: number, ny: number): void {
   hitObject(prop, getAsset(prop.assetId), amount, nx, ny);
@@ -33,13 +34,14 @@ export function destroyProp(
     events.push({ kind: "spark", x: cx, y: cy, z: 0.9, mag: 0.55, material: def.material });
     particles.burst("metal", cx, cy, 1.1, 0.8);
   }
+  if (def.breakFx) machineBreak(particles, events, def.breakFx, cx, cy, 0.4 + def.footprint.h * 0.6, 0.8);
   let cash = def.cash;
   if (def.birdGag) {
     events.push({ kind: "bird", x: cx, y: cy, z: 2.2, mag: 0.4, cash });
   } else if (def.destruction === "explosive") {
-    events.push({ kind: "blast", x: cx, y: cy, z: 0.9, mag: 1.4, cash, material: def.material });
+    events.push({ kind: "blast", x: cx, y: cy, z: 0.9, mag: 1.4, cash, material: def.material, salvage: def.salvage });
   } else {
-    events.push({ kind: "snap", x: cx, y: cy, z: 0.8, mag: 0.5, cash });
+    events.push({ kind: "snap", x: cx, y: cy, z: 0.8, mag: 0.5, cash, salvage: def.salvage });
   }
   spawnFromRecipe(town, prop, def, nx, ny);
   if (def.destruction === "explosive" && generation <= EXPLODE.maxGeneration) {
@@ -106,7 +108,7 @@ function blastProp(town: Town, other: Prop, blast: Blast, particles: ParticlePoo
   other.broken = true;
   other.hp = 0;
   spawnFromRecipe(town, other, def, (ox - x) / dist, (oy - y) / dist);
-  events.push({ kind: "snap", x: ox, y: oy, z: 0.7, mag: 0.4, cash: def.cash * 0.5 });
+  events.push({ kind: "snap", x: ox, y: oy, z: 0.7, mag: 0.4, cash: def.cash * 0.5, salvage: def.salvage });
   return def.cash * 0.5;
 }
 

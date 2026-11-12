@@ -1,6 +1,7 @@
 import type { Building } from '../structure/types';
 import type { BiomeId } from '../world/biomes';
 import { selectCampaignBiome } from '../world/biomes';
+import { climateHazard, defaultClimate, waterFrozen, type ClimateEnvelope, type HazardId } from '../world/climate';
 import { resolveSeason, seasonLabel, weatherConditionLabel, type SeasonId, type WeatherConditionId } from '../world/season';
 import { COPY } from './constants';
 import {
@@ -176,19 +177,32 @@ export function advanceCampaignLevel(run: CampaignRun, nextSeed: number, target?
   return next;
 }
 
-export function campaignBriefingText(level: CampaignLevelDef, season: SeasonId = 'summer', county?: { name: string; weather: WeatherConditionId }): string {
+/** What the crew is told about each climate hazard before the clock starts. */
+const HAZARD_BRIEFINGS: Readonly<Record<HazardId, string>> = {
+  haboob: 'Haboob rolling in: short visibility and dust in the air filter.',
+  'blowing-dust': 'Blowing dust: grit in the air filter and the running gear.',
+  monsoon: 'Monsoon downpour: wet caliche and mud wash are slick off the pavement.',
+  squall: 'Coastal squall: driving rain and slick ground off the pavement.',
+  heat: 'Extreme heat: the engine runs hot under load.',
+  blizzard: 'Blizzard: heavy snow and slick ground off the pavement.',
+};
+
+/** The briefing follows the county's climate: no ice line where ponds never freeze, and the zone's own hazards by name. */
+export function campaignBriefingText(level: CampaignLevelDef, season: SeasonId = 'summer', county?: { name: string; weather: WeatherConditionId }, climate: ClimateEnvelope = defaultClimate()): string {
   const minutes = Math.floor(level.timeLimit / 60);
   const seconds = level.timeLimit % 60;
   const clock = seconds ? `${minutes}:${String(seconds).padStart(2, '0')}` : `${minutes}:00`;
   const lines = [
     county ? `County ${level.index} · ${county.name}` : `Level ${level.index} · ${level.name}`,
     `Season: ${seasonLabel(season)}. Locked for this run.`,
-    ...(county ? [`Weather: ${weatherConditionLabel(season, county.weather)}.`] : []),
+    ...(county ? [`Weather: ${weatherConditionLabel(season, county.weather, climate)}.`] : []),
     `Landmark: ${level.landmark.label}`,
     `Earn $${level.dollarTarget.toLocaleString('en-US')} and demolish the landmark.`,
     `County clock: ${clock}.`,
   ];
-  if (season === 'winter') lines.push('Winter ice is frozen solid. The dozer can cross it.');
+  const hazard = climateHazard(climate, season, county?.weather);
+  if (hazard) lines.push(HAZARD_BRIEFINGS[hazard]);
+  if (waterFrozen(season, climate)) lines.push('Winter ice is frozen solid. The dozer can cross it.');
   return lines.join('\n');
 }
 

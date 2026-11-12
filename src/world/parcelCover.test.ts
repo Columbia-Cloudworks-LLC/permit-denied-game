@@ -4,7 +4,10 @@ import { Rng } from "../game/rng";
 import { completeLot } from "./parcels";
 import { dressLot } from "./dressing";
 import { createTown } from "./town";
-import { groundPatchContains, lotFootprintContains, SURFACE_ID } from "./terrain";
+import { countNatural, groundPatchContains, lotFootprintContains, naturalCellTotal, SURFACE_ID } from "./terrain";
+import { campaignLevelById } from "../game/campaign";
+import { BIOME_PROFILES } from "./biomes";
+import { CLIMATES } from "./climate";
 import { pointOnRoad } from "./roads";
 import type { Lot } from "../structure/types";
 
@@ -108,5 +111,39 @@ describe("parcel-clipped lot covers", () => {
     expect(cover.poly).toEqual(tapered.boundary);
     expect(groundPatchContains(cover, 0, 10)).toBe(false);
     expect(groundPatchContains(cover, 3.5, 5)).toBe(true);
+  });
+});
+
+describe("natural parcel cover by climate", () => {
+  const arid = (seed: number) => createTown({ district: "d30", seed, campaign: campaignLevelById("county"), biome: BIOME_PROFILES["arid-scrub"], climate: CLIMATES.canyonlands });
+
+  it("covers undeveloped desert parcels in dry ground, rock and wash, never turf or woods", () => {
+    for (const seed of [3, 19]) {
+      const town = arid(seed);
+      const natural = countNatural(town.surface);
+      expect(natural.grass + natural["leaf-litter"] + natural.duff + natural["forest-floor"] + natural["forest-core"] + natural.field).toBe(0);
+      expect(natural.dirt + natural.scrub + natural.prairie).toBeGreaterThan(naturalCellTotal(town.surface) * 0.6);
+      expect(natural.rock).toBeGreaterThan(0);
+      expect(natural.talus).toBeGreaterThan(0);
+    }
+  });
+
+  it("keeps rock, talus and boulders off every lot, road and driveway", () => {
+    for (const seed of [3, 19]) {
+      const town = arid(seed);
+      const grid = town.surface;
+      for (let i = 0; i < grid.surface.length; i++) {
+        if (grid.surface[i] !== SURFACE_ID.rock && grid.surface[i] !== SURFACE_ID.talus) continue;
+        const x = grid.ox + (i % grid.cols) + 0.5, y = grid.oy + ((i / grid.cols) | 0) + 0.5;
+        expect(pointOnRoad(town.network, x, y)).toBe(false);
+        expect(town.lots.some((lot) => lotFootprintContains(lot, x, y))).toBe(false);
+      }
+      for (const prop of town.props.filter((p) => /boulder|-rock$/.test(p.assetId))) {
+        const x = prop.x + prop.w * 0.5, y = prop.y + prop.d * 0.5;
+        expect(pointOnRoad(town.network, x, y)).toBe(false);
+        expect(town.lots.some((lot) => lotFootprintContains(lot, x, y))).toBe(false);
+        expect(prop.lotId).toBeNull();
+      }
+    }
   });
 });

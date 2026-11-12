@@ -13,9 +13,10 @@ The game HTML's module graph (entry script plus `modulepreload` links) is the in
 | Career HUD strip | lazy `import("../render/careerStrip")` | Presentation only; requested at boot without blocking it |
 | Home Yard and Heavy Shop | lazy `import("./homeBase")` → `src/world/homeYard.ts`, `src/game/homeController.ts`, `src/render/heavyShop.ts`, `src/game/careerShop.ts` | Loads when the player rolls into the yard |
 | Third-party licence notices | lazy `import("./thirdPartyNotices.txt?raw")` in `src/render/operatorMenu.ts` | About 16 kB of text behind the About page's collapsed disclosure. It loads when that page opens; the service worker precaches the chunk with the other `assets/*.js`, so it still reads offline |
+| Authored content JSON | `scripts/compact-raw-json.mjs` (Vite plugin, build only) | Building and landmark packages are imported as raw text and kept pretty-printed in the repository. The production build ships the same JSON without indentation, which took the `buildings` chunk from about 612 kB to about 343 kB and is what gives the initial payload its headroom. A file that does not parse passes through untouched, so the runtime still reports it by path. Dev and Vitest read the files as written |
 | Road atlas geometry | `public/atlas/north-america-atlas.json`, fetched by `loadAtlas()` | Static JSON, not JavaScript, so it never counts toward either JS limit. About 245 KB, precached by the service worker; `src/world/atlas.test.ts` caps it at 400 KB |
 
-`npm run build` runs `scripts/analyze-bundle.mjs`, which fails CI when those limits are exceeded. `vite.config.ts` splits `pixi`, `analytics`, and `src/world/data/` (`buildings`) through `manualChunks` so Rollup no longer emits an oversized-chunk warning.
+`npm run build` runs `scripts/analyze-bundle.mjs`, which fails CI when those limits are exceeded. `vite.config.ts` splits `pixi`, `analytics`, and `src/world/data/` (`buildings`) through `manualChunks` so Rollup no longer emits an oversized-chunk warning. The `town` chunk (generation, simulation and rendering code) is the one new feature code lands in: it has to stay under the 650 KiB per-chunk limit as well.
 
 ## Analysis
 

@@ -1,5 +1,7 @@
 import { len } from "../game/math";
-import { linePoints, pt, samplePolyline, polylineLength, type RoadBuilder, type RoadNode, type RoadSegment } from "./roads";
+import { hashSeed, mixSeed } from "../game/rng";
+import { aridLandscape, SOILS, type ClimateEnvelope } from "./climate";
+import { linePoints, projectPointToRoad, pt, samplePolyline, polylineLength, type RoadBuilder, type RoadMeshQuad, type RoadNetwork, type RoadNode, type RoadSegment } from "./roads";
 
 export interface EdgeBounds { minX: number; minY: number; maxX: number; maxY: number }
 interface Box { x: number; y: number; w: number; d: number }
@@ -156,3 +158,109 @@ export function edgeExitNodes(network: { nodes: readonly RoadNode[]; segments: r
   });
 }
 
+
+const CURB_WIDTH = 0.2;
+const BLEACHED_ASPHALT = 0x8c877c;
+const DECOMPOSED_GRANITE = 0xc2ab84;
+const WASH_CONCRETE = 0xb4ae9c;
+const HEAT_CRACK = 0x2e2c2a;
+const CRACK_SPACING = 2.6;
+
+function mix(a: number, b: number, t: number): number {
+  const channel = (shift: number) => Math.round(((a >> shift) & 255) * (1 - t) + ((b >> shift) & 255) * t) << shift;
+  return channel(16) | channel(8) | channel(0);
+}
+
+/** Uncurbed classes carry a soft shoulder: mud and grass where it rains, bare soil where it does not. */
+const softShoulder = (s: RoadSegment) => s.roadClass === "rural" || s.roadClass === "service" || s.roadClass === "driveway" || s.roadClass === "ramp";
+
+/** Desert colour of one road quad on its segment, or `undefined` to leave it alone. */
+export function aridRoadColor(quad: Pick<RoadMeshQuad, "kind" | "color" | "d">, seg: RoadSegment, climate: Pick<ClimateEnvelope, "soil">): number | undefined {
+  const soil = SOILS[climate.soil];
+  if (quad.kind === "shoulder") return softShoulder(seg) && quad.d > CURB_WIDTH ? soil.verge : undefined;
+  if (quad.kind !== "pavement") return undefined;
+  switch (seg.surface) {
+    case "asphalt":
+      return mix(quad.color, BLEACHED_ASPHALT, 0.42);
+    case "gravel":
+      return mix(DECOMPOSED_GRANITE, soil.verge, 0.35);
+    case "dirt":
+      return soil.track;
+    case "concrete":
+      return mix(quad.color, WASH_CONCRETE, 0.4);
+    default: {
+      const _never: never = seg.surface;
+      return _never;
+    }
+  }
+}
+
+/**
+ * Finish a built road mesh for desert and canyon country. Soft shoulders and ditches become bare
+ * caliche or red-dirt verges in the zone's soil, asphalt bleaches, gravel drives turn to
+ * decomposed granite, the roads out to the map edge crack in the heat, and a concrete low-water
+ * crossing is poured wherever one of them fords a dry wash. Every other climate is left exactly
+ * as built. Colour and garnish only: lanes, widths and collision never change.
+ */
+export function dressAridRoads(
+  network: RoadNetwork,
+  climate: Pick<ClimateEnvelope, "landscape" | "soil">,
+  bounds: EdgeBounds,
+  isWash: (x: number, y: number) => boolean = () => false,
+): void {
+  if (!aridLandscape(climate) || !network.mesh.length) return;
+  const byId = new Map(network.segments.map(seg => [seg.id, seg]));
+  for (const quad of network.mesh) {
+    const id = projectPointToRoad(network, quad.x, quad.y).segmentId;
+    const seg = id ? byId.get(id) : undefined;
+    const color = seg && aridRoadColor(quad, seg, climate);
+    if (color !== undefined) quad.color = color;
+  }
+  const exits = new Set(edgeExitNodes(network, bounds).map(n => n.id));
+  for (const seg of network.segments) {
+    if (!exits.has(seg.startId) && !exits.has(seg.endId)) continue;
+    network.mesh.push(...heatCracks(seg), ...lowWaterCrossings(seg, isWash));
+  }
+}
+
+/** Transverse shrinkage cracks along a sun-baked road, placed from the segment's own hash. */
+function heatCracks(seg: RoadSegment): RoadMeshQuad[] {
+  if (seg.surface !== "asphalt") return [];
+  const total = polylineLength(seg.points), seed = hashSeed(`crack:${seg.id}:${Math.round(total * 8)}`);
+  const out: RoadMeshQuad[] = [];
+  for (let i = 0, along = CRACK_SPACING * 0.5; along < total - 0.6; i++, along += CRACK_SPACING) {
+    const roll = mixSeed(seed + i * 7919) / 0x1_0000_0000;
+    const p = samplePolyline(seg.points, Math.min(1, (along + (roll - 0.5) * 1.4) / total));
+    const reach = seg.width * (0.45 + roll * 0.5), side = (roll * 7) % 1 - 0.5;
+    const ox = -Math.sin(p.heading) * side * (seg.width - reach), oy = Math.cos(p.heading) * side * (seg.width - reach);
+    out.push({ x: p.x + ox, y: p.y + oy, w: 0.05, d: reach, z: p.elev + 0.012, heading: p.heading + (roll - 0.5) * 0.5, color: HEAT_CRACK, kind: "mark" });
+  }
+  return out;
+}
+
+/** A concrete apron across each run of wash the road crosses, a little wider than the pavement and its shoulders. */
+export function lowWaterCrossings(seg: RoadSegment, isWash: (x: number, y: number) => boolean): RoadMeshQuad[] {
+  const total = polylineLength(seg.points), steps = Math.max(2, Math.ceil(total / 0.6));
+  const out: RoadMeshQuad[] = [];
+  let from = -1;
+  for (let i = 0; i <= steps + 1; i++) {
+    const p = i <= steps ? samplePolyline(seg.points, i / steps) : undefined;
+    if (p && isWash(p.x, p.y)) {
+      if (from < 0) from = i;
+      continue;
+    }
+    if (from < 0) continue;
+    const a = samplePolyline(seg.points, Math.max(0, from - 1) / steps), b = samplePolyline(seg.points, Math.min(steps, i) / steps);
+    const length = len(b.x - a.x, b.y - a.y), heading = Math.atan2(b.y - a.y, b.x - a.x);
+    const slab = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, z: (a.elev + b.elev) / 2 + 0.014, heading };
+    const width = seg.width + seg.shoulder * 2 + 0.5;
+    out.push({ ...slab, w: length, d: width, color: WASH_CONCRETE, kind: "pavement" });
+    // Raised kerbs along both edges keep the ford visible when the wash runs.
+    for (const side of [1, -1]) {
+      const off = side * (width / 2 - 0.08);
+      out.push({ ...slab, x: slab.x - Math.sin(heading) * off, y: slab.y + Math.cos(heading) * off, z: slab.z + 0.004, w: length, d: 0.16, color: mix(WASH_CONCRETE, 0x5c5a50, 0.45), kind: "pavement" });
+    }
+    from = -1;
+  }
+  return out;
+}

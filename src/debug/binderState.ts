@@ -11,6 +11,10 @@ export interface DebugBinderState {
   profile: string;
   assetId: string;
   variant: number;
+  /** Climate preset for test maps: a `ClimateId`, or empty for assets as authored. */
+  climateId: string;
+  /** Season the preset is shown in. */
+  season: string;
   instanceKey?: string;
   expanded: Record<string, boolean>;
   scroll: Record<BinderTab, number>;
@@ -18,5 +22,5 @@ export interface DebugBinderState {
 
 export function createDebugBinderState(): DebugBinderState {
   return { open: false, collapsed: false, tab: 'assets', search: '', category: '', material: '', profile: '',
-    assetId: '', variant: 0, expanded: {}, scroll: { assets: 0, inspector: 0, session: 0 } };
+    assetId: '', variant: 0, climateId: '', season: 'summer', expanded: {}, scroll: { assets: 0, inspector: 0, session: 0 } };
 }

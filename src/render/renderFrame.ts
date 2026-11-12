@@ -5,6 +5,7 @@ import type { Dozer } from "../vehicle/dozer";
 import type { GroundCondition } from "../world/groundCondition";
 import type { SurfaceGrid } from "../world/terrain";
 import type { Town } from "../world/town";
+import type { GroundTone } from "./coverPalette";
 
 /** Mutable counters shared across named WorldRenderer draw passes. */
 export interface RenderFrame {
@@ -23,6 +24,8 @@ export interface RenderFrame {
   hideDressing: boolean;
   viewSig: string;
   condition: GroundCondition;
+  /** Ice and soil for the ground painters; `tone.key` belongs in every ground cache key. */
+  tone: GroundTone;
   surface: SurfaceGrid;
   terrainCounts: { chunks: number; cells: number };
 }

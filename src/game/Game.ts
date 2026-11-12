@@ -38,7 +38,9 @@ import { pickVerificationRoute } from "../world/routing";
 import { worldBoundsToScreen, worldToScreen } from "../world/iso";
 import { createTown, type Town } from "../world/town";
 import { biomeById } from "../world/biomes";
-import { resolveSeason } from "../world/season";
+import { climateById, isClimateId } from "../world/climate";
+import { BACKDROP_GREEN, backdropColor } from "../render/coverPalette";
+import { isSeasonId, resolveSeason } from "../world/season";
 import {
   FIELD_CLEARED_SECONDS,
   FIELD_NOTICE_SECONDS,
@@ -144,7 +146,7 @@ class Game {
   private rules: SessionRules = parseSessionFromSearch(
     typeof window === "undefined" ? "" : window.location.search,
   );
-  private town = createTown({ towerTest: this.rules.towerTest, district: this.rules.district, seed: this.rules.seed, showcase: !!this.rules.demo, testMap: this.rules.testMap, topology: this.rules.topology, season: this.rules.season, biome: biomeById(this.rules.biomeId), weatherDetail: this.rules.weatherDetail });
+  private town = createTown({ towerTest: this.rules.towerTest, district: this.rules.district, seed: this.rules.seed, showcase: !!this.rules.demo, testMap: this.rules.testMap, topology: this.rules.topology, season: this.rules.season, biome: biomeById(this.rules.biomeId), climate: climateById(this.rules.climateId), weatherDetail: this.rules.weatherDetail });
   private dozer = createDozer(this.town.spawnX, this.town.spawnY, this.town.spawnHeading);
   private birds: Bird[] = [];
   private cash = 0;
@@ -208,7 +210,7 @@ class Game {
     this.app = new Application();
     await this.app.init({
       resizeTo: root,
-      background: 0x3e522c,
+      background: BACKDROP_GREEN,
       antialias: false,
       roundPixels: true,
       autoDensity: true,
@@ -221,6 +223,8 @@ class Game {
     this.app.stage.addChild(this.renderer.root, this.renderer.hudOverlay);
     this.hudRoot = hudRoot;
     this.hud = new Hud(hudRoot);
+    // A test-map link's climate preset carries into the binder, so the next asset keeps it.
+    if (this.rules.testMap && this.rules.climateId) Object.assign(this.hud.binder, { climateId: this.rules.climateId, season: this.rules.season });
     this.bindHud();
     void import("../render/careerStrip").then(({ CareerStrip }) => {
       this.careerStrip = new CareerStrip(hudRoot);
@@ -403,6 +407,16 @@ class Game {
         this.rules.level = currentLevel(this.campaign).id;
       }
     }
+    this.followCountyEnvironment();
+  }
+
+  /** A county plays its own biome and climate zone, so a run that moves county moves both. */
+  private followCountyEnvironment(): void {
+    const { regionId, countyIndex } = this.rules;
+    const region = regionId && countyIndex ? this.overworld?.regionById(regionId) : undefined;
+    if (!region || !countyIndex) return;
+    Object.assign(this.rules, this.overworld!.countyEnvironment(region, countyIndex));
+    if (this.campaign) this.campaign.biomeId = this.rules.biomeId!;
   }
 
   /** Generate the town for the current rules and place the dozer; returns the focused ranch, if any. */
@@ -421,6 +435,7 @@ class Game {
       campaign: level && regionalLevel(level, this.placement = this.regionalPlacement()),
       season: this.rules.season,
       biome: biomeById(this.rules.biomeId),
+      climate: climateById(this.rules.climateId),
       weatherDetail: this.rules.weatherDetail,
       weather: this.rules.weather,
       regional: this.placement,
@@ -435,6 +450,7 @@ class Game {
           -Math.PI / 2,
         )
       : createDozer(this.town.spawnX, this.town.spawnY, this.town.spawnHeading);
+    this.app.renderer.background.color = backdropColor(this.town);
     this.particles.reseed(this.rules.seed ^ 0x51f00d);
     this.particles.ownerAt = this.town.debrisOwnerAt;
     this.attachTraffic();
@@ -493,7 +509,7 @@ class Game {
   /** Start the county the map's detail card deployed, in Sandbox or as a Time Challenge run. */
   private async deployCounty(deploy: CountyDeployment): Promise<void> {
     this.settleOpenRun("bailout");
-    const { countyAt, regionById, regionBiome } = await this.ensureOverworld();
+    const { countyAt, countyEnvironment, regionById } = await this.ensureOverworld();
     const county = countyAt(deploy.regionId, deploy.countyIndex);
     const region = regionById(deploy.regionId);
     if (!county || !region) return;
@@ -501,14 +517,14 @@ class Game {
     Object.assign(this.rules, {
       seed: county.seed, season: deploy.season, seasonSelection: deploy.season, seasonExplicit: true,
       weatherDetail: deploy.effects, weather: deploy.weather, mapSeed: deploy.mapSeed,
-      regionId: region.id, countyIndex: county.index, biomeId: regionBiome(region),
+      regionId: region.id, countyIndex: county.index, ...countyEnvironment(region, county.index),
     });
     this.campaign = null;
     if (deploy.kind === "challenge") {
       const run = startCampaign(county.seed);
       run.levelIndex = county.level.index - 1;
       run.season = deploy.season;
-      run.biomeId = regionBiome(region);
+      run.biomeId = this.rules.biomeId!;
       run.county = { regionId: region.id, index: county.index, weather: deploy.weather, mapSeed: deploy.mapSeed };
       this.campaign = run;
     }
@@ -567,7 +583,7 @@ class Game {
     this.runCells = 0;
     this.runCruisers = 0;
     this.spree = 0;
-    this.risk = this.rules.weather && showCampaignHud(this.rules, campaign) ? weatherRisk(this.town.season, this.rules.weather) : null;
+    this.risk = this.rules.weather && showCampaignHud(this.rules, campaign) ? weatherRisk(this.town.season, this.rules.weather, this.town.climate) : null;
     this.settled = false;
     this.replayRun = false;
     this.runEligible = !this.rules.home && !this.rules.testMap && !this.rules.job && !this.rules.towerTest && !this.rules.demo;
@@ -780,6 +796,9 @@ class Game {
     this.settleOpenRun("bailout");
     this.campaign = null;
     this.rules = rulesForTestMap(this.rules.seed, testMap);
+    // The binder's climate preset dresses the test map: regional roofs, walls, rooftop kits, snow.
+    const { climateId, season } = this.hud.binder;
+    if (isClimateId(climateId)) Object.assign(this.rules, { climateId, season: isSeasonId(season) ? season : "summer" });
     this.reset('same');
     if (testMap.kind === 'asset' && !this.yardFocus && !this.town.roadCar) this.yardFocus = this.town.yard?.bays[0];
     this.syncSessionUrl();
@@ -799,9 +818,15 @@ class Game {
           ? { mode: this.rules.kind, level: this.rules.level, seed: String(this.rules.seed) }
           : { mode: this.rules.kind, district: this.rules.district, seed: String(this.rules.seed) });
     if (this.rules.topology) params.set('topology', this.rules.topology);
+    // A test map keeps its climate preset across a reload.
+    if (this.rules.testMap && this.rules.climateId) {
+      params.set('climate', this.rules.climateId);
+      params.set('season', this.rules.season);
+    }
     if (!this.rules.testMap && !this.rules.job) {
       params.set('season', this.rules.season);
       if (this.rules.biomeId) params.set('biome', this.rules.biomeId);
+      if (this.rules.climateId) params.set('climate', this.rules.climateId);
       if (this.rules.weatherDetail !== 'on') params.set('effects', this.rules.weatherDetail);
       if (this.rules.weather) params.set('weather', this.rules.weather);
       if (this.rules.regionId && this.rules.countyIndex) {
@@ -1036,6 +1061,15 @@ class Game {
   /** Float the step's earnings over the damage that paid them, or the blade when nothing says where. */
   private popCash(amount: number, events: WorldEvent[]): void {
     if (!(amount > 0)) return;
+    // Scrap from wrecked machines floats under its own copper or steel label, out of the same credit.
+    const rate = this.combo.multiplier(this.loadout.salvageMul);
+    for (const e of events) {
+      if (!e.salvage || !(e.cash! > 0)) continue;
+      const scrap = Math.min(amount, Math.floor(e.cash! * rate));
+      this.renderer.cashPopups.credit(scrap, e.x, e.y, e.z, e.salvage);
+      amount -= scrap;
+    }
+    if (!(amount > 0)) return;
     const at = cashAnchor(events);
     if (at) this.renderer.cashPopups.credit(amount, at.x, at.y, at.z);
     else {
@@ -1233,6 +1267,11 @@ class Game {
       if (e.mag >= 2) this.audio.collapse(e.mag * 0.55);
     },
     spark: (e) => this.audio.clatter(e.mag * 0.6, "metal"),
+    "machine-break": (e) => {
+      if (e.fx === "refrigerant") this.audio.refrigerantHiss(e.mag);
+      else if (e.fx === "soot") this.audio.ductCrunch(e.mag);
+      else this.audio.electricSnap(e.mag);
+    },
   };
 
   /** A hard turn at speed groans as the tracks bind; rate-limited so it reads as one strain. */
@@ -1567,6 +1606,7 @@ class Game {
       won: this.mode === "results" && (this.campaign ? this.campaign.complete : this.cash >= CASH_TARGET && !this.death),
       fieldNotice: this.fieldNotice,
       season: this.town.season,
+      climateId: this.town.climate.id,
       weatherDetail: this.town.weatherDetail,
       regionId: this.rules.regionId,
       countyIndex: this.rules.countyIndex,
@@ -1619,7 +1659,7 @@ class Game {
       landmarkProgress: landmark.progress,
       landmarkReady: landmark.ready,
       dollarsReady: dollarsReady(campaign, level),
-      briefing: campaignBriefingText(level, campaign.season, briefingCounty) + signatureLine,
+      briefing: campaignBriefingText(level, campaign.season, briefingCounty, this.town.climate) + signatureLine,
       victory: campaign.victory,
       complete: campaign.complete,
       buildingCount: level.generation.buildingCount,
@@ -1893,8 +1933,12 @@ class Game {
     return {
       groundCondition: this.town.groundCondition,
       biomeId: this.town.biome.id,
+      climateId: this.town.climate.id,
       season: this.town.season,
+      look: this.town.look,
+      frozen: this.town.frozen,
       weather: this.town.weather.kind,
+      hazard: this.town.weather.hazard,
       spawn: { x: this.town.spawnX, y: this.town.spawnY },
       home: this.town.home,
       lots: this.town.lots.map((lot) => ({

@@ -1,32 +1,40 @@
 import { Graphics } from "pixi.js";
 import { FLOOR_Z } from "../game/constants";
 import { gableEndCaps, gableWallVerts, shedWallVerts } from "../structure/roof";
+import { awningStyled, facadeTrimPlan, southWindowed } from "../structure/facadeTrim";
 import { cellWorldBox, type Building, type Cell } from "../structure/types";
 import type { WallSpan } from "./buildingSurfaces";
 import { southFacadeCells } from "./buildingSurfaces";
 import { drawFaceWindow, drawIsoBox, drawShadow, drawWorldPoly } from "./drawIso";
 import { drawThickBrokenWall } from "./interiorDraw";
-import { topFaceColor, wallFaceColor } from "./lighting";
+import { drawSpanTrim } from "./facadeTrimDraw";
+import { topFaceColor } from "./lighting";
 import { PAL } from "./palette";
+import { wallFinish, wallTone, type WallFinish } from "./wallPaint";
 import { worldToScreen } from "../world/iso";
 
 const STORY_H = FLOOR_Z;
 
-export function drawWallSpan(g: Graphics, b: Building, span: WallSpan, alpha: number): void {
+/**
+ * One merged wall run. `detail` adds the fine layer the overview LOD strips: regional surface
+ * patterns and the procedural trim of `facadeTrimPlan`.
+ */
+export function drawWallSpan(g: Graphics, b: Building, span: WallSpan, alpha: number, detail = false): void {
   if (b.construction.skin === 'glass') {
     drawGlassWallSpan(g, b, span, alpha);
     return;
   }
   const mat = span.dir === "south" && span.floor === 0 ? span.facadeMaterial : span.material;
-  const color = wallFaceColor(mat, span.dir, span.visual !== "intact");
-  if (span.dir === "south") drawSouthWall(g, b, span, mat, color, alpha);
-  else drawEastWall(g, b, span, mat, color, alpha);
+  const color = wallTone(b, mat, span.dir, span.visual !== "intact");
+  if (span.dir === "south") drawSouthWall(g, b, span, mat, color, alpha, detail);
+  else drawEastWall(g, b, span, mat, color, alpha, detail);
+  if (detail) drawSpanTrim(g, b, span, mat, alpha);
 }
 
 /** A broken edge pulls the face in a little to show the wall's cut thickness. */
 const brokenInset = (span: WallSpan) => span.visual === "broken-edge" ? 0.06 : 0;
 
-function drawSouthWall(g: Graphics, b: Building, span: WallSpan, mat: Cell["material"], color: number, alpha: number): void {
+function drawSouthWall(g: Graphics, b: Building, span: WallSpan, mat: Cell["material"], color: number, alpha: number, detail: boolean): void {
   const cs = b.cellSize;
   const z0 = span.floor * FLOOR_Z;
   const z1 = z0 + STORY_H;
@@ -36,7 +44,7 @@ function drawSouthWall(g: Graphics, b: Building, span: WallSpan, mat: Cell["mate
   if (!drawPitchedWall(g, b, span, color, alpha, z0, x0, x0 + w, y1)) {
     drawFaceWindow(g, x0, y1, x0 + w, y1, z0, z1, 0, 1, 0, 1, color, alpha);
   }
-  drawSurfacePattern(g, mat, x0, y1, x0 + w, y1, z0, z1, alpha);
+  drawSurfacePattern(g, wallFinish(b, mat), detail, x0, y1, x0 + w, y1, z0, z1, alpha);
   if (span.floor === 0) {
     drawFaceWindow(g, x0, y1, x0 + w, y1, z0, z1, 0, 1, 0, 0.1, PAL.foundation, alpha * 0.65);
   }
@@ -44,7 +52,7 @@ function drawSouthWall(g: Graphics, b: Building, span: WallSpan, mat: Cell["mate
   if (span.visual === "broken-edge") {
     drawThickBrokenWall(g, b, "south", x0, y1, w, z0, mat, alpha);
   }
-  drawSouthFacadeDecor(g, b, span, alpha);
+  drawSouthFacadeDecor(g, b, span, alpha, detail);
 }
 
 /** Stable 0..1 jitter for a crack vertex, so cached facades redraw the same fracture. */
@@ -75,7 +83,7 @@ export function drawFaceCracks(
   }
 }
 
-function drawEastWall(g: Graphics, b: Building, span: WallSpan, mat: Cell["material"], color: number, alpha: number): void {
+function drawEastWall(g: Graphics, b: Building, span: WallSpan, mat: Cell["material"], color: number, alpha: number, detail: boolean): void {
   const cs = b.cellSize;
   const z0 = span.floor * FLOOR_Z;
   const z1 = z0 + STORY_H;
@@ -85,7 +93,7 @@ function drawEastWall(g: Graphics, b: Building, span: WallSpan, mat: Cell["mater
   if (!drawPitchedWall(g, b, span, color, alpha, z0, y0, y0 + d, x1)) {
     drawFaceWindow(g, x1, y0, x1, y0 + d, z0, z1, 0, 1, 0, 1, color, alpha);
   }
-  drawSurfacePattern(g, mat, x1, y0, x1, y0 + d, z0, z1, alpha);
+  drawSurfacePattern(g, wallFinish(b, mat), detail, x1, y0, x1, y0 + d, z0, z1, alpha);
   if (span.floor === 0) {
     drawFaceWindow(g, x1, y0, x1, y0 + d, z0, z1, 0, 1, 0, 0.1, PAL.foundation, alpha * 0.5);
   }
@@ -114,9 +122,18 @@ function drawGlassWallSpan(g: Graphics, b: Building, span: WallSpan, alpha: numb
   for (const v of [.03, .5, .97]) drawFaceWindow(g, ax, ay, bx, by, z0, z1, 0, 1, v, Math.min(1, v + .025), PAL.metal, alpha);
 }
 
-function drawSurfacePattern(g: Graphics, material: Cell["material"], ax: number, ay: number, bx: number, by: number, z0: number, z1: number, alpha: number): void {
+/** Horizontal courses a finish shows at close range: count, line weight and strength. */
+const COURSES: Partial<Record<WallFinish, readonly [rows: number, weight: number, alpha: number]>> = {
+  clapboard: [9, .01, .16], shingle: [7, .014, .2], timber: [5, .02, .3], cmu: [5, .01, .2], sandstone: [3, .012, .16], limestone: [3, .01, .12],
+};
+/** Vertical joint spacing in world units, for the finishes laid in blocks or panels. */
+const JOINTS: Partial<Record<WallFinish, number>> = { cmu: .58, sandstone: 1.15, limestone: 1.15, tiltup: 2.3 };
+
+/** Brick and ribbed steel always read; the finer regional finishes only draw at `detail` range. */
+function drawSurfacePattern(g: Graphics, finish: WallFinish, detail: boolean, ax: number, ay: number, bx: number, by: number, z0: number, z1: number, alpha: number): void {
   const length = Math.hypot(bx - ax, by - ay);
-  if (material === "brick") {
+  if (detail) drawFinishCourses(g, finish, length, ax, ay, bx, by, z0, z1, alpha);
+  if (finish === "brick") {
     for (let row = 1; row < 8; row++) {
       const v = row / 8;
       drawFaceWindow(g, ax, ay, bx, by, z0, z1, 0, 1, v, v + .008, PAL.frame, alpha * .15);
@@ -125,12 +142,28 @@ function drawSurfacePattern(g: Graphics, material: Cell["material"], ax: number,
         drawFaceWindow(g, ax, ay, bx, by, z0, z1, u, Math.min(1, u + .012 / length), v, v + .12, PAL.frame, alpha * .13);
       }
     }
-  } else if (material === "metal") {
+  } else if (finish === "ribbed") {
     for (let along = .35; along < length; along += .35) {
       const u = along / length;
       drawFaceWindow(g, ax, ay, bx, by, z0, z1, u, Math.min(1, u + .018 / length), 0, 1, PAL.metalTop, alpha * .22);
     }
   }
+}
+
+function drawFinishCourses(g: Graphics, finish: WallFinish, length: number, ax: number, ay: number, bx: number, by: number, z0: number, z1: number, alpha: number): void {
+  const courses = COURSES[finish], spacing = JOINTS[finish];
+  if (courses) for (let row = 1; row < courses[0]; row++) {
+    const v = row / courses[0];
+    drawFaceWindow(g, ax, ay, bx, by, z0, z1, 0, 1, v, v + courses[1], PAL.frame, alpha * courses[2]);
+  }
+  if (spacing) for (let along = spacing; along < length; along += spacing) {
+    const u = along / length;
+    drawFaceWindow(g, ax, ay, bx, by, z0, z1, u, Math.min(1, u + .014 / length), 0, 1, PAL.frame, alpha * .18);
+  }
+  if (finish !== "tiltup") return;
+  // Rain streaks under the parapet and splash-back at the slab.
+  drawFaceWindow(g, ax, ay, bx, by, z0, z1, 0, 1, .9, 1, PAL.frame, alpha * .14);
+  drawFaceWindow(g, ax, ay, bx, by, z0, z1, 0, 1, 0, .1, PAL.frame, alpha * .1);
 }
 
 function drawPitchedWall(
@@ -178,7 +211,7 @@ function drawEastWindows(
 }
 
 /** One story-high cell bay on a south facade. */
-interface SouthBay { g: Graphics; x0: number; y1: number; cs: number; z0: number; alpha: number }
+interface SouthBay { g: Graphics; x0: number; y1: number; cs: number; z0: number; alpha: number; detail: boolean }
 
 /** Paint a rectangle in bay-relative (u across, v up) coordinates. */
 function bayRect(bay: SouthBay, u0: number, u1: number, v0: number, v1: number, color: number, alpha: number): void {
@@ -189,11 +222,11 @@ function bayFrame(bay: SouthBay, fill: number, u0: number, u1: number): void {
   drawFramedBay(bay.g, bay.x0, bay.y1, bay.cs, bay.z0, STORY_H, fill, PAL.frame, bay.alpha, u0, u1);
 }
 
-function drawSouthFacadeDecor(g: Graphics, b: Building, span: WallSpan, alpha: number): void {
+function drawSouthFacadeDecor(g: Graphics, b: Building, span: WallSpan, alpha: number, detail: boolean): void {
   const cs = b.cellSize;
   const z0 = span.floor * FLOOR_Z;
   const y1 = b.y + (span.gy0 + 1) * cs;
-  for (const cell of southFacadeCells(b, span)) drawSouthCell({ g, x0: b.x + cell.gx * cs, y1, cs, z0, alpha }, b, span, cell);
+  for (const cell of southFacadeCells(b, span)) drawSouthCell({ g, x0: b.x + cell.gx * cs, y1, cs, z0, alpha, detail }, b, span, cell);
 }
 
 /** A loading bay or door fills its cell; otherwise a window, then a mid-height belt course on masonry looks. */
@@ -207,11 +240,11 @@ function drawSouthCell(bay: SouthBay, b: Building, span: WallSpan, cell: Cell): 
     drawDoorBay(bay, b, cell);
     return;
   }
-  if (cell.windowS || (b.theme === "colonial" && span.floor > 0) || (b.construction.walls === "masonry" && span.floor === 0)) {
+  if (southWindowed(b, cell)) {
     drawSouthWindow(bay, b, span.floor, cell.state === "cracked" ? PAL.glass : PAL.glassLit);
   }
   if (span.material === "brick" || b.theme === "colonial" || b.theme === "corner") {
-    bayRect(bay, 0, 1, 0.46, 0.54, wallFaceColor(span.facadeMaterial, "south"), bay.alpha * 0.22);
+    bayRect(bay, 0, 1, 0.46, 0.54, wallTone(b, span.facadeMaterial, "south"), bay.alpha * 0.22);
   }
 }
 
@@ -232,7 +265,8 @@ function drawDoorBay(bay: SouthBay, b: Building, cell: Cell): void {
     bayRect(bay, 0.32, 0.68, 0.02, 0.58, PAL.woodDark, alpha);
   }
   const { g, x0, y1, cs, z0 } = bay;
-  if (b.features.awning) {
+  // A styled awning from the trim plan replaces the stock box at detail range.
+  if (b.features.awning && !(bay.detail && awningStyled(b, facadeTrimPlan(b), cell))) {
     drawIsoBox(g, x0 - 0.04, y1 - cs * 0.28, cs + 0.08, 0.38, z0 + STORY_H * 0.62, 0.1, b.fasciaColor ?? PAL.awning, PAL.brickDark, b.fasciaColor ?? PAL.awning, alpha);
   }
   if (b.features.porch) {
@@ -286,7 +320,7 @@ export function drawFallingCell(g: Graphics, b: Building, cell: Cell, alpha: num
     const h = cell.role === "column" ? FLOOR_Z : FLOOR_Z * .8;
     drawIsoBox(g, box.x + cell.fallDx * t, box.y + cell.fallDy * t, box.w + t * .5, box.d + t * .35,
       Math.max(.08, cell.floor * FLOOR_Z * (1 - t)), h * (1 - t * .85),
-      topFaceColor(cell.material, true), wallFaceColor(cell.material, "south", true), wallFaceColor(cell.material, "east", true), alpha);
+      topFaceColor(cell.material, true), wallTone(b, cell.material, "south", true), wallTone(b, cell.material, "east", true), alpha);
   }
 }
 

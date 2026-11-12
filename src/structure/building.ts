@@ -21,8 +21,9 @@ import type {
   WorldEvent,
 } from "./types";
 import { beamSpan, cellCenter, cellPresent, materialHp } from "./types";
-import { generateInteriors, stepInteriors, type FixtureFrag } from "./interior";
+import { applyFixtureDamage, fixtureWorldBox, generateInteriors, stepInteriors, type FixtureFrag } from "./interior";
 import { generateRoofs, roofsNeedStep, stepRoofs, type RoofDebrisSpawn } from "./roof";
+import { generateRooftop, rooftopNeedsStep, stepRooftop, type DeadLoadDamage } from "./rooftop";
 
 let nextId = 1;
 
@@ -319,6 +320,7 @@ export function createBuilding(spec: BuildingSpec, definition?: Archetype): Buil
     cells,
     grid,
     roofs: [],
+    rooftop: [],
     fullyDown: false,
     collapseBonusPaid: false,
     leanX: 0,
@@ -446,6 +448,7 @@ function initializeEnclosure(building: Building, archetype: Archetype | undefine
   building.floorTiles=allTiles;
   if (archetype?.canopy) for (const roof of building.roofs) roof.support = archetype.canopy.columns.map(p => ({ gx: p.x, gy: p.y }));
   building.fixtures = generateInteriors(building);
+  building.rooftop = generateRooftop(building);
 }
 export function createBuildingFromArchetype(
   archetypeId: ArchetypeId | string,
@@ -487,9 +490,9 @@ function markBuildingChanged(building: Building, collision = true): void {
 }
 
 function buildingNeedsStructureStep(building: Building): boolean {
-  if (building.fullyDown && !roofsNeedStep(building)) return false;
+  if (building.fullyDown && !roofsNeedStep(building) && !rooftopNeedsStep(building)) return false;
   if (building.structureDirty || building.roofDirty) return true;
-  if (roofsNeedStep(building)) return true;
+  if (roofsNeedStep(building) || rooftopNeedsStep(building)) return true;
   return anyCellUnsettled(building);
 }
 
@@ -698,6 +701,9 @@ function startFall(
   return cash;
 }
 
+/** How falling rooftop plant hurts the walls and contents it lands on. */
+const DEAD_LOAD_DAMAGE: DeadLoadDamage = { cell: (...args) => applyCellDamage(...args), fixture: applyFixtureDamage, fixtureBox: fixtureWorldBox };
+
 export interface StructureStepResult {
   coreImpacts: CoreImpact[];
   cash: number;
@@ -775,7 +781,6 @@ function stepBuildingStructure(
     stepCoreCollapse(building, dt, result, particles, events);
     return true;
   }
-  if (building.fullyDown && !roofsNeedStep(building)) return false;
   if (!buildingNeedsStructureStep(building)) return false;
   building.visualRevision++;
   scratch.length = building.w * building.d * building.floors;
@@ -784,11 +789,12 @@ function stepBuildingStructure(
 
   stepFloorTiles(building, dt, result);
   stepRoofs(building, dt, particles, events, roofSpawns);
+  if (building.rooftop.length) stepRooftop(building, dt, particles, events, result, DEAD_LOAD_DAMAGE);
   const interiors = stepInteriors(building, particles, events);
   result.cash += interiors.cash;
   result.fixtureFrags.push(...interiors.frags);
   if (buildingAllDown(building)) building.fullyDown = true;
-  building.structureDirty = buildingStillUnsettled(building);
+  building.structureDirty = buildingStillUnsettled(building) || rooftopNeedsStep(building);
   building.roofDirty = roofsNeedStep(building);
   return true;
 }
@@ -797,6 +803,7 @@ function stepBuildingStructure(
 function buildingAllDown(building: Building): boolean {
   if (!building.cells.every((c) => c.state === "gone")) return false;
   if (!building.roofs.every((r) => r.state === "gone")) return false;
+  if (!building.rooftop.every((f) => f.state === "gone")) return false;
   if (building.floorTiles.some(t => !t.void && t.floor > 0 && t.state !== "gone")) return false;
   if (building.elevatedTank && building.elevatedTank.phase !== 'gone') return false;
   return !building.silos || building.silos.every(s => s.phase === 'gone');

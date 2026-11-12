@@ -12,7 +12,7 @@ vi.mock('pixi.js', async (orig) => {
   class Application {
     canvas = document.createElement('canvas');
     stage = new pixi.Container();
-    renderer = { width: 1280, height: 720 };
+    renderer = { width: 1280, height: 720, background: { color: 0 } };
     async init(): Promise<void> {}
     resize(): void {}
     render(): void {}

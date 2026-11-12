@@ -2,6 +2,7 @@ import type { CampaignLevelId } from './campaign';
 import type { TestMapRequest } from '../world/testMapRequest';
 import type { BiomeId } from '../world/biomes';
 import { biomeById } from '../world/biomes';
+import { isClimateId, type ClimateId } from '../world/climate';
 import {
   isSeasonId,
   isWeatherCondition,
@@ -92,6 +93,8 @@ export interface SessionRules {
   /** True when the link named a season, including an invalid value resolved to summer. */
   seasonExplicit: boolean;
   biomeId?: BiomeId;
+  /** Climate zone: a county's own, or a `climate=` link. Absent follows the biome's home climate. */
+  climateId?: ClimateId;
   weatherDetail: WeatherDetail;
   /** Overworld region, e.g. `US-IL`. Present only with a county. */
   regionId?: string;
@@ -164,6 +167,8 @@ function applySeedLink(rules: SessionRules, rawSeed: string | null): void {
 function applyLookLinks(rules: SessionRules, params: URLSearchParams): void {
   const biome = biomeById(params.get("biome"));
   if (biome) rules.biomeId = biome.id;
+  const climate = params.get("climate");
+  if (isClimateId(climate)) rules.climateId = climate;
   const effects = params.get("effects");
   if (effects && isWeatherDetail(effects)) rules.weatherDetail = effects;
 }

@@ -59,3 +59,27 @@ describe("snow terrain frames", () => {
     expect(describeCell(grid, 0, 0, "clear")?.overlay).toMatch(/^field__/);
   });
 });
+
+describe("arid terrain tiles", () => {
+  const grid = (surface: keyof typeof SURFACE_ID) => {
+    const cell = emptyGrassGrid(0, 0, 1, 1);
+    cell.surface[0] = SURFACE_ID[surface];
+    return cell;
+  };
+
+  it("bares turf to dirt in a snowless desert and leaves water, fields and scrub alone", () => {
+    for (const turf of ["grass", "prairie", "leaf-litter"] as const) {
+      expect(describeCell(grid(turf), 0, 0, "clear", "summer", true)).toEqual({ base: "dirt-0" });
+      // Autumn leaf litter never falls on desert floor.
+      expect(describeCell(grid(turf), 0, 0, "clear", "autumn", true)).toEqual({ base: "dirt-0" });
+    }
+    expect(describeCell(grid("scrub"), 0, 0, "clear", "summer", true)?.base).toBe("scrub-0");
+    expect(describeCell(grid("water"), 0, 0, "clear", "summer", true)?.base).toBe("water-0");
+    expect(describeCell(grid("field"), 0, 0, "clear", "summer", true)).toEqual(describeCell(grid("field"), 0, 0, "clear", "summer"));
+  });
+
+  it("buries a high desert under snow like anywhere else", () => {
+    expect(describeCell(grid("grass"), 0, 0, "snow", "winter", true)).toEqual({ base: "snow-grass-0" });
+    expect(describeCell(grid("grass"), 0, 0, "clear", "summer")).toEqual(describeCell(grid("grass"), 0, 0, "clear", "summer", false));
+  });
+});

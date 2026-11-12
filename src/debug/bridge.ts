@@ -87,8 +87,14 @@ export interface TownFeatureSnapshot {
 export interface TownDebugSnapshot {
   groundCondition: string;
   biomeId: string;
+  /** Climate zone, the season the map is painted in, and whether ponds are ice. */
+  climateId?: string;
   season?: string;
+  look?: string;
+  frozen?: boolean;
   weather?: string;
+  /** The climate hazard the sky is, when it is one. */
+  hazard?: string;
   spawn: { x: number; y: number };
   /** Home Yard trigger zones; absent on every other map. */
   home?: import("../world/town").HomeYardLayout;
@@ -201,7 +207,10 @@ export function serializeTownFeature(feature: TerrainFeature): TownFeatureSnapsh
         canopyR: feature.canopyR,
       };
     case "river":
+    case "wash":
       return { kind: feature.kind, path: feature.path, halfWidth: feature.halfWidth };
+    case "mesa":
+      return { kind: feature.kind, x: feature.x, y: feature.y, w: feature.cols, d: feature.rows };
     case "pond":
     case "lake":
       return { kind: feature.kind, poly: feature.poly };

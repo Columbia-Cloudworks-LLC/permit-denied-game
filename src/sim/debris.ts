@@ -3,7 +3,7 @@ import { MATERIALS } from '../structure/materials';
 import { DEBRIS, DOZER } from "../game/constants";
 import { clamp, len } from "../game/math";
 import { Rng } from "../game/rng";
-import type { ParticlePool } from "../fx/particles";
+import { isVapor, type ParticlePool } from "../fx/particles";
 import type {
   DebrisLayer,
   DebrisShape,
@@ -1575,7 +1575,7 @@ function recordDebrisStats(town: Town, contactPairs: number): void {
 
 export function depositSettledParticles(town: Town, particles: ParticlePool): void {
   for (const p of particles.items) {
-    if (!p.alive || !p.settled || p.kind === "dust" || p.kind === "crop" || p.kind === "spark") continue;
+    if (!p.alive || !p.settled || p.kind === "dust" || p.kind === "crop" || p.kind === "spark" || p.kind === "arc" || isVapor(p.kind)) continue;
     if (p.life > 0.4) continue;
     const kind: GroundKind = p.kind === "glass" ? "glass" : p.kind === "wood" ? "splinter" : "chip";
     const material: Material = p.kind;

@@ -2,13 +2,35 @@ import { Application } from 'pixi.js';
 import { ParticlePool } from '../fx/particles';
 import { WorldRenderer } from '../render/WorldRenderer';
 import { defaultDebugView } from '../debug/view';
-import { frameIsolateLot, instantiateIsolateDefinition } from '../debug/isolateLot';
+import { frameIsolateLot, instantiateIsolateDefinition, type IsolateLot } from '../debug/isolateLot';
+import { stampRegionalExterior } from '../structure/regionalExterior';
+import { climateById } from '../world/climate';
+import { townSeasonState } from '../world/groundCondition';
+import type { SeasonId } from '../world/season';
 import type { Archetype } from '../world/archetypes';
 
 export type PreviewView = 'intact' | 'cutaway';
 
+/** How the isolated lot is dressed: a climate preset's regional roof, walls and kit, its season, and the rooftop gear layer. */
+export interface PreviewDress {
+  view: PreviewView;
+  /** A `ClimateId`, or empty for the package exactly as authored. */
+  climateId: string;
+  season: SeasonId;
+  gear: boolean;
+}
+
+/** Apply a preview's climate preset to an isolated lot; an empty preset leaves it as authored. */
+export function dressIsolateLot(lot: IsolateLot, dress: Pick<PreviewDress, 'climateId' | 'season'>): void {
+  const climate = climateById(dress.climateId);
+  if (!climate) return;
+  Object.assign(lot.town, { climate, ...townSeasonState(dress.season, climate) });
+  stampRegionalExterior(lot.town.buildings, climate, lot.town.seed);
+  lot.town.visualRevision++;
+}
+
 export interface IsolatePreview {
-  show(definition: Archetype, view: PreviewView): void;
+  show(definition: Archetype, dress: PreviewDress): void;
   resize(): void;
   destroy(): void;
 }
@@ -39,16 +61,17 @@ export async function bootIsolatePreview(host: HTMLElement): Promise<IsolatePrev
   const renderer = new WorldRenderer();
   app.stage.addChild(renderer.root);
   const particles = new ParticlePool();
-  let current: { definition: Archetype; view: PreviewView } | undefined;
+  let current: { definition: Archetype; dress: PreviewDress } | undefined;
 
   function renderCurrent(): void {
     if (!current) return;
     const { width, height } = viewSize(host);
     fitRenderer(app, width, height);
     const lot = instantiateIsolateDefinition(current.definition);
+    dressIsolateLot(lot, current.dress);
     particles.ownerAt = lot.town.debrisOwnerAt;
     particles.reseed(4517);
-    Object.assign(renderer.debug, defaultDebugView(), { reveal: current.view === 'cutaway' });
+    Object.assign(renderer.debug, defaultDebugView(), { reveal: current.dress.view === 'cutaway', gear: current.dress.gear });
     frameIsolateLot(renderer, lot.camera, width, height);
     renderer.invalidate();
     renderer.layout(width, height, 0, 0);
@@ -58,8 +81,8 @@ export async function bootIsolatePreview(host: HTMLElement): Promise<IsolatePrev
   }
 
   return {
-    show(definition, view) {
-      current = { definition, view };
+    show(definition, dress) {
+      current = { definition, dress };
       renderCurrent();
     },
     resize() { renderCurrent(); },
