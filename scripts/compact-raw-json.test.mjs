@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { fileURLToPath } from "node:url";
 import { compactJsonText, compactRawJson, rawContentJsonPath } from "./compact-raw-json.mjs";
 
 describe("raw content JSON compaction", () => {
@@ -28,7 +29,8 @@ describe("raw content JSON compaction", () => {
     assert.equal(plugin.enforce, "pre");
     const load = /** @type {(id: string) => Promise<string | null>} */ (plugin.load);
     assert.equal(await load("/repo/src/main.ts"), null);
-    const source = await load(new URL("../src/world/data/shared/construction/timber-house.construction.json", import.meta.url).pathname + "?raw");
+    const file = fileURLToPath(new URL("../src/world/data/shared/construction/timber-house.construction.json", import.meta.url));
+    const source = await load(file + "?raw");
     assert.match(String(source), /^export default "\{/);
     assert.doesNotMatch(String(source), /\\n/);
   });
