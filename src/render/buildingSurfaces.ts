@@ -1,6 +1,8 @@
 import { FLOOR_Z } from "../game/constants";
 import { depthKey } from "../world/iso";
-import type { Building, Cell, FacadeTheme, Material } from "../structure/types";
+import { roofCoverage } from "../structure/roof";
+import { rooftopCells } from "../structure/rooftop";
+import type { Building, Cell, FacadeTheme, Material, RoofSection } from "../structure/types";
 
 export type WallVisual = "intact" | "cracked" | "broken-edge";
 
@@ -214,7 +216,7 @@ export function buildingSurfaceSignature(b: Building): string {
   return String(b.visualRevision);
 }
 
-export function releaseBuildingSurfaces(b: Building): void { cache.delete(b); }
+export function releaseBuildingSurfaces(b: Building): void { cache.delete(b); deckCache.delete(b); }
 
 export function getBuildingSurfaces(b: Building): BuildingSurfaces {
   const sig = buildingSurfaceSignature(b);
@@ -232,4 +234,142 @@ export function southFacadeCells(b: Building, span: WallSpan): Cell[] {
     if (c) out.push(c);
   }
   return out;
+}
+
+/** How one stretch of a merged deck's side meets what lies beyond it. */
+export interface DeckEdgeRun {
+  /** First and last cell along the side. */
+  a: number;
+  b: number;
+  /** `parapet`: open roof edge. `wall`: a taller wing rises there. `breach`: the next panel is sagging away. */
+  kind: "parapet" | "wall" | "breach";
+}
+
+/** A rectangle of intact, level flat-roof cells drawn as one continuous deck. */
+export interface FlatDeck {
+  floor: number;
+  gx0: number;
+  gy0: number;
+  gx1: number;
+  gy1: number;
+  /** World extents; sides on an open roof edge keep the eave overhang. */
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+  z: number;
+  material: Material;
+  /** Only sides facing something other than another intact deck carry runs, so merged decks never show a seam. */
+  edges: Record<"north" | "south" | "east" | "west", DeckEdgeRun[]>;
+}
+
+export interface FlatRoofPlan {
+  decks: FlatDeck[];
+  /** Live sections that still draw one by one: pitched, glazed, sagging, falling, or beside a breach. */
+  loose: RoofSection[];
+}
+
+const deckCache = new WeakMap<Building, { sig: string; plan: FlatRoofPlan }>();
+const cellKey = (floor: number, gx: number, gy: number): number => (floor * 128 + gx) * 128 + gy;
+const DECK_SIDES = [["north", 0, -1], ["south", 0, 1], ["west", -1, 0], ["east", 1, 0]] as const;
+
+/** Merged flat-roof decks for the building's current state, cached on its visual revision. */
+export function flatRoofDecks(b: Building): FlatRoofPlan {
+  const sig = buildingSurfaceSignature(b);
+  const hit = deckCache.get(b);
+  if (hit && hit.sig === sig) return hit.plan;
+  const plan = mergeFlatRoofDecks(b);
+  deckCache.set(b, { sig, plan });
+  return plan;
+}
+
+/**
+ * Merge contiguous intact flat-roof cells of one floor into deck rectangles. A section sagging,
+ * falling, or next to a breach stays loose, so seams appear only along cracks and openings.
+ * A deck never wraps around something tall standing on or beside it (a taller wing, rooftop
+ * equipment): everything behind such a cell stays in its own rectangle, which keeps the
+ * front-corner painter depth of every deck no later than the things it must paint under.
+ */
+export function mergeFlatRoofDecks(b: Building): FlatRoofPlan {
+  // An open canopy is all underside and columns: its panels keep drawing one by one.
+  if (b.canopy) return { decks: [], loose: b.roofs.filter(r => r.state !== "gone") };
+  const flat = new Map<number, RoofSection>();
+  const open = new Set<number>();
+  for (const roof of b.roofs) {
+    if (roof.style !== "flat" || roof.material === "glass") continue;
+    for (const c of roofCoverage(roof)) {
+      if (roof.state === "gone" || roof.state === "falling") open.add(cellKey(roof.floor, c.gx, c.gy));
+      else flat.set(cellKey(roof.floor, c.gx, c.gy), roof);
+    }
+  }
+  const besideBreach = (roof: RoofSection) => roofCoverage(roof).some(c =>
+    DECK_SIDES.some(([, dx, dy]) => open.has(cellKey(roof.floor, c.gx + dx, c.gy + dy))));
+  const solid = new Set<RoofSection>();
+  for (const roof of new Set(flat.values())) {
+    if (roof.state === "intact" && roof.sag === 0 && !besideBreach(roof)) solid.add(roof);
+  }
+  const upper = new Set<number>();
+  for (const t of b.floorTiles) upper.add(cellKey(t.floor, t.gx, t.gy));
+  const tall = new Map<number, { gx: number; gy: number }[]>();
+  const markTall = (floor: number, gx: number, gy: number) => {
+    const list = tall.get(floor) ?? [];
+    list.push({ gx, gy });
+    tall.set(floor, list);
+  };
+  for (const t of b.floorTiles) if (t.floor > 0) markTall(t.floor - 1, t.gx, t.gy);
+  for (const f of b.rooftop) if (f.state === "mounted") for (const c of rooftopCells(f)) markTall(f.floor, c.gx, c.gy);
+
+  const decks: FlatDeck[] = [];
+  const taken = new Set<number>();
+  const free = (floor: number, gx: number, gy: number) => {
+    const key = cellKey(floor, gx, gy), roof = flat.get(key);
+    return !!roof && solid.has(roof) && !taken.has(key);
+  };
+  const clear = (floor: number, gx0: number, gy0: number, gx1: number, gy1: number) =>
+    !(tall.get(floor) ?? []).some(t => gx0 <= t.gx && gy0 <= t.gy && (gx1 > t.gx || gy1 > t.gy));
+  const floors = [...new Set([...solid].map(r => r.floor))].sort((a, c) => a - c);
+  for (const floor of floors) {
+    for (let gy = 0; gy < b.d; gy++) for (let gx = 0; gx < b.w; gx++) {
+      if (!free(floor, gx, gy)) continue;
+      let gx1 = gx, gy1 = gy;
+      while (free(floor, gx1 + 1, gy) && clear(floor, gx, gy, gx1 + 1, gy)) gx1++;
+      const rowFree = (y: number) => { for (let x = gx; x <= gx1; x++) if (!free(floor, x, y)) return false; return true; };
+      while (rowFree(gy1 + 1) && clear(floor, gx, gy, gx1, gy1 + 1)) gy1++;
+      for (let x = gx; x <= gx1; x++) for (let y = gy; y <= gy1; y++) taken.add(cellKey(floor, x, y));
+      decks.push(deckRect(b, floor, gx, gy, gx1, gy1, flat, solid, upper));
+    }
+  }
+  return { decks, loose: b.roofs.filter(r => r.state !== "gone" && !solid.has(r)) };
+}
+
+function deckRect(
+  b: Building, floor: number, gx0: number, gy0: number, gx1: number, gy1: number,
+  flat: ReadonlyMap<number, RoofSection>, solid: ReadonlySet<RoofSection>, upper: ReadonlySet<number>,
+): FlatDeck {
+  const cs = b.cellSize, corner = flat.get(cellKey(floor, gx0, gy0))!;
+  const edges: FlatDeck["edges"] = { north: [], south: [], east: [], west: [] };
+  const outer: Record<string, boolean> = {};
+  for (const [side, dx, dy] of DECK_SIDES) {
+    const alongX = dy !== 0, from = alongX ? gx0 : gy0, to = alongX ? gx1 : gy1;
+    let allOpen = true;
+    for (let i = from; i <= to; i++) {
+      const nx = alongX ? i : (dx < 0 ? gx0 - 1 : gx1 + 1), ny = alongX ? (dy < 0 ? gy0 - 1 : gy1 + 1) : i;
+      const next = flat.get(cellKey(floor, nx, ny));
+      const kind = next ? (solid.has(next) || (next.state === "intact" && next.sag === 0) ? null : "breach" as const)
+        : upper.has(cellKey(floor + 1, nx, ny)) ? "wall" as const : "parapet" as const;
+      if (kind !== "parapet") allOpen = false;
+      if (!kind) continue;
+      const last = edges[side][edges[side].length - 1];
+      if (last && last.kind === kind && last.b === i - 1) last.b = i;
+      else edges[side].push({ a: i, b: i, kind });
+    }
+    outer[side] = allOpen;
+  }
+  // Same eave overhang as the tiles and bays this deck replaces.
+  const oh = corner.bay ? 0.14 : 0.12;
+  return {
+    floor, gx0, gy0, gx1, gy1, edges, material: corner.material, z: corner.verts[0]!.z,
+    x0: b.x + gx0 * cs - (outer.west ? oh : 0), x1: b.x + (gx1 + 1) * cs + (outer.east ? oh : 0),
+    y0: b.y + gy0 * cs - (outer.north ? oh : 0), y1: b.y + (gy1 + 1) * cs + (outer.south ? oh : 0),
+  };
 }

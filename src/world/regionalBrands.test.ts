@@ -5,7 +5,7 @@ import { facadeDetailPose } from '../structure/facadeDetails';
 import type { Building } from '../structure/types';
 import { ARCHETYPES, archetypeById } from './archetypes';
 import { campaignWeight } from './campaignPlacement';
-import { countyAt, regionBiome } from './counties';
+import { countyAt, countyEnvironment } from './counties';
 import { BIOME_PROFILES } from './biomes';
 import { BRANDS, brandById, brandsForRegion, REGIONAL_FLAVORS, regionalLandmark, regionalPlacement } from './regionalCatalog';
 import { brandMount, MAX_PER_BRAND, SIGN_TEXT, stampBrand, stampRegionalBrands, TRAVEL_PLAZA_ID } from './regionalBrands';
@@ -20,7 +20,7 @@ const color = (value: number) => Number.isInteger(value) && value >= 0 && value 
 const county = (regionId: string, index: number) => {
   const def = countyAt(regionId, index)!, region = regionById(regionId)!;
   const placement = regionalPlacement(region, index);
-  return createTown({ district: 'd30', seed: def.seed, campaign: regionalLevel(campaignLevelById(def.level.id), placement), regional: placement, biome: BIOME_PROFILES[regionBiome(region)] });
+  return createTown({ district: 'd30', seed: def.seed, campaign: regionalLevel(campaignLevelById(def.level.id), placement), regional: placement, biome: BIOME_PROFILES[countyEnvironment(region, index).biomeId] });
 };
 
 describe('regional brand catalog', () => {
@@ -197,7 +197,7 @@ describe('regional landmarks', () => {
   }, 60_000);
 
   it('plays the Southwest on arid scrub instead of oak woods and corn', () => {
-    for (const regionId of ['US-AZ', 'US-NV', 'US-NM', 'US-TX', 'US-OK']) expect(regionBiome(regionById(regionId)!), regionId).toBe('arid-scrub');
-    expect(regionBiome(regionById('US-IA')!)).toBe('agricultural-plain');
+    for (const regionId of ['US-AZ', 'US-NV', 'US-NM', 'US-TX', 'US-OK']) expect(countyEnvironment(regionById(regionId)!, 2).biomeId, regionId).toBe('arid-scrub');
+    expect(countyEnvironment(regionById('US-IA')!, 1).biomeId).toBe('agricultural-plain');
   });
 });

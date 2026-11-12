@@ -4,6 +4,8 @@ import { ParticlePool } from '../fx/particles';
 import { ARCHETYPES, validateBuildingDefinition } from '../world/archetypes';
 import { applyCellDamage, createBuildingFromDefinition, stepStructures } from './building';
 import { facadeDetailPose, facadeDetailSupports, FACADE_DETAIL_KINDS, onRoof } from './facadeDetails';
+import { downspoutCells, faceRun, facadeTrimPlan, stampStreetFaces, trimItemsAt, trimKey, usesWindowAc, type TrimItemKind } from './facadeTrim';
+import type { Building, Lot } from './types';
 
 describe('mounted facade details', () => {
   it.each(['roof-duct', 'dormer'] as const)('rejects %s on the wrong roof or spanning multiple mounting cells', kind => {
@@ -90,5 +92,126 @@ describe('mounted facade details', () => {
     expect(validateBuildingDefinition(a).join(' ')).toContain('exposed mounting cells');
     d.text = '<script>';
     expect(validateBuildingDefinition(a).join(' ')).toContain('Invalid facade detail');
+  });
+});
+
+describe('procedural facade trim', () => {
+  const build = (id: string) => createBuildingFromDefinition(ARCHETYPES.find(a => a.id === id)!, id, 4, 6);
+  const lotFacing = (id: string, heading: number, cornerLot = false) => ({ id, heading, cornerLot }) as Lot;
+  const kinds = (plan: ReturnType<typeof facadeTrimPlan>) => new Set([...plan.items.values()].flat());
+
+  it('fronts the street on the south face by default and on the east face of an east-facing lot', () => {
+    const shop = build('hardware-store'), east = build('hardware-store'), north = build('hardware-store');
+    expect(facadeTrimPlan(shop)).toMatchObject({ street: 'south', service: 'east' });
+    for (const b of [shop, east, north]) b.lotId = b === shop ? 'south' : b === east ? 'east' : 'north';
+    const revision = east.visualRevision;
+    // Heading runs frontage to rear: pi puts the street to the east, 3pi/2 to the south, 0 to the west.
+    stampStreetFaces([shop, east, north], [lotFacing('south', Math.PI * 1.5), lotFacing('east', Math.PI), lotFacing('north', Math.PI / 2)]);
+    expect(east.visualRevision).toBeGreaterThan(revision);
+    expect(facadeTrimPlan(shop)).toMatchObject({ street: 'south', service: 'east' });
+    expect(facadeTrimPlan(east)).toMatchObject({ street: 'east', service: 'south' });
+    expect(facadeTrimPlan(north).street).toBe('south');
+  });
+
+  it('keeps meters, gas, louvers and service doors on the service face and the blade sign on the street face', () => {
+    const service: TrimItemKind[] = ['meter-bank', 'conduit', 'gas-meter', 'louver', 'downspout', 'service-door', 'wall-pack'];
+    for (const stamped of [false, true]) {
+      const b = build('hardware-store');
+      if (stamped) { b.lotId = 'lot'; stampStreetFaces([b], [lotFacing('lot', Math.PI)]); }
+      const plan = facadeTrimPlan(b);
+      for (const [key, items] of plan.items) for (const item of items) {
+        const side = key & 1 ? 'east' : 'south';
+        if (service.includes(item)) expect(side, item).toBe(plan.service);
+        if (item === 'blade-sign') expect(side).toBe(plan.street);
+      }
+      expect([...kinds(plan)]).toEqual(expect.arrayContaining(['meter-bank', 'gas-meter', 'louver', 'wall-pack', 'blade-sign']));
+      expect(kinds(plan).has('service-door')).toBe(plan.service === 'east');
+    }
+  });
+
+  it('mounts gear only on real exposed cells and drops it from a damaged one', () => {
+    for (const a of ARCHETYPES) {
+      const b = createBuildingFromDefinition(a, a.label, 0, 0), plan = facadeTrimPlan(b);
+      for (const [key, items] of plan.items) {
+        const side = key & 1 ? 'east' : 'south', gy = (key >> 1) & 127, gx = (key >> 8) & 127, floor = key >> 15;
+        const cell = b.grid[floor]?.[gx]?.[gy];
+        expect(cell?.exterior[side], `${a.id} ${items.join()}`).toBe(true);
+        expect(trimKey(side, floor, gx, gy)).toBe(key);
+        expect(plan.claimed.has(key), a.id).toBe(false);
+        expect(trimItemsAt(plan, cell!, side), `${a.id} ${cell!.state}`).toEqual(items);
+        for (const state of ['cracked', 'breached', 'falling', 'gone'] as const) expect(trimItemsAt(plan, { ...cell!, state }, side)).toEqual([]);
+      }
+    }
+  });
+
+  it('puts window units only on the older walk-up residential forms', () => {
+    for (const id of ['boarding-house', 'motel-room-block', 'walkup-block', 'walkup']) {
+      expect(usesWindowAc(build(id)), id).toBe(true);
+      expect(kinds(facadeTrimPlan(build(id))).has('window-ac'), id).toBe(true);
+    }
+    for (const a of ARCHETYPES) {
+      const b = createBuildingFromDefinition(a, a.label, 0, 0);
+      const listed = a.kind === 'house' && a.floors <= 6 && (a.theme === 'walkup' ||
+        (a.traits?.use ?? []).some(use => ['boarding-house', 'motel-room-block', 'urban-apartment', 'fourplex', 'rowhouse-unit', 'garden-apartment-block'].includes(use)));
+      expect(kinds(facadeTrimPlan(b)).has('window-ac') ? true : !listed || !b.cells.some(c => c.windowE || c.windowS), a.id).toBe(true);
+      if (!listed) expect(kinds(facadeTrimPlan(b)).has('window-ac'), a.id).toBe(false);
+    }
+    for (const id of ['bakery', 'ranch', 'telephone-exchange', 'warehouse']) expect(usesWindowAc(build(id)), id).toBe(false);
+  });
+
+  it('dresses the corners of civic masonry and of corner structures only', () => {
+    for (const a of ARCHETYPES) {
+      const b = createBuildingFromDefinition(a, a.label, 0, 0), plan = facadeTrimPlan(b);
+      const masonry = b.construction.skin === 'brick' || b.construction.skin === 'concrete';
+      const plain = b.openDecks || b.canopy || b.silos?.length || b.elevatedTank;
+      const expected = masonry && !plain && (a.theme === 'civic' || a.theme === 'corner');
+      expect(plan.corners !== 'none', a.id).toBe(!!expected);
+      if (a.theme === 'corner' && expected) expect(plan.corners).toBe('quoins');
+    }
+    const shop = build('bakery');
+    expect(facadeTrimPlan(shop).corners).toBe('none');
+    shop.lotId = 'corner';
+    stampStreetFaces([shop], [lotFacing('corner', Math.PI * 1.5, true)]);
+    expect(facadeTrimPlan(shop).corners).toBe(shop.construction.skin === 'wood' ? 'none' : 'quoins');
+  });
+
+  it('leaves authored detail cells alone and replans when brand stamping replaces them', () => {
+    const bakery = build('bakery'), plan = facadeTrimPlan(bakery);
+    const sign = bakery.facadeDetails.find(d => d.kind === 'signboard')!;
+    for (let i = 0; i < sign.width; i++) expect(plan.claimed.has(trimKey('south', sign.floor, sign.gx + i, sign.gy))).toBe(true);
+    expect(facadeTrimPlan(bakery)).toBe(plan);
+    bakery.facadeDetails = [];
+    expect(facadeTrimPlan(bakery)).not.toBe(plan);
+    expect(facadeTrimPlan(bakery).claimed.size).toBe(0);
+  });
+
+  it('is stable for a building and its regional seed, and varies across seeds', () => {
+    const region = (seed: number) => ({ roofs: 'temperate', walls: 'brick-belt', soil: 'dark-loam', seed }) as Building['region'];
+    const awnings = new Set<string>();
+    for (let seed = 1; seed <= 24; seed++) {
+      const a = build('bakery'), b = build('bakery');
+      a.region = region(seed * 7919); b.region = region(seed * 7919);
+      expect(facadeTrimPlan(a)).toEqual(facadeTrimPlan(b));
+      awnings.add(`${facadeTrimPlan(a).lintels}:${facadeTrimPlan(a).transom}:${facadeTrimPlan(a).meters}`);
+    }
+    expect(awnings.size).toBeGreaterThan(2);
+  });
+
+  it('puts scuppers and downspouts at the quarter points, on cell boundaries', () => {
+    expect(downspoutCells(8)).toEqual([2, 6]);
+    expect(downspoutCells(5)).toEqual([1, 4]);
+    expect(downspoutCells(2)).toEqual([1]);
+    expect(downspoutCells(1)).toEqual([]);
+    const b = build('telephone-exchange'), plan = facadeTrimPlan(b), run = faceRun(b, plan.service);
+    for (const at of downspoutCells(run.length)) expect(trimItemsAt(plan, run[at]!, plan.service)).toContain('downspout');
+  });
+
+  it('carries no trim on glass houses, canopies and open decks', () => {
+    for (const a of ARCHETYPES) {
+      const b = createBuildingFromDefinition(a, a.label, 0, 0);
+      if (!(b.construction.skin === 'glass' || b.canopy || b.openDecks)) continue;
+      expect(facadeTrimPlan(b)).toMatchObject({ belt: false, cornice: 'none', plinth: 'none', corners: 'none', awning: 'flat' });
+      expect(facadeTrimPlan(b).items.size, a.id).toBe(0);
+    }
   });
 });

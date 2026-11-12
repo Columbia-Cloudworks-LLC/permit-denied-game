@@ -9,6 +9,10 @@ import { worldToScreen } from '../world/iso';
 import { createDozer } from '../vehicle/dozer';
 import { createTown } from '../world/town';
 import { WorldRenderer } from './WorldRenderer';
+import { CLIMATES } from '../world/climate';
+import { townSeasonState } from '../world/groundCondition';
+import { weatherPresetFor } from '../world/season';
+import { NEUTRAL_SUN, setSunlight, sunlightFor } from './lighting';
 
 function spyPixiAddChildWarnings(): { messages: () => string[]; restore: () => void } {
   const messages: string[] = [];
@@ -296,5 +300,52 @@ it('forgets split runs and debris poses on invalidate, so a reloaded scene paint
   renderer.invalidate();
   expect(internals.chunkSplits.lastSplit.size).toBe(0);
   expect(internals.debrisPoses.size).toBe(0);
+  renderer.root.destroy({ children: true });
+});
+
+it('draws a haboob as a distance veil under the desert sun, and repaints the world when the sun changes', () => {
+  const renderer = new WorldRenderer(), particles = new ParticlePool();
+  const veil = () => (renderer as unknown as { hazeVeil: Graphics }).hazeVeil;
+  const fills = () => veil().context.instructions.filter((instruction) => instruction.action === 'fill')
+    .map((instruction) => (instruction.data as { style: { color: number; alpha: number } }).style);
+  // Pixi records a cut as a hole on the fill it pierces.
+  const cuts = () => veil().context.instructions.filter((instruction) => instruction.action === 'fill' && !!(instruction.data as { hole?: unknown }).hole).length;
+  const sonoran = CLIMATES['sonoran-desert'];
+  const make = (weather: 'clear' | 'dust' | 'fog', climate = sonoran) => {
+    const town = createTown();
+    Object.assign(town, { climate, ...townSeasonState('summer', climate), weather: weatherPresetFor('summer', weather, climate) });
+    return town;
+  };
+  renderer.layout(640, 360, 0, 0);
+  const clear = make('clear'), dozer = createDozer(clear.spawnX, clear.spawnY, 0);
+  renderer.draw(clear, dozer, particles, []);
+  expect(fills()).toEqual([]);
+  // Warm desert light tints the whole world.
+  expect(renderer.root.tint).toBe(sunlightFor(sonoran, clear.weather, 'summer').tint);
+  expect(renderer.root.tint).not.toBe(sunlightFor(CLIMATES.temperate, weatherPresetFor('summer', 'clear'), 'summer').tint);
+
+  const haboob = make('dust');
+  renderer.draw(haboob, dozer, particles, []);
+  // A new sun (dust-diffused) repaints the cached ground.
+  expect(renderer.stats.groundRebuilds).toBeGreaterThan(0);
+  const rings = fills();
+  expect(rings.length).toBeGreaterThan(3);
+  expect(rings.every((style) => style.color === haboob.weather.hazeTint)).toBe(true);
+  // Rings past the uniform veil each cut a clear ellipse around the dozer.
+  expect(cuts()).toBe(rings.length - 1);
+  // The veil rides the dozer's screen position.
+  const at = worldToScreen(dozer.x, dozer.y);
+  expect(veil().position.x).toBeCloseTo(at.x * renderer.zoom + renderer.root.x);
+  renderer.draw(haboob, dozer, particles, []);
+  expect(renderer.stats.groundRebuilds).toBe(0);
+
+  const fog = make('fog', CLIMATES.temperate);
+  renderer.draw(fog, dozer, particles, []);
+  expect(fills()).toHaveLength(1);
+  expect(cuts()).toBe(0);
+  fog.weatherDetail = 'off';
+  renderer.draw(fog, dozer, particles, []);
+  expect(fills()).toEqual([]);
+  setSunlight(NEUTRAL_SUN);
   renderer.root.destroy({ children: true });
 });

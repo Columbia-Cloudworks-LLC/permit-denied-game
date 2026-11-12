@@ -8,7 +8,8 @@ import { planForestGarnish } from "../render/forestCanopy";
 import { pointOnRoad, RoadBuilder } from "./roads";
 import { selectCampaignBiome } from "./biomes";
 import { payFieldDamage } from "./fields";
-import { seasonTrackColor } from "./season";
+import { CLIMATES, SOILS } from "./climate";
+import { trackColor } from "./groundCondition";
 import { generateCampaignLayout } from "./campaignLayout";
 import { movementBlocked, resolveTraversal, terrainTraversalAt, validateFeatureLayout, type FieldFeature } from "./terrainFeatures";
 import { cellIndex, emptyGrassGrid, SURFACE_ID } from "./terrain";
@@ -95,6 +96,25 @@ describe("seasons", () => {
     const county = campaignBriefingText(CAMPAIGN_LEVELS[6]!, "winter", { name: "Juneau Capitol District — Governor's Mansion", weather: "storm" });
     expect(county).toContain("County 7 · Juneau Capitol District");
     expect(county).toContain("Weather: Blizzard.");
+    expect(county).toContain("Blizzard: heavy snow");
+    // A desert or Gulf winter briefs no ice crossing and no snow; its own hazards brief by name.
+    for (const id of ["sonoran-desert", "mojave-desert", "gulf-subtropical", "tropical"] as const) {
+      for (const weather of ["clear", "precip", "storm", "dust"] as const) {
+        const warm = campaignBriefingText(CAMPAIGN_LEVELS[1]!, "winter", { name: "Low Desert County", weather }, CLIMATES[id]);
+        expect(warm, `${id} ${weather}`).not.toMatch(/ice|snow|blizzard|frozen|frost/i);
+        expect(warm).toContain("Season: Winter.");
+      }
+    }
+    expect(campaignBriefingText(CAMPAIGN_LEVELS[1]!, "winter", { name: "A", weather: "precip" }, CLIMATES["sonoran-desert"])).toContain("Weather: Rain.");
+    const haboob = campaignBriefingText(CAMPAIGN_LEVELS[1]!, "summer", { name: "A", weather: "dust" }, CLIMATES["sonoran-desert"]);
+    expect(haboob).toContain("Weather: Haboob.");
+    expect(haboob).toContain("short visibility");
+    expect(campaignBriefingText(CAMPAIGN_LEVELS[1]!, "summer", { name: "A", weather: "storm" }, CLIMATES["sonoran-desert"])).toContain("Monsoon downpour");
+    expect(campaignBriefingText(CAMPAIGN_LEVELS[1]!, "summer", { name: "A", weather: "heat" }, CLIMATES["sonoran-desert"])).toContain("Extreme heat");
+    expect(campaignBriefingText(CAMPAIGN_LEVELS[1]!, "summer", { name: "A", weather: "storm" }, CLIMATES["gulf-subtropical"])).toContain("Coastal squall");
+    // Ponds freeze in the Upland South without snow, so the ice line stays.
+    expect(campaignBriefingText(CAMPAIGN_LEVELS[1]!, "winter", undefined, CLIMATES["upland-south"])).toContain("The dozer can cross it.");
+    expect(campaignBriefingText(CAMPAIGN_LEVELS[1]!, "summer")).not.toContain("ice");
   });
 
   it("keeps the season locked across counties while each county carries its own weather", () => {
@@ -162,12 +182,11 @@ describe("seasons", () => {
     const wy = grid.oy + 3.5;
     const fx = grid.ox + 4.5;
     const fy = grid.oy + 3.5;
-    expect(movementBlocked(terrainTraversalAt([], wx, wy, grid), "winter")).toBe(false);
-    for (const season of ["spring", "summer", "autumn"] as const) {
-      expect(movementBlocked(terrainTraversalAt([], wx, wy, grid), season)).toBe(true);
-    }
-    expect(movementBlocked(terrainTraversalAt([], fx, fy, grid), "winter")).toBe(true);
-    const winterMove = resolveTraversal(wx, wy, wx - 1, wy, [], grid, "winter");
+    expect(movementBlocked(terrainTraversalAt([], wx, wy, grid), true)).toBe(false);
+    expect(movementBlocked(terrainTraversalAt([], wx, wy, grid), false)).toBe(true);
+    expect(movementBlocked(terrainTraversalAt([], wx, wy, grid))).toBe(true);
+    expect(movementBlocked(terrainTraversalAt([], fx, fy, grid), true)).toBe(true);
+    const winterMove = resolveTraversal(wx, wy, wx - 1, wy, [], grid, true);
     expect(winterMove.blocked).toBe(false);
     expect(winterMove.x).toBeCloseTo(wx);
     const traffic = resolveTraversal(wx, wy, wx - 1, wy, [], grid);
@@ -185,13 +204,13 @@ describe("seasons", () => {
       ],
     };
     expect(terrainTraversalAt([lake], 4, 4)).toBe("water");
-    expect(resolveTraversal(4, 4, 1, 4, [lake], null, "winter").blocked).toBe(false);
+    expect(resolveTraversal(4, 4, 1, 4, [lake], null, true).blocked).toBe(false);
     expect(resolveTraversal(4, 4, 1, 4, [lake]).blocked).toBe(true);
     const network = new RoadBuilder().finish();
-    const winterIssues = validateFeatureLayout([], network, [], wx, wy, fx, fy, grid, [], "winter");
+    const winterIssues = validateFeatureLayout([], network, [], wx, wy, fx, fy, grid, [], true);
     expect(winterIssues).not.toContain("spawn blocked by terrain");
     expect(winterIssues).toContain("road spawn blocked by terrain");
-    expect(validateFeatureLayout([], network, [], wx, wy, fx, fy, grid, [], "summer")).toContain("spawn blocked by terrain");
+    expect(validateFeatureLayout([], network, [], wx, wy, fx, fy, grid, [], false)).toContain("spawn blocked by terrain");
     expect(ICE_COLOR).not.toBe(0xffffff);
   });
 
@@ -237,10 +256,35 @@ describe("seasons", () => {
   });
 });
 
-describe("season track colors", () => {
-  it("gives every season its own track tint", () => {
-    const colors = (["spring", "summer", "autumn", "winter"] as const).map(seasonTrackColor);
-    expect(new Set(colors).size).toBe(4);
-    expect(colors.every((c) => Number.isInteger(c) && c > 0 && c <= 0xffffff)).toBe(true);
+describe("track colors", () => {
+  it("presses snow, mud and each soil's own compacted colour", () => {
+    const soils = Object.values(SOILS);
+    for (const soil of soils) {
+      expect(trackColor("dry", soil)).toBe(soil.track);
+      expect(trackColor("wet", soil)).toBe(soil.mud);
+      expect(trackColor("mud-wash", soil)).toBe(soil.mud);
+    }
+    expect(new Set(soils.map((soil) => trackColor("dry", soil))).size).toBe(soils.length);
+    expect(new Set(soils.map((soil) => trackColor("snow", soil))).size).toBe(1);
   });
+
+  it("stamps each town's tracks in its own soil, and in snow only where snow lies", () => {
+    const stamp = (climate: (typeof CLIMATES)[keyof typeof CLIMATES], season: SeasonId, weather: "clear" | "storm" = "clear") => {
+      const town = createTown({ district: "d30", seed: 19, campaign: campaignLevelById("village"), season, climate, weather });
+      for (let y = town.minY + 1; y < town.maxY; y += 1) for (let x = town.minX + 1; x < town.maxX; x += 1) {
+        if (town.marks.length || pointOnRoad(town.network, x + 0.5, y + 0.5)) continue;
+        if (terrainTraversalAt(town.features, x + 0.5, y + 0.5, town.surface) === "open") leaveSeasonalTrack(town, x + 0.5, y + 0.5, 0);
+      }
+      expect(town.marks).toHaveLength(2);
+      return town.marks[0]!.tint;
+    };
+    const snow = stamp(CLIMATES.temperate, "winter");
+    expect(snow).toBe(trackColor("snow", SOILS["dark-loam"]));
+    expect(stamp(CLIMATES["sonoran-desert"], "winter")).toBe(SOILS["pale-caliche"].track);
+    expect(stamp(CLIMATES.canyonlands, "summer")).toBe(SOILS["red-sandstone"].track);
+    expect(stamp(CLIMATES["gulf-subtropical"], "winter")).toBe(SOILS["coastal-sand"].track);
+    expect(stamp(CLIMATES.temperate, "summer")).toBe(SOILS["dark-loam"].track);
+    // A monsoon churns caliche to mud.
+    expect(stamp(CLIMATES["sonoran-desert"], "summer", "storm")).toBe(SOILS["pale-caliche"].mud);
+  }, 60_000);
 });

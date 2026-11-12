@@ -53,6 +53,21 @@ const SNOW_SOLIDS = {
   water: PAL.water,
 };
 
+/** Landform solids, appended after every legacy frame so those keep their atlas cells. */
+const LANDFORM_SOLIDS = {
+  rock: 0xa0623e,
+  talus: 0xa88a66,
+  wash: 0xcdb98e,
+  sand: 0xdccfa6,
+};
+
+const SNOW_LANDFORM_SOLIDS = {
+  rock: 0xc8c2bc,
+  talus: 0xc6c8c8,
+  wash: 0xd2d8dc,
+  sand: 0xd8dee4,
+};
+
 const DIRT_FROM = ["grass", "prairie", "leaf-litter", "duff", "scrub"];
 const FOREST_TO = ["grass", "duff", "leaf-litter"];
 const FIELD_TO = ["grass", "prairie", "dirt"];
@@ -137,6 +152,26 @@ function blobCovers(mask, px, py) {
   return inDiamond(px, py) && maskHas(mask, wedgeBits(px, py));
 }
 
+/** A solid with scattered pebbles: darker and paler stones on a jittered bed, placed from a fixed hash. */
+function drawStony(color, variant, density) {
+  const buf = drawSolid(color, variant);
+  const [r, g, b] = rgb(color);
+  for (let y = 0; y < TILE_H; y++) {
+    for (let x = 0; x < TILE_W; x++) {
+      const h = (Math.imul(x + variant * 53, 374761393) ^ Math.imul(y + 7, 668265263)) >>> 0;
+      if ((h % 1000) / 1000 >= density) continue;
+      const lift = (h >>> 12) % 2 ? 26 : -34;
+      const o = (y * TILE_W + x) * 4;
+      buf[o] = clamp(r + lift, 16, 235);
+      buf[o + 1] = clamp(g + lift, 16, 235);
+      buf[o + 2] = clamp(b + lift, 12, 225);
+    }
+  }
+  return buf;
+}
+
+const STONE_DENSITY = { rock: 0.05, talus: 0.16, wash: 0.07, sand: 0.02 };
+
 /** One jittered texel; blob overlays are slightly translucent over their solid. */
 function paintPixel(buf, color, variant, x, y, alpha) {
   const o = (y * TILE_W + x) * 4;
@@ -172,6 +207,12 @@ for (const to of FIELD_TO) {
 for (let i = 0; i < BLOB47_MASKS.length; i++) {
   frames.push({ name: `wet-edge__any-${i}`, buf: drawBlob(SOLIDS["wet-edge"], BLOB47_MASKS[i]) });
   frames.push({ name: `water__wet-edge-${i}`, buf: drawBlob(SOLIDS.water, BLOB47_MASKS[i], 2) });
+}
+for (const [name, color] of Object.entries(LANDFORM_SOLIDS)) {
+  for (let v = 0; v < 3; v++) frames.push({ name: `${name}-${v}`, buf: drawStony(color, v, STONE_DENSITY[name]) });
+}
+for (const [name, color] of Object.entries(SNOW_LANDFORM_SOLIDS)) {
+  for (let v = 0; v < 3; v++) frames.push({ name: `snow-${name}-${v}`, buf: drawStony(color, v, STONE_DENSITY[name] * 0.5) });
 }
 
 const COLS = 32;

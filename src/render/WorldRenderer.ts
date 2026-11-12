@@ -18,15 +18,17 @@ import { DOZER, FLOOR_Z, ISO_Z } from "../game/constants";
 import { depthKey, screenAabbVisible, worldBoundsToScreen, worldToScreen } from "../world/iso";
 import type { ParticlePool } from "../fx/particles";
 import { displacedRoofVerts } from "../structure/roof";
-import type { Bird, Building, CoverKind, GroundPatch, Particle, RoofSection, Rubble } from "../structure/types";
+import type { Bird, Building, CoverKind, GroundPatch, Particle, RoofSection, RooftopFixture, Rubble } from "../structure/types";
 import type { Dozer } from "../vehicle/dozer";
 import type { Town } from "../world/town";
-import { getBuildingSurfaces, releaseBuildingSurfaces, type WallSpan } from "./buildingSurfaces";
+import { flatRoofDecks, getBuildingSurfaces, releaseBuildingSurfaces, type FlatDeck, type WallSpan } from "./buildingSurfaces";
 import { wallPaintSpans } from "./wallPaint";
 import { drawCatalogProp } from "./assets";
 import { interiorCmds, roofCommandDepth } from "./interiorDraw";
 import { drawGroundPoly, drawIsoBox, drawOrientedGround, drawOrientedIsoBox, drawShadow, drawWorldPoly, PAL } from "./drawIso";
-import { presentationTint, SeasonWeather } from "../fx/seasonWeather";
+import { hazeVeil, presentationTint, SeasonWeather } from "../fx/seasonWeather";
+import { groundTone } from "./coverPalette";
+import { setSunlight, sunlightFor } from "./lighting";
 import {
   drawBuildingFootprintShadow,
   drawFallingCell,
@@ -51,7 +53,11 @@ import {
 } from "./buildingLod";
 import type { RenderFrame } from "./renderFrame";
 import { drawCollapsedSite, drawCover, drawTerrainFeatures } from "./groundDraw";
+import { drawMesaSlice, mesaHeight, planMesaSlices, type MesaSlice } from "./landformDraw";
 import { chimneyWorld, drawChimney, drawRoofBay } from "./roofDraw";
+import { deckHasFrontParapet, drawDeckFrontParapet, drawFlatDeck } from "./roofFinish";
+import { drawRooftopFixture, rooftopHeight, rooftopVisibleAt } from "./rooftopDraw";
+import { rooftopCells, rooftopClearance, rooftopPose } from "../structure/rooftop";
 import {
   debrisVersion,
   drawBird,
@@ -74,6 +80,9 @@ interface CullBox {
 
 /** Painter-order batch for airborne particles, weather flakes, and birds. */
 const FX_CHUNK = "fx";
+/** Clear-view radii of the distance haze, as shares of the half view; each ring past one adds a step of veil. */
+// Twelve close steps: the veil thickens smoothly instead of in visible bands.
+const HAZE_RINGS = Array.from({ length: 12 }, (_, i) => 0.42 + i * 0.085);
 
 interface NearBuildingDraw {
   key: string;
@@ -143,6 +152,9 @@ export class WorldRenderer {
   private garnishKey = "";
   private garnish: ForestGarnish[] = [];
   private forestMasses: ForestMass[] = [];
+  /** Painter-order strips of the town's rock formations, planned once per feature list. */
+  private mesaSlices: MesaSlice[] = [];
+  private mesaSource?: Town["features"];
   private readonly pileHints = new PileHintLayer();
   private siteKey = "";
   stats = {
@@ -190,13 +202,28 @@ export class WorldRenderer {
     this.root.scale.set(this.zoom);
   }
 
-  /** Only heavy haze (fog, storms) gets a veil; reduced effects halve it and Off removes it. */
-  private drawHaze(town: Town): void {
+  private hazeKey = "";
+
+  /**
+   * The weather veil, centred on the dozer and oversized so it covers the view wherever the
+   * dozer sits. Dust thickens in rings away from it. Repainted only when the veil changes.
+   */
+  private drawHaze(town: Town, dozer: Dozer): void {
+    const veil = hazeVeil(town.weather, town.weatherDetail);
+    const w = this.viewW, h = this.viewH;
+    const key = veil ? `${w}x${h}:${veil.color}:${veil.alpha}:${veil.edge}` : "";
+    const at = worldToScreen(dozer.x, dozer.y);
+    this.hazeVeil.position.set(at.x * this.zoom + this.root.x, at.y * this.zoom + this.root.y);
+    if (key === this.hazeKey) return;
+    this.hazeKey = key;
     this.hazeVeil.clear();
-    const strength = town.weatherDetail === "off" ? 0 : town.weatherDetail === "reduced" ? 0.5 : 1;
-    const alpha = town.weather.haze >= 0.1 ? town.weather.haze * 0.9 * strength : 0;
-    if (alpha <= 0) return;
-    this.hazeVeil.rect(0, 0, this.viewW, this.viewH).fill({ color: town.weather.light, alpha });
+    if (!veil) return;
+    if (veil.alpha > 0) this.hazeVeil.rect(-w, -h, w * 2, h * 2).fill({ color: veil.color, alpha: veil.alpha });
+    if (veil.edge <= 0) return;
+    for (const reach of HAZE_RINGS) {
+      this.hazeVeil.rect(-w, -h, w * 2, h * 2).fill({ color: veil.color, alpha: veil.edge / HAZE_RINGS.length });
+      this.hazeVeil.ellipse(0, 0, w * 0.5 * reach, h * 0.5 * reach).cut();
+    }
   }
 
   private visibleBox(x: number, y: number, w: number, d: number, z0: number, z1: number): boolean {
@@ -249,6 +276,7 @@ export class WorldRenderer {
     this.passBuildings(frame);
     this.passProps(frame);
     this.passGarnish(frame);
+    this.passLandforms(frame);
     this.passDynamics(frame);
     this.passEffects(frame);
     this.submitDraw(frame);
@@ -256,6 +284,7 @@ export class WorldRenderer {
 
   /** Shared draw-frame state: camera caches, counters, and the current debug view. */
   private weatherTown?: Town;
+  private sunKey = "";
 
   private beginDraw(town: Town, dozer: Dozer, particles: ParticlePool, birds: Bird[], dt: number, showPlayer: boolean): RenderFrame {
     if (this.weatherTown !== town) { this.weather.reset(""); this.weatherTown = town; }
@@ -264,8 +293,12 @@ export class WorldRenderer {
     this.cashPopups.draw(dt, this.zoom);
     this.root.setChildIndex(this.cashPopups.root, this.root.children.length - 1);
     this.root.setChildIndex(this.bowlingStrikes.root, this.root.children.length - 1);
-    this.root.tint = presentationTint(town.weather.light, town.weatherDetail);
-    this.drawHaze(town);
+    const sun = sunlightFor(town.climate, town.weather, town.look);
+    // Face and shadow colours are baked into cached geometry, so a new sun repaints everything.
+    if (sun.key !== this.sunKey) { this.sunKey = sun.key; this.invalidate(); }
+    setSunlight(sun);
+    this.root.tint = presentationTint(sun.tint, town.weatherDetail);
+    this.drawHaze(town, dozer);
     this.fades.begin();
     const view = this.debug;
     this.sites.visible = view.sites;
@@ -280,6 +313,7 @@ export class WorldRenderer {
       hideDressing: view.overview || this.zoom < 0.55,
       viewSig: debugViewSignature(view),
       condition: town.groundCondition,
+      tone: groundTone(town),
       surface,
       terrainCounts: chunkCount(surface),
     };
@@ -316,18 +350,18 @@ export class WorldRenderer {
   private passTerrain(frame: RenderFrame): void {
     const { town, view } = frame;
     void ensureTerrainAtlas();
-    const tKey = `${view.terrain}:${TERRAIN_GEN_VERSION}:${frame.surface.cols}x${frame.surface.rows}:${frame.surface.ox}:${frame.surface.oy}:${frame.surface.stampRevision}:${terrainAtlasRevision()}:${frame.condition}:${town.season}`;
+    const tKey = `${view.terrain}:${TERRAIN_GEN_VERSION}:${frame.surface.cols}x${frame.surface.rows}:${frame.surface.ox}:${frame.surface.oy}:${frame.surface.stampRevision}:${terrainAtlasRevision()}:${frame.condition}:${town.look}:${frame.tone.key}`;
     if (tKey !== this.terrainKey) {
       this.terrainLayer.visible = view.terrain;
-      if (view.terrain) buildTerrainChunks(this.terrainLayer, frame.surface, undefined, frame.condition, town.season);
+      if (view.terrain) buildTerrainChunks(this.terrainLayer, frame.surface, undefined, frame.condition, town.look, frame.tone);
       else this.terrainLayer.removeChildren();
       this.terrainKey = tKey;
       frame.groundRebuilds++;
     }
     this.terrainLayer.visible = view.terrain;
-    const garnishKey = `${town.season}:${town.seed}:${town.biome.id}:${frame.surface.ox}:${frame.surface.oy}:${frame.surface.cols}x${frame.surface.rows}:${frame.surface.stampRevision}`;
+    const garnishKey = `${town.look}:${town.seed}:${town.biome.id}:${frame.surface.ox}:${frame.surface.oy}:${frame.surface.cols}x${frame.surface.rows}:${frame.surface.stampRevision}`;
     if (garnishKey !== this.garnishKey) {
-      this.garnish = planForestGarnish(frame.surface, town.biome, town.seed, town.season);
+      this.garnish = planForestGarnish(frame.surface, town.biome, town.seed, town.look);
       this.forestMasses = planForestMasses(frame.surface, town.biome, town.seed);
       this.garnishKey = garnishKey;
     }
@@ -342,9 +376,9 @@ export class WorldRenderer {
     frame.groundRebuilds++;
     if (view.terrain) {
       for (const patch of groundCovers(town)) {
-        if (patch.w !== 6.2 && patch.z !== -0.02) drawCover(this.ground, patch, frame.condition, town.season);
+        if (patch.w !== 6.2 && patch.z !== -0.02) drawCover(this.ground, patch, frame.condition, town.look, frame.tone);
       }
-      drawTerrainFeatures(this.ground, town.features ?? [], frame.condition, town.season);
+      drawTerrainFeatures(this.ground, town.features ?? [], frame.condition, town.look);
     }
     if (view.roads) this.drawRoads(town);
     this.groundKey = gKey;
@@ -389,7 +423,7 @@ export class WorldRenderer {
     this.marks.root.visible = view.effects;
     if (view.effects) {
       frame.total += town.marks.length;
-      frame.visible += this.marks.update(town.marks, town.season, (x, y, w, d) => this.visibleBox(x, y, w, d, 0, 0.02));
+      frame.visible += this.marks.update(town.marks, town.look, (x, y, w, d) => this.visibleBox(x, y, w, d, 0, 0.02));
     }
     this.pileHints.update(town, view.debris, (x, y, w, d) => this.visibleBox(x, y, w, d, 0, 3.5));
   }
@@ -414,7 +448,8 @@ export class WorldRenderer {
     const commandStart = this.cmds.length;
     const bw = b.w * b.cellSize;
     const bd = b.d * b.cellSize;
-    const z1 = b.floors * FLOOR_Z + (b.elevatedTank ? b.elevatedTank.definition.height + .5 : .8);
+    // Rooftop plant stands above the parapet: keep it inside the building's cull box.
+    const z1 = b.floors * FLOOR_Z + (b.elevatedTank ? b.elevatedTank.definition.height + .5 : .8 + rooftopClearance(b));
     const fall = 1.4;
     frame.total += b.cells.length;
     if (!this.visibleBox(b.x - fall, b.y - fall, bw + fall * 2, bd + fall * 2, -0.4, z1)) return;
@@ -457,7 +492,7 @@ export class WorldRenderer {
     const { town, dozer } = frame;
     const plan = this.planStandingBuilding(frame, b, bw, bd);
     const visBefore = frame.visible;
-    const buildKey = `${b.visualRevision}:${frame.viewSig}:${plan.needsInterior ? 1 : 0}:${plan.needsDetails ? 1 : 0}:${town.season}`;
+    const buildKey = `${b.visualRevision}:${frame.viewSig}:${plan.needsInterior ? 1 : 0}:${plan.needsDetails ? 1 : 0}:${town.look}:${town.groundCondition}:${this.sunKey}`;
     const cacheKey = plan.live ? "" : buildKey;
     if (cacheKey && this.reuseStaticBuilding(frame, b, cacheKey, visBefore)) return;
     const nearKey = plan.live && !plan.animating ? this.nearBuildingKey(dozer, buildKey) : "";
@@ -650,7 +685,7 @@ export class WorldRenderer {
     }
   }
 
-  private pushWallSpan({ frame, b, live, fades }: BuildingVisit, span: WallSpan): void {
+  private pushWallSpan({ frame, b, live, fades, needsDetails }: BuildingVisit, span: WallSpan): void {
     const { dozer, view } = frame;
     if (span.floor > view.maxFloor) return;
     const wallZ = span.floor * FLOOR_Z;
@@ -667,10 +702,11 @@ export class WorldRenderer {
       if (live && (alpha < .6 || pieceHidesDozer(dozer, box.x, box.y, box.w, box.d, wallZ, wallTop))) frame.occluded = true;
       frame.visible++;
       this.cmds.push({
-        key: `building:${b.id}:wall:${s.dir}:${s.floor}:${s.gx0}:${s.gy0}`,
+        // Trimmed and bare walls are different drawings of the same run.
+        key: `building:${b.id}:wall:${s.dir}:${s.floor}:${s.gx0}:${s.gy0}${needsDetails ? ":t" : ""}`,
         depth: run.span.depth,
         cull: box,
-        run: (g) => drawWallSpan(g, b, run.span, alpha),
+        run: (g) => drawWallSpan(g, b, run.span, alpha, needsDetails),
       });
     }
   }
@@ -703,29 +739,79 @@ export class WorldRenderer {
     }
   }
 
+  /**
+   * Roofs: intact flat cells as merged decks (no cell seams), every other live panel on its own,
+   * then the rooftop gear and the near parapets that stand in front of it.
+   */
   private pushRoofs(visit: BuildingVisit): void {
     const { frame, b, lod } = visit;
     const { view } = frame;
-    const liveRoofs = b.roofs.filter((roof) => roof.state !== "gone" && roof.floor <= view.maxFloor);
-    if (!view.roofs || !liveRoofs.length) return;
-    frame.total += liveRoofs.length;
-    for (const roof of liveRoofs) this.pushRoof(visit, roof);
-    if (b.features.chimney && lod !== "overview") this.pushChimney(frame, b);
+    if (!view.roofs) return;
+    if (b.roofs.some((roof) => roof.state !== "gone" && roof.floor <= view.maxFloor)) {
+      const plan = flatRoofDecks(b);
+      for (const deck of plan.decks) if (deck.floor <= view.maxFloor) this.pushDeck(visit, deck);
+      for (const roof of plan.loose) if (roof.floor <= view.maxFloor) this.pushRoof(visit, roof);
+      if (b.features.chimney && lod !== "overview") this.pushChimney(frame, b);
+    }
+    // Gear still dropping through the floors stays drawn after the last roof panel has gone.
+    if (view.gear) for (const fixture of b.rooftop) if (fixture.floor <= view.maxFloor) this.pushRooftopFixture(visit, fixture);
   }
 
-  private pushRoof({ frame, b, live, fadeBox }: BuildingVisit, roof: RoofSection): void {
+  private pushDeck({ frame, b, live, needsDetails, fadeBox }: BuildingVisit, deck: FlatDeck): void {
+    const snow = frame.town.groundCondition === "snow";
+    const w = deck.x1 - deck.x0, d = deck.y1 - deck.y0;
+    frame.total++;
+    if (live && !this.visibleBox(deck.x0, deck.y0, w, d, deck.z - .2, deck.z + .4)) return;
+    // A long deck's screen bounds span far more than the deck, so test only the part nearest the dozer.
+    const reach = 1.4, nx = Math.max(deck.x0, Math.min(deck.x1, frame.dozer.x)), ny = Math.max(deck.y0, Math.min(deck.y1, frame.dozer.y));
+    const fx = Math.max(deck.x0, nx - reach), fy = Math.max(deck.y0, ny - reach);
+    const alpha = fadeBox(`deck:${deck.floor}:${deck.gx0}:${deck.gy0}`, fx, fy, Math.min(deck.x1, nx + reach) - fx, Math.min(deck.y1, ny + reach) - fy, deck.z - .2, deck.z + .4);
+    const cull = { x: deck.x0, y: deck.y0, w, d, z0: deck.z - .2, z1: deck.z + .4 };
+    const key = `building:${b.id}:deck:${deck.floor}:${deck.gx0}:${deck.gy0}`;
+    const options = { alpha, detail: needsDetails, snow };
+    frame.visible++;
+    // Painted as its front corner, like the panels it replaces: after the walls under its eave.
+    const depth = depthKey(deck.x1, deck.y1, deck.z);
+    this.cmds.push({ key, depth, cull, run: (g) => drawFlatDeck(g, b, deck, options) });
+    if (deckHasFrontParapet(b, deck)) this.cmds.push({ key: key + ":front", depth: depth + 12, cull, run: (g) => drawDeckFrontParapet(g, b, deck, options) });
+  }
+
+  /** Rooftop gear rides its roof panel, fades with it, and drops through the floors when it lets go. */
+  private pushRooftopFixture({ frame, b, live, needsDetails, fadeBox }: BuildingVisit, fixture: RooftopFixture): void {
+    if (fixture.state === "gone" || !rooftopVisibleAt(fixture.kind, needsDetails)) return;
+    const pose = rooftopPose(b, fixture);
+    if (!pose) return;
+    const { box } = pose, top = pose.z + rooftopHeight(fixture.kind);
+    frame.total++;
+    if (live && !this.visibleBox(box.x, box.y, box.w, box.d, pose.z - .6, top)) return;
+    const alpha = fadeBox(`gear:${fixture.id}`, box.x, box.y, box.w, box.d, pose.z, top);
+    const snow = frame.town.groundCondition === "snow";
+    frame.visible++;
+    const cs = b.cellSize, cells = rooftopCells(fixture), last = cells[cells.length - 1]!;
+    this.cmds.push({
+      key: `building:${b.id}:gear:${fixture.id}`,
+      // Just past the front corner of the cell it stands on: over its deck, under that deck's near parapet.
+      depth: depthKey(b.x + (last.gx + 1) * cs, b.y + (last.gy + 1) * cs, pose.z) + 6,
+      cull: { x: box.x, y: box.y, w: box.w, d: box.d, z0: pose.z - .6, z1: top },
+      run: (g) => drawRooftopFixture(g, b, fixture, alpha, needsDetails, snow),
+    });
+  }
+
+  private pushRoof({ frame, b, live, needsDetails, fadeBox }: BuildingVisit, roof: RoofSection): void {
     const moved = displacedRoofVerts(roof);
     const xs = moved.map(v => v.x), ys = moved.map(v => v.y), zs = moved.map(v => v.z);
     const rx = Math.min(...xs), ry = Math.min(...ys), rw = Math.max(...xs) - rx, rd = Math.max(...ys) - ry;
     const rz0 = Math.min(...zs), rz1 = Math.max(...zs) + .2;
+    frame.total++;
     if (live && !this.visibleBox(rx, ry, rw, rd, rz0, rz1)) return;
     const alpha = fadeBox(`roof:${roof.id}`, rx, ry, rw, rd, rz0, rz1);
+    const snow = frame.town.groundCondition === "snow";
     frame.visible++;
     this.cmds.push({
       key: `building:${b.id}:roof:${roof.id}`,
       depth: roofCommandDepth(b, roof, moved),
       cull: { x: rx, y: ry, w: rw, d: rd, z0: rz0, z1: rz1 },
-      run: (g) => drawRoofBay(g, b, roof, alpha, frame.town.season),
+      run: (g) => drawRoofBay(g, b, roof, alpha, snow, needsDetails),
     });
   }
 
@@ -769,9 +855,9 @@ export class WorldRenderer {
       frame.visible++;
       this.cmds.push({
         key: 'prop:' + p.id,
-        version: [town.season, p.x, p.y, p.w, p.d, p.elev, p.heading, p.hp, JSON.stringify(p.pose)].join(':'),
+        version: [town.look, p.x, p.y, p.w, p.d, p.elev, p.heading, p.hp, JSON.stringify(p.pose)].join(':'),
         depth: depthKey(p.x + p.w / 2, p.y + p.d / 2, p.elev + 0.4),
-        run: (g) => drawCatalogProp(g, p, town.season),
+        run: (g) => drawCatalogProp(g, p, town.look),
       });
     }
   }
@@ -787,15 +873,49 @@ export class WorldRenderer {
     }
   }
 
+  /** Mesas, buttes and outcrops: cached strips in painter order, faded when one stands over the dozer. */
+  private passLandforms(frame: RenderFrame): void {
+    const { town, view, dozer } = frame;
+    if (!view.terrain) return;
+    if (this.mesaSource !== town.features) {
+      this.mesaSource = town.features;
+      this.mesaSlices = planMesaSlices(town.features ?? []);
+    }
+    const snow = frame.condition === "snow";
+    const detail = !frame.hideDressing;
+    let faded: MesaSlice["feature"] | undefined;
+    let alpha = 1;
+    for (const slice of this.mesaSlices) {
+      frame.total++;
+      if (!this.visibleBox(slice.x, slice.y, slice.w, slice.d, 0, slice.top)) continue;
+      frame.visible++;
+      const { feature } = slice;
+      if (faded !== feature) {
+        faded = feature;
+        const top = mesaHeight(feature);
+        // The talus margin is not rock: fade and occlusion read the cliff box inside it.
+        alpha = objectOcclusionFade(dozer, feature.x + 1, feature.y + 1, feature.cols - 2, feature.rows - 2, 0, top) < 1 ? 0.45 : 1;
+        if (alpha < 1 && pieceHidesDozer(dozer, feature.x + 1, feature.y + 1, feature.cols - 2, feature.rows - 2, 0, top)) frame.occluded = true;
+      }
+      const sliceAlpha = alpha;
+      this.cmds.push({
+        key: `mesa:${slice.key}`,
+        version: `${snow}:${detail}:${sliceAlpha}`,
+        depth: depthKey(slice.depthX, slice.depthY, slice.top * 0.5),
+        run: (g) => drawMesaSlice(g, slice, snow, detail, sliceAlpha),
+      });
+    }
+  }
+
   private pushForestMass(frame: RenderFrame, mass: ForestMass): void {
     frame.total++;
     if (!this.visibleBox(mass.x, mass.y, mass.w, mass.d, 0, 2.2)) return;
     frame.visible++;
     this.cmds.push({
       key: `canopy:${mass.x}:${mass.y}:${mass.w}:${mass.d}`,
-      version: `${frame.town.season}:${mass.species}`,
+      version: `${frame.town.look}:${mass.species}`,
       depth: depthKey(mass.x + mass.w * 0.5, mass.y + mass.d * 0.5, 1.2),
-      run: (g) => drawForestMass(g, mass, frame.town.season),
+      run: (g) => drawForestMass(g, mass, frame.town.look),
     });
   }
 
@@ -874,7 +994,9 @@ export class WorldRenderer {
       seed: town.seed,
     });
     for (const flake of this.weather.flakes) {
-      this.pushFx(frame, flake.x - 0.2, flake.y - 0.2, 0.4, 0.4, 0, flake.z + 0.2, depthKey(flake.x, flake.y, flake.z), (g) => drawWeatherFlake(g, flake));
+      // Dust sheets and heat bands run long, so their cull box grows with them.
+      const reach = 0.2 + Math.max(0, flake.len - 1) * 0.5;
+      this.pushFx(frame, flake.x - reach, flake.y - reach, reach * 2, reach * 2, 0, flake.z + 0.6, depthKey(flake.x, flake.y, flake.z), (g) => drawWeatherFlake(g, flake));
     }
     const items = view.effects ? particles.items : [];
     for (let i = 0; i < items.length; i++) if (items[i]!.alive) this.pushParticle(frame, items[i]!, i);
@@ -1034,8 +1156,8 @@ function deckBarriers(b: Building, gx: number, gy: number, x: number, y: number)
   ];
 }
 
-function groundKey({ town, view, condition }: RenderFrame): string {
-  return `${view.terrain}:${view.roads}:${town.district}:${town.seed}:${town.lots.length}:${town.network.mesh.length}:${town.ground.length}:${town.features?.length ?? 0}:${town.featureRevision ?? 0}:${condition}:${town.season}`;
+function groundKey({ town, view, condition, tone }: RenderFrame): string {
+  return `${view.terrain}:${view.roads}:${town.district}:${town.seed}:${town.lots.length}:${town.network.mesh.length}:${town.ground.length}:${town.features?.length ?? 0}:${town.featureRevision ?? 0}:${condition}:${town.look}:${tone.key}`;
 }
 
 /** Authored ground patches, or a plain lot cover per lot when a town has none. */

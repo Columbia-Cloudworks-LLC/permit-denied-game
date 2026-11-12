@@ -62,3 +62,28 @@ describe("biome selection", () => {
     expect(BIOME_PROFILES["northern-conifer"].groundCover).not.toContain("dirt");
   });
 });
+
+describe("landscape species", () => {
+  it("keeps desert, coastal and forest flora in their own biomes", () => {
+    const arid = BIOME_PROFILES["arid-scrub"];
+    const coast = BIOME_PROFILES["subtropical-coast"];
+    for (const id of ["prickly-pear", "agave", "creosote-bush", "sagebrush", "joshua-tree", "mesquite"]) {
+      expect(getAsset(id).family).toBe("vegetation");
+      expect(speciesCompatible(arid, id), id).toBe(true);
+      expect(speciesCompatible(coast, id), id).toBe(false);
+      for (const forest of ["temperate-broadleaf", "northern-conifer", "mixed-woodland", "agricultural-plain"] as const) {
+        expect(speciesCompatible(BIOME_PROFILES[forest], id), `${forest} ${id}`).toBe(false);
+      }
+    }
+    for (const id of ["sabal-palm", "palmetto-scrub"]) {
+      expect(speciesCompatible(coast, id), id).toBe(true);
+      expect(speciesCompatible(arid, id), id).toBe(false);
+      expect(speciesCompatible(BIOME_PROFILES["temperate-broadleaf"], id), id).toBe(false);
+    }
+    // Live oak carries the coastal woods; rock, orchard trees and ranch gear are not species at all.
+    expect(speciesCompatible(coast, "oak")).toBe(true);
+    for (const id of ["granite-boulder", "sandstone-rock", "citrus-tree", "windpump", "solar-panel"]) {
+      for (const biome of BIOME_IDS) expect(speciesCompatible(BIOME_PROFILES[biome], id)).toBe(true);
+    }
+  });
+});

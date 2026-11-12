@@ -126,6 +126,21 @@ export class ParticlePool {
     }
   }
 
+  /** Pressurised refrigerant letting go: a tight white jet that billows and rises. */
+  refrigerantPuff(x: number, y: number, z: number, mag: number): void {
+    this.spawn("steam", x, y, z, Math.min(16, 6 + Math.floor(mag * 6)), 1.5 + mag, 2.6 + mag * 1.4);
+  }
+
+  /** Greasy kitchen exhaust: a slow dark plume that hangs over the roof. */
+  sootPlume(x: number, y: number, z: number, mag: number): void {
+    this.spawn("soot", x, y, z, Math.min(14, 5 + Math.floor(mag * 6)), 0.9 + mag * 0.5, 1.6 + mag);
+  }
+
+  /** A live conductor shorting: a brief crackle of blue-white sparks. */
+  arcSparks(x: number, y: number, z: number, mag: number): void {
+    this.spawn("arc", x, y, z, Math.min(14, 6 + Math.floor(mag * 6)), 3 + mag * 2, 3.4);
+  }
+
   step(dt: number): void {
     for (const p of this.items) {
       if (!p.alive) continue;
@@ -144,18 +159,39 @@ const DUST_TINT: Partial<Record<ParticleKind, number>> = { brick: 0xb88f7c, conc
 
 function particleLife(kind: ParticleKind, rng: Rng): number {
   if (kind === "spark") return rng.range(0.16, 0.38);
+  if (kind === "arc") return rng.range(0.08, 0.24);
+  if (kind === "steam") return rng.range(0.5, 1.1);
+  if (kind === "soot") return rng.range(0.9, 1.8);
   return kind === "dust" || kind === "crop" ? rng.range(0.28, 0.7) : rng.range(0.9, 2.4);
 }
 
 function particleSize(kind: ParticleKind, rng: Rng): number {
   if (kind === "dust") return rng.range(0.18, 0.45);
+  if (kind === "steam" || kind === "soot") return rng.range(0.22, 0.5);
   return kind === "crop" ? rng.range(0.06, 0.14) : rng.range(0.08, 0.22);
 }
 
 /** Light dust and crop chaff float and settle on first touch; heavy chips bounce until slow. */
 const floats = (p: Particle) => p.kind === "dust" || p.kind === "crop";
 
+/** Steam and soot are buoyant: they slow, lift and fade in the air and never settle. */
+export const isVapor = (kind: ParticleKind): kind is "steam" | "soot" => kind === "steam" || kind === "soot";
+
+function flyVapor(p: Particle, dt: number): void {
+  const drag = 1 - 2.6 * dt;
+  p.vx *= drag;
+  p.vy *= drag;
+  p.vz += ((p.kind === "steam" ? 1.5 : 0.9) - p.vz) * Math.min(1, 3 * dt);
+  p.x += p.vx * dt;
+  p.y += p.vy * dt;
+  p.z = Math.max(0.05, p.z + p.vz * dt);
+}
+
 function flyParticle(p: Particle, dt: number): void {
+  if (isVapor(p.kind)) {
+    flyVapor(p, dt);
+    return;
+  }
   p.vx *= 1 - 1.4 * dt;
   p.vy *= 1 - 1.4 * dt;
   p.vz -= (floats(p) ? 4.5 : 18) * dt;
@@ -166,7 +202,7 @@ function flyParticle(p: Particle, dt: number): void {
   if (p.z > 0) return;
   p.z = 0;
   // Sparks wink out on the pavement instead of settling into chips.
-  if (p.kind === "spark") {
+  if (p.kind === "spark" || p.kind === "arc") {
     p.life = Math.min(p.life, 0.05);
     return;
   }

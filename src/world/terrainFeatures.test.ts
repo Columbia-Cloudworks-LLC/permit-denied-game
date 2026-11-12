@@ -5,17 +5,23 @@ import { destroyProp } from "../sim/assets";
 import { stepWorld } from "../sim/worldSim";
 import { BIOME_PROFILES } from "./biomes";
 import { spawnAsset } from "./catalog";
-import { groundPatchContains, SURFACE_ID } from "./terrain";
+import { createSurfaceGrid, groundPatchContains, SURFACE_ID } from "./terrain";
 import { createTown } from "./town";
 import { validateTown } from "./districts";
 import {
   churnFieldAt,
   fieldPatches,
+  movementBlocked,
+  resolveTraversal,
   terrainTraversalAt,
+  validateFeatureLayout,
   type FieldFeature,
   type ForestFeature,
   type BasinFeature,
+  type MesaFeature,
+  type WashFeature,
 } from "./terrainFeatures";
+import type { Lot } from "../structure/types";
 import type { TopologyFamily } from "./rural";
 
 const TOPOLOGIES: TopologyFamily[] = ["county", "crossroads", "tjunction", "curve-farm", "loop", "frontage"];
@@ -123,12 +129,11 @@ describe("terrain features", () => {
     const water = town.features.find((f): f is BasinFeature => f.kind === "pond" || f.kind === "lake");
     const river = town.features.find((f) => f.kind === "river");
     expect(forest ?? water ?? river).toBeDefined();
-    let cx = forest ? forest.cx : water ? water.poly.reduce((sum, p) => sum + p.x, 0) / water.poly.length : river!.path[1]!.x;
-    let cy = forest ? forest.cy : water ? water.poly.reduce((sum, p) => sum + p.y, 0) / water.poly.length : river!.path[1]!.y;
-    if (forest) {
-      ({ x: cx, y: cy } = firstForestCore(town.surface) ?? { x: cx, y: cy });
-      expect(terrainTraversalAt(town.features, cx, cy, town.surface)).toBe("forest-core");
-    }
+    // A prairie windbreak is a forest with no core, so the block under test is then the water.
+    const core = forest && firstForestCore(town.surface);
+    const cx = core ? core.x : water ? water.poly.reduce((sum, p) => sum + p.x, 0) / water.poly.length : river!.path[1]!.x;
+    const cy = core ? core.y : water ? water.poly.reduce((sum, p) => sum + p.y, 0) / water.poly.length : river!.path[1]!.y;
+    expect(terrainTraversalAt(town.features, cx, cy, town.surface)).not.toBe("open");
     const dozer = createDozer(cx, cy, 0);
     dozer.motionStartX = cx - 4;
     dozer.motionStartY = cy;
@@ -204,5 +209,52 @@ describe("district generation with terrain features", () => {
         }
       }
     }
+  });
+});
+
+describe("rock and wash features", () => {
+  const mesa: MesaFeature = { kind: "mesa", id: "mesa-0", form: "butte", bedrock: "sandstone", x: 10, y: 10, cols: 4, rows: 4, tiers: new Uint8Array([0, 0, 0, 0, 0, 1, 2, 0, 0, 1, 1, 0, 0, 0, 0, 0]), tierHeight: 1.2, seed: 7 };
+  const wash: WashFeature = { kind: "wash", id: "wash-1", path: [{ x: 0, y: 5 }, { x: 30, y: 5 }], halfWidth: 1.5, seed: 3 };
+
+  it("blocks on rock cells only and lets a wash through", () => {
+    expect(terrainTraversalAt([mesa, wash], 11.5, 11.5)).toBe("rock");
+    expect(terrainTraversalAt([mesa, wash], 12.5, 11.5)).toBe("rock");
+    // The talus margin of the same box is open ground.
+    expect(terrainTraversalAt([mesa, wash], 10.5, 10.5)).toBe("open");
+    expect(terrainTraversalAt([mesa, wash], 13.5, 12.5)).toBe("open");
+    expect(terrainTraversalAt([mesa, wash], 15, 5)).toBe("open");
+    expect(movementBlocked("rock")).toBe(true);
+  });
+
+  it("slides a mover off the rock back to where it came from", () => {
+    const out = resolveTraversal(11.5, 11.5, 9.5, 11.5, [mesa, wash]);
+    expect(out.blocked).toBe(true);
+    expect(terrainTraversalAt([mesa, wash], out.x, out.y)).toBe("open");
+    const through = resolveTraversal(15, 5, 15, 3, [mesa, wash]);
+    expect(through).toEqual({ x: 15, y: 5, blocked: false });
+  });
+
+  it("reports rock that sits on a lot or walls one in", () => {
+    const grid = createSurfaceGrid(0, 0, 12, 12, "dirt");
+    const network = createTown({ district: "d10", seed: 19 }).network;
+    const lot = { id: "lot-x", x: 300, y: 300, w: 4, d: 4 } as Lot;
+    const ring: MesaFeature = { ...mesa, x: 2, y: 2, cols: 7, rows: 7, tiers: new Uint8Array(49) };
+    for (let r = 0; r < 7; r++) for (let c = 0; c < 7; c++) {
+      if (r === 0 || c === 0 || r === 6 || c === 6) {
+        ring.tiers[r * 7 + c] = 1;
+        grid.surface[(2 + r) * grid.cols + 2 + c] = SURFACE_ID.rock;
+      }
+    }
+    for (let r = 2; r < 5; r++) for (let c = 2; c < 5; c++) grid.surface[(2 + r) * grid.cols + 2 + c] = SURFACE_ID.developed;
+    const walled = { ...lot, x: 4, y: 4, w: 3, d: 3 } as Lot;
+    const issues = validateFeatureLayout([ring], network, [], 0.5, 0.5, 0.5, 0.5, grid, [walled]);
+    expect(issues).toContain("rock isolates lot lot-x");
+    expect(issues).toContain("rock isolates developed ground");
+    const onLot = validateFeatureLayout([ring], network, [], 0.5, 0.5, 0.5, 0.5, grid, [{ ...lot, x: 2, y: 2, w: 2, d: 2 } as Lot]);
+    expect(onLot).toContain("rock overlaps lot lot-x");
+    // The same ring left open on one side isolates nothing.
+    ring.tiers[3] = 0;
+    grid.surface[2 * grid.cols + 5] = SURFACE_ID.dirt;
+    expect(validateFeatureLayout([ring], network, [], 0.5, 0.5, 0.5, 0.5, grid, [walled]).filter((issue) => issue.includes("isolates"))).toEqual([]);
   });
 });

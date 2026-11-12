@@ -3,7 +3,8 @@ import { PermitIntro, permitDocument, type PermitSound } from './permitIntro';
 import { type CountyDeployment, type SessionKind } from '../game/session';
 import type { CountyProgress } from '../game/countyProgress';
 import { loadOverworld, type OverworldModule } from '../game/overworldLoader';
-import { isWeatherCondition, isWeatherDetail, SEASONS, WEATHER_CONDITIONS, type SeasonId, type WeatherConditionId, type WeatherDetail } from '../world/season';
+import { legalConditions } from '../world/climate';
+import { isWeatherCondition, isWeatherDetail, SEASONS, type SeasonId, type WeatherConditionId, type WeatherDetail } from '../world/season';
 import type { CountyViewState } from './overworldMap';
 import type { AtlasData } from '../world/atlas';
 import type { AtlasState, AtlasView } from './atlasView';
@@ -295,10 +296,20 @@ export class OperatorMenu {
     return this.ow;
   }
 
+  /** Skies the county's climate can roll in the map's season: a desert winter offers no snow, a northern one no haboob. */
+  private legalWeather(index: number): WeatherConditionId[] {
+    return legalConditions(this.world.countyClimate(this.regionId ?? '', index), this.season);
+  }
+
+  /**
+   * The county's sky: this visit's pick while its climate still allows it in the season, else
+   * the map-load roll. The county being played keeps the weather it is running.
+   */
   private countyWeather(index: number): WeatherConditionId {
     const regionId = this.regionId ?? '';
-    return this.weatherOverrides.get(this.world.countyId(regionId, index))
-      ?? this.world.countyWeather(this.mapSeed, this.season, regionId, index);
+    const picked = this.weatherOverrides.get(this.world.countyId(regionId, index));
+    if (picked && (this.isRunningCounty(index) || this.legalWeather(index).includes(picked))) return picked;
+    return this.world.countyWeather(this.mapSeed, this.season, regionId, index);
   }
 
   private countyView(): CountyViewState {
@@ -338,7 +349,7 @@ export class OperatorMenu {
       if (this.page === 'region') this.atlasView?.setMode(this.atlasState());
     },
     'county-weather': value => {
-      if (isWeatherCondition(value) && this.regionId && this.countyIndex) this.weatherOverrides.set(this.world.countyId(this.regionId, this.countyIndex), value);
+      if (isWeatherCondition(value) && this.regionId && this.countyIndex && this.legalWeather(this.countyIndex).includes(value)) this.weatherOverrides.set(this.world.countyId(this.regionId, this.countyIndex), value);
       this.refreshSheet('#county-weather');
     },
     'county-effects': value => { if (isWeatherDetail(value)) this.effects = value; },
@@ -468,7 +479,9 @@ export class OperatorMenu {
 
   private cycleWeather(): void {
     if (!this.regionId || !this.countyIndex) return;
-    const next = WEATHER_CONDITIONS[(WEATHER_CONDITIONS.indexOf(this.countyWeather(this.countyIndex)) + 1) % WEATHER_CONDITIONS.length]!;
+    // An unlisted running sky sits at -1, so the cycle steps onto the first legal one.
+    const legal = this.legalWeather(this.countyIndex);
+    const next = legal[(legal.indexOf(this.countyWeather(this.countyIndex)) + 1) % legal.length]!;
     this.weatherOverrides.set(this.world.countyId(this.regionId, this.countyIndex), next);
     this.refreshSheet('[data-weather-cycle]');
   }

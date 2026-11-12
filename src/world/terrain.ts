@@ -1,6 +1,7 @@
 import type { GroundPatch, Lot, LotIdentity } from "../structure/types";
 import { pointInPoly } from "../game/math";
 import type { BiomeProfile } from "./biomes";
+import { aridLandscape, type ClimateEnvelope } from "./climate";
 import { pointOnRoad, polylineLength, samplePolyline, type RoadNetwork, type RoadSegment } from "./roads";
 
 export const TERRAIN_GEN_VERSION = 1;
@@ -23,6 +24,10 @@ const TERRAIN_SURFACES = [
   "wet-edge",
   "water",
   "developed",
+  "rock",
+  "talus",
+  "wash",
+  "sand",
 ] as const;
 
 export type TerrainSurface = (typeof TERRAIN_SURFACES)[number];
@@ -41,6 +46,10 @@ export const SURFACE_ID: Record<TerrainSurface, number> = {
   "wet-edge": 10,
   water: 11,
   developed: 12,
+  rock: 13,
+  talus: 14,
+  wash: 15,
+  sand: 16,
 };
 
 export const SURFACE_FROM_ID: readonly TerrainSurface[] = TERRAIN_SURFACES;
@@ -83,6 +92,8 @@ export interface GenerateSurfaceOpts {
   spawnBand?: { x: number; y: number; w: number; d: number };
   /** Urban and estate levels skip biome-wide crop sheets. */
   openFields?: boolean;
+  /** Climate zone: absent, or a forest or boreal landscape, keeps the wooded generator unchanged. */
+  climate?: ClimateEnvelope;
 }
 
 /** Rural road grid (east-west by north-south blocks) sized for `count` buildings. */
@@ -259,6 +270,14 @@ export function roadCostAt(grid: SurfaceGrid, x: number, y: number): number {
       return Infinity;
     case "developed":
       return 0.5;
+    case "rock":
+      return Infinity;
+    case "talus":
+      return 3.2;
+    case "wash":
+      return 1.6;
+    case "sand":
+      return 1.1;
     default: {
       const _never: never = surface;
       return _never;
@@ -287,7 +306,12 @@ export function lotCostAt(grid: SurfaceGrid, x: number, y: number, identity: Lot
     case "field":
       return identity === "farm" ? 0.8 : Infinity;
     case "developed":
+    case "wash":
+    case "sand":
       return 1;
+    case "rock":
+    case "talus":
+      return Infinity;
     default: {
       const _never: never = surface;
       return _never;
@@ -295,10 +319,12 @@ export function lotCostAt(grid: SurfaceGrid, x: number, y: number, identity: Lot
   }
 }
 
-export function traversalAt(grid: SurfaceGrid, x: number, y: number): "open" | "water" | "forest-core" {
+/** Water, forest core and standing rock stop movement; everything else, dry washes and talus included, is open. */
+export function traversalAt(grid: SurfaceGrid, x: number, y: number): "open" | "water" | "forest-core" | "rock" {
   const id = surfaceIdAt(grid, x, y);
   if (id === SURFACE_ID.water) return "water";
   if (id === SURFACE_ID["forest-core"]) return "forest-core";
+  if (id === SURFACE_ID.rock) return "rock";
   return "open";
 }
 
@@ -313,9 +339,14 @@ export function generateSurfaceGrid(opts: GenerateSurfaceOpts): SurfaceGrid {
   const rows = Math.max(1, Math.ceil(opts.maxY - opts.minY));
   const grid = createSurfaceGrid(opts.minX, opts.minY, cols, rows, opts.biome.groundCover[0] ?? "grass");
   const seed = (opts.seed ^ TERRAIN_GEN_VERSION) >>> 0;
+  const landscape = opts.climate?.landscape ?? "forest";
+  const arid = !!opts.climate && aridLandscape(opts.climate);
   classifyBases(grid, opts.biome, seed);
-  reserveWater(grid, opts.biome, seed, opts.spawnBand);
-  reserveForest(grid, opts.biome, seed);
+  if (landscape === "subtropical") paintSand(grid, seed);
+  reserveWater(grid, opts.biome, seed, opts.spawnBand, arid);
+  if (arid) rasterizeWash(grid, seed, opts.spawnBand);
+  // Deserts grow no woods and the plains keep theirs to windbreak rows, painted after the smoothing passes.
+  if (!arid && landscape !== "prairie") reserveForest(grid, opts.biome, seed);
   if (opts.openFields !== false) reserveFields(grid, opts.biome, seed);
   majorityFilter(grid, 2);
   dropSmallComponents(grid, 8);
@@ -326,6 +357,8 @@ export function generateSurfaceGrid(opts: GenerateSurfaceOpts): SurfaceGrid {
   dropSmallComponents(grid, 8);
   paintWetEdge(grid);
   dropSmallComponents(grid, 8);
+  if (landscape === "prairie") reserveWindbreaks(grid, seed);
+  if (arid) dryGround(grid, opts.biome);
   fillVariants(grid, seed);
   return grid;
 }
@@ -464,6 +497,7 @@ export function finalizeStampedSurface(
     lots: readonly Lot[];
     buildings: readonly { x: number; y: number; w: number; d: number; cellSize: number }[];
   },
+  climate?: ClimateEnvelope,
 ): void {
   ensureBiomeThirds(grid, biome, (seed ^ TERRAIN_GEN_VERSION) >>> 0);
   dropSmallComponents(grid, 8);
@@ -471,6 +505,7 @@ export function finalizeStampedSurface(
   dropSmallComponents(grid, 8);
   if (corridors) enforceOpenCorridors(grid, corridors.network, corridors.lots, corridors.buildings);
   ensureBiomeThirds(grid, biome, (seed ^ 0x51a11 ^ TERRAIN_GEN_VERSION) >>> 0);
+  if (climate && aridLandscape(climate)) dryGround(grid, biome);
 }
 
 export function isolatedBaseCellCount(grid: SurfaceGrid): number {
@@ -518,6 +553,8 @@ function isDevelopedCover(cover: GroundPatch["cover"]): boolean {
     case "driveway":
     case "planted":
     case "lot":
+    case "xeriscape":
+    case "caliche":
       return true;
     case "water":
     case "forest-floor":
@@ -589,9 +626,11 @@ function baseKind(grid: SurfaceGrid, ix: number, iy: number, seed: number, a: Te
   return hash2(ix, iy, seed ^ 0x77) < 0.01 && BASE_NATURAL.includes(kind) ? "gravel" : kind;
 }
 
-function reserveWater(grid: SurfaceGrid, biome: BiomeProfile, seed: number, spawnBand?: GenerateSurfaceOpts["spawnBand"]): void {
+function reserveWater(grid: SurfaceGrid, biome: BiomeProfile, seed: number, spawnBand?: GenerateSurfaceOpts["spawnBand"], arid = false): void {
   const waterChance = Math.max(0.35, biome.waterLikelihood);
-  for (let iy = 0; iy < grid.rows; iy++) {
+  // Desert basins are dry: only one map in three keeps its low ground as a tank or spring.
+  const ponds = !arid || hash2(5, 11, seed ^ 0xa41d) < 0.34;
+  for (let iy = 0; ponds && iy < grid.rows; iy++) {
     for (let ix = 0; ix < grid.cols; ix++) {
       if (inSpawnBand(grid, ix, iy, spawnBand)) continue;
       const x = grid.ox + ix;
@@ -632,6 +671,66 @@ function wetRiverCell(grid: SurfaceGrid, ix: number, iy: number, spawnBand?: Gen
   if (ix < 0 || ix >= grid.cols || iy < 0 || iy >= grid.rows) return;
   if (inSpawnBand(grid, ix, iy, spawnBand)) return;
   grid.surface[iy * grid.cols + ix] = SURFACE_ID.water;
+}
+
+/** A dry arroyo: a three-cell meandering channel across the far side of the map from any river. */
+function rasterizeWash(grid: SurfaceGrid, seed: number, spawnBand?: GenerateSurfaceOpts["spawnBand"]): void {
+  if (hash2(13, 5, seed ^ 0x3a54) > 0.85 || grid.cols < 24 || grid.rows < 24) return;
+  const vertical = hash2(1, 2, seed ^ 0xa7e2) <= 0.5;
+  const span = vertical ? grid.cols : grid.rows;
+  const run = vertical ? grid.rows : grid.cols;
+  const lane = clampInt(Math.floor(span * (0.82 + (hash2(7, 3, seed ^ 0x3a54) - 0.5) * 0.12)), 4, span - 5);
+  const phase = hash2(2, 9, seed ^ 0x3a54) * 6.28;
+  for (let t = 0; t < run; t++) {
+    const c = clampInt(lane + Math.round(Math.sin(t * 0.11 + phase) * 3 + Math.sin(t * 0.043 + phase * 2) * 2), 1, span - 2);
+    for (let off = -1; off <= 1; off++) {
+      const ix = vertical ? c + off : t;
+      const iy = vertical ? t : c + off;
+      const i = cellIndex(grid, ix, iy);
+      if (i < 0 || grid.surface[i] === SURFACE_ID.water || inSpawnBand(grid, ix, iy, spawnBand)) continue;
+      grid.surface[i] = SURFACE_ID.wash;
+    }
+  }
+}
+
+/** Pale shell-sand flats on a subtropical coast, where the low dry ground runs out. */
+function paintSand(grid: SurfaceGrid, seed: number): void {
+  forEachSurfaceCell(grid, (i, ix, iy) => {
+    const x = grid.ox + ix;
+    const y = grid.oy + iy;
+    if (fbm2(x, y, seed ^ 0x5a4d, 0.045) > 0.66 && fbm2(x, y, seed ^ 0x11, 0.032) < 0.5) grid.surface[i] = SURFACE_ID.sand;
+  });
+}
+
+/** Prairie shelterbelts: a few single-file tree rows on open ground instead of woodlots. */
+function reserveWindbreaks(grid: SurfaceGrid, seed: number): void {
+  const rows = clampInt(Math.round((grid.cols * grid.rows) / 3200), 2, 7);
+  const open = (i: number): boolean => i >= 0 && BASE_NATURAL.includes(SURFACE_FROM_ID[grid.surface[i]!]!);
+  for (let n = 0; n < rows; n++) {
+    const vertical = hash2(n, 1, seed ^ 0xb7ea) > 0.5;
+    const length = 10 + Math.floor(hash2(n, 2, seed ^ 0xb7ea) * 14);
+    const ix0 = 2 + Math.floor(hash2(n, 3, seed ^ 0xb7ea) * Math.max(1, grid.cols - (vertical ? 4 : length + 4)));
+    const iy0 = 2 + Math.floor(hash2(n, 4, seed ^ 0xb7ea) * Math.max(1, grid.rows - (vertical ? length + 4 : 4)));
+    const cells: number[] = [];
+    for (let t = 0; t < length; t++) {
+      const i = cellIndex(grid, vertical ? ix0 : ix0 + t, vertical ? iy0 + t : iy0);
+      if (!open(i)) break;
+      cells.push(i);
+    }
+    if (cells.length < 8) continue;
+    for (const i of cells) grid.surface[i] = SURFACE_ID["forest-floor"];
+  }
+}
+
+/** Desert ground carries no turf, leaf litter or duff: stray cells of them take the biome's dry covers. */
+function dryGround(grid: SurfaceGrid, biome: BiomeProfile): void {
+  const lush = [SURFACE_ID.grass, SURFACE_ID["leaf-litter"], SURFACE_ID.duff].filter((id) => !biome.groundCover.some((cover) => SURFACE_ID[cover] === id));
+  if (!lush.length) return;
+  const dry = biome.groundCover.filter((cover) => !lush.includes(SURFACE_ID[cover]));
+  const fill = dry.length ? dry.map((cover) => SURFACE_ID[cover]) : [SURFACE_ID.dirt, SURFACE_ID.scrub];
+  forEachSurfaceCell(grid, (i, ix, iy, id) => {
+    if (lush.includes(id)) grid.surface[i] = fill[(ix * 7 + iy * 13) % fill.length]!;
+  });
 }
 
 function growWater(grid: SurfaceGrid, passes: number): void {
@@ -802,7 +901,7 @@ function majorityFilter(grid: SurfaceGrid, passes: number): void {
     const next = grid.surface.slice();
     const counts = new Uint16Array(TERRAIN_SURFACES.length);
     forEachSurfaceCell(grid, (i, ix, iy, self) => {
-      if (self === SURFACE_ID["wet-edge"] || self === SURFACE_ID.field) return;
+      if (self === SURFACE_ID["wet-edge"] || self === SURFACE_ID.field || self === SURFACE_ID.wash) return;
       countNeighbours(grid, ix, iy, self, counts);
       const best = dominantSurface(counts, self);
       if (counts[best]! >= 5) next[i] = best;
@@ -885,6 +984,10 @@ function ensureBiomeThirds(grid: SurfaceGrid, biome: BiomeProfile, seed: number)
     SURFACE_ID.field,
     SURFACE_ID["wet-edge"],
     SURFACE_ID.developed,
+    SURFACE_ID.rock,
+    SURFACE_ID.talus,
+    SURFACE_ID.wash,
+    SURFACE_ID.sand,
   ]);
   const counts = new Uint32Array(TERRAIN_SURFACES.length);
   let natural = 0;

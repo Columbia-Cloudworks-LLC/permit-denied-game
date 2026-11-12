@@ -1,9 +1,52 @@
 import type { WeatherDetail, WeatherKind } from "../world/season";
 
-/** Lowpass corner for each weather bed: hiss for rain and snow, a lower rustle for leaves. */
-const AMBIENT_FILTER: Record<Exclude<WeatherKind, "clear">, number> = { rain: 900, flurries: 1400, leaves: 600 };
+/**
+ * Lowpass corner for each weather bed: hiss for rain and snow, a lower rustle for leaves, a
+ * low wind moan for a dust storm, a fuller roar for a downpour, a thin dry air for heat.
+ */
+const AMBIENT_FILTER: Record<Exclude<WeatherKind, "clear">, number> = { rain: 900, flurries: 1400, leaves: 600, dust: 340, downpour: 1300, shimmer: 2600 };
+/** Loudness of a bed against rain: wind and a downpour fill the mix, heat is nearly silent. */
+const AMBIENT_LEVEL: Partial<Record<WeatherKind, number>> = { dust: 1.5, downpour: 1.8, shimmer: 0.15 };
+
+/** Machine-break cues: how soon one may repeat, and how long its voice rings. */
+const CUES = {
+  hiss: { cooldown: 0.22, ring: 0.5 },
+  crunch: { cooldown: 0.14, ring: 0.22 },
+  snap: { cooldown: 0.1, ring: 0.12 },
+} as const;
+export type MachineCue = keyof typeof CUES;
+/** Machine voices allowed to ring at once; a collapsing plant room asks for dozens in one step. */
+export const MACHINE_VOICES = 3;
+
+/**
+ * Keeps a burst of machine-break events from stacking into clipping: each cue has a cooldown,
+ * and only `MACHINE_VOICES` may ring together. Pure bookkeeping over the audio clock.
+ */
+export class CueGate {
+  private readonly last = new Map<MachineCue, number>();
+  private ringing: number[] = [];
+  private clock = 0;
+
+  /** True when the cue may sound at `now` (seconds); admitting it books a voice. */
+  admit(cue: MachineCue, now: number): boolean {
+    // A clock that ran backwards is a fresh audio context: nothing from the old one is still ringing.
+    if (now < this.clock) {
+      this.last.clear();
+      this.ringing = [];
+    }
+    this.clock = now;
+    this.ringing = this.ringing.filter(end => end > now);
+    const last = this.last.get(cue);
+    if (last !== undefined && now - last < CUES[cue].cooldown) return false;
+    if (this.ringing.length >= MACHINE_VOICES) return false;
+    this.last.set(cue, now);
+    this.ringing.push(now + CUES[cue].ring);
+    return true;
+  }
+}
 
 export class AudioBus {
+  private readonly machineGate = new CueGate();
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
   private engine: OscillatorNode | null = null;
@@ -111,7 +154,7 @@ export class AudioBus {
       this.ambientGain.gain.setTargetAtTime(0, now, 0.2);
       return;
     }
-    const gain = detail === "reduced" ? 0.012 : 0.028;
+    const gain = (detail === "reduced" ? 0.012 : 0.028) * (AMBIENT_LEVEL[active] ?? 1);
     this.ambientFilter.frequency.setTargetAtTime(AMBIENT_FILTER[active], now, 0.2);
     this.ambientGain.gain.setTargetAtTime(gain, now, 0.3);
   }
@@ -167,6 +210,44 @@ export class AudioBus {
     osc.start(now);
     osc.stop(now + dur + 0.02);
     this.blip(1180 + mag * 220, 0.08, Math.min(0.03, mag * 0.03), "triangle");
+  }
+
+  private machineCue(cue: MachineCue): boolean {
+    return !!this.ctx && !!this.master && !this.muted && this.machineGate.admit(cue, this.ctx.currentTime);
+  }
+
+  /** Pressurised refrigerant venting: a bright hiss that falls away as the line empties. */
+  refrigerantHiss(mag: number): void {
+    if (!this.machineCue("hiss") || !this.ctx || !this.master || !this.noiseBuf) return;
+    const ctx = this.ctx, now = ctx.currentTime, dur = 0.34 + Math.min(0.2, mag * 0.12);
+    const src = ctx.createBufferSource(), filter = ctx.createBiquadFilter(), g = ctx.createGain();
+    src.buffer = this.noiseBuf;
+    filter.type = "bandpass";
+    filter.Q.value = 0.9;
+    filter.frequency.setValueAtTime(5200, now);
+    filter.frequency.exponentialRampToValueAtTime(1700, now + dur);
+    g.gain.setValueAtTime(Math.min(0.11, 0.05 + mag * 0.04), now);
+    g.gain.exponentialRampToValueAtTime(0.001, now + dur);
+    src.connect(filter);
+    filter.connect(g);
+    g.connect(this.master);
+    src.start(now);
+    src.stop(now + dur + 0.02);
+  }
+
+  /** Hollow sheet-metal ductwork folding: a boxy knock with a short tinny rattle. */
+  ductCrunch(mag: number): void {
+    if (!this.machineCue("crunch")) return;
+    this.blip(190, 0.09, Math.min(0.09, 0.04 + mag * 0.04), "square");
+    this.blip(312, 0.06, Math.min(0.05, 0.02 + mag * 0.02), "triangle");
+    this.noiseBurst(0.13, Math.min(0.1, 0.05 + mag * 0.04), 640);
+  }
+
+  /** A conductor shorting: one sharp crack and a brief mains buzz. */
+  electricSnap(mag: number): void {
+    if (!this.machineCue("snap")) return;
+    this.noiseBurst(0.03, Math.min(0.12, 0.07 + mag * 0.04), 6000);
+    this.blip(120, 0.07, Math.min(0.06, 0.03 + mag * 0.02), "sawtooth");
   }
 
   crunch(mag: number): void {

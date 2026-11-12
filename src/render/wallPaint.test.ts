@@ -6,7 +6,11 @@ import { discoverYardAssets, instantiateBay, type YardBay } from "../world/yardC
 import { getBuildingSurfaces } from "./buildingSurfaces";
 import { interiorCmds } from "./interiorDraw";
 import { WALL_OCCLUDE_ALPHA, objectOcclusionFade, wallSpanFadeRuns } from "./occlusion";
-import { wallPaintDepths } from "./wallPaint";
+import { regionalWallPaint, wallFinish, wallPaintDepths, wallTone, wallTrimTone } from "./wallPaint";
+import { wallFaceColor } from "./lighting";
+import { createBuildingFromArchetype } from "../structure/building";
+import type { Building } from "../structure/types";
+import type { ArchetypeId } from "../world/archetypes";
 
 const CATALOG_DOZER = CATALOG_CAPTURE_DOZER;
 
@@ -133,6 +137,87 @@ describe("shared wall paint cells", () => {
     expect(east.length).toBeGreaterThan(0);
     for (const wall of east) {
       expect(eastEdgeSlabDepth(b, wall.span.gy0, wall.span.floor)).toBeLessThan(wall.depth);
+    }
+  });
+});
+
+describe("regional wall palettes", () => {
+  const MATERIALS = ["wood", "brick", "concrete", "metal", "glass"] as const;
+  const REGIONS = ["southwest", "gulf", "brick-belt", "mountain", "pacific"] as const;
+  const dressed = (id: string, walls: (typeof REGIONS)[number], seed: number) => {
+    const b = createBuildingFromArchetype(id as ArchetypeId, id, 0, 0);
+    b.region = { roofs: "temperate", walls, soil: "dark-loam", seed } as Building["region"];
+    return b;
+  };
+  const finishes = (id: string, walls: (typeof REGIONS)[number], material: (typeof MATERIALS)[number]) => {
+    const seen = new Set<string>();
+    for (let seed = 1; seed <= 60; seed++) seen.add(regionalWallPaint(dressed(id, walls, seed * 2654435761), material)!.finish);
+    return seen;
+  };
+
+  it("paints exactly the stock material ramp when a building has no region", () => {
+    const b = createBuildingFromArchetype("bakery", "PLAIN", 0, 0);
+    for (const material of MATERIALS) {
+      expect(regionalWallPaint(b, material)).toBeNull();
+      for (const face of ["south", "east"] as const) for (const damaged of [false, true]) {
+        expect(wallTone(b, material, face, damaged)).toBe(wallFaceColor(material, face, damaged));
+      }
+    }
+    expect(wallFinish(b, "brick")).toBe("brick");
+    expect(wallFinish(b, "metal")).toBe("ribbed");
+    expect(wallFinish(b, "wood")).toBe("plain");
+  });
+
+  it("is deterministic for a regional seed and varies between buildings", () => {
+    const tones = new Set<number>();
+    for (let seed = 1; seed <= 40; seed++) {
+      const a = dressed("bakery", "southwest", seed * 7919), b = dressed("bakery", "southwest", seed * 7919);
+      expect(regionalWallPaint(a, "brick")).toEqual(regionalWallPaint(b, "brick"));
+      expect(wallTone(a, "brick", "east")).toBe(wallTone(b, "brick", "east"));
+      tones.add(regionalWallPaint(a, "brick")!.tone);
+    }
+    expect(tones.size).toBeGreaterThan(2);
+  });
+
+  it("weights finishes by region: stucco and adobe in the southwest, brick and clapboard in the brick belt, pastel stucco and painted block on the gulf", () => {
+    expect([...finishes("bakery", "brick-belt", "brick")]).toEqual(["brick"]);
+    expect([...finishes("ranch", "brick-belt", "wood")]).toEqual(["clapboard"]);
+    const southwest = finishes("bakery", "southwest", "brick");
+    expect(southwest.has("stucco") && southwest.has("adobe")).toBe(true);
+    expect(finishes("clock-hall", "southwest", "concrete").has("sandstone")).toBe(true);
+    expect(finishes("clock-hall", "brick-belt", "brick").has("limestone")).toBe(true);
+    const gulf = finishes("bakery", "gulf", "concrete");
+    expect(gulf.has("cmu") && gulf.has("stucco")).toBe(true);
+    expect(finishes("ranch", "gulf", "wood")).toEqual(new Set(["clapboard"]));
+    expect(finishes("ranch", "mountain", "wood").has("timber")).toBe(true);
+    expect(finishes("ranch", "pacific", "wood").has("shingle")).toBe(true);
+  });
+
+  it("keeps the brick belt close to today's brick and never repaints glass", () => {
+    const stock = wallFaceColor("brick", "east");
+    let same = 0;
+    for (let seed = 1; seed <= 60; seed++) if (wallTone(dressed("bakery", "brick-belt", seed * 7919), "brick", "east") === stock) same++;
+    expect(same).toBeGreaterThan(15);
+    for (const walls of REGIONS) expect(regionalWallPaint(dressed("bakery", walls, 5), "glass")).toBeNull();
+  });
+
+  it("gives industrial buildings ribbed steel and stained tilt-up concrete in every region", () => {
+    for (const walls of REGIONS) {
+      expect(finishes("steel-warehouse", walls, "metal")).toEqual(new Set(["ribbed"]));
+      expect(finishes("steel-warehouse", walls, "concrete")).toEqual(new Set(["tiltup"]));
+      const steel = new Set<number>();
+      for (let seed = 1; seed <= 40; seed++) steel.add(regionalWallPaint(dressed("steel-warehouse", walls, seed * 7919), "metal")!.tone);
+      expect(steel.size, walls).toBeGreaterThan(2);
+    }
+  });
+
+  it("keeps light and damage from the stock ramp on a repainted wall", () => {
+    const b = dressed("bakery", "gulf", 99);
+    for (const material of ["brick", "concrete", "wood"] as const) {
+      const lum = (c: number) => (c >> 16 & 255) + (c >> 8 & 255) + (c & 255);
+      expect(lum(wallTone(b, material, "south"))).toBeLessThan(lum(wallTone(b, material, "east")));
+      expect(lum(wallTone(b, material, "east", true))).toBeLessThan(lum(wallTone(b, material, "east")));
+      expect(lum(wallTrimTone(b, material, "south"))).toBeLessThan(lum(wallTrimTone(b, material, "east")));
     }
   });
 });

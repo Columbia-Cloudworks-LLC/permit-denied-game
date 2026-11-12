@@ -17,11 +17,13 @@ import {
 } from "./fields";
 import { derivedRoadBoxes, pointOnRoad, type RoadNetwork } from "./roads";
 import { neighbors4, SURFACE_ID, traversalAt, type SurfaceGrid } from "./terrain";
+import { aridLandscape, climateForBiome, type Bedrock, type ClimateEnvelope } from "./climate";
+import { aridLandUse, landformIssues, mesaTierAt, placeLandforms } from "./landforms";
 
 const FIELD_SALT = 0xf1e1d;
 const EDGE_SALT = 0xed9e;
 
-export type TraversalKind = "open" | "water" | "forest-core";
+export type TraversalKind = "open" | "water" | "forest-core" | "rock";
 
 export interface ForestFeature {
   kind: "forest";
@@ -74,7 +76,36 @@ export interface FieldFeature {
   clearedAnnounced?: boolean;
 }
 
-export type TerrainFeature = ForestFeature | BasinFeature | RiverFeature | FieldFeature;
+/**
+ * A standing rock formation: a stepped mesa or butte, or a low craggy outcrop. Its rock cells are
+ * `rock` on the surface grid (solid) and ringed by drivable `talus`; `tiers` is the render model.
+ */
+export interface MesaFeature {
+  kind: "mesa";
+  id: string;
+  form: "mesa" | "butte" | "outcrop";
+  bedrock: Bedrock;
+  /** World origin of the cell box, one unit per cell, including the talus ring. */
+  x: number;
+  y: number;
+  cols: number;
+  rows: number;
+  /** Row-major terrace per cell: 0 is open ground or talus, 1 and up are rock steps. */
+  tiers: Uint8Array;
+  tierHeight: number;
+  seed: number;
+}
+
+/** A dry arroyo: a sandy, cobbled channel the dozer drives straight across. */
+export interface WashFeature {
+  kind: "wash";
+  id: string;
+  path: { x: number; y: number }[];
+  halfWidth: number;
+  seed: number;
+}
+
+export type TerrainFeature = ForestFeature | BasinFeature | RiverFeature | FieldFeature | MesaFeature | WashFeature;
 
 export interface FeatureContext {
   biome: BiomeProfile;
@@ -95,6 +126,10 @@ export interface FeatureContext {
   propBudget: number;
   surface: SurfaceGrid;
   season?: SeasonId;
+  /** Climate zone: absent follows the biome's home climate. Decides landforms, flora and rural land use. */
+  climate?: ClimateEnvelope;
+  /** Named parks and plazas: landforms stay out of them as they do out of lots. */
+  reserved?: readonly { x: number; y: number; w: number; d: number }[];
 }
 
 const LOT_MARGIN = 1.6;
@@ -121,7 +156,11 @@ export function terrainTraversalAt(
       case "river":
         if (pointOnRiver(feature, x, y)) return "water";
         break;
+      case "mesa":
+        if (mesaTierAt(feature, x, y) > 0) return "rock";
+        break;
       case "field":
+      case "wash":
         break;
       default: {
         const _never: never = feature;
@@ -132,7 +171,7 @@ export function terrainTraversalAt(
   return "open";
 }
 
-function pointOnRiver(feature: RiverFeature, x: number, y: number): boolean {
+function pointOnRiver(feature: RiverFeature | WashFeature, x: number, y: number): boolean {
   for (let i = 1; i < feature.path.length; i++) {
     const a = feature.path[i - 1]!;
     const b = feature.path[i]!;
@@ -158,7 +197,10 @@ function featureBounds(feature: TerrainFeature): { x: number; y: number; w: numb
       const y = Math.min(...ys);
       return { x, y, w: Math.max(...xs) - x, d: Math.max(...ys) - y };
     }
-    case "river": {
+    case "mesa":
+      return { x: feature.x, y: feature.y, w: feature.cols, d: feature.rows };
+    case "river":
+    case "wash": {
       const xs = feature.path.map((p) => p.x);
       const ys = feature.path.map((p) => p.y);
       const pad = feature.halfWidth;
@@ -218,10 +260,10 @@ function churnCell(feature: FieldFeature, ix: number, iy: number, x: number, y: 
   return 0;
 }
 
-/** Winter ice is open for the dozer. Forest cores and warm-season water stay blocked. */
-export function movementBlocked(kind: TraversalKind, season: SeasonId = "summer"): boolean {
+/** Frozen water (`Town.frozen`) is open for the dozer. Forest cores and liquid water stay blocked, whatever the calendar says. */
+export function movementBlocked(kind: TraversalKind, frozen = false): boolean {
   if (kind === "open") return false;
-  if (kind === "water") return season !== "winter";
+  if (kind === "water") return !frozen;
   return true;
 }
 
@@ -232,9 +274,9 @@ export function resolveTraversal(
   startY: number,
   features: readonly TerrainFeature[] | undefined,
   grid?: SurfaceGrid | null,
-  season: SeasonId = "summer",
+  frozen = false,
 ): { x: number; y: number; blocked: boolean } {
-  const open = (px: number, py: number) => !movementBlocked(terrainTraversalAt(features, px, py, grid), season);
+  const open = (px: number, py: number) => !movementBlocked(terrainTraversalAt(features, px, py, grid), frozen);
   if (open(x, y)) return { x, y, blocked: false };
   if (open(x, startY)) return { x, y: startY, blocked: true };
   if (open(startX, y)) return { x: startX, y, blocked: true };
@@ -277,7 +319,10 @@ function escapeFeature(features: readonly TerrainFeature[], feature: TerrainFeat
       return escapeBasin(features, feature, x, y);
     case "river":
       return escapeRiver(features, feature, x, y);
+    case "mesa":
+      return escapeMesa(features, feature, x, y);
     case "field":
+    case "wash":
       return undefined;
     default: {
       const _never: never = feature;
@@ -297,6 +342,19 @@ function escapeForest(features: readonly TerrainFeature[], feature: ForestFeatur
   const ux = dist > 1e-6 ? dx / dist : 1;
   const uy = dist > 1e-6 ? dy / dist : 0;
   return openAt(features, feature.cx + ux * (feature.coreR + 0.45), feature.cy + uy * (feature.coreR + 0.45));
+}
+
+/** Walk from a point on the rock away from the formation's centre until the ground opens. */
+function escapeMesa(features: readonly TerrainFeature[], feature: MesaFeature, x: number, y: number): { x: number; y: number } | undefined {
+  if (mesaTierAt(feature, x, y) <= 0) return undefined;
+  const dx = x - (feature.x + feature.cols * 0.5);
+  const dy = y - (feature.y + feature.rows * 0.5);
+  const dist = len(dx, dy) || 0.001;
+  for (let step = 1; step <= feature.cols + feature.rows; step++) {
+    const open = openAt(features, x + (dx / dist) * step * 0.5, y + (dy / dist) * step * 0.5);
+    if (open) return open;
+  }
+  return undefined;
 }
 
 /** Walk outward from the basin's centre in 15%-of-extent steps. */
@@ -348,6 +406,7 @@ function nearestRiverPoint(feature: RiverFeature, x: number, y: number): { x: nu
 
 export function deriveTerrainFeatures(ctx: FeatureContext): TerrainFeature[] {
   const grid = ctx.surface;
+  const climate = ctx.climate ?? climateForBiome(ctx.biome);
   const features: TerrainFeature[] = [];
   const seen = new Uint8Array(grid.surface.length);
   for (let i = 0; i < grid.surface.length; i++) {
@@ -357,7 +416,7 @@ export function deriveTerrainFeatures(ctx: FeatureContext): TerrainFeature[] {
       seen[i] = 1;
       continue;
     }
-    const feature = featureFromBlob(grid, grid.surface[i]!, floodIds(grid, i, group, seen), ctx, features.length);
+    const feature = featureFromBlob(grid, grid.surface[i]!, floodIds(grid, i, group, seen), ctx, features.length, climate);
     if (feature) features.push(feature);
   }
   promotePrimaryField(features, ctx);
@@ -365,6 +424,7 @@ export function deriveTerrainFeatures(ctx: FeatureContext): TerrainFeature[] {
     if (feature.kind === "field") ctx.ground.push(...fieldPatches(feature));
   }
   placeEdgeTrees(ctx, features);
+  placeLandforms(ctx, features, climate);
   return features;
 }
 
@@ -372,15 +432,29 @@ export function deriveTerrainFeatures(ctx: FeatureContext): TerrainFeature[] {
 function featureSurfaceGroup(id: number): readonly number[] | undefined {
   if (id === SURFACE_ID.water) return [SURFACE_ID.water];
   if (id === SURFACE_ID.field) return [SURFACE_ID.field];
+  if (id === SURFACE_ID.wash) return [SURFACE_ID.wash];
   if (id === SURFACE_ID["forest-floor"] || id === SURFACE_ID["forest-core"]) return [SURFACE_ID["forest-floor"], SURFACE_ID["forest-core"]];
   return undefined;
 }
 
-/** A flooded blob becomes water, a field, or a forest by the surface it started on. */
-function featureFromBlob(grid: SurfaceGrid, id: number, cells: number[], ctx: FeatureContext, n: number): TerrainFeature | undefined {
+/** A flooded blob becomes water, a field, a wash, or a forest by the surface it started on. Desert field ground is put to dry-country use instead of row crops. */
+function featureFromBlob(grid: SurfaceGrid, id: number, cells: number[], ctx: FeatureContext, n: number, climate: ClimateEnvelope): TerrainFeature | undefined {
   if (id === SURFACE_ID.water) return waterFromBlob(grid, cells, n);
-  if (id === SURFACE_ID.field) return fieldFromBlob(grid, cells, ctx, n);
-  return forestFromBlob(grid, cells, n);
+  if (id === SURFACE_ID.wash) return washFromBlob(grid, cells, n);
+  if (id !== SURFACE_ID.field) return forestFromBlob(grid, cells, n);
+  if (!aridLandscape(climate)) return fieldFromBlob(grid, cells, ctx, n);
+  aridLandUse(ctx, climate, cells, openFieldCells(grid, cells, ctx), n);
+  return undefined;
+}
+
+function washFromBlob(grid: SurfaceGrid, cells: number[], n: number): WashFeature | undefined {
+  if (cells.length < 8) return undefined;
+  const pts = cells.map((i) => ({ x: grid.ox + (i % grid.cols) + 0.5, y: grid.oy + ((i / grid.cols) | 0) + 0.5 }));
+  const { minX, minY, maxX, maxY } = pointBounds(pts);
+  const vertical = maxY - minY >= maxX - minX;
+  const path = [...pts].sort((a, b) => (vertical ? a.y - b.y : a.x - b.x)).filter((_, i, arr) => i % Math.max(1, Math.floor(arr.length / 10)) === 0);
+  if (path.length < 2) return undefined;
+  return { kind: "wash", id: `wash-${n}`, path, halfWidth: 1.5, seed: n * 8191 + cells.length };
 }
 
 function floodIds(grid: SurfaceGrid, start: number, ids: readonly number[], seen: Uint8Array): number[] {
@@ -764,7 +838,7 @@ function blocked(
   const box = { x, y, w, d };
   if (!ignoreLots && ctx.lots.some((lot) => boxesOverlap(box, { x: lot.x - LOT_MARGIN, y: lot.y - LOT_MARGIN, w: lot.w + LOT_MARGIN * 2, d: lot.d + LOT_MARGIN * 2 }))) return true;
   if (ctx.buildings.some((building) => boxesOverlap(box, buildingBox(building, BUILDING_MARGIN)))) return true;
-  return features.some((feature) => !(ignoreForest && feature.kind === "forest") && feature.kind !== "field" && boxesOverlap(box, featureBounds(feature)));
+  return features.some((feature) => !(ignoreForest && feature.kind === "forest") && feature.kind !== "field" && feature.kind !== "wash" && boxesOverlap(box, featureBounds(feature)));
 }
 
 function boxNearRoad(network: RoadNetwork, x: number, y: number, w: number, d: number, margin: number): boolean {
@@ -813,28 +887,37 @@ export function validateFeatureLayout(
   roadSpawnY: number,
   grid: SurfaceGrid,
   lots: readonly Lot[] = [],
-  season: SeasonId = "summer",
+  frozen = false,
 ): string[] {
   const issues: string[] = [];
-  if (movementBlocked(terrainTraversalAt(features, spawnX, spawnY, grid), season)) issues.push("spawn blocked by terrain");
+  if (movementBlocked(terrainTraversalAt(features, spawnX, spawnY, grid), frozen)) issues.push("spawn blocked by terrain");
   if (terrainTraversalAt(features, roadSpawnX, roadSpawnY, grid) !== "open") issues.push("road spawn blocked by terrain");
   const report = new Set<string>();
   for (let iy = 0; iy < grid.rows; iy++) {
     for (let ix = 0; ix < grid.cols; ix++) surfaceCellOverlaps(grid, ix, iy, network, buildings, lots, report);
   }
   issues.push(...report);
+  issues.push(...landformIssues(features, grid, lots, spawnX, spawnY, roadSpawnX, roadSpawnY));
   return issues;
 }
 
 const pointInBox = (x: number, y: number, box: Box): boolean => x >= box.x && y >= box.y && x <= box.x + box.w && y <= box.y + box.d;
 
-/** Water and forest cells may not sit on roads or buildings, and forest may not sit on lots; each message once. */
+const OVERLAP_LABELS: Readonly<Record<number, string>> = {
+  [SURFACE_ID.water]: "water",
+  [SURFACE_ID["forest-core"]]: "forest-core",
+  [SURFACE_ID["forest-floor"]]: "forest-floor",
+  [SURFACE_ID.rock]: "rock",
+  [SURFACE_ID.talus]: "talus",
+};
+
+/** Water, forest and rock cells may not sit on roads or buildings, and forest and rock may not sit on lots; each message once. */
 function surfaceCellOverlaps(grid: SurfaceGrid, ix: number, iy: number, network: RoadNetwork, buildings: readonly Building[], lots: readonly Lot[], report: Set<string>): void {
   const id = grid.surface[iy * grid.cols + ix]!;
-  if (id !== SURFACE_ID.water && id !== SURFACE_ID["forest-core"] && id !== SURFACE_ID["forest-floor"]) return;
+  const label = OVERLAP_LABELS[id];
+  if (!label) return;
   const x = grid.ox + (ix + 0.5) * grid.cell;
   const y = grid.oy + (iy + 0.5) * grid.cell;
-  const label = id === SURFACE_ID.water ? "water" : id === SURFACE_ID["forest-core"] ? "forest-core" : "forest-floor";
   if (pointOnRoad(network, x, y)) report.add(`${label} overlaps a road`);
   for (const building of buildings) {
     if (pointInBox(x, y, buildingBox(building, 0))) report.add(`${label} overlaps ${building.name}`);

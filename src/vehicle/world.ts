@@ -149,6 +149,8 @@ function staticStampCurrent(town: Town, stamp: unknown[]): boolean {
         put(b.id); put(b.retired); put(solids.standing); put(solids.stripped); put(solids.fixtures);
     }
     for (const p of town.props) { put(p.id); put(p.broken); put(p.x); put(p.y); }
+    // Rock formations never change after generation, so the feature list's identity covers them.
+    put(town.features);
     if (stamp.length !== n) { stamp.length = n; same = false; }
     return same;
 }
@@ -229,8 +231,34 @@ function staticVehicleHash(town: Town): SpatialHash<VehicleBox> {
     for (const p of town.props)
         if (!p.broken)
             insertBox(fixed, { x: p.x + p.w / 2, y: p.y + p.d / 2, w: p.w, d: p.d, z: p.elev, h: 1, heading: p.heading });
+    for (const box of landformSolids(town.features))
+        insertBox(fixed, box);
     staticCache.set(town, { stamp, hash: fixed });
     return fixed;
+}
+/**
+ * Mesas, buttes and outcrops as static solids: one box per run of rock cells along a row, so
+ * vehicles see a cliff ahead, stop against it and slide along it like any wall.
+ */
+export function landformSolids(features: Town['features']): VehicleBox[] {
+    const boxes: VehicleBox[] = [];
+    for (const f of features) {
+        if (f.kind !== 'mesa')
+            continue;
+        for (let r = 0; r < f.rows; r++) {
+            let run = -1;
+            for (let c = 0; c <= f.cols; c++) {
+                const rock = c < f.cols && f.tiers[r * f.cols + c]! > 0;
+                if (rock && run < 0)
+                    run = c;
+                if (rock || run < 0)
+                    continue;
+                boxes.push({ x: f.x + (run + c) / 2, y: f.y + r + .5, w: c - run, d: 1, z: 0, h: Math.max(2, f.tierHeight), heading: 0 });
+                run = -1;
+            }
+        }
+    }
+    return boxes;
 }
 function insertBuildingBoxes(fixed: SpatialHash<VehicleBox>, b: Town['buildings'][number]): void {
     for (const c of b.cells)

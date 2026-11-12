@@ -45,3 +45,27 @@ export function labeledMenuButton(iconHtml: string, label: string): string {
 export function soundButtonContent(muted: boolean): string {
   return labeledMenuButton(muted ? MENU_ICONS.speakerMuted : MENU_ICONS.speaker, 'Sound');
 }
+
+const CLOUD = '<path d="M7 15.5a3.6 3.6 0 0 1-.5-7.1A5 5 0 0 1 16 7.3a4.2 4.2 0 0 1 .4 8.2z"/>';
+const SNOWFLAKE = '<path d="M12 3v18M4.2 7.5l15.6 9M19.8 7.5l-15.6 9"/><path d="M9.5 4.5 12 7l2.5-2.5M9.5 19.5 12 17l2.5 2.5"/>';
+const WIND = '<path d="M3 8.5h9.5a2.3 2.3 0 1 0-2.3-2.3M3 12.5h14.5a2.3 2.3 0 1 1-2.3 2.3"/>';
+
+/** Sky glyphs for map chips, briefings and the HUD. Snow and blizzard are the only frozen ones. */
+export const WEATHER_ICONS = {
+  sun: icon('weather-sun', '<circle cx="12" cy="12" r="4"/><path d="M12 2.5V5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8"/>'),
+  cloud: icon('weather-cloud', CLOUD),
+  rain: icon('weather-rain', CLOUD + '<path d="M8.5 18.5v2M12 18.5v2M15.5 18.5v2"/>'),
+  snow: icon('weather-snow', SNOWFLAKE),
+  storm: icon('weather-storm', CLOUD + '<path d="M12.5 15.5 10 19h3l-1.5 3"/>'),
+  fog: icon('weather-fog', '<path d="M4 8h16M6 12h12M4 16h16"/>'),
+  /** Wind carrying grit. */
+  dust: icon('weather-dust', WIND + '<path d="M3 17h6"/><circle cx="18.5" cy="8.5" r=".8" fill="currentColor" stroke="none"/><circle cx="12" cy="19" r=".8" fill="currentColor" stroke="none"/><circle cx="20" cy="18.5" r=".8" fill="currentColor" stroke="none"/>'),
+  /** A cloudburst: long slanted sheets. */
+  monsoon: icon('weather-monsoon', CLOUD + '<path d="M9 17.5 7 22M13 17.5 11 22M17 17.5 15 22"/>'),
+  squall: icon('weather-squall', WIND + '<path d="M6 17l-1.2 3.5M10.5 17l-1.2 3.5M15 19l-.8 2.5"/>'),
+  /** A thermometer run up to the bulb. */
+  heat: icon('weather-heat', '<path d="M10 14.2V5a2 2 0 1 1 4 0v9.2a4 4 0 1 1-4 0z"/><path d="M12 8v8"/><path d="M18 6h2.5M18 10h2.5"/>'),
+  blizzard: icon('weather-blizzard', '<path d="M8 3v12M2.8 6l10.4 6M13.2 6 2.8 12"/><path d="M12 18.5h7.5a2 2 0 1 0-2-2M3 21h9"/>'),
+} as const;
+
+export type WeatherIconId = keyof typeof WEATHER_ICONS;

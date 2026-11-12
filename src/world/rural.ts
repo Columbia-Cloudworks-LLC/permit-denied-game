@@ -7,10 +7,11 @@ import type { Building, GroundPatch, Lot, Prop } from "../structure/types";
 import { selectBiome, type BiomeProfile } from "./biomes";
 import { ruralGridDims } from "./terrain";
 import type { SeasonId } from "./season";
+import { aridLandscape, climateForBiome, type ClimateEnvelope } from "./climate";
 import { getAsset, spawnAsset } from "./catalog";
 import { buildingOccupy, dressLots } from "./dressing";
 import { deriveTerrainFeatures, type TerrainFeature } from "./terrainFeatures";
-import { addEdgeRoads, type EdgeBounds } from "./edgeRoads";
+import { addEdgeRoads, dressAridRoads, type EdgeBounds } from "./edgeRoads";
 import {
   PARCEL,
   allocateFrontage,
@@ -65,6 +66,7 @@ import {
   estimateRuralSurfaceBounds,
   enforceOpenCorridors,
   generateSurfaceGrid,
+  surfaceAt,
   meanRoadCost,
   sampleSegmentCenterline,
   lotEnvelopeRejected,
@@ -120,6 +122,8 @@ function pickTopology(rng: Rng, count: number): TopologyFamily {
 export interface LayoutEnvironment {
   season?: SeasonId;
   biome?: BiomeProfile;
+  /** Climate zone: absent follows the biome's home climate (`climateForBiome`). */
+  climate?: ClimateEnvelope;
   /** County flavor: reweights eligible buildings, never adds ineligible ones. */
   regional?: RegionalPlacement;
 }
@@ -191,9 +195,10 @@ function generateRuralLayoutInner(
     : topologyOverride) ?? pickTopology(rng, count);
   const biome = environment?.biome ?? selectBiome(id, seed, topology);
   const season = environment?.season ?? "summer";
+  const climate = environment?.climate ?? climateForBiome(biome);
   const originX = 4;
   const originY = 4;
-  const surface = ruralSurface(seed, biome, count, campaign, originX, originY);
+  const surface = ruralSurface(seed, biome, count, campaign, originX, originY, climate);
   const b = pickSkeleton(surface, topology, count, originX, originY, seed, campaign).builder;
   growStreets(b, rng, count, campaign, surface);
 
@@ -209,15 +214,16 @@ function generateRuralLayoutInner(
   const { pool, urban } = ruralLotPool(run, seed);
   placeRuralBuildings(run, pool, seed);
   const { network, bounds } = finishRuralNetwork(run, urban, originX, originY);
+  dressAridRoads(network, climate, bounds, (x, y) => surfaceAt(surface, x, y) === "wash");
   const kept = run.kept;
-  const { props, ground } = dressRuralLots(run, network);
+  const { props, ground } = dressRuralLots(run, network, aridLandscape(climate));
   const { minX, minY, maxX, maxY } = bounds;
 
   const terrain = emptyTerrain(minX - 2, minY - 2, maxX - minX + 4, maxY - minY + 4);
   applyTerrain(terrain, topology, minX, maxX);
   enforceOpenCorridors(surface, network, kept, buildings);
   stampDeveloped(surface, network, kept, ground);
-  finalizeStampedSurface(surface, biome, seed, { network, lots: kept, buildings });
+  finalizeStampedSurface(surface, biome, seed, { network, lots: kept, buildings }, climate);
   if (campaign && urban) finalizeUrbanReport(campaign, urban, kept, network);
 
   const roads = derivedRoadBoxes(network);
@@ -242,6 +248,8 @@ function generateRuralLayoutInner(
     propBudget,
     surface,
     season,
+    climate,
+    reserved: urban?.openSpaces,
   });
 
   return {
@@ -275,7 +283,7 @@ function generateRuralLayoutInner(
   };
 }
 
-function ruralSurface(seed: number, biome: BiomeProfile, count: number, campaign: CampaignLevelDef | undefined, originX: number, originY: number): SurfaceGrid {
+function ruralSurface(seed: number, biome: BiomeProfile, count: number, campaign: CampaignLevelDef | undefined, originX: number, originY: number, climate: ClimateEnvelope): SurfaceGrid {
   const blockW = campaign?.generation.parcel.blockW ?? 40;
   const blockD = campaign?.generation.parcel.blockD ?? 36;
   const bounds = estimateRuralSurfaceBounds(count, originX, originY, blockW, blockD);
@@ -288,6 +296,7 @@ function ruralSurface(seed: number, biome: BiomeProfile, count: number, campaign
     maxY: bounds.maxY,
     spawnBand: { x: originX + 2, y: originY + 8, w: 18, d: 18 },
     openFields: campaign ? campaignPaintsOpenFields(campaign.id) : true,
+    climate,
   });
 }
 
@@ -412,14 +421,14 @@ function finishRuralNetwork(run: RuralPlacement, urban: UrbanGeographyReport | u
   return { network, bounds };
 }
 
-function dressRuralLots(run: RuralPlacement, network: RoadNetwork): { props: Prop[]; ground: GroundPatch[] } {
+function dressRuralLots(run: RuralPlacement, network: RoadNetwork, arid: boolean): { props: Prop[]; ground: GroundPatch[] } {
   const { buildings, kept, campaign, count, rng, corridors } = run;
   const occBoxes = buildings.flatMap(buildingOccupy);
   const perLot = campaign?.generation.propsPerLot ?? (count >= 80 ? 8 : 10);
   const eligible = campaign
     ? (assetId: string) => campaignEligible(getAsset(assetId).campaign, campaign.id)
     : undefined;
-  const dressed = dressLots(kept, buildings, rng, occBoxes, perLot, corridors, eligible);
+  const dressed = dressLots(kept, buildings, rng, occBoxes, perLot, corridors, eligible, arid);
   const props: Prop[] = [...dressed.props];
   const ground: GroundPatch[] = [...dressed.patches];
   placeRoadside(network, kept, buildings, props, rng, count, corridors);

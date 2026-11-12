@@ -18,16 +18,18 @@ import {
 } from './roads';
 import { selectCampaignBiome } from './biomes';
 import { DRESSING } from '../game/constants';
-import { enforceOpenCorridors, finalizeStampedSurface, generateSurfaceGrid, stampDeveloped } from './terrain';
+import { enforceOpenCorridors, finalizeStampedSurface, generateSurfaceGrid, stampDeveloped, surfaceAt } from './terrain';
 import { deriveTerrainFeatures } from './terrainFeatures';
 import { generateRuralLayout, type LayoutEnvironment, type RuralLayout } from './rural';
-import { addEdgeRoads } from './edgeRoads';
+import { addEdgeRoads, dressAridRoads } from './edgeRoads';
+import { climateForBiome } from './climate';
 import { buildingOccupy } from './dressing';
 
 export function generateCampaignLayout(level: CampaignLevelDef, seed: number, environment?: LayoutEnvironment): RuralLayout {
   const resolved: LayoutEnvironment = {
     season: environment?.season ?? "summer",
     biome: environment?.biome ?? selectCampaignBiome(seed),
+    climate: environment?.climate,
     regional: environment?.regional,
   };
   if (level.generation.topology === 'estate') return generateEstateLayout(level, seed, resolved);
@@ -87,6 +89,7 @@ function generateEstateLayout(level: CampaignLevelDef, seed: number, environment
     maxY: bottom + 20,
     spawnBand: { x: (left + right) * 0.5 - 4, y: bottom + 8, w: 8, d: 10 },
     openFields: false,
+    climate: environment.climate,
   });
 
   const buildings: Building[] = [];
@@ -104,6 +107,7 @@ function generateEstateLayout(level: CampaignLevelDef, seed: number, environment
   const bounds = estateBounds(buildings, { minX: left - 4, minY: top - 4, maxX: right + 4, maxY: bottom + 20 });
   addEdgeRoads(b, bounds, [...lots, ...buildings.flatMap(buildingOccupy)]);
   const network = b.finish({ normalize: false });
+  dressAridRoads(network, environment.climate ?? climateForBiome(biome), bounds, (x, y) => surfaceAt(surface, x, y) === "wash");
   for (const lot of lots) {
     const acc = network.accesses.find(access => access.id === lot.accessId || access.lotId === lot.id);
     if (acc) {
@@ -116,7 +120,7 @@ function generateEstateLayout(level: CampaignLevelDef, seed: number, environment
   const ground: GroundPatch[] = [];
   enforceOpenCorridors(surface, network, lots, buildings);
   stampDeveloped(surface, network, lots, ground);
-  finalizeStampedSurface(surface, biome, seed, { network, lots, buildings });
+  finalizeStampedSurface(surface, biome, seed, { network, lots, buildings }, environment.climate);
   const spawn = samplePolyline(network.segments.find(seg => seg.roadClass === 'rural')?.points ?? network.segments[0]!.points, 0.2);
   const features = deriveTerrainFeatures({
     biome,
@@ -137,6 +141,7 @@ function generateEstateLayout(level: CampaignLevelDef, seed: number, environment
     propBudget: level.generation.dressingBudget ?? DRESSING.districtMax.d30,
     surface,
     season,
+    climate: environment.climate,
   });
 
   const estateUrban = () => ({

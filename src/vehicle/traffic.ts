@@ -6,7 +6,7 @@ import type { DistrictId } from '../game/session';
 import { cellPresent, cellWorldBox, type WorldEvent } from '../structure/types';
 import { edgeExitNodes } from '../world/edgeRoads';
 import { indexNetwork, offsetPoint, polylineLength, roadSurfaceAt, samplePolyline, type Lane, type RoadNetwork, type RoadSegment } from '../world/roads';
-import { policeMayLeaveRoad } from '../world/routing';
+import { policeMayLeaveRoad, rockBetween } from '../world/routing';
 import type { Town } from '../world/town';
 import { dozerSpeed, type Dozer } from './dozer';
 import { vehicleDefinition } from './definitions';
@@ -765,7 +765,7 @@ function stepPolice(town: Town, state: TrafficState, v: VehicleState, a: Traffic
   // Lanes first; the cruiser leaves the road only at close range with a clear line to the dozer.
   if (a.mode === 'pursue' && policeMayLeaveRoad({
     dozerNearby: dist < 22, pursuitAllowed: state.time >= a.ramAfter,
-    offRoadBlocked: (dist >= 9 && !seesDozer(town, v, dozer)) || rubbleBetween(town, v.x, v.y, dozer.x, dozer.y),
+    offRoadBlocked: (dist >= 9 && !seesDozer(town, v, dozer)) || rubbleBetween(town, v.x, v.y, dozer.x, dozer.y) || rockBetween(town.surface, v.x, v.y, dozer.x, dozer.y),
   })) { a.mode = 'ram'; a.modeT = 0; }
   if (a.mode === 'ram') {
     noseStrike(v, a, dozer);

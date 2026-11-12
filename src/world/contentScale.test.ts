@@ -65,7 +65,7 @@ it('bounds a whole-tower debris burst before the solver and preserves owned mass
   expect(totalDebrisMass(t)).toBeGreaterThan(2000);
   expect(t.rubble.every(r=>r.yardOwner===bay.key)).toBe(true);
   restoreBay(t,bay,p);
-  expect(totalDebrisMass(t)).toBeLessThan(.005); // Float32 pile accumulation over thousands of deposits.
+  expect(totalDebrisMass(t)).toBeLessThan(.01); // Float32 pile accumulation over thousands of deposits, rooftop gear included.
   console.log(JSON.stringify({scenario:'full-tower-world',peakBodies:peak,stepP95Ms:times.sort((a,b)=>a-b)[227],maxStepMs:Math.max(...times)}));
 });
 

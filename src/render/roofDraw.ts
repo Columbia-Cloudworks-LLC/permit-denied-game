@@ -2,11 +2,11 @@ import type { Graphics } from "pixi.js";
 import { applyBrokenRoofEdge, displacedRoofVerts, roofHeightAt, sawtoothClosures, sectionOwnsRidge } from "../structure/roof";
 import type { Building, RoofSection } from "../structure/types";
 import { worldToScreen } from "../world/iso";
-import type { SeasonId } from "../world/season";
 import { drawIsoBox, drawSlopedQuad, drawWorldPoly, PAL } from "./drawIso";
 import { drawRoofFrame, roofShowsFrame } from "./interiorDraw";
 import { roofSlopeLight } from "./lighting";
 import { shade } from "./palette";
+import { flatRoofTone } from "./roofFinish";
 
 type Vert = { x: number; y: number; z: number };
 interface RoofColors { top: number; edge: number }
@@ -36,12 +36,17 @@ export function drawChimney(g: Graphics, ch: Vert, alpha: number): void {
   drawIsoBox(g, ch.x, ch.y, 0.32, 0.32, ch.z, 0.85, PAL.brick, PAL.brickDark, PAL.brick, alpha);
 }
 
-function roofColors(b: Building, roof: RoofSection, verts: Vert[], season: SeasonId = "summer"): RoofColors {
+/** Clay barrel tile, standing-seam metal or shingle for a pitched roof; the membrane family for a flat one. */
+function roofColors(b: Building, roof: RoofSection, verts: Vert[], snow: boolean): RoofColors {
   if (roof.material === 'glass') return { top: PAL.glassLit, edge: PAL.glass };
-  if (season === "winter" && roof.material !== "metal" && b.roof !== "shed") {
-    return b.roof === "flat"
-      ? { top: 0xc5ced6, edge: 0x8e989e }
-      : { top: 0xd5e0e8, edge: 0x9aa6b0 };
+  if (roof.style === "flat" && !b.canopy && (!snow || roof.material !== "metal")) return flatRoofTone(b, snow);
+  if (snow && roof.material !== "metal" && b.roof !== "shed") return { top: PAL.roofSnow, edge: 0x9aa6b0 };
+  // Houses without a regional silhouette still roof in the local material: clay tile in the desert, light metal on the Gulf.
+  const local = !b.roofForm && b.kind === "house" && roof.style === "gable" ? b.region?.roofs : undefined;
+  const covering = b.roofForm?.covering ?? (local === "southwest" ? "barrel-tile" : local === "subtropical" ? "metal-seam" : undefined);
+  if (covering === "barrel-tile" || covering === "metal-seam") {
+    const [base, dark] = covering === "barrel-tile" ? [PAL.roofTile, PAL.roofTileDark] : [PAL.roofSeamMetal, PAL.roofSeamMetalDark];
+    return { top: roofSlopeLight(verts) >= 0 ? base : shade(base, 0.8), edge: dark };
   }
   if (roof.material === "metal" || b.roof === "shed") return { top: PAL.roofMetal, edge: PAL.metalDark };
   if (b.roof === "flat") return { top: PAL.roofFelt, edge: PAL.metalDark };
@@ -50,13 +55,33 @@ function roofColors(b: Building, roof: RoofSection, verts: Vert[], season: Seaso
   return { top, edge: PAL.roofShingleDark };
 }
 
+/** Tile courses or standing seams running from ridge to eave on a regional pitched roof. */
+function drawCoveringRibs(g: Graphics, b: Building, verts: Vert[], edge: number, alpha: number): void {
+  if (!b.roofForm || b.roofForm.covering === "shingle" || b.roofForm.covering === "adobe" || verts.length !== 4) return;
+  const ranked = verts.map((v, i) => ({ v, i })).sort((a, c) => c.v.z - a.v.z);
+  if (ranked[0]!.v.z - ranked[3]!.v.z < 0.05) return;
+  const [r0, r1] = [ranked[0]!, ranked[1]!], [e0, e1] = [ranked[2]!, ranked[3]!];
+  // Pair each ridge corner with the eave corner on its own side of the plane.
+  const near = (a: Vert, c: Vert) => Math.hypot(a.x - c.x, a.y - c.y);
+  const straight = near(r0.v, e0.v) + near(r1.v, e1.v) <= near(r0.v, e1.v) + near(r1.v, e0.v);
+  const [ea, eb] = straight ? [e0.v, e1.v] : [e1.v, e0.v];
+  const ribs = b.roofForm.covering === "barrel-tile" ? 4 : 2;
+  for (let n = 1; n <= ribs; n++) {
+    const t = n / (ribs + 1);
+    const p = worldToScreen(r0.v.x + (r1.v.x - r0.v.x) * t, r0.v.y + (r1.v.y - r0.v.y) * t, r0.v.z + (r1.v.z - r0.v.z) * t);
+    const q = worldToScreen(ea.x + (eb.x - ea.x) * t, ea.y + (eb.y - ea.y) * t, ea.z + (eb.z - ea.z) * t);
+    g.moveTo(p.x, p.y).lineTo(q.x, q.y).stroke({ color: edge, width: 1, alpha: alpha * 0.55 });
+  }
+}
+
 function ridgeKey(ridge: NonNullable<RoofSection["ridge"]>): string {
   return `${ridge.ax}:${ridge.ay}:${ridge.az}:${ridge.bx}:${ridge.by}:${ridge.bz}`;
 }
 
-export function drawRoofBay(g: Graphics, b: Building, roof: RoofSection, alpha: number, season: SeasonId = "summer"): void {
+/** One roof panel. `snow` caps it white: winter, in a climate that allows snow. `detail` adds tile courses and seams. */
+export function drawRoofBay(g: Graphics, b: Building, roof: RoofSection, alpha: number, snow = false, detail = true): void {
   const drawn = new Set<string>();
-  drawRoofSection(g, b, roof, alpha, drawn, season, () => {
+  drawRoofSection(g, b, roof, alpha, drawn, snow, detail, () => {
     if (roof.material === 'glass' || roofShowsFrame(b, roof)) {
       drawRoofFrame(g, b, roof, alpha * 0.92);
     }
@@ -69,11 +94,12 @@ function drawRoofSection(
   roof: RoofSection,
   alpha: number,
   drawnRidges: Set<string>,
-  season: SeasonId = "summer",
+  snow: boolean,
+  detail: boolean,
   beforeCover?: () => void,
 ): void {
   const verts = applyBrokenRoofEdge(b, roof, displacedRoofVerts(roof));
-  const cols = roofColors(b, roof, verts, season);
+  const cols = roofColors(b, roof, verts, snow);
   const faded = (roof.state === "falling" ? alpha * 0.9 : alpha) * (roof.material === 'glass' ? .28 : 1);
   // A brand fascia paints the eave band of a flat or canopy roof; the underside keeps the roof's own edge colour.
   const rim = roof.style === "flat" ? b.fasciaColor ?? cols.edge : cols.edge;
@@ -88,8 +114,8 @@ function drawRoofSection(
   } else {
     drawSlopedQuad(g, verts, cols.top, cols.edge, faded);
   }
+  if (detail && !snow && roof.state === "intact" && roof.sag === 0) drawCoveringRibs(g, b, verts, cols.edge, faded);
   drawRidgeCap(g, b, roof, cols.edge, faded, drawnRidges);
-  if (b.features.parapet && roof.style === "flat" && roof.state === "intact") drawParapet(g, verts, faded);
 }
 
 /** Sawtooth end closures, with mullions across the glazed ones. */
@@ -157,16 +183,4 @@ function drawRidgeCap(g: Graphics, b: Building, roof: RoofSection, edge: number,
     edge,
     faded,
   );
-}
-
-function drawParapet(g: Graphics, verts: Vert[], faded: number): void {
-  const z = verts[0]!.z;
-  const xs = verts.map((v) => v.x);
-  const ys = verts.map((v) => v.y);
-  const x0 = Math.min(...xs);
-  const x1 = Math.max(...xs);
-  const y0 = Math.min(...ys);
-  const y1 = Math.max(...ys);
-  drawIsoBox(g, x0, y0, x1 - x0, 0.08, z, 0.22, PAL.concrete, PAL.concreteDark, PAL.concrete, faded);
-  drawIsoBox(g, x0, y1 - 0.08, x1 - x0, 0.08, z, 0.22, PAL.concrete, PAL.concreteDark, PAL.concrete, faded);
 }

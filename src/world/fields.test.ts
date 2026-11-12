@@ -29,9 +29,13 @@ import {
   undevelopedFieldShare,
 } from "./fields";
 import { churnFieldAt, type FieldFeature } from "./terrainFeatures";
-import { SURFACE_ID } from "./terrain";
+import { SURFACE_ID, surfaceAt } from "./terrain";
+import { campaignLevelById } from "../game/campaign";
+import { BIOME_PROFILES } from "./biomes";
+import { CLIMATES } from "./climate";
 import type { TopologyFamily } from "./rural";
 import type { Lot } from "../structure/types";
+import { pumpVitestRpc } from "../sim/benchSupport";
 
 const MATRIX: TopologyFamily[] = ["county", "curve-farm", "frontage"];
 const SEEDS = [1, 7, 11, 19, 23, 29, 37, 41, 47, 53, 67, 71, 77, 83, 89, 97, 101, 107, 334353, 0x51a11];
@@ -181,11 +185,12 @@ function tallyFarmland(town: ReturnType<typeof createTown>, tally: FarmlandTally
 }
 
 describe("rural farmland matrix", () => {
-  it("keeps crop complexes property-scale, near farms, and off developed ground", () => {
+  it("keeps crop complexes property-scale, near farms, and off developed ground", async () => {
     const shares: number[] = [];
     const tally: FarmlandTally = { agPrimary: 0, agTowns: 0, near: 0, totalFields: 0 };
     for (const topology of MATRIX) {
       for (const seed of SEEDS) {
+        await pumpVitestRpc();
         const town = createTown({ district: "d10", seed, topology });
         shares.push(undevelopedFieldShare(town.surface));
         tallyFarmland(town, tally);
@@ -220,5 +225,31 @@ describe("rural farmland matrix", () => {
     expect(out.cash).toBeGreaterThanOrEqual(0);
     expect(fieldProgress(live!)).toBeGreaterThan(0);
     expect(town.props.every((p) => p.assetId !== "corn" && p.assetId !== "wheat")).toBe(true);
+  });
+});
+
+describe("climate-gated farmland", () => {
+  it("grows no row crops in the desert and still pays for a solar field", () => {
+    for (const climate of ["sonoran-desert", "mojave-desert", "canyonlands"] as const) {
+      for (const seed of [3, 19, 42]) {
+        const town = createTown({ district: "d30", seed, campaign: campaignLevelById("county"), biome: BIOME_PROFILES["arid-scrub"], climate: CLIMATES[climate] });
+        expect(town.features.filter((f) => f.kind === "field")).toEqual([]);
+        expect(undevelopedFieldShare(town.surface)).toBe(0);
+        expect(town.ground.filter((patch) => patch.cover === "field-mature" || patch.cover === "field-short" || patch.cover === "field-stubble")).toEqual([]);
+        // Orchard furrows are the only tilled strips, and each runs beside a row of citrus.
+        const furrows = town.ground.filter((patch) => patch.cover === "field-tilled");
+        const citrus = town.props.filter((p) => p.assetId === "citrus-tree");
+        if (furrows.length) expect(citrus.length).toBeGreaterThanOrEqual(furrows.length * 2);
+        for (const panel of town.props.filter((p) => p.assetId === "solar-panel")) expect(surfaceAt(town.surface, panel.x + panel.w * 0.5, panel.y + panel.d * 0.5)).toBe("gravel");
+      }
+    }
+  });
+
+  it("keeps corn, wheat and soy on the plains", () => {
+    const town = createTown({ district: "d30", seed: 19, campaign: campaignLevelById("county"), biome: BIOME_PROFILES["agricultural-plain"] });
+    const fields = town.features.filter((f): f is FieldFeature => f.kind === "field");
+    expect(fields.length).toBeGreaterThan(0);
+    for (const field of fields) expect(["corn", "wheat", "soy"]).toContain(field.crop);
+    expect(town.props.some((p) => p.assetId === "solar-panel" || p.assetId === "windpump" || p.assetId === "citrus-tree")).toBe(false);
   });
 });

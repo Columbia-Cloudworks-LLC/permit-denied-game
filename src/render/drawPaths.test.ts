@@ -3,7 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { defaultDebugView } from '../debug/view';
 import { createBuildingFromArchetype } from '../structure/building';
 import type { GroundKind, GroundMark } from '../structure/types';
-import { seasonTrackColor } from '../world/season';
+import { SOILS } from '../world/climate';
+import { trackColor } from '../world/groundCondition';
 import { getBuildingSurfaces } from './buildingSurfaces';
 import { PAL } from './drawIso';
 import { drawFaceCracks, drawWallSpan } from './facadeDraw';
@@ -115,7 +116,9 @@ describe('ground marks', () => {
     expect(draw((g) => drawGroundMark(g, mark('splinter', 'brick')))).toEqual([PAL.brickDark]);
     expect(draw((g) => drawGroundMark(g, mark('chip', 'metal')))).toEqual([PAL.metalDark]);
     expect(draw((g) => drawGroundMark(g, mark('chip', 'glass')))).toEqual([PAL.concreteDark]);
-    expect(draw((g) => drawGroundMark(g, mark('season-track'), 'winter'))).toEqual([seasonTrackColor('winter'), shade(seasonTrackColor('winter'), 0.62)]);
+    const packed = trackColor('snow', SOILS['dark-loam']);
+    expect(draw((g) => drawGroundMark(g, mark('season-track'), 'winter'))).toEqual([packed, shade(packed, 0.62)]);
+    expect(draw((g) => drawGroundMark(g, mark('season-track'), 'summer'))[0]).toBe(SOILS['dark-loam'].track);
     for (const kind of ['scrape', 'oil', 'crack', 'dust', 'glass'] as const) {
       expect(draw((g) => drawGroundMark(g, mark(kind)))).toHaveLength(1);
     }

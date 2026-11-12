@@ -16,5 +16,16 @@ try{for(const season of ['summer','winter']){
  }
 }
 for(const warm of reports.filter(r=>r.season==='summer')){const cold=reports.find(r=>r.season==='winter'&&r.kind===warm.kind&&r.point.x===warm.point.x);assert.ok(warm.displacement>cold.displacement+0.2,JSON.stringify({warm,cold}));}
+// A Gulf winter does not freeze: open water still turns the dozer back.
+await p.goto(`${base}/?sandbox=1&debug=1&seed=19&level=county&biome=subtropical-coast&climate=gulf-subtropical&season=winter`);await p.waitForFunction(()=>window.__pd?.ready());
+await p.evaluate(()=>document.querySelector('[data-debug=freeze]').click());
+const warm=await p.evaluate(()=>window.__pd.townSnapshot());assert.equal(warm.frozen,false);assert.equal(warm.groundCondition,'clear');
+for(const f of warm.features.filter(f=>['pond','lake'].includes(f.kind))){
+ const point={x:f.poly.reduce((s,v)=>s+v.x,0)/f.poly.length,y:f.poly.reduce((s,v)=>s+v.y,0)/f.poly.length};
+ const pose=await p.evaluate(point=>{window.__pd.lookAtWorld(point.x,point.y,0,1);window.__pd.setDozerPose({vx:1});for(let i=0;i<30;i++)window.__pd.step(1/60);return window.__pd.dozerSnapshot();},point);
+ const displacement=Math.hypot(pose.x-point.x,pose.y-point.y);reports.push({season:'gulf-winter',kind:f.kind,point,pose,displacement});
+ assert.ok(displacement>0.2,JSON.stringify(reports.at(-1)));
+}
+await p.screenshot({path:`${out}/gulf-winter.png`});
 await writeFile(out+'/report.json',JSON.stringify({base,reports},null,2));console.log('Live liquid-water rejection and winter ice support verified',reports.length);
 }finally{await b.close();}

@@ -15,3 +15,31 @@ describe('designer isolate preview', () => {
     expect(lot.pad).toBeGreaterThanOrEqual(12);
   });
 });
+
+describe('designer climate presets', () => {
+  it('dresses the isolated lot for a zone, and leaves it as authored without one', async () => {
+    const { dressIsolateLot } = await import('./preview');
+    const authored = instantiateIsolateDefinition(archetypeById('ranch'));
+    dressIsolateLot(authored, { climateId: '', season: 'winter' });
+    expect(authored.town.buildings[0]!.region).toBeUndefined();
+    expect(authored.town.groundCondition).toBe('clear');
+
+    const forms = new Set<string>();
+    for (const id of ['ranch', 'cottage', 'porch-house', 'motel-room-block']) {
+      const desert = instantiateIsolateDefinition(archetypeById(id));
+      dressIsolateLot(desert, { climateId: 'sonoran-desert', season: 'winter' });
+      const building = desert.town.buildings[0]!;
+      expect(building.region?.walls).toBe('southwest');
+      // A desert winter previews without snow.
+      expect(desert.town.groundCondition).toBe('clear');
+      expect(desert.town.look).not.toBe('winter');
+      forms.add(building.roofForm?.id ?? 'classic');
+    }
+    expect([...forms].some(form => form === 'adobe-flat' || form === 'barrel-tile-gable')).toBe(true);
+
+    const north = instantiateIsolateDefinition(archetypeById('ranch'));
+    dressIsolateLot(north, { climateId: 'boreal', season: 'winter' });
+    expect(north.town.groundCondition).toBe('snow');
+    expect(north.town.buildings[0]!.roofForm).toBeUndefined();
+  });
+});

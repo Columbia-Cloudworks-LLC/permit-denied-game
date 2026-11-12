@@ -3,7 +3,7 @@ import type { TrafficState } from '../vehicle/traffic';
 import { migrateVehicles } from '../vehicle/world';
 import { resetVehicleIds } from '../vehicle/runtime';
 import { populateTowerTest } from './towerTest';
-import { populateTestYard, type TestYard } from './testYard';
+import { applyYardClimate, populateTestYard, type TestYard } from './testYard';
 import type { TestMapRequest } from './testMapRequest';
 import { DRESSING } from "../game/constants";
 import { Rng } from "../game/rng";
@@ -22,9 +22,9 @@ import { completeLot, type NhoodDebug } from "./parcels";
 import { identityFromBuilding } from "./lotUse";
 import { linePoints, pt, RoadBuilder, emptyTerrain, type RoadNetwork, type TerrainField } from "./roads";
 import { defaultBiome, type BiomeProfile } from "./biomes";
-import { type GroundCondition } from "./groundCondition";
+import { townSeasonState, type GroundCondition } from "./groundCondition";
+import { climateForBiome, defaultClimate, type ClimateEnvelope } from "./climate";
 import {
-  groundConditionForSeason,
   resolveWeather,
   weatherPresetFor,
   type WeatherConditionId,
@@ -33,6 +33,8 @@ import {
   type WeatherPreset,
 } from "./season";
 import type { LayoutEnvironment } from "./rural";
+import { stampRegionalExterior } from "../structure/regionalExterior";
+import { stampStreetFaces } from "../structure/facadeTrim";
 import { tagRegionalSignatures, type RegionalPlacement } from "./regionalPlacement";
 import type { TopologyFamily } from "./rural";
 import { deriveTerrainFeatures, type TerrainFeature } from "./terrainFeatures";
@@ -102,7 +104,14 @@ export interface Town {
   topology?: TopologyFamily;
   biome: BiomeProfile;
   groundCondition: GroundCondition;
+  /** Calendar season: weather odds, field states, briefings. Painting uses `look`. */
   season: SeasonId;
+  /** Climate zone: what the season is allowed to do here. */
+  climate: ClimateEnvelope;
+  /** The season the map is painted in: a snowless winter borrows its zone's `winterLook`. */
+  look: SeasonId;
+  /** Ponds and rivers are ice the dozer can cross. */
+  frozen: boolean;
   weather: WeatherPreset;
   weatherDetail: WeatherDetail;
   surface: SurfaceGrid;
@@ -121,6 +130,8 @@ export interface TownOptions {
   campaign?: CampaignLevelDef;
   season?: SeasonId;
   biome?: BiomeProfile;
+  /** Climate zone; absent follows the biome's home climate. */
+  climate?: ClimateEnvelope;
   weatherDetail?: WeatherDetail;
   /** County weather chosen on the map; absent rolls the legacy seasonal preset from the seed. */
   weather?: WeatherConditionId;
@@ -141,7 +152,12 @@ function createTownLayout(options: TownOptions = {}): Town {
   resetPropIds();
 
   if (options.populate) return options.populate(emptyTestTown(seed));
-  if (options.testMap || (options.yard && district === 'classic')) return populateTestYard(emptyTestTown(seed), options.testMap);
+  if (options.testMap || (options.yard && district === 'classic')) {
+    const yard = populateTestYard(emptyTestTown(seed), options.testMap);
+    // A named climate preset dresses the test map; without one every asset stands as authored.
+    if (options.climate) applyYardClimate(yard, options.climate, options.season ?? "summer");
+    return yard;
+  }
 
   if (district === "classic") {
     const town = createClassicTown(seed, options.showcase, options.season ?? "summer", options.weatherDetail ?? "on");
@@ -151,9 +167,11 @@ function createTownLayout(options: TownOptions = {}): Town {
 
   const season = options.season ?? "summer";
   const regional = options.campaign ? options.regional : undefined;
-  const environment: LayoutEnvironment = { season, biome: options.biome, regional };
+  const environment: LayoutEnvironment = { season, biome: options.biome, climate: options.climate, regional };
   const layout = generateDistrictLayout(district, seed, options.topology, options.campaign, environment, options.weatherDetail ?? "on");
-  if (options.weather) layout.weather = weatherPresetFor(season, options.weather);
+  if (options.weather) layout.weather = weatherPresetFor(season, options.weather, layout.climate);
+  stampRegionalExterior(layout.buildings, layout.climate, seed);
+  stampStreetFaces(layout.buildings, layout.lots);
   tagRegionalSignatures(layout.buildings, regional);
   regional?.finish?.(layout, seed);
   const pileW = layout.maxX - layout.minX + 4;
@@ -180,7 +198,7 @@ function emptyTestTown(seed: number): Town {
     minX: 0, minY: 0, maxX: 32, maxY: 32, district: 'classic', seed,
     roadSpawnX: 4, roadSpawnY: 4, roadSpawnHeading: 0, visualRevision: 1, siteRevision: 1,
     collapsedSites: [], diagnostic: { ok: true, issues: [] }, nhood: { rejected: [] },
-    biome: defaultBiome(), groundCondition: "clear", season: "summer", weather: resolveWeather("summer", seed), weatherDetail: "on", features: [], featureRevision: 0, surface: emptyGrassGrid(0, 0, 32, 32),
+    biome: defaultBiome(), climate: defaultClimate(), ...townSeasonState("summer"), weather: resolveWeather("summer", seed), weatherDetail: "on", features: [], featureRevision: 0, surface: emptyGrassGrid(0, 0, 32, 32),
   };
 }
 
@@ -341,9 +359,9 @@ function createClassicTown(seed: number, showcase = false, season: SeasonId = "s
     diagnostic: { ok: true, issues: [] },
     nhood: { rejected: [] },
     biome,
-    groundCondition: groundConditionForSeason(season),
-    season,
-    weather: resolveWeather(season, seed),
+    climate: climateForBiome(biome),
+    ...townSeasonState(season, climateForBiome(biome)),
+    weather: resolveWeather(season, seed, climateForBiome(biome)),
     weatherDetail,
     surface,
     features,

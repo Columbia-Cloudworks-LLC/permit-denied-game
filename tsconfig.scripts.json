@@ -22,6 +22,7 @@
   },
   "include": [
     "scripts/analyze-bundle.mjs",
+    "scripts/compact-raw-json.mjs",
     "scripts/deploy-vercel.mjs",
     "scripts/vercel-api.mjs",
     "scripts/github-redirect.mjs",

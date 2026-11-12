@@ -2,6 +2,7 @@ import { VitePWA } from "vite-plugin-pwa";
 import { defineConfig } from "vitest/config";
 import { facebookMetadata, facebookPageUrl } from "./scripts/facebook-metadata.mjs";
 import { version } from './package.json';
+import { compactRawJson } from "./scripts/compact-raw-json.mjs";
 
 /** Heavy generation matrices: Linux CI only. */
 const INTEGRATION_TESTS = [
@@ -25,6 +26,7 @@ const INTEGRATION_TESTS = [
   "src/world/contentScale.test.ts",
   "src/render/WorldRenderer.test.ts",
   "src/render/forestCanopy.test.ts",
+  "src/world/landforms.test.ts",
 ];
 
 const SOAK_TESTS = ["src/sim/soak.test.ts"];
@@ -44,7 +46,7 @@ const testShared = {
 
 export default defineConfig({
   define: { "import.meta.env.VITE_FACEBOOK_PAGE_URL": JSON.stringify(facebookPageUrl(process.env.FACEBOOK_PAGE_URL, process.env.REQUIRE_FACEBOOK_APP_ID === "1")) },
-  plugins: [{
+  plugins: [compactRawJson(), {
     name: 'facebook-app-metadata',
     generateBundle() {
       this.emitFile({ type: 'asset', fileName: 'build.json', source: JSON.stringify({ version, commit: process.env.DEPLOY_SHA || 'local' }) });

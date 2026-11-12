@@ -5,13 +5,14 @@ import { CAPITOL_COUNTY_INDEX, COUNTIES_PER_REGION, regionCounties, type CountyD
 import { hazardPayLabel, weatherRisk } from '../game/weatherRisk';
 import { brandsForRegion, REGIONAL_FLAVORS } from '../world/regionalCatalog';
 import type { RegionDef } from '../world/regions';
-import { MENU_ICONS } from './menuIcons';
+import { legalConditions } from '../world/climate';
+import { countyClimate } from '../world/regionClimate';
+import { MENU_ICONS, WEATHER_ICONS } from './menuIcons';
+import { weatherBadge, type WeatherBadge } from './weatherBadge';
 import {
   seasonLabel,
   SEASONS,
-  WEATHER_CONDITIONS,
   WEATHER_DETAILS,
-  weatherConditionLabel,
   type SeasonId,
   type WeatherConditionId,
   type WeatherDetail,
@@ -84,6 +85,18 @@ const ICO = {
   caution: fromMenu(MENU_ICONS.caution),
   playing: fromMenu(MENU_ICONS.play),
 } as const;
+
+/** A calendar winter with no snow in it: a low sun on the horizon instead of the snowflake. */
+const MILD_WINTER = ico('<path d="M3.5 17.5h17"/><path d="M7 17.5a5 5 0 0 1 10 0"/><path d="M12 6.5v3M5.6 10.1l2 2M18.4 10.1l-2 2"/>');
+
+/** The season glyph for a place: winter is a snowflake only where it can snow. */
+function seasonIco(season: SeasonId, snowy: boolean): string {
+  return season === 'winter' && !snowy ? MILD_WINTER : ICO[season];
+}
+
+function skyIco(sky: WeatherBadge): string {
+  return fromMenu(WEATHER_ICONS[sky.icon]);
+}
 
 /** Text kept for screen readers (and tests) where the page shows only a glyph. */
 function sr(text: string): string {
@@ -320,7 +333,9 @@ export function coverHtml(region?: RegionDef): string {
 /** The card shown while a county loads, after the maps have been swept off the desk. */
 export function splashHtml(region: RegionDef, index: number, kind: SessionKind, season: SeasonId, weather: WeatherConditionId): string {
   const county = regionCounties(region)[index - 1]!;
-  return `<div class="atlas-splash" role="status" aria-live="polite"><div class="splash-card"><p class="splash-kicker">Dispatching to</p><h2>${escapeHtml(county.name)}</h2><p class="splash-sub">${escapeHtml(region.name)} · County ${county.index} of ${COUNTIES_PER_REGION}</p><p class="map-chips"><span>${ICO[kind]}${MODE_NAMES[kind]}</span><span>${ICO[season]}${seasonLabel(season)}</span><span>${ICO.weather}${weatherConditionLabel(season, weather)}</span></p><div class="splash-bar" aria-hidden="true"><i></i></div><p class="splash-note">Loading the county…</p></div></div>`;
+  const climate = countyClimate(region.id, index);
+  const sky = weatherBadge(season, weather, climate);
+  return `<div class="atlas-splash" role="status" aria-live="polite"><div class="splash-card"><p class="splash-kicker">Dispatching to</p><h2>${escapeHtml(county.name)}</h2><p class="splash-sub">${escapeHtml(region.name)} · County ${county.index} of ${COUNTIES_PER_REGION}</p><p class="map-chips"><span>${ICO[kind]}${MODE_NAMES[kind]}</span><span>${seasonIco(season, climate.allowsSnow)}${seasonLabel(season)}</span><span data-weather="${sky.icon}">${skyIco(sky)}${sky.label}</span></p><div class="splash-bar" aria-hidden="true"><i></i></div><p class="splash-note">Loading the county…</p></div></div>`;
 }
 
 /** The sheet's starting view: the region with a margin. */
@@ -344,7 +359,7 @@ function sheetSvg(atlas: AtlasData, region: RegionDef, regions: readonly RegionD
   const counties = regionCounties(region);
   const cells = counties.map(county => {
     const status = countyStatus(county, progress, view.kind);
-    const label = `County ${county.index}: ${county.name}. ${STATUS_TEXT[status]}. ${weatherConditionLabel(view.season, view.weather(county.index))}.`;
+    const label = `County ${county.index}: ${county.name}. ${STATUS_TEXT[status]}. ${weatherBadge(view.season, view.weather(county.index), countyClimate(region.id, county.index)).label}.`;
     const classes = `atlas-county ${status} tint-${(county.index - 1) % 4}${county.index === view.selected ? ' selected' : ''}${county.index === view.current ? ' current' : ''}`;
     return `<path class="${classes}" data-county-index="${county.index}" data-county-completed="${status === 'cleared'}" role="button" tabindex="0" aria-pressed="${county.index === view.selected}" aria-label="${escapeHtml(label)}" d="${shape.counties[county.index - 1]!.d}"><title>${escapeHtml(label)}</title></path>`;
   }).join('');
@@ -424,11 +439,21 @@ export function countyCardHtml(region: RegionDef, progress: CountyProgress, view
 <dl class="credits-list county-facts">
 ${objective}
 ${fact(ICO.pin, 'Region', escapeHtml(flavor.label))}
+${fact(ICO.weather, 'Climate', escapeHtml(countyClimate(region.id, county.index).label))}
 ${fact(ICO.eye, 'Watch for', `<ul class="watch-list">${signatures}</ul>`)}
 ${brands ? fact(ICO.shop, 'Establishments', `<ul class="watch-list brand-list">${brands}</ul>`) : ''}
 </dl></details>
 ${lockNote}${runNote}
 </section>`;
+}
+
+/**
+ * The skies a county offers this season, in table order: what its climate can roll, plus the
+ * one in force when a running county or a link forced something else.
+ */
+export function countyConditions(regionId: string, index: number, season: SeasonId, current?: WeatherConditionId): WeatherConditionId[] {
+  const legal = legalConditions(countyClimate(regionId, index), season);
+  return current && !legal.includes(current) ? [...legal, current] : legal;
 }
 
 /** Back · selected county badge and weather · Go to county (or Resume it). */
@@ -441,11 +466,15 @@ export function sheetBarHtml(region: RegionDef, progress: CountyProgress, view: 
   const status = countyStatus(county, progress, view.kind);
   const weather = view.weather(county.index);
   const effectOptions = WEATHER_DETAILS.map(id => `<option value="${id}"${id === effects ? ' selected' : ''}>${DETAIL_LABELS[id]}</option>`).join('');
-  const weatherOptions = WEATHER_CONDITIONS.map(id => `<option value="${id}"${id === weather ? ' selected' : ''}>${weatherConditionLabel(view.season, id)}</option>`).join('');
+  // Only skies the county's climate can roll this season: no snow, blizzard or ice in a desert winter.
+  const climate = countyClimate(region.id, county.index);
+  const sky = weatherBadge(view.season, weather, climate);
+  const weatherOptions = countyConditions(region.id, county.index, view.season, weather)
+    .map(id => `<option value="${id}"${id === weather ? ' selected' : ''}>${weatherBadge(view.season, id, climate).label}</option>`).join('');
   // Weather only has stakes, and pay, in Time Challenge; Sandbox keeps it cosmetic and shows no badge.
-  const pay = view.kind === 'challenge' ? hazardPayLabel(weatherRisk(view.season, weather)) : '';
+  const pay = view.kind === 'challenge' ? hazardPayLabel(weatherRisk(view.season, weather, climate)) : '';
   const hazard = pay ? `<span class="hazard-pay" title="Hazard Pay: bonus on this run's settled cash for working in this weather">${pay}</span>` : '';
-  const center = `<ol class="county-badges single">${badgeHtml(county, status)}</ol><div class="atlas-bar-intel"><p class="atlas-bar-title">${escapeHtml(county.shortName)}</p><label class="atlas-weather" title="Weather">${ICO.weather}${sr('Weather')}<select id="county-weather">${weatherOptions}</select></label><button type="button" class="weather-cycle" data-weather-cycle data-menu-action="cycle-weather" aria-label="Next weather" title="Next weather">↻</button>${hazard}<label class="atlas-weather" title="Weather effects">${ICO.effects}${sr('Effects')}<select id="county-effects">${effectOptions}</select></label></div>`;
+  const center = `<ol class="county-badges single">${badgeHtml(county, status)}</ol><div class="atlas-bar-intel"><p class="atlas-bar-title">${escapeHtml(county.shortName)}</p><label class="atlas-weather" title="Weather: ${sky.label}" data-weather="${sky.icon}">${skyIco(sky)}${sr('Weather')}<select id="county-weather">${weatherOptions}</select></label><button type="button" class="weather-cycle" data-weather-cycle data-menu-action="cycle-weather" aria-label="Next weather" title="Next weather">↻</button>${hazard}<label class="atlas-weather" title="Weather effects">${ICO.effects}${sr('Effects')}<select id="county-effects">${effectOptions}</select></label></div>`;
   let go: string;
   if (run.current) go = `<button type="button" class="primary atlas-go" data-menu-action="resume">Resume ${escapeHtml(county.mapName)}</button>`;
   else if (status === 'locked') go = '<button type="button" class="primary atlas-go" data-menu-action="deploy" disabled aria-describedby="county-lock-note">Locked: Clear Counties 1–6</button>';
@@ -456,7 +485,7 @@ export function sheetBarHtml(region: RegionDef, progress: CountyProgress, view: 
 export function atlasSheetHtml(atlas: AtlasData, region: RegionDef, regions: readonly RegionDef[], progress: CountyProgress, view: CountyViewState, effects: WeatherDetail, run: CountyCardRun): string {
   const title = `${region.name} — Capitol: ${region.capitol}`;
   return `<section class="atlas-sheet" role="region" aria-labelledby="atlas-sheet-title" data-region-sheet="${region.id}">
-<div class="atlas-paper"><header class="atlas-sheet-head"><h2 id="atlas-sheet-title">${escapeHtml(title)}</h2><p class="region-summary" title="Counties cleared">${sr(`${escapeHtml(region.id)} · `)}${progress.clearedCount(region.id)}/7${sr(' counties cleared')}</p><p class="map-chips"><span>${ICO[view.season]}${seasonLabel(view.season)}</span></p></header>
+<div class="atlas-paper"><header class="atlas-sheet-head"><h2 id="atlas-sheet-title">${escapeHtml(title)}</h2><p class="region-summary" title="Counties cleared">${sr(`${escapeHtml(region.id)} · `)}${progress.clearedCount(region.id)}/7${sr(' counties cleared')}</p><p class="map-chips"><span>${seasonIco(view.season, regionCounties(region).some(county => countyClimate(region.id, county.index).allowsSnow))}${seasonLabel(view.season)}</span></p></header>
 <div class="atlas-sheet-body"><div class="atlas-viewport" data-pan-zoom="sheet">${sheetSvg(atlas, region, regions, progress, view)}${ZOOM_CONTROLS}</div>
 <div class="county-card-host">${countyCardHtml(region, progress, view, run)}</div>${modePickerHtml(view.kind)}</div></div>
 <div class="atlas-bar" data-atlas-bar="sheet">${sheetBarHtml(region, progress, view, run, effects)}</div>

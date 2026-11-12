@@ -4,7 +4,8 @@ import type { PropPose } from '../structure/types';
 export interface DamageableObject { hp: number; broken: boolean; pose: PropPose }
 /** The same material response applies to room furnishings and outdoor placements. */
 export function hitObject(object: DamageableObject, def: AssetDef, amount: number, nx: number, ny: number): void {
-  if (object.broken || amount <= 0) return;
+  // Fixed scenery (`immovable`) takes the hit and gives nothing: it stays a solid.
+  if (object.broken || amount <= 0 || def.immovable) return;
   object.hp = Math.max(0, object.hp - amount * def.bladeMul);
   const length = Math.hypot(nx, ny) || 1;
   if (def.destruction === 'bend-snap' || def.destruction === 'topple') {

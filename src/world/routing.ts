@@ -8,6 +8,7 @@ import {
   type RoadNetwork,
   type RoadSegment,
 } from "./roads";
+import { traversalAt, type SurfaceGrid } from "./terrain";
 
 export interface RouteRequest {
   startX: number;
@@ -33,6 +34,16 @@ export interface RouteResult {
 
 export function civilianMustStayOnRoad(): boolean {
   return true;
+}
+
+/** Standing rock (a mesa, butte or outcrop) on the straight line between two points: no off-road approach crosses it. */
+export function rockBetween(grid: SurfaceGrid | undefined, x0: number, y0: number, x1: number, y1: number): boolean {
+  if (!grid) return false;
+  const n = Math.max(1, Math.ceil(len(x1 - x0, y1 - y0)));
+  for (let i = 1; i < n; i++) {
+    if (traversalAt(grid, x0 + ((x1 - x0) * i) / n, y0 + ((y1 - y0) * i) / n) === "rock") return true;
+  }
+  return false;
 }
 
 export function policeMayLeaveRoad(req: Pick<RouteRequest, "dozerNearby" | "pursuitAllowed" | "offRoadBlocked">): boolean {

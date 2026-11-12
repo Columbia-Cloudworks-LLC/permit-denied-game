@@ -184,3 +184,30 @@ describe('generated asset test yard', () => {
     for (const district of ['d10', 'd30', 'd100'] as const) expect(createTown({ district, yard: true }).yard).toBeUndefined();
   });
 });
+
+describe('test map climate presets', () => {
+  it('dresses a focused test map for its climate and keeps the dress through a restore', async () => {
+    const { createTown } = await import('./town');
+    const { CLIMATES } = await import('./climate');
+    const { restoreBay } = await import('./testYard');
+    const request = { kind: 'asset' as const, assetId: 'building:ranch', variant: 0 };
+    const authored = createTown({ testMap: request, season: 'winter' });
+    expect(authored.buildings[0]!.region).toBeUndefined();
+    expect(authored.yard!.climate).toBeUndefined();
+
+    const desert = createTown({ testMap: request, climate: CLIMATES['sonoran-desert'], season: 'winter' });
+    expect(desert.climate.id).toBe('sonoran-desert');
+    expect(desert.groundCondition).toBe('clear');
+    expect(desert.frozen).toBe(false);
+    expect(desert.weather.kind).not.toBe('flurries');
+    const form = desert.buildings[0]!.roofForm?.id;
+    expect(desert.buildings[0]!.region).toMatchObject({ roofs: 'southwest', walls: 'southwest' });
+    restoreBay(desert, desert.yard!.bays[0]!);
+    expect(desert.buildings[0]!.region).toMatchObject({ roofs: 'southwest', walls: 'southwest' });
+    expect(desert.buildings[0]!.roofForm?.id).toBe(form);
+
+    const north = createTown({ testMap: request, climate: CLIMATES.boreal, season: 'winter' });
+    expect(north.groundCondition).toBe('snow');
+    expect(north.frozen).toBe(true);
+  });
+});

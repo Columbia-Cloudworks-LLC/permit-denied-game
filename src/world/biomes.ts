@@ -7,7 +7,8 @@ export type BiomeId =
   | "northern-conifer"
   | "mixed-woodland"
   | "agricultural-plain"
-  | "arid-scrub";
+  | "arid-scrub"
+  | "subtropical-coast";
 
 export type FieldCropId = "corn" | "wheat" | "soy";
 export type FieldState = "tilled" | "short" | "mature" | "stubble";
@@ -18,6 +19,8 @@ export interface BiomeProfile {
   trees: readonly string[];
   saplings: readonly string[];
   shrubs: readonly string[];
+  /** Further native species the climate zone may scatter (`src/world/landforms.ts`); absent means none. */
+  accents?: readonly string[];
   crops: readonly FieldCropId[];
   waterLikelihood: number;
   forestDensity: number;
@@ -31,9 +34,10 @@ export const BIOME_IDS: readonly BiomeId[] = [
   "mixed-woodland",
   "agricultural-plain",
   "arid-scrub",
+  "subtropical-coast",
 ];
 
-/** Seed-rolled biomes. Arid scrub is only ever assigned by region, so legacy seeds keep their roll. */
+/** Seed-rolled biomes. Arid scrub and the subtropical coast are only ever assigned by climate, so legacy seeds keep their roll. */
 const ROLLED_BIOMES = BIOME_IDS.slice(0, 4);
 
 const BIOME_SALT = 0xb10be;
@@ -100,19 +104,35 @@ export const BIOME_PROFILES: Record<BiomeId, BiomeProfile> = {
     trees: ["saguaro-cactus", "desert-palm"],
     saplings: ["yucca-scrub"],
     shrubs: ["yucca-scrub"],
+    accents: ["prickly-pear", "agave", "creosote-bush", "sagebrush", "joshua-tree", "mesquite"],
     crops: ["wheat"],
     waterLikelihood: 0.12,
     forestDensity: 0.1,
     fieldDensity: 0.08,
     groundCover: ["dirt", "scrub", "prairie"],
   },
+  "subtropical-coast": {
+    id: "subtropical-coast",
+    trees: ["sabal-palm", "oak"],
+    saplings: ["oak-sapling", "palmetto-scrub"],
+    shrubs: ["palmetto-scrub", "oak-shrub"],
+    accents: ["desert-palm", "yucca-scrub"],
+    crops: ["soy", "corn"],
+    waterLikelihood: 0.85,
+    forestDensity: 0.3,
+    fieldDensity: 0.25,
+    groundCover: ["grass", "scrub", "dirt"],
+  },
 };
 
-const SPECIES = new Set(["oak", "pine", "oak-sapling", "pine-sapling", "oak-shrub", "pine-shrub", "saguaro-cactus", "yucca-scrub", "desert-palm"]);
+const SPECIES = new Set([
+  "oak", "pine", "oak-sapling", "pine-sapling", "oak-shrub", "pine-shrub", "saguaro-cactus", "yucca-scrub", "desert-palm",
+  "prickly-pear", "agave", "creosote-bush", "sagebrush", "joshua-tree", "mesquite", "palmetto-scrub", "sabal-palm",
+]);
 
 export function speciesCompatible(biome: BiomeProfile, assetId: string): boolean {
   if (!SPECIES.has(assetId)) return true;
-  return biome.trees.includes(assetId) || biome.saplings.includes(assetId) || biome.shrubs.includes(assetId);
+  return biome.trees.includes(assetId) || biome.saplings.includes(assetId) || biome.shrubs.includes(assetId) || !!biome.accents?.includes(assetId);
 }
 
 export function selectBiome(district: Exclude<DistrictId, "classic">, seed: number, topology: TopologyFamily): BiomeProfile {
@@ -132,6 +152,7 @@ function biomeWeights(district: Exclude<DistrictId, "classic">, topology: Topolo
     "mixed-woodland": 3,
     "agricultural-plain": 2,
     "arid-scrub": 0,
+    "subtropical-coast": 0,
   };
   switch (topology) {
     case "curve-farm":

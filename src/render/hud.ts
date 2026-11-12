@@ -3,7 +3,7 @@ import { clockValue } from './instrumentValues';
 import { CashCounter } from './cashCounter';
 import { EquipmentClock } from './equipmentClock';
 import { MENU_LABELS as L, MODE_LABELS, BRICK_DESCRIPTION } from '../game/menuLabels';
-import { MENU_ICONS } from './menuIcons';
+import { MENU_ICONS, WEATHER_ICONS } from './menuIcons';
 import { COPY, CASH_TARGET, MATCH_SECONDS } from "../game/constants";
 import { type CampaignLevelId } from "../game/campaign";
 import { campaignLevelButtons, debugMapLabel, debugSessionFacts, debugSessionPanels } from "../game/debugSession";
@@ -12,7 +12,9 @@ import { OperatorMenu } from './operatorMenu';
 import type { PermitSound } from './permitIntro';
 import { DEBUG_GROUPS, type DebugView, type DebugToggle } from "../debug/view";
 import { type CountyDeployment, type DistrictId, type SessionKind } from "../game/session";
+import { climateById, type ClimateId } from "../world/climate";
 import type { SeasonId, WeatherConditionId, WeatherDetail } from "../world/season";
+import { weatherBadge, type WeatherBadge } from "./weatherBadge";
 import { createDebugBinderState, type BinderTab } from '../debug/binderState';
 import { applyPwaUpdate, onPwaUpdate } from '../pwa/update';
 
@@ -70,6 +72,8 @@ export interface HudState {
   campaign?: CampaignHud;
   fieldNotice?: string;
   season?: SeasonId;
+  /** Climate zone of the running map: decides how its sky is named and drawn. */
+  climateId?: ClimateId;
   weatherDetail?: WeatherDetail;
   /** Overworld region of the running county, so New Game reopens near it. */
   regionId?: string;
@@ -523,14 +527,24 @@ export class Hud {
     this.cashCounter.update(campaign ? Math.floor(campaign.levelEarned) : s.cash);
     this.cashTarget.hidden = elapsedClock && !campaign;
     this.root.querySelector<HTMLElement>('#hud-campaign')!.hidden = !campaign;
-    if (campaign) this.renderCampaign(campaign, s.season);
+    if (campaign) this.renderCampaign(campaign, s.season, hudWeather(s));
     else if (!elapsedClock) this.cashTarget.textContent = `Target $${CASH_TARGET.toLocaleString('en-US')}`;
   }
 
-  private renderCampaign(campaign: CampaignHud, season: SeasonId | undefined): void {
+  private levelLine = '';
+
+  /** County, season and sky on one line: the sky's label and glyph follow the county's climate. */
+  private renderCampaign(campaign: CampaignHud, season: SeasonId | undefined, weather: WeatherBadge | undefined): void {
     this.cashTarget.textContent = `of $${campaign.dollarTarget.toLocaleString('en-US')} ${campaign.dollarsReady ? 'DONE' : ''}`;
     const seasonName = season ? ` · ${season[0]!.toUpperCase()}${season.slice(1)}` : '';
-    this.root.querySelector('#hud-level-name')!.textContent = `${campaign.levelIndex}/7 ${campaign.levelName}${seasonName}`;
+    const line = `${campaign.levelIndex}/7 ${campaign.levelName}${seasonName}${weather ? ` · ${weather.label}` : ''}`;
+    if (line !== this.levelLine) {
+      this.levelLine = line;
+      const label = this.root.querySelector<HTMLElement>('#hud-level-name')!;
+      label.textContent = line;
+      label.dataset.weather = weather?.icon ?? '';
+      if (weather) label.insertAdjacentHTML('beforeend', WEATHER_ICONS[weather.icon]);
+    }
     this.root.querySelector('#hud-campaign-dollars')!.textContent = `$${Math.floor(campaign.levelEarned).toLocaleString('en-US')}`;
     this.root.querySelector('#hud-landmark')!.textContent = landmarkText(campaign);
   }
@@ -690,7 +704,12 @@ function hudAdvisory(s: HudState): string {
   if (s.heat > 65) return 'HIGH HEAT · RELEASE BLADE';
   if (s.track > 65) return 'TRACK STRESS · BACK OFF';
   if ((s.pileResistance ?? 0) > .4) return 'DENSE RUBBLE · CLEAR A PATH';
-  return s.fieldNotice ?? '';
+  return s.fieldNotice ?? (s.campaign ? hudWeather(s)?.advisory : undefined) ?? '';
+}
+
+/** The running county's sky, read through its climate zone. */
+function hudWeather(s: HudState): WeatherBadge | undefined {
+  return s.season && s.weather ? weatherBadge(s.season, s.weather, climateById(s.climateId)) : undefined;
 }
 
 function mobileTarget(s: HudState, elapsedClock: boolean): string {

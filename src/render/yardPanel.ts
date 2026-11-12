@@ -5,6 +5,8 @@ import { discoverYardAssets, type YardAsset, type YardBay } from '../world/yardC
 import type { ParticlePool } from '../fx/particles';
 import type { DebugBinderState } from '../debug/binderState';
 import type { TestMapRequest } from '../world/testMapRequest';
+import { CLIMATE_IDS, CLIMATES } from '../world/climate';
+import { SEASONS, seasonLabel } from '../world/season';
 
 export interface YardControls {
   town: () => Town; particles: ParticlePool; dozer: () => { x: number; y: number };
@@ -21,6 +23,16 @@ export class YardPanel {
   private filtered: YardAsset[] = [];
   private plan: YardBay[] = [];
   private timer = 0;
+  /** Climate and season presets: regional roofs, wall palettes, rooftop kits and snow on the next test map. */
+  private fillPresets(): void {
+    const climate = this.el<HTMLSelectElement>('[data-climate]'), season = this.el<HTMLSelectElement>('[data-season]');
+    climate.append(new Option('As authored (no climate)', ''), ...CLIMATE_IDS.map(id => new Option(CLIMATES[id].label, id)));
+    season.append(...SEASONS.map(id => new Option(seasonLabel(id), id)));
+    climate.value = this.state.climateId;
+    season.value = this.state.season;
+    climate.addEventListener('change', () => { this.state.climateId = climate.value; });
+    season.addEventListener('change', () => { this.state.season = season.value; });
+  }
   private get selected(): YardBay | undefined {
     const yard = this.controls.town().yard;
     if (yard?.request.kind === 'asset') return yard.bays[0];
@@ -34,6 +46,7 @@ export class YardPanel {
       <input data-search aria-label="Search assets" placeholder="Search name or stable ID">
       <div class="yard-filters"><label>Category<select data-category aria-label="Category"></select></label><label>Material<select data-material aria-label="Material"></select></label><label>Destruction profile<select data-profile aria-label="Destruction profile"></select></label></div>
       <label>Asset<select data-assets aria-label="Asset picker"></select></label>
+      <div class="yard-filters"><label>Climate preset<select data-climate aria-label="Climate preset"></select></label><label>Season<select data-season aria-label="Preset season"></select></label></div>
       <div class="yard-row"><label>Variant <input data-variant type="number" value="0" min="0" aria-label="Variant"></label><button class="binder-primary" data-test>Test This Asset</button></div>
       <p data-status role="status"></p>
       <section data-loaded><h3>Loaded example</h3>
@@ -71,6 +84,7 @@ export class YardPanel {
       state.assetId = this.el<HTMLSelectElement>('[data-assets]').value; state.variant = 0; state.instanceKey = undefined;
       this.syncVariant(); this.cancel(); this.refreshInstances();
     });
+    this.fillPresets();
     this.el('[data-variant]').addEventListener('input', () => { state.variant = this.number('variant'); this.cancel(); });
     this.el('[data-instances]').addEventListener('change', () => { state.instanceKey = this.el<HTMLSelectElement>('[data-instances]').value; this.inspect(); });
     this.action('test', () => this.testSelected());

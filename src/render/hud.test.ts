@@ -250,3 +250,77 @@ describe('debug binder', () => {
     expect(text('#hud-session [data-act="restart"]')).toBe(L.restart);
   });
 });
+
+describe('weather instruments follow the county climate', () => {
+  const FROZEN = /snow|blizzard|frost|\bice\b|freez/i;
+  const label = () => root.querySelector<HTMLElement>('#hud-level-name')!;
+  const icon = () => label().querySelector('[data-menu-icon]')?.getAttribute('data-menu-icon');
+  const show = (overrides: Partial<HudState>) => hud.render(state({ campaign: campaign(), ...overrides }));
+
+  it('never shows snow, frost or ice on a snowless county in winter', () => {
+    for (const climateId of ['sonoran-desert', 'mojave-desert', 'gulf-subtropical', 'tropical', 'mediterranean-coast'] as const) {
+      for (const weather of ['clear', 'overcast', 'precip', 'storm', 'fog', 'dust', 'heat'] as const) {
+        show({ season: 'winter', climateId, weather });
+        expect(text('#hud-level-name'), `${climateId} ${weather}`).not.toMatch(FROZEN);
+        expect(icon()).not.toMatch(/snow|blizzard/);
+        expect(label().dataset.weather).not.toMatch(/snow|blizzard/);
+        expect(text('#hud-advisory')).not.toMatch(FROZEN);
+      }
+    }
+    show({ season: 'winter', climateId: 'sonoran-desert', weather: 'precip' });
+    expect(text('#hud-level-name')).toBe('2/7 Borough · Winter · Rain');
+    expect(icon()).toBe('weather-rain');
+  });
+
+  it('shows dust, monsoon, squall and heat indicators while they are active', () => {
+    show({ season: 'summer', climateId: 'sonoran-desert', weather: 'dust' });
+    expect(text('#hud-level-name')).toBe('2/7 Borough · Summer · Haboob');
+    expect(icon()).toBe('weather-dust');
+    expect(label().dataset.weather).toBe('dust');
+    expect(text('#hud-advisory')).toBe('HABOOB · LOW VISIBILITY');
+    expect(text('#mobile-warning')).toBe('HABOOB · LOW VISIBILITY');
+
+    show({ season: 'summer', climateId: 'sonoran-desert', weather: 'storm' });
+    expect(text('#hud-level-name')).toContain('Monsoon');
+    expect(icon()).toBe('weather-monsoon');
+    expect(text('#hud-advisory')).toContain('MONSOON');
+
+    show({ season: 'summer', climateId: 'sonoran-desert', weather: 'heat' });
+    expect(text('#hud-level-name')).toContain('Extreme Heat');
+    expect(icon()).toBe('weather-heat');
+    expect(text('#hud-advisory')).toContain('EXTREME HEAT');
+
+    show({ season: 'summer', climateId: 'gulf-subtropical', weather: 'storm' });
+    expect(text('#hud-level-name')).toContain('Squall');
+    expect(icon()).toBe('weather-squall');
+    // One glyph at a time: a new sky replaces the old one.
+    expect(label().querySelectorAll('[data-menu-icon]')).toHaveLength(1);
+  });
+
+  it('keeps snow and blizzard badges in cold counties, and on maps without a climate', () => {
+    for (const climateId of ['temperate', 'boreal', 'alpine', undefined] as const) {
+      show({ season: 'winter', climateId, weather: 'precip' });
+      expect(text('#hud-level-name')).toBe('2/7 Borough · Winter · Snow');
+      expect(icon()).toBe('weather-snow');
+      show({ season: 'winter', climateId, weather: 'storm' });
+      expect(text('#hud-level-name')).toContain('Blizzard');
+      expect(icon()).toBe('weather-blizzard');
+      expect(text('#hud-advisory')).toBe('BLIZZARD · SLICK GROUND');
+      show({ season: 'summer', climateId, weather: 'precip' });
+      expect(text('#hud-level-name')).toContain('Rain');
+    }
+  });
+
+  it('lets an urgent machine warning outrank the weather, and keeps ordinary skies quiet', () => {
+    show({ season: 'summer', climateId: 'sonoran-desert', weather: 'heat', heat: 80 });
+    expect(text('#hud-advisory')).toBe('HIGH HEAT · RELEASE BLADE');
+    show({ season: 'summer', climateId: 'sonoran-desert', weather: 'heat', fieldNotice: 'CROP DAMAGE' });
+    expect(text('#hud-advisory')).toBe('CROP DAMAGE');
+    show({ season: 'summer', climateId: 'temperate', weather: 'clear' });
+    expect(text('#hud-advisory')).toBe('');
+    expect(icon()).toBe('weather-sun');
+    // Sandbox has no stakes, so no hazard advisory.
+    hud.render(state({ season: 'summer', climateId: 'sonoran-desert', weather: 'heat' }));
+    expect(text('#hud-advisory')).toBe('');
+  });
+});

@@ -1,4 +1,6 @@
 import type { Town } from "./town";
+import { SOILS } from "./climate";
+import { groundState, trackColor } from "./groundCondition";
 import { pointOnRoad } from "./roads";
 import { terrainTraversalAt } from "./terrainFeatures";
 
@@ -10,7 +12,11 @@ const TRACK_LENGTH = TRACK_GAP + 0.14;
 const TREAD_OFFSET = 0.62;
 const TREAD_WIDTH = 0.36;
 
-/** Presentation marks. They never change movement, payout, or layout. Ice and pavement stay unmarked. */
+/**
+ * Presentation marks. They never change movement, payout, or layout. Ice and pavement stay
+ * unmarked. Each impression is tinted by what it presses into: packed snow, the zone's soil
+ * (red sandstone, pale caliche, coastal sand, dark loam), or that soil churned to mud when wet.
+ */
 export function leaveSeasonalTrack(town: Town, x: number, y: number, heading: number): void {
   if (town.weatherDetail === "off") return;
   if (pointOnRoad(town.network, x, y)) return;
@@ -25,6 +31,7 @@ export function leaveSeasonalTrack(town: Town, x: number, y: number, heading: nu
     if (index >= 0) town.marks.splice(index, 1);
   }
   town.visualRevision++;
+  const tint = trackColor(groundState(town.season, town.weather.condition, town.climate).footing, SOILS[town.climate.soil]);
   const rx = -Math.sin(heading), ry = Math.cos(heading);
   for (const side of [-1, 1]) {
     town.marks.push({
@@ -37,6 +44,7 @@ export function leaveSeasonalTrack(town: Town, x: number, y: number, heading: nu
       material: "concrete",
       seed: (tracks.length * 17 + side) ^ (town.seed & 255),
       alpha: 0.55,
+      tint,
     });
   }
 }

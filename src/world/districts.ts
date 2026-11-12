@@ -5,7 +5,9 @@ import { buildingOccupy } from "./dressing";
 import type { DistrictId } from "../game/session";
 import type { Building, Lot, Prop } from "../structure/types";
 import { speciesCompatible } from "./biomes";
-import { groundConditionForSeason, resolveWeather, type SeasonId, type WeatherDetail } from "./season";
+import { townSeasonState } from "./groundCondition";
+import { resolveWeather, type SeasonId, type WeatherDetail } from "./season";
+import { climateForBiome } from "./climate";
 import type { LayoutEnvironment } from "./rural";
 import { getAsset, validateCatalog } from "./catalog";
 import { movementBlocked, terrainTraversalAt, validateFeatureLayout } from "./terrainFeatures";
@@ -46,7 +48,8 @@ export function generateDistrictLayout(
   weatherDetail: WeatherDetail = "on",
 ): Omit<Town, "vehicles" | "pile" | "rubble" | "marks" | "roadCar" | "visualRevision" | "collapsedSites" | "siteRevision"> {
   const season: SeasonId = environment?.season ?? "summer";
-  const rural = campaign ? generateCampaignLayout(campaign, seed, { ...environment, season }) : generateRuralLayout(id, seed, topology, undefined, { season });
+  const rural = campaign ? generateCampaignLayout(campaign, seed, { ...environment, season }) : generateRuralLayout(id, seed, topology, undefined, { season, climate: environment?.climate });
+  const climate = environment?.climate ?? climateForBiome(rural.biome);
   return {
     buildings: rural.buildings,
     props: rural.props,
@@ -72,9 +75,9 @@ export function generateDistrictLayout(
     nhood: rural.nhood,
     topology: rural.topology,
     biome: rural.biome,
-    groundCondition: groundConditionForSeason(season),
-    season,
-    weather: resolveWeather(season, seed),
+    climate,
+    ...townSeasonState(season, climate),
+    weather: resolveWeather(season, seed, climate),
     weatherDetail,
     surface: rural.surface,
     features: rural.features,
@@ -208,7 +211,7 @@ function spawnIssues(town: Town, issues: DistrictIssue[]): void {
   if (!spawnClear(town.buildings, town.props, town.roadSpawnX, town.roadSpawnY)) {
     issues.push({ code: "road-spawn", detail: "test car spawn is blocked" });
   }
-  if (movementBlocked(terrainTraversalAt(town.features, town.spawnX, town.spawnY, town.surface), town.season)) {
+  if (movementBlocked(terrainTraversalAt(town.features, town.spawnX, town.spawnY, town.surface), town.frozen)) {
     issues.push({ code: "spawn-terrain", detail: "dozer spawn is in water or forest core" });
   }
   if (terrainTraversalAt(town.features, town.roadSpawnX, town.roadSpawnY, town.surface) !== "open") {
@@ -227,7 +230,7 @@ function terrainIssues(town: Town, issues: DistrictIssue[]): void {
     town.roadSpawnY,
     town.surface,
     town.lots,
-    town.season,
+    town.frozen,
   )) {
     issues.push({ code: "terrain-feature", detail });
   }

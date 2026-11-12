@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { BIOME_PROFILES } from "../world/biomes";
 import { createSurfaceGrid, SURFACE_CHUNK, SURFACE_ID, surfaceAt } from "../world/terrain";
 import { createTown } from "../world/town";
+import { campaignLevelById } from "../game/campaign";
+import { CLIMATES } from "../world/climate";
 import { FOREST_GARNISH_CHUNK_CAP, planForestGarnish, planForestMasses } from "./forestCanopy";
 
 describe("forest canopy garnish", () => {
@@ -88,5 +90,28 @@ describe("forest canopy garnish", () => {
     const edge = trees.filter((tree) => tree.form === "edge");
     expect(edge.length).toBeGreaterThan(8);
     expect(edge.length).toBeLessThan(SURFACE_CHUNK * 4);
+  });
+});
+
+describe("forest canopy by climate", () => {
+  const county = (biome: keyof typeof BIOME_PROFILES, climate: keyof typeof CLIMATES) =>
+    createTown({ district: "d30", seed: 19, campaign: campaignLevelById("county"), biome: BIOME_PROFILES[biome], climate: CLIMATES[climate] });
+
+  it("draws no woodland at all on desert and canyon maps", () => {
+    for (const climate of ["sonoran-desert", "mojave-desert", "canyonlands", "great-basin", "chihuahuan-desert"] as const) {
+      const town = county("arid-scrub", climate);
+      expect(planForestGarnish(town.surface, town.biome, town.seed, town.look), climate).toEqual([]);
+      expect(planForestMasses(town.surface, town.biome, town.seed), climate).toEqual([]);
+    }
+  });
+
+  it("thins the plains to single-file windbreak rows and keeps the full canopy in forest zones", () => {
+    const plains = county("agricultural-plain", "great-plains");
+    // A windbreak is one cell wide: every wooded cell is floor, so no interior trees and no deep masses.
+    expect(planForestGarnish(plains.surface, plains.biome, plains.seed).every((tree) => tree.form !== "interior")).toBe(true);
+    expect(planForestMasses(plains.surface, plains.biome, plains.seed).every((mass) => Math.min(mass.w, mass.d) <= 1)).toBe(true);
+    const woods = county("temperate-broadleaf", "temperate");
+    expect(planForestGarnish(woods.surface, woods.biome, woods.seed).some((tree) => tree.form === "interior")).toBe(true);
+    expect(planForestMasses(woods.surface, woods.biome, woods.seed).some((mass) => Math.min(mass.w, mass.d) >= 3)).toBe(true);
   });
 });

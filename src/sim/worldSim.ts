@@ -517,10 +517,10 @@ function dozerOnTerrain(town: Town, dozer: Dozer, particles: ParticlePool, event
     { x: dozer.x + Math.cos(dozer.heading) * DOZER.radius, y: dozer.y + Math.sin(dozer.heading) * DOZER.radius },
     { x: dozer.x - Math.cos(dozer.heading) * DOZER.radius * 0.6, y: dozer.y - Math.sin(dozer.heading) * DOZER.radius * 0.6 },
   ];
-  if (pins.some((pin) => movementBlocked(terrainTraversalAt(town.features, pin.x, pin.y, town.surface), town.season))) {
+  if (pins.some((pin) => movementBlocked(terrainTraversalAt(town.features, pin.x, pin.y, town.surface), town.frozen))) {
     const startX = dozer.motionStartX ?? dozer.x;
     const startY = dozer.motionStartY ?? dozer.y;
-    const resolved = resolveTraversal(dozer.x, dozer.y, startX, startY, town.features, town.surface, town.season);
+    const resolved = resolveTraversal(dozer.x, dozer.y, startX, startY, town.features, town.surface, town.frozen);
     dozer.x = resolved.x;
     dozer.y = resolved.y;
     if (resolved.blocked) {

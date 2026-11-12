@@ -1,5 +1,6 @@
 import { writeFile } from "node:fs/promises";
 import { captureShots } from "./capture/harness.mjs";
+import { landformBlockage } from "./debug-reachability.mjs";
 
 const OUT = "artifacts/terrain-features";
 
@@ -42,6 +43,30 @@ const shots = [
     aim: "blocked",
     note: "dozer stopped at water or forest core",
   },
+  {
+    file: "canyon-mesa.png",
+    query: "sandbox=1&level=county&seed=19&biome=arid-scrub&climate=canyonlands",
+    aim: "mesa",
+    note: "stepped sandstone mesa with strata, scree apron and cast shadow",
+  },
+  {
+    file: "dry-wash.png",
+    query: "sandbox=1&level=county&seed=19&biome=arid-scrub&climate=canyonlands",
+    aim: "wash",
+    note: "drivable arroyo with mesquite pockets",
+  },
+  {
+    file: "desert-land-use.png",
+    query: "sandbox=1&level=county&seed=3&biome=arid-scrub&climate=sonoran-desert",
+    aim: "ranch",
+    note: "solar array, citrus block or windpump rangeland; saguaros and granite boulders",
+  },
+  {
+    file: "alpine-outcrops.png",
+    query: "sandbox=1&level=county&seed=19&biome=northern-conifer&climate=alpine",
+    aim: "mesa",
+    note: "grey granite outcrops and boulder fields among conifers",
+  },
 ];
 
 const log = [];
@@ -67,7 +92,13 @@ await captureShots(OUT, shots, async (page, shot) => {
       if (forest) return look(forest.cx - forest.coreR - 1.8, forest.cy, 0);
       if (water && water.kind !== "river") look(Math.min(...water.poly.map((p) => p.x)) - 3.2, midY(water.poly), 0);
     };
+    const mesa = town.features.find((f) => f.kind === "mesa");
+    const wash = town.features.find((f) => f.kind === "wash");
+    const gear = town.props.find((p) => p.assetId === "solar-panel" || p.assetId === "citrus-tree" || p.assetId === "windpump");
     const aims = {
+      mesa: () => mesa && look(mesa.x + mesa.w + 2.5, mesa.y + mesa.d + 2.5, -Math.PI * 0.75, 1.1),
+      wash: () => wash && look(wash.path[Math.floor(wash.path.length / 2)].x, wash.path[Math.floor(wash.path.length / 2)].y, 0, 1.3),
+      ranch: () => gear && look(gear.x, gear.y + 3, -Math.PI / 2, 1.2),
       field: () => field && look(field.x + field.w * 0.5, field.y + field.d * 0.5, field.heading),
       forest: () => forest && look(forest.cx + forest.coreR + 2.4, forest.cy, Math.PI),
       water: () => water && lookAtWater(),
@@ -147,6 +178,7 @@ await captureShots(OUT, shots, async (page, shot) => {
       cam: game.cameraSnapshot(),
     };
   });
+  info.landformBlockage = await landformBlockage(page);
   log.push({ file: dest, ...shot, ...info });
   console.log("captured", dest, info.biome, info.features.map((f) => f.kind).join(","));
 });

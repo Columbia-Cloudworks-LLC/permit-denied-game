@@ -12,8 +12,13 @@ import type { TestMapRequest } from './testMapRequest';
 import { createBuildingFromArchetype } from '../structure/building';
 import { spawnAsset } from './catalog';
 import { SCALE_CONTRACT } from './scaleContract';
+import type { ClimateEnvelope } from './climate';
+import type { Building } from '../structure/types';
+import { townSeasonState } from './groundCondition';
+import { resolveWeather, type SeasonId } from './season';
+import { stampRegionalExterior } from '../structure/regionalExterior';
 
-export interface TestYard { request: TestMapRequest; assets: YardAsset[]; bays: YardBay[]; sequence: number; baselineEnd: number; issues: string[]; loads?: {vehicle:VehicleState;z:number;vz:number}[]; scaleBay?: YardBox }
+export interface TestYard { /** Climate preset the yard is dressed for; absent keeps every asset as authored. */ climate?: ClimateEnvelope; request: TestMapRequest; assets: YardAsset[]; bays: YardBay[]; sequence: number; baselineEnd: number; issues: string[]; loads?: {vehicle:VehicleState;z:number;vz:number}[]; scaleBay?: YardBox }
 export function populateTestYard(town: Town, request: TestMapRequest = { kind: 'yard' }): Town {
   if (request.kind === 'asset') return populateFocusedTest(town, request);
   const assets = discoverYardAssets(), bays = layoutYard(assets);
@@ -104,8 +109,22 @@ function populateFocusedTest(town: Town, request: Extract<TestMapRequest, { kind
   town.pile.ownerAt = town.debrisOwnerAt;
   return town;
 }
+/**
+ * Dress a test map for a climate zone and season: its sky and ground, and every building's
+ * regional roof, rooftop kit and wall palette. Bays restored or added later take the same dress.
+ */
+export function applyYardClimate(town: Town, climate: ClimateEnvelope, season: SeasonId): void {
+  Object.assign(town, { climate, ...townSeasonState(season, climate), weather: resolveWeather(season, town.seed, climate) });
+  if (town.yard) town.yard.climate = climate;
+  dressForClimate(town, town.buildings);
+  town.visualRevision++;
+}
+function dressForClimate(town: Town, buildings: readonly Building[]): void {
+  if (town.yard?.climate) stampRegionalExterior(buildings, town.yard.climate, town.seed);
+}
 function addBay(town: Town, bay: YardBay): void {
   instantiateBay(bay);
+  dressForClimate(town, bayBuildings(bay));
   town.buildings.push(...bayBuildings(bay));
   town.props.push(...bayProps(bay));
   for(const v of bayVehicles(bay)){v.yardOwner=bay.key;town.vehicles.push(v);}
@@ -229,6 +248,7 @@ export function restoreBay(town: Town, bay: YardBay, particles?: ParticlePool): 
   if (following) town.roadCar = bay.vehicle ?? null;
   town.props.push(...bayProps(bay));
   for(const v of bayVehicles(bay)){v.yardOwner=bay.key;town.vehicles.push(v);}
+  dressForClimate(town, bayBuildings(bay));
   town.buildings.push(...bayBuildings(bay));
   town.yard!.bays.push(bay); changed(town);
 }

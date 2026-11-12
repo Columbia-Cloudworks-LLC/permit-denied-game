@@ -3,6 +3,7 @@ import { hashSeed } from '../game/rng';
 import { COUNTY_ARCHETYPES, REGIONAL_FLAVORS, regionalLandmark, type CountyArchetype } from './regionalCatalog';
 import { regionalLevel } from './regionalPlacement';
 import { regionById, REGIONS, type RegionDef } from './regions';
+import { countyBiome as climateCountyBiome, countyClimate } from './regionClimate';
 import { rollWeatherCondition, type SeasonId, type WeatherConditionId } from './season';
 
 export const COUNTIES_PER_REGION = 7;
@@ -80,9 +81,13 @@ export function allCounties(): CountyDef[] {
 
 /** Map-load weather roll: the map seed changes each time the overworld opens; the season never does. */
 export function countyWeather(mapSeed: number, season: SeasonId, regionId: string, index: number): WeatherConditionId {
-  return rollWeatherCondition(season, (mapSeed ^ countySeed(regionId, index)) >>> 0);
+  return rollWeatherCondition(season, (mapSeed ^ countySeed(regionId, index)) >>> 0, countyClimate(regionId, index));
 }
 
-export function regionBiome(region: RegionDef) {
-  return REGIONAL_FLAVORS[region.flavor].biome;
+/** The county's biome and climate zone: what its ground, sky and buildings are generated for. */
+export function countyEnvironment(region: RegionDef, index: number) {
+  return {
+    biomeId: climateCountyBiome(region.id, index, REGIONAL_FLAVORS[region.flavor].biome),
+    climateId: countyClimate(region.id, index).id,
+  };
 }

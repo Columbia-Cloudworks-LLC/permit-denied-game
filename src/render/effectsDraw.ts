@@ -1,6 +1,7 @@
 import type { Graphics } from "pixi.js";
 import { ISO_W } from "../game/constants";
 import { Rng } from "../game/rng";
+import { isVapor } from "../fx/particles";
 import type { WeatherFlake } from "../fx/seasonWeather";
 import type { Bird, Particle, ParticleKind, Rubble } from "../structure/types";
 import type { WeatherKind } from "../world/season";
@@ -20,15 +21,24 @@ export function settledParticleVersion(p: Particle): string {
   return `${p.kind}:${poseStep(p.x)}:${poseStep(p.y)}:${poseStep(p.z)}:${poseStep(p.rot)}:${p.size}:${p.tint}:${Math.round(fade * 32)}`;
 }
 
-const FLAKE_STYLE: Partial<Record<WeatherKind, { color: number; w: number; d: number }>> = {
+/** `w` runs along the flake's heading and stretches with its `len`; `h` is a falling streak's height. */
+interface FlakeStyle { color: number; w: number; d: number; h?: number; alpha?: number }
+const FLAKE_STYLE: Partial<Record<WeatherKind, FlakeStyle>> = {
   rain: { color: 0x9eb4c4, w: 0.05, d: 0.16 },
   leaves: { color: 0xc47a32, w: 0.12, d: 0.08 },
+  // Haboob sheets: long translucent ochre streaks lying on the wind.
+  dust: { color: 0xc9a06a, w: 0.7, d: 0.1, h: 0.03, alpha: 0.34 },
+  // Monsoon and squall rain falls as tall warm-grey streaks.
+  downpour: { color: 0xa9b6bd, w: 0.03, d: 0.05, h: 0.5, alpha: 0.5 },
+  // Heat haze: pale bands hugging the ground.
+  shimmer: { color: 0xfff2d0, w: 1.1, d: 0.05, h: 0.01, alpha: 0.14 },
 };
-const SNOW_FLAKE = { color: 0xf4f7fb, w: 0.12, d: 0.08 };
+const SNOW_FLAKE: FlakeStyle = { color: 0xf4f7fb, w: 0.12, d: 0.08 };
 
 export function drawWeatherFlake(g: Graphics, flake: WeatherFlake): void {
-  const { color, w, d } = FLAKE_STYLE[flake.kind] ?? SNOW_FLAKE;
-  drawOrientedIsoBox(g, flake.x, flake.y, 0.4, w, d, flake.z, 0.04, color, color, color, 0.7);
+  const style = FLAKE_STYLE[flake.kind] ?? SNOW_FLAKE;
+  const { color } = style;
+  drawOrientedIsoBox(g, flake.x, flake.y, flake.heading, style.w * flake.len, style.d, flake.z, style.h ?? 0.04, color, color, color, style.alpha ?? 0.7);
 }
 
 /** Dust this faded is under a tenth of opacity, which overview zoom shrinks to a couple of pixels. */
@@ -46,6 +56,10 @@ export function drawParticleSpeck(g: Graphics, p: Particle): void {
   const fade = Math.min(1, p.life / p.maxLife);
   if (p.kind === "dust") {
     drawDustSpeck(g, p, fade);
+    return;
+  }
+  if (isVapor(p.kind)) {
+    drawVapor(g, p, fade, 0.6);
     return;
   }
   const c = worldToScreen(p.x, p.y, p.z);
@@ -68,10 +82,13 @@ const CHIP_COLORS: Partial<Record<ParticleKind, { color: number; dark: number }>
   metal: { color: PAL.metal, dark: PAL.metalDark },
   glass: { color: 0xa8c4d0, dark: PAL.concreteDark },
   spark: { color: 0xffc860, dark: 0xff8a24 },
+  arc: { color: 0xd8ecff, dark: 0x6fa8ff },
 };
 const CONCRETE_CHIP = { color: PAL.concrete, dark: PAL.concreteDark };
 const SPARK_CORE = 0xfffbe8;
 const SPARK_GLOW = 0xffa630;
+const ARC_GLOW = 0x5aa2ff;
+const VAPOR = { steam: { color: 0xf1f6f7, alpha: 0.5 }, soot: { color: 0x2a2521, alpha: 0.58 } } as const;
 
 function particleChip(p: Particle): { color: number; dark: number; len: number; wid: number } {
   if (p.kind === "crop") {
@@ -89,14 +106,28 @@ function particleChip(p: Particle): { color: number; dark: number; len: number; 
 function drawSpark(g: Graphics, p: Particle, fade: number): void {
   const a = worldToScreen(p.x, p.y, p.z);
   const b = worldToScreen(p.x - p.vx * 0.06, p.y - p.vy * 0.06, p.z - p.vz * 0.06);
-  g.moveTo(a.x, a.y).lineTo(b.x, b.y).stroke({ color: SPARK_GLOW, width: 4.5, alpha: 0.6 * fade, cap: "round" });
+  g.moveTo(a.x, a.y).lineTo(b.x, b.y).stroke({ color: p.kind === "arc" ? ARC_GLOW : SPARK_GLOW, width: 4.5, alpha: 0.6 * fade, cap: "round" });
   g.moveTo(a.x, a.y).lineTo(b.x, b.y).stroke({ color: SPARK_CORE, width: 1.8, alpha: fade, cap: "round" });
+}
+
+/** Steam and soot billow: one soft six-sided puff that swells as it thins out. */
+function drawVapor(g: Graphics, p: Particle, fade: number, scale = 1): void {
+  if (!isVapor(p.kind)) return;
+  const { color, alpha } = VAPOR[p.kind];
+  const c = worldToScreen(p.x, p.y, p.z);
+  const r = (5 + p.size * 16) * (1 + (1 - fade) * 1.3) * scale;
+  g.poly([c.x - r, c.y, c.x - r * 0.5, c.y - r * 0.7, c.x + r * 0.5, c.y - r * 0.7, c.x + r, c.y, c.x + r * 0.5, c.y + r * 0.6, c.x - r * 0.5, c.y + r * 0.6]);
+  g.fill({ color, alpha: alpha * fade });
 }
 
 export function drawParticle(g: Graphics, p: Particle): void {
   const fade = Math.min(1, p.life / p.maxLife);
-  if (p.kind === "spark") {
+  if (p.kind === "spark" || p.kind === "arc") {
     drawSpark(g, p, fade);
+    return;
+  }
+  if (isVapor(p.kind)) {
+    drawVapor(g, p, fade);
     return;
   }
   // A dust puff is translucent and casts nothing worth drawing.

@@ -23,7 +23,7 @@ export class MarkLayer {
     this.buckets = [];
   }
 
-  /** Returns how many marks sit in buckets that are on screen. */
+  /** `season` is the paint season (`Town.look`). Returns how many marks sit in buckets that are on screen. */
   update(marks: readonly GroundMark[], season: SeasonId, visible: (x: number, y: number, w: number, d: number) => boolean): number {
     this.rebuilt = 0;
     if (season !== this.season) this.invalidate();
