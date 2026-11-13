@@ -8,11 +8,11 @@ import {
   interiorFloorCoverage,
   type InteriorFloorSpan,
 } from "../structure/interior";
-import { industrialRoofOpen, neighborRoofBayOpen, roofFrameBeams } from "../structure/roof";
+import { industrialRoofOpen, neighborRoofBayOpen, roofCoverage, roofFrameBeams } from "../structure/roof";
 import type { Building, Cell, InteriorFixture, RoofSection } from "../structure/types";
 import { cellPresent, cellWorldBox } from "../structure/types";
 import { depthKey, roofPainterDepth } from "../world/iso";
-import { maxTopFloorWallFaceDepth } from "./buildingSurfaces";
+import { eaveWallFaceDepth } from "./buildingSurfaces";
 import { drawFaceWindow, drawIsoBox, drawOrientedIsoBox, drawSlopedQuad, drawTopCap } from "./drawIso";
 import { brokenEdgeColor, floorFinishColor, topFaceColor, wallFaceColor } from "./lighting";
 import { PAL, matColors, shade } from "./palette";
@@ -249,14 +249,15 @@ export function roofInteriorPainterDepth(b: Building, roof: RoofSection, verts: 
 }
 
 /**
- * Per-bay gable/shed panels at the far side have a lower front-vertex depth than
- * a long south/east wall, so the wall would paint over the eave and gable edge.
- * Keep every sloped panel after those wall faces.
+ * Per-bay gable/shed panels at the far end of a long south/east wall have a lower front-vertex
+ * depth than the wall, so the wall would paint over the eave and gable edge. Keep each sloped
+ * panel after the eave walls it sits on, and only those: a lower roof ringing a tower must not
+ * jump ahead of the tower's faces.
  */
 export function roofCommandDepth(b: Building, roof: RoofSection, verts: RoofSection["verts"]): number {
   const depth = roofInteriorPainterDepth(b, roof, verts);
   if (roof.style !== "gable" && roof.style !== "shed") return depth;
-  const walls = maxTopFloorWallFaceDepth(b);
+  const walls = eaveWallFaceDepth(b, roof.floor, roofCoverage(roof));
   return Number.isFinite(walls) ? Math.max(depth, walls + 1) : depth;
 }
 
