@@ -45,27 +45,36 @@ function spanDepth(b: Building, gx0: number, gy0: number, gx1: number, gy1: numb
   return depthKey(cx, cy, floor * FLOOR_Z);
 }
 
-/** Front-plane depth of every top-floor south/east wall cell. Gable bays behind this must sort later. */
-export function maxTopFloorWallFaceDepth(b: Building): number {
-  const floor = b.floors - 1;
+/**
+ * Front-plane depth of the south/east wall cells a roof panel sits on: walls on the panel's own
+ * floor within one cell of what it covers. A panel's eave and overhang reach over those faces, so
+ * it must sort after them. Walls of a tower rising through a lower roof are not eave walls: the
+ * lower panels keep their own depth there, behind the tower faces in front of them.
+ */
+export function eaveWallFaceDepth(b: Building, floor: number, coverage: readonly { gx: number; gy: number }[]): number {
   const cs = b.cellSize;
   const z = floor * FLOOR_Z;
   let max = -Infinity;
   for (const span of getBuildingSurfaces(b).walls) {
     if (span.floor !== floor) continue;
     if (span.dir === "south") {
+      if (!coverageAlong(coverage, "x", span.gx0, span.gx1, span.gy0)) continue;
       const y = b.y + (span.gy0 + 1) * cs;
-      for (let gx = span.gx0; gx <= span.gx1; gx++) {
-        max = Math.max(max, depthKey(b.x + (gx + 0.5) * cs, y, z));
-      }
+      for (let gx = span.gx0; gx <= span.gx1; gx++) max = Math.max(max, depthKey(b.x + (gx + 0.5) * cs, y, z));
       continue;
     }
+    if (!coverageAlong(coverage, "y", span.gy0, span.gy1, span.gx0)) continue;
     const x = b.x + (span.gx0 + 1) * cs;
-    for (let gy = span.gy0; gy <= span.gy1; gy++) {
-      max = Math.max(max, depthKey(x, b.y + (gy + 0.5) * cs, z));
-    }
+    for (let gy = span.gy0; gy <= span.gy1; gy++) max = Math.max(max, depthKey(x, b.y + (gy + 0.5) * cs, z));
   }
   return max;
+}
+
+/** Whether any covered cell lies within one cell of a wall run from `a0` to `a1` on line `at`. */
+function coverageAlong(coverage: readonly { gx: number; gy: number }[], axis: "x" | "y", a0: number, a1: number, at: number): boolean {
+  return coverage.some((c) => axis === "x"
+    ? c.gx >= a0 - 1 && c.gx <= a1 + 1 && Math.abs(c.gy - at) <= 1
+    : c.gy >= a0 - 1 && c.gy <= a1 + 1 && Math.abs(c.gx - at) <= 1);
 }
 
 function footprintBox(b: Building): { x: number; y: number; w: number; d: number } {

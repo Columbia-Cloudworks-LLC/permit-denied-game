@@ -5,7 +5,7 @@ import { applyCellDamage, createBuildingFromArchetype, stepStructures } from "..
 import { fixtureCatalog } from "../structure/interior";
 import { neighborRoofBayOpen, roofCoverage, roofFrameBeams } from "../structure/roof";
 import { depthKey, roofPainterDepth } from "../world/iso";
-import { getBuildingSurfaces, maxTopFloorWallFaceDepth } from "./buildingSurfaces";
+import { eaveWallFaceDepth, getBuildingSurfaces } from "./buildingSurfaces";
 import { interiorCmds, roofCommandDepth, roofShowsFrame } from "./interiorDraw";
 import { wallSpanFadeRuns } from "./occlusion";
 import { PAL } from "./palette";
@@ -120,38 +120,52 @@ describe("ranch interior depth vs facades", () => {
 
 describe("gable roof sort vs eave walls", () => {
   const far = { x: -100, y: -100, heading: 0 };
+  type B = ReturnType<typeof createBuildingFromArchetype>;
+  const sloped = (b: B) => b.roofs.filter((r) => (r.style === "gable" || r.style === "shed") && r.state !== "gone");
+  /** Wall runs on the panel's floor that a covered cell sits on. */
+  const eaveSpans = (b: B, roof: B["roofs"][number]) => getBuildingSurfaces(b).walls.filter((s) => s.floor === roof.floor &&
+    roofCoverage(roof).some((c) => c.gx >= s.gx0 && c.gx <= s.gx1 && c.gy >= s.gy0 && c.gy <= s.gy1));
 
-  it.each(["cottage", "dairy-building", "gable-barn"] as const)(
-    "paints every %s sloped panel after the long south/east wall faces",
+  it.each(["cottage", "dairy-building", "gable-barn", "village-hall"] as const)(
+    "paints every %s eave panel after the south/east wall runs under it",
     (id) => {
       const b = createBuildingFromArchetype(id, id.toUpperCase(), 0, 0);
-      const wallDepth = maxTopFloorWallFaceDepth(b);
-      expect(wallDepth).toBeGreaterThan(0);
-      const live = b.roofs.filter((r) => r.style === "gable" && r.state !== "gone");
+      const live = sloped(b);
       expect(live.length).toBeGreaterThan(1);
+      let checked = 0;
       for (const roof of live) {
-        const raw = roofPainterDepth(roof.verts);
         const command = roofCommandDepth(b, roof, roof.verts);
-        expect(command).toBeGreaterThan(wallDepth);
-        expect(command).toBeGreaterThanOrEqual(raw);
-      }
-      for (const span of getBuildingSurfaces(b).walls.filter((s) => s.floor === b.floors - 1)) {
-        for (const run of wallSpanFadeRuns(b, span, far)) {
-          for (const roof of live) {
-            expect(roofCommandDepth(b, roof, roof.verts)).toBeGreaterThan(run.span.depth);
+        expect(command).toBeGreaterThanOrEqual(roofPainterDepth(roof.verts));
+        for (const span of eaveSpans(b, roof)) {
+          for (const run of wallSpanFadeRuns(b, span, far)) {
+            expect(command).toBeGreaterThan(run.span.depth);
+            checked++;
           }
         }
       }
+      expect(checked).toBeGreaterThan(0);
     },
   );
 
   it("boosts far dairy bays that raw eave depth would leave behind the south wall", () => {
     const b = createBuildingFromArchetype("dairy-building", "DAIRY", 0, 0);
-    const wallDepth = maxTopFloorWallFaceDepth(b);
-    const behind = b.roofs.filter((r) => r.style === "gable" && roofPainterDepth(r.verts) <= wallDepth);
+    const behind = sloped(b).filter((r) => roofPainterDepth(r.verts) <= eaveWallFaceDepth(b, r.floor, roofCoverage(r)));
     expect(behind.length).toBeGreaterThan(0);
     for (const roof of behind) {
-      expect(roofCommandDepth(b, roof, roof.verts)).toBeGreaterThan(wallDepth);
+      expect(roofCommandDepth(b, roof, roof.verts)).toBeGreaterThan(eaveWallFaceDepth(b, roof.floor, roofCoverage(roof)));
+    }
+  });
+
+  it("keeps the village hall's lower roof behind the clock tower it rings", () => {
+    const b = createBuildingFromArchetype("village-hall", "HALL", 0, 0);
+    const towerWalls = getBuildingSurfaces(b).walls.filter((s) => s.floor >= 1).flatMap((s) => wallSpanFadeRuns(b, s, far));
+    expect(towerWalls.length).toBeGreaterThan(0);
+    // Ground-floor panels north and west of the tower (cells 3-5 x 2-5) are farther from the camera than its faces.
+    const behindTower = sloped(b).filter((r) => r.floor === 0 && roofCoverage(r).every((c) =>
+      (c.gx <= 2 && c.gy <= 5) || (c.gy <= 1 && c.gx <= 5)));
+    expect(behindTower.length).toBeGreaterThan(10);
+    for (const roof of behindTower) {
+      for (const run of towerWalls) expect(roofCommandDepth(b, roof, roof.verts)).toBeLessThan(run.span.depth);
     }
   });
 });
