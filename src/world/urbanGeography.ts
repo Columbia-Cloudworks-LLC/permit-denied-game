@@ -202,6 +202,8 @@ export function classifyUrbanGeography(
   lots: readonly Lot[],
   segments: readonly RoadSegment[],
   nodes: readonly RoadNode[],
+  /** A city plan's own radius (0 core .. 1 edge) in place of distance from the lot cluster's centre. */
+  radiusAt?: (x: number, y: number) => number,
 ): UrbanGeographyReport {
   const center = clusterCenter(lots);
   const distances = lots.map(lot => {
@@ -211,7 +213,8 @@ export function classifyUrbanGeography(
   const extent = Math.max(8, ...distances, 1);
   const infos: UrbanLotInfo[] = lots.map((lot, index) => {
     const dist = distances[index]!;
-    const radius = dist / extent;
+    const at = lotCenter(lot);
+    const radius = radiusAt ? radiusAt(at.x, at.y) : dist / extent;
     const seg = segments.find(entry => entry.id === lot.frontage.segmentId);
     const roadClass = seg?.roadClass ?? 'residential';
     const corner = isCornerFrontage(lot, nodes, segments);
@@ -234,7 +237,9 @@ export function classifyUrbanGeography(
     });
     const covered = inside.reduce((sum, lot) => sum + lot.w * lot.d, 0);
     const area = Math.max(1, block.w * block.d);
-    const midR = Math.hypot(block.x + block.w * 0.5 - center.x, block.y + block.d * 0.5 - center.y) / extent;
+    const midR = radiusAt
+      ? radiusAt(block.x + block.w * 0.5, block.y + block.d * 0.5)
+      : Math.hypot(block.x + block.w * 0.5 - center.x, block.y + block.d * 0.5 - center.y) / extent;
     return {
       ...block,
       lotIds: inside.map(lot => lot.id),

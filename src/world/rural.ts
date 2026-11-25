@@ -17,6 +17,7 @@ import {
   allocateFrontage,
   archetypeFootprint,
   attachDriveway,
+  completeLot,
   currentParcel,
   expandLotToFit,
   expandStreets,
@@ -43,6 +44,8 @@ import {
 } from "./urbanGeography";
 import type { UrbanBand } from "./urbanBands";
 import { ARCHETYPES, archetypeById, type Archetype } from "./archetypes";
+import { boxInPlanPark, buildPlanStreets, planRadius, planSurfaceAt, type CityPlan } from "./cityPlan";
+import { createBuildingFromArchetype } from "../structure/building";
 import {
   curvePoints,
   aabbOverlapsRoad,
@@ -52,6 +55,7 @@ import {
   offsetPoint,
   pointOnRoad,
   polylineLength,
+  projectPointToPolyline,
   pt,
   RoadBuilder,
   roadSurfaceAt,
@@ -70,6 +74,8 @@ import {
   meanRoadCost,
   sampleSegmentCenterline,
   lotEnvelopeRejected,
+  lotWaterShare,
+  paintSurfaceGrid,
   stampDeveloped,
   finalizeStampedSurface,
   traversalAt,
@@ -179,6 +185,8 @@ interface RuralPlacement {
   publicSegs: () => RoadSegment[];
   pick: ArchetypePick | undefined;
   regional: RegionalPlacement | undefined;
+  /** The authored city this layout follows; absent on every generic town. */
+  plan: CityPlan | undefined;
 }
 
 function generateRuralLayoutInner(
@@ -188,7 +196,9 @@ function generateRuralLayoutInner(
   campaign: CampaignLevelDef | undefined,
   environment: LayoutEnvironment | undefined,
 ): RuralLayout {
-  const count = campaign?.generation.buildingCount ?? DISTRICT_COUNTS[id];
+  const plan = campaign ? environment?.regional?.cityPlan : undefined;
+  // A plan's level counts its fill and the objective; its other pinned landmarks stand on top of that.
+  const count = (campaign?.generation.buildingCount ?? DISTRICT_COUNTS[id]) + (plan ? plan.landmarks.length - 1 : 0);
   const rng = new Rng(seed);
   const topology = (campaign && campaign.generation.topology !== 'estate'
     ? campaign.generation.topology
@@ -198,9 +208,12 @@ function generateRuralLayoutInner(
   const climate = environment?.climate ?? climateForBiome(biome);
   const originX = 4;
   const originY = 4;
-  const surface = ruralSurface(seed, biome, count, campaign, originX, originY, climate);
-  const b = pickSkeleton(surface, topology, count, originX, originY, seed, campaign).builder;
-  growStreets(b, rng, count, campaign, surface);
+  const surface = plan
+    ? paintSurfaceGrid({ minX: 0, minY: 0, maxX: plan.width, maxY: plan.depth }, seed, planSurfaceAt(plan))
+    : ruralSurface(seed, biome, count, campaign, originX, originY, climate);
+  const b = plan ? new RoadBuilder() : pickSkeleton(surface, topology, count, originX, originY, seed, campaign).builder;
+  if (plan) buildPlanStreets(b, plan);
+  else growStreets(b, rng, count, campaign, surface);
 
   const buildings: Building[] = [];
   const used = new Map<string, number>();
@@ -210,21 +223,25 @@ function generateRuralLayoutInner(
     publicSegs: () => b.segments.filter((s) => s.roadClass !== "driveway" && s.roadClass !== "ramp"),
     pick: campaign ? campaignPicker(campaign, used, buildings, environment?.regional) : undefined,
     regional: environment?.regional,
+    plan,
   };
-  const { pool, urban } = ruralLotPool(run, seed);
+  if (plan) placePlanLandmarks(run, plan);
+  const { pool, urban } = plan && campaign ? planLotPool(run, plan, campaign, seed) : ruralLotPool(run, seed);
   placeRuralBuildings(run, pool, seed);
   const { network, bounds } = finishRuralNetwork(run, urban, originX, originY);
   dressAridRoads(network, climate, bounds, (x, y) => surfaceAt(surface, x, y) === "wash");
   const kept = run.kept;
   const { props, ground } = dressRuralLots(run, network, aridLandscape(climate));
+  if (plan) plantPlanParks(plan, props, network, surface, seed);
   const { minX, minY, maxX, maxY } = bounds;
 
   const terrain = emptyTerrain(minX - 2, minY - 2, maxX - minX + 4, maxY - minY + 4);
   applyTerrain(terrain, topology, minX, maxX);
   enforceOpenCorridors(surface, network, kept, buildings);
   stampDeveloped(surface, network, kept, ground);
-  finalizeStampedSurface(surface, biome, seed, { network, lots: kept, buildings }, climate);
-  if (campaign && urban) finalizeUrbanReport(campaign, urban, kept, network);
+  // A plan's ground is authored: no biome quota repaints its parks and vacant blocks.
+  if (!plan) finalizeStampedSurface(surface, biome, seed, { network, lots: kept, buildings }, climate);
+  if (campaign && urban) finalizeUrbanReport(campaign, urban, kept, network, !!plan);
 
   const roads = derivedRoadBoxes(network);
   const { spawn, roadSpawn } = ruralSpawns(network, buildings, props, campaign, surface);
@@ -334,10 +351,10 @@ function ruralLotPool(run: RuralPlacement, seed: number): { pool: Lot[]; urban: 
 
 function placeRuralBuildings(run: RuralPlacement, pool: Lot[], seed: number): void {
   const { campaign, count, kept } = run;
-  if (campaign) placeCampaignLandmark(run, campaign, pool);
+  if (campaign && !run.plan) placeCampaignLandmark(run, campaign, pool);
   const { lots, assignedId } = planOrdinaryLots(run, pool);
   placeOrdinaryLots(run, lots, assignedId, pool);
-  if (kept.length < count) placeExtraFrontage(run, seed);
+  if (kept.length < count && !run.plan) placeExtraFrontage(run, seed);
   if (kept.length < count) placeOrdinaryLots(run, lots, assignedId, pool);
   if (kept.length < count) {
     run.issues.push({
@@ -364,6 +381,119 @@ function planOrdinaryLots(run: RuralPlacement, pool: readonly Lot[]): { lots: Lo
     lots: [...lots].sort((a, c) => order(a) - order(c)),
     assignedId: new Map(plan.assignments.map(entry => [entry.lotId, entry.buildingId])),
   };
+}
+
+/**
+ * Stand each of the plan's landmarks where the plan pins it, on a lot cut to its footprint and
+ * served from the nearest street. The first is the county's objective; the others pay as signatures.
+ */
+function placePlanLandmarks(run: RuralPlacement, plan: CityPlan): void {
+  plan.landmarks.forEach((pin, index) => {
+    const building = createBuildingFromArchetype(pin.buildingId, pin.label.toUpperCase(), pin.x, pin.y);
+    const lot = pinnedLot(building, index);
+    if (!attachPinnedAccess(run, lot, building)) {
+      run.issues.push({ code: "plan-landmark", detail: `${plan.id}: no street access for ${pin.buildingId}` });
+      return;
+    }
+    building.lotId = lot.id;
+    if (index === 0) building.campaignLandmark = true;
+    else {
+      building.cityLandmark = true;
+      building.regionalSignature = pin.label;
+    }
+    run.buildings.push(building);
+    run.kept.push(lot);
+    run.used.set(building.archetypeId, 1);
+  });
+}
+
+function pinnedLot(building: Building, index: number): Lot {
+  const boxes = [
+    { x: building.x, y: building.y, w: building.w * building.cellSize, d: building.d * building.cellSize },
+    ...building.decorBoxes,
+  ];
+  const minX = Math.min(...boxes.map(box => box.x));
+  const minY = Math.min(...boxes.map(box => box.y));
+  const maxX = Math.max(...boxes.map(box => box.x + box.w));
+  const maxY = Math.max(...boxes.map(box => box.y + box.d));
+  const setbacks = { front: 0.6, side: 0.6, rear: 0.6 };
+  return completeLot({
+    id: `pin${index}`,
+    x: minX - setbacks.side,
+    y: minY - setbacks.front,
+    w: maxX - minX + setbacks.side * 2,
+    d: maxY - minY + setbacks.front + setbacks.rear,
+    heading: Math.PI / 2,
+    zone: "commercial",
+    identity: identityFromBuilding(building),
+    accessId: "",
+    templateId: "",
+    urbanBand: "downtown-core",
+    districtRole: "downtown-core",
+    setbacks,
+    buildable: { x: minX, y: minY, w: maxX - minX, d: maxY - minY },
+  });
+}
+
+/** Driveway from the nearest public street that reaches the pinned building without crossing another pin. */
+function attachPinnedAccess(run: RuralPlacement, lot: Lot, building: Building): boolean {
+  const cx = building.x + building.w * building.cellSize * 0.5;
+  const cy = building.y + building.d * building.cellSize * 0.5;
+  const ranked = run.publicSegs()
+    .map(seg => {
+      const hit = projectPointToPolyline(seg.points, cx, cy);
+      return { seg, hit, dist: Math.hypot(hit.x - cx, hit.y - cy) };
+    })
+    .sort((a, c) => a.dist - c.dist);
+  for (const candidate of ranked.slice(0, 4)) {
+    const live = run.b.segments.find(seg => seg.id === candidate.seg.id);
+    if (!live) continue;
+    const t = Math.min(0.92, Math.max(0.08, candidate.hit.t));
+    lot.frontage = { segmentId: live.id, side: 1, t0: Math.max(0, t - 0.05), t1: Math.min(1, t + 0.05) };
+    const curb = samplePolyline(live.points, t);
+    const dx = cx - curb.x, dy = cy - curb.y;
+    lot.heading = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 0 : Math.PI) : dy > 0 ? Math.PI / 2 : -Math.PI / 2;
+    const drive = attachDriveway(run.b, lot, building, run.kept);
+    if (drive && !drive.reject) {
+      run.corridors.push(drive.corridor);
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Lots along every street of the plan, less the ones in a park or over water. Roles come
+ * from the plan's cores, and its parks are the named open spaces.
+ */
+function planLotPool(run: RuralPlacement, plan: CityPlan, campaign: CampaignLevelDef, seed: number): { pool: Lot[]; urban: UrbanGeographyReport } {
+  const { b, count } = run;
+  const pinned = new Set(run.kept.map(lot => lot.id));
+  const alloc = allocateFrontage(run.publicSegs(), b.nodes, count * 8, new Rng(seed ^ 0x51a11), run.kept, b.segments, run.surface);
+  run.rejected.push(...alloc.rejected);
+  const pool = alloc.lots.filter(lot => !pinned.has(lot.id) && !boxInPlanPark(plan, lot) && lotWaterShare(run.surface, { x: lot.x, y: lot.y, w: lot.w, d: lot.d }) <= 0.08);
+  const urban = classifyUrbanGeography(campaign, pool, b.segments, b.nodes, (x, y) => planRadius(plan, x, y));
+  urban.openSpaces = plan.parks.map((park, index) => ({
+    id: `park${index}`, kind: "park", name: park.name, x: park.x, y: park.y, w: park.w, d: park.d, band: "downtown-core",
+  }));
+  applyUrbanTags(pool, urban);
+  return { pool, urban };
+}
+
+/** Trees over each park lawn, clear of the streets and the water. */
+function plantPlanParks(plan: CityPlan, props: Prop[], network: RoadNetwork, surface: SurfaceGrid, seed: number): void {
+  const rng = new Rng(seed ^ 0x7ee5);
+  for (const park of plan.parks) {
+    const planted: { x: number; y: number }[] = [];
+    for (let tries = 0; planted.length < (park.trees ?? 0) && tries < (park.trees ?? 0) * 6; tries++) {
+      const x = rng.range(park.x + 1.5, park.x + park.w - 1.5);
+      const y = rng.range(park.y + 1.5, park.y + park.d - 1.5);
+      if (surfaceAt(surface, x, y) === "water" || pointOnRoad(network, x, y)) continue;
+      if (planted.some(tree => len(tree.x - x, tree.y - y) < 2.4)) continue;
+      planted.push({ x, y });
+      props.push(spawnAsset("mature-tree", x - 0.4, y - 0.4, 0, rng.int(0, 2)));
+    }
+  }
 }
 
 function placeOrdinaryLots(run: RuralPlacement, lots: readonly Lot[], assignedId: ReadonlyMap<string, string>, pool: Lot[]): void {
@@ -395,7 +525,7 @@ function placeExtraFrontage(run: RuralPlacement, seed: number): void {
 function finishRuralNetwork(run: RuralPlacement, urban: UrbanGeographyReport | undefined, originX: number, originY: number): { network: RoadNetwork; bounds: EdgeBounds } {
   const { b, kept, campaign } = run;
   b.dropAccessesForLots(new Set(kept.map((l) => l.id)));
-  if (campaign?.composition) {
+  if (campaign?.composition && !run.plan) {
     const keepPads = [
       ...kept,
       ...(urban?.openSpaces ?? []).map(space => ({ x: space.x, y: space.y, w: space.w, d: space.d })),
@@ -404,7 +534,8 @@ function finishRuralNetwork(run: RuralPlacement, urban: UrbanGeographyReport | u
   }
   // Bounds come from the town before its edge roads, which then run out to them.
   const bounds = ruralBounds(originX, originY, b, kept, run.surface);
-  addEdgeRoads(b, bounds, [
+  // A plan runs its own streets off the map; a generated exit would cross open water.
+  if (!run.plan) addEdgeRoads(b, bounds, [
     ...kept,
     ...run.buildings.flatMap(buildingOccupy),
     ...(urban?.openSpaces ?? []).map(space => ({ x: space.x, y: space.y, w: space.w, d: space.d })),
@@ -486,10 +617,11 @@ const BLOCK_OPEN_SPACE_NAMES = {
 } as const;
 
 /** Drop lots that were not kept, classify every road block, and recount roles and bands. */
-function finalizeUrbanReport(campaign: CampaignLevelDef, urban: UrbanGeographyReport, kept: readonly Lot[], network: RoadNetwork): void {
+function finalizeUrbanReport(campaign: CampaignLevelDef, urban: UrbanGeographyReport, kept: readonly Lot[], network: RoadNetwork, planned = false): void {
   const keptIds = new Set(kept.map(lot => lot.id));
   urban.lots = urban.lots.filter(info => keptIds.has(info.lotId));
-  urban.blocks = enumerateRoadBlocks(network.nodes).map(block => classifyBlock(campaign, urban, kept, block));
+  // A plan names its own open spaces; its water and bridges would otherwise read as empty blocks.
+  urban.blocks = planned ? [] : enumerateRoadBlocks(network.nodes).map(block => classifyBlock(campaign, urban, kept, block));
   const byRole: Record<string, number> = {};
   const byBand: Record<string, number> = {};
   for (const info of urban.lots) {

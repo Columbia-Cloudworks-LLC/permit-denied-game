@@ -363,6 +363,21 @@ export function generateSurfaceGrid(opts: GenerateSurfaceOpts): SurfaceGrid {
   return grid;
 }
 
+/** A surface painted cell by cell from an authored classifier (a city plan), with no generated ponds, woods or fields. */
+export function paintSurfaceGrid(
+  bounds: TerrainBounds,
+  seed: number,
+  classify: (x: number, y: number) => TerrainSurface,
+): SurfaceGrid {
+  const grid = createSurfaceGrid(bounds.minX, bounds.minY, Math.ceil(bounds.maxX - bounds.minX), Math.ceil(bounds.maxY - bounds.minY));
+  forEachSurfaceCell(grid, (i, ix, iy) => {
+    grid.surface[i] = SURFACE_ID[classify(grid.ox + (ix + 0.5) * grid.cell, grid.oy + (iy + 0.5) * grid.cell)];
+  });
+  paintWetEdge(grid);
+  fillVariants(grid, (seed ^ TERRAIN_GEN_VERSION) >>> 0);
+  return grid;
+}
+
 export function lotWaterShare(grid: SurfaceGrid, lot: { x: number; y: number; w: number; d: number; buildable?: Lot["buildable"] }): number {
   const env = lot.buildable ?? { x: lot.x, y: lot.y, w: lot.w, d: lot.d };
   let waterHits = 0;

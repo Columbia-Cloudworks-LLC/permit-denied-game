@@ -140,7 +140,7 @@ const SOUTH_TONE = 0.67;
  */
 export function wallTone(b: Building, material: Material, face: WallFace, damaged = false): number {
   const lit = wallFaceColor(material, face, damaged);
-  const paint = regionalWallPaint(b, material);
+  const paint = b.wallColor !== undefined && material !== "glass" ? { tone: b.wallColor } : regionalWallPaint(b, material);
   if (!paint) return lit;
   const stock = matColors(material);
   const ramp = luminance(lit) / Math.max(1, luminance(face === "east" ? stock.side : stock.dark));
@@ -154,5 +154,6 @@ export function wallTrimTone(b: Building, material: Material, face: WallFace): n
 
 /** Surface pattern to draw: the regional finish, else the stock one for the material. */
 export function wallFinish(b: Building, material: Material): WallFinish {
+  if (b.wallColor !== undefined) return "plain";
   return regionalWallPaint(b, material)?.finish ?? (material === "brick" ? "brick" : material === "metal" ? "ribbed" : "plain");
 }

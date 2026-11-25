@@ -119,7 +119,7 @@ function nearest(point: Point, seeds: readonly Point[]): number {
 export const MIN_COUNTY_SHARE = 0.05;
 
 export interface CountyLayout {
-  /** Voronoi seeds, County 1 first; the last seed is the fixed capitol point. */
+  /** Voronoi seeds, County 1 first; the last seed is the fixed capitol point, and a pinned city sits just before it. */
   seeds: [number, number][];
   /** An interior sample near each county's middle, for its label and stamp. */
   labels: [number, number][];
@@ -128,7 +128,8 @@ export interface CountyLayout {
 /**
  * Seven county seeds for one region: the capitol is fixed as the last seed and the other six
  * are spread over the interior by farthest-point picks then Lloyd relaxation, all deterministic.
- * Counties 1–6 are numbered clockwise from north around the region's middle.
+ * Counties 1–6 are numbered clockwise from north around the region's middle. A `pinned` point
+ * (an authored city) takes one of the six: it is fixed like the capitol and listed just before it.
  */
 /**
  * The capitol county's label: an interior sample of its own cell, at least `clearance` from the
@@ -148,7 +149,7 @@ function capitolLabel(group: readonly [number, number][], capitol: Point, cleara
   return best ?? far ?? [capitol[0], capitol[1]];
 }
 
-export function countyLayout(rings: readonly Ring[], capitol: Point, count = 7, capitolClearance = 0): CountyLayout {
+export function countyLayout(rings: readonly Ring[], capitol: Point, count = 7, capitolClearance = 0, pinned?: Point): CountyLayout {
   const samples = interiorSamples(rings);
   if (samples.length < count) {
     const [minX, minY, maxX, maxY] = ringsBBox(rings);
@@ -157,9 +158,11 @@ export function countyLayout(rings: readonly Ring[], capitol: Point, count = 7, 
     }
   }
   const fixed: [number, number] = [capitol[0], capitol[1]];
+  // A pinned city is a second fixed seed, just before the capitol.
+  const pins: [number, number][] = pinned ? [[pinned[0], pinned[1]]] : [];
   const free: [number, number][] = [];
-  const chosen = (): [number, number][] => [...free, fixed];
-  while (free.length < count - 1) {
+  const chosen = (): [number, number][] => [...free, ...pins, fixed];
+  while (free.length < count - 1 - pins.length) {
     let pick = samples[0]!, pickD = -1;
     const seeds = chosen();
     for (const s of samples) {
@@ -215,8 +218,12 @@ export function countyLayout(rings: readonly Ring[], capitol: Point, count = 7, 
   const clockwise = (p: Point) => (Math.atan2(p[0] - cx, -(p[1] - cy)) + Math.PI * 2) % (Math.PI * 2);
   const order = free.map((_, i) => i).sort((a, b) => clockwise(free[a]!) - clockwise(free[b]!));
   return {
-    seeds: [...order.map(i => free[i]!), fixed],
-    labels: [...order.map(i => labelOf(groups[i]!, free[i]!)), capitolClearance > 0 ? capitolLabel(groups[free.length]!, fixed, capitolClearance) : labelOf(groups[free.length]!, fixed)],
+    seeds: [...order.map(i => free[i]!), ...pins, fixed],
+    labels: [
+      ...order.map(i => labelOf(groups[i]!, free[i]!)),
+      ...pins.map((pin, i) => labelOf(groups[free.length + i]!, pin)),
+      capitolClearance > 0 ? capitolLabel(groups[free.length + pins.length]!, fixed, capitolClearance) : labelOf(groups[free.length + pins.length]!, fixed),
+    ],
   };
 }
 

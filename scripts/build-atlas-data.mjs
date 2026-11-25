@@ -27,6 +27,7 @@ import {
   voronoiCells,
 } from '../src/world/atlasGeometry.ts';
 import { REGIONS } from '../src/world/regions.ts';
+import { CITY_SITES } from '../src/world/cityPlanSites.ts';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const NE_BASE = 'https://raw.githubusercontent.com/nvkelso/natural-earth-vector/v5.1.2/geojson/';
@@ -213,13 +214,17 @@ export async function buildAtlas(cache) {
     const [bx0, by0, bx1, by1] = ringsBBox(kept);
     const sheetPad = Math.max(bx1 - bx0, by1 - by0) * 0.08 + 1;
     const unit = Math.max(bx1 - bx0 + sheetPad * 2, (by1 - by0) * 1.12 + sheetPad * 2) / 100;
-    const layout = countyLayout(kept, cap, 7, unit * 5.2);
+    // An authored city (Chicago, New York City) fixes County 6 at its real location.
+    const pin = CITY_SITES[region.id] ? place((region.id === 'US-HI' ? HAWAII : MAIN)(CITY_SITES[region.id])) : undefined;
+    const layout = countyLayout(kept, cap, 7, unit * 5.2, pin);
+    const free = pin ? 5 : 6;
     // Busy cells get the urban archetypes, quiet ones the farmland (Hawaii has no mapped roads,
     // so its ranking falls back to distance from the capitol).
     const major = cellLineDensity(layout.seeds, kept, region.id === 'US-HI' ? [] : majorLines);
     const minor = cellLineDensity(layout.seeds, kept, region.id === 'US-HI' ? [] : minorLines);
-    const density = major.slice(0, 6).map((m, i) => m + MINOR_WEIGHT * minor[i]);
-    const cellFor = rankCellsByDensity(density, layout.seeds.slice(0, 6), cap, DENSEST_FIRST);
+    const density = major.slice(0, free).map((m, i) => m + MINOR_WEIGHT * minor[i]);
+    const cellFor = rankCellsByDensity(density, layout.seeds.slice(0, free), cap, pin ? DENSEST_FIRST.filter(county => county !== 6) : DENSEST_FIRST);
+    if (pin) cellFor[5] = 5;
     const seeds = [...cellFor.map(i => layout.seeds[i]), layout.seeds[6]];
     const labels = [...cellFor.map(i => layout.labels[i]), layout.labels[6]];
     const span = Math.max(bbox[2] - bbox[0], bbox[3] - bbox[1]);

@@ -3,6 +3,7 @@ import { hashSeed } from '../game/rng';
 import { COUNTY_ARCHETYPES, REGIONAL_FLAVORS, regionalLandmark, type CountyArchetype } from './regionalCatalog';
 import { regionalLevel } from './regionalPlacement';
 import { regionById, REGIONS, type RegionDef } from './regions';
+import { cityPlanFor } from './cityPlans';
 import { countyBiome as climateCountyBiome, countyClimate } from './regionClimate';
 import { rollWeatherCondition, type SeasonId, type WeatherConditionId } from './season';
 
@@ -45,13 +46,18 @@ const COUNTY_NAMES: Readonly<Record<CountyArchetype['id'], string>> = {
 
 /** The capitol is named for what stands in it: the Governor's Mansion, or the region's statehouse. */
 export function countyName(region: RegionDef, archetype: CountyArchetype): string {
+  const city = cityPlanFor(region.id, archetype.index)?.name;
+  if (city) return city;
   if (archetype.id === 'capitol') return `${region.capitol} Capitol District — ${countyLevel(region, archetype).landmark.label}`;
   return `${region.name} ${COUNTY_NAMES[archetype.id]}`;
 }
 
 /** The county's level as it plays: the base level with the region's landmark, when it overrides the civic one. */
 export function countyLevel(region: RegionDef, archetype: CountyArchetype): CampaignLevelDef {
-  return regionalLevel(campaignLevelById(archetype.levelId), { landmark: regionalLandmark(region, archetype.index) });
+  return regionalLevel(campaignLevelById(archetype.levelId), {
+    landmark: regionalLandmark(region, archetype.index),
+    cityPlan: cityPlanFor(region.id, archetype.index),
+  });
 }
 
 /** The seven counties of one region; County 7 is always the capitol. */
@@ -62,7 +68,7 @@ export function regionCounties(region: RegionDef): CountyDef[] {
     index: archetype.index,
     name: countyName(region, archetype),
     shortName: archetype.id === 'capitol' ? `${region.capitol} Capitol District` : countyName(region, archetype),
-    mapName: archetype.id === 'capitol' ? region.capitol : COUNTY_NAMES[archetype.id],
+    mapName: archetype.id === 'capitol' ? region.capitol : cityPlanFor(region.id, archetype.index)?.name ?? COUNTY_NAMES[archetype.id],
     archetype,
     level: countyLevel(region, archetype),
     seed: countySeed(region.id, archetype.index),

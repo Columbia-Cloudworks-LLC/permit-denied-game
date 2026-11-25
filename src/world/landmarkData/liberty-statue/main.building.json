@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "id": "liberty-statue",
+  "label": "LIBERTY STATUE",
+  "w": 7,
+  "d": 7,
+  "floors": 3,
+  "kind": "shop",
+  "construction": "concrete-bearing",
+  "roof": "flat",
+  "theme": "civic",
+  "windowStride": 8,
+  "wallColor": 12168856,
+  "features": {"porch": false, "awning": false, "parapet": true, "chimney": false, "garage": false},
+  "zones": {"residential": 0, "commercial": 0, "industrial": 0},
+  "traits": {"use": ["monument", "landmark"], "form": ["statue", "star-fort", "pedestal"], "style": ["granite", "copper"], "scale": ["monument"]},
+  "campaign": {"levels": {"city-downtown": 1}, "landmarkOnly": true, "urbanBands": ["downtown-core"]},
+  "partitions": false,
+  "connections": [],
+  "monument": {"figure": "liberty", "height": 13, "minimumSupport": 0.5, "warningDuration": 1.4, "fallDuration": 2.6, "bonus": 2500, "color": 7320474},
+  "sections": [
+    {"id": "fort", "role": "fort", "x": 0, "y": 0, "w": 7, "d": 7, "floor": 0, "floors": 1, "layout": "lobby.layout.json"},
+    {"id": "pedestal", "role": "pedestal", "x": 1, "y": 1, "w": 5, "d": 5, "floor": 1, "floors": 1, "layout": "shell.layout.json"},
+    {"id": "plinth", "role": "plinth", "x": 2, "y": 2, "w": 3, "d": 3, "floor": 2, "floors": 1, "layout": "shell.layout.json"}
+  ],
+  "openings": [
+    {"floor": 0, "side": "south", "at": 0.5, "kind": "door"}
+  ],
+  "facadeDetails": [
+    {"id": "steps", "kind": "entry-steps", "floor": 0, "gx": 3, "gy": 6, "side": "south", "width": 1}
+  ]
+}

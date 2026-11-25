@@ -52,6 +52,20 @@ describe('atlas geometry', () => {
     expect(countyLayout([square], [2, 8])).toEqual(layout);
   });
 
+  it('fixes a pinned city as the sixth seed, in its own cell', () => {
+    const layout = countyLayout([square], [2, 8], 7, 0, [8, 2]);
+    expect(layout.seeds).toHaveLength(7);
+    expect(layout.seeds[5]).toEqual([8, 2]);
+    expect(layout.seeds[6]).toEqual([2, 8]);
+    const cells = voronoiCells(layout.seeds, [0, 0, 10, 10]);
+    cells.forEach((cell, i) => expect(pointInRings(layout.seeds[i]!, [cell])).toBe(true));
+    for (const label of layout.labels) expect(pointInRings(label, [square])).toBe(true);
+    // The other five take the remaining ranks; County 6 is never ranked onto a free cell.
+    const cellFor = rankCellsByDensity([5, 4, 3, 2, 1], layout.seeds.slice(0, 5), [2, 8], DENSEST_FIRST.filter(county => county !== 6));
+    expect(cellFor[5]).toBeUndefined();
+    expect([...cellFor.slice(0, 5)].sort()).toEqual([0, 1, 2, 3, 4]);
+  });
+
   it('measures highway density per cell and ranks cells busiest first, ties nearest the capitol', () => {
     const seeds: Point[] = [[2.5, 5], [7.5, 5]];
     // Two roads in the left half, none in the right.

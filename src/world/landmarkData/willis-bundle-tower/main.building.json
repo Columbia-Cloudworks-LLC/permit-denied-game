@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "id": "willis-bundle-tower",
+  "label": "WILLIS BUNDLE TOWER",
+  "w": 9,
+  "d": 9,
+  "floors": 44,
+  "kind": "shop",
+  "construction": "concrete-bearing",
+  "roof": "flat",
+  "theme": "civic",
+  "windowStride": 1,
+  "wallColor": 2895926,
+  "features": {"porch": false, "awning": false, "parapet": true, "chimney": false, "garage": false},
+  "zones": {"residential": 0, "commercial": 0, "industrial": 0},
+  "traits": {"use": ["office-skyscraper", "landmark"], "form": ["bundled-tube", "antenna"], "style": ["international"], "scale": ["supertall"]},
+  "campaign": {"levels": {"city-downtown": 1}, "landmarkOnly": true, "urbanBands": ["downtown-core"]},
+  "partitions": false,
+  "connections": [],
+  "coreCollapse": {"supports": [{"x": 2, "y": 2, "weight": 1}, {"x": 2, "y": 6, "weight": 1}, {"x": 6, "y": 2, "weight": 1}, {"x": 6, "y": 6, "weight": 1}, {"x": 4, "y": 4, "weight": 2}, {"x": 4, "y": 2, "weight": 1}, {"x": 4, "y": 6, "weight": 1}], "capacityThreshold": 0.45, "warningDuration": 1.2, "duration": 6},
+  "sections": [
+    {"id": "base", "role": "base", "x": 0, "y": 0, "w": 9, "d": 9, "floor": 0, "floors": 1, "layout": "lobby.layout.json"},
+    {"id": "bundle", "role": "bundle", "x": 0, "y": 0, "w": 9, "d": 9, "floor": 1, "floors": 19, "layout": "office.layout.json"},
+    {"id": "tube-ne", "role": "tube-ne", "x": 6, "y": 0, "w": 3, "d": 3, "floor": 20, "floors": 8, "layout": "shell.layout.json"},
+    {"id": "tube-sw", "role": "tube-sw", "x": 0, "y": 6, "w": 3, "d": 3, "floor": 20, "floors": 8, "layout": "shell.layout.json"},
+    {"id": "tube-w", "role": "tube-w", "x": 0, "y": 3, "w": 3, "d": 3, "floor": 20, "floors": 16, "layout": "shell.layout.json"},
+    {"id": "tube-e", "role": "tube-e", "x": 6, "y": 3, "w": 3, "d": 3, "floor": 20, "floors": 16, "layout": "shell.layout.json"},
+    {"id": "tube-s", "role": "tube-s", "x": 3, "y": 6, "w": 3, "d": 3, "floor": 20, "floors": 16, "layout": "shell.layout.json"},
+    {"id": "tube-n", "role": "tube-n", "x": 3, "y": 0, "w": 3, "d": 3, "floor": 20, "floors": 22, "layout": "shell.layout.json"},
+    {"id": "tube-core", "role": "tube-core", "x": 3, "y": 3, "w": 3, "d": 3, "floor": 20, "floors": 22, "layout": "shell.layout.json"},
+    {"id": "antenna-n", "role": "antenna-n", "x": 4, "y": 1, "w": 1, "d": 1, "floor": 42, "floors": 2, "layout": "shell.layout.json"},
+    {"id": "antenna-core", "role": "antenna-core", "x": 4, "y": 4, "w": 1, "d": 1, "floor": 42, "floors": 2, "layout": "shell.layout.json"}
+  ],
+  "openings": [
+    {"floor": 0, "side": "south", "at": 0.5, "kind": "door"}
+  ],
+  "facadeDetails": [
+    {"id": "name", "kind": "signboard", "floor": 1, "gx": 3, "gy": 8, "side": "south", "width": 3, "text": "WILLIS TOWER"}
+  ]
+}

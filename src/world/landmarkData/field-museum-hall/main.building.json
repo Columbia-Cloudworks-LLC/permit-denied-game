@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "id": "field-museum-hall",
+  "label": "FIELD MUSEUM HALL",
+  "w": 14,
+  "d": 7,
+  "floors": 4,
+  "kind": "shop",
+  "construction": "concrete-bearing",
+  "roof": "flat",
+  "theme": "civic",
+  "windowStride": 2,
+  "wallColor": 14209728,
+  "features": {"porch": false, "awning": false, "parapet": true, "chimney": false, "garage": false},
+  "zones": {"residential": 0, "commercial": 0, "industrial": 0},
+  "traits": {"use": ["museum", "landmark"], "form": ["temple-front", "wings"], "style": ["neoclassical"], "scale": ["campus"]},
+  "campaign": {"levels": {"city-downtown": 1}, "landmarkOnly": true, "urbanBands": ["downtown-core"]},
+  "partitions": false,
+  "connections": [],
+  "sections": [
+    {"id": "hall", "role": "hall", "x": 0, "y": 0, "w": 14, "d": 7, "floor": 0, "floors": 2, "layout": "lobby.layout.json"},
+    {"id": "attic", "role": "attic", "x": 1, "y": 1, "w": 12, "d": 5, "floor": 2, "floors": 1, "layout": "shell.layout.json"},
+    {"id": "pediment", "role": "pediment", "x": 5, "y": 1, "w": 4, "d": 5, "floor": 3, "floors": 1, "layout": "shell.layout.json"}
+  ],
+  "openings": [
+    {"floor": 0, "side": "south", "at": 0.5, "kind": "door"}
+  ],
+  "facadeDetails": [
+    {"id": "portico", "kind": "porch", "floor": 0, "gx": 5, "gy": 6, "side": "south", "width": 4},
+    {"id": "steps", "kind": "entry-steps", "floor": 0, "gx": 5, "gy": 6, "side": "south", "width": 4},
+    {"id": "name", "kind": "signboard", "floor": 1, "gx": 5, "gy": 6, "side": "south", "width": 4, "text": "FIELD MUSEUM"}
+  ]
+}

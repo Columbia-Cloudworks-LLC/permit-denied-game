@@ -265,6 +265,7 @@ function buildingSnapshot(b: Building) {
     fixtures: b.fixtures.length, brokenFixtures: b.fixtures.filter(f => f.broken).length,
     details: b.facadeDetails.map(d => ({ id: d.id, kind: d.kind, pose: facadeDetailPose(b, d) })),
     corePhase: b.coreCollapse?.phase ?? null, elevatedTank: b.elevatedTank ? { ...b.elevatedTank } : null,
+    monument: b.monument ? { phase: b.monument.phase, support: b.monument.support, progress: b.monument.progress } : null,
     silos:b.silos?.map(s=>({id:s.definition.id,phase:s.phase,progress:s.progress})) ?? [] };
 }
 

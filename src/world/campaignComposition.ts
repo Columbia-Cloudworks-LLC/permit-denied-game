@@ -37,7 +37,7 @@ export interface CompositionReport {
 }
 
 function ordinaryBuildings(buildings: readonly Building[]): Building[] {
-  return buildings.filter(building => !building.campaignLandmark);
+  return buildings.filter(building => !building.campaignLandmark && !building.cityLandmark);
 }
 
 type CompositionRules = NonNullable<CampaignLevelDef['composition']>;

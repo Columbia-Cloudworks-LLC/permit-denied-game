@@ -11,8 +11,11 @@ export interface Archetype {
   canopy?: { columns: { x: number; y: number }[] };
   floorVoids?: { floor:number; x:number; y:number; w:number; d:number }[];
   elevatedTank?: import('../structure/elevatedTank').ElevatedTankDef;
+  monument?: import('../structure/monument').MonumentDef;
   facadeDetails?: FacadeDetailDef[];
   fasciaColor?: number;
+  /** One wall colour for the whole building, in place of the regional paint: a landmark's own stone, steel or copper. */
+  wallColor?: number;
   id: string;
   kind: BuildingKind;
   label: string;
@@ -73,17 +76,19 @@ const buildingShape: Shape = { version: 'number', id: 'string', kind: 'string', 
   roof: 'string', 'roofAxis?': 'string', theme: 'string', windowStride: 'number',
   'coreCollapse?': { supports: [{ x: 'number', y: 'number', weight: 'number' }], capacityThreshold: 'number', warningDuration: 'number', duration: 'number' },
   'elevatedTank?': { radius: 'number', height: 'number', minimumLegs: 'number', warningDuration: 'number', fallDuration: 'number' },
+  'monument?': { figure: 'string', height: 'number', minimumSupport: 'number', warningDuration: 'number', fallDuration: 'number', bonus: 'number', color: 'number' },
   'canopy?': { columns: [{ x: 'number', y: 'number' }] },
   'silos?': [{ id:'string',gx:'number',gy:'number',diameter:'number',height:'number',minimumSupports:'number',feed:{gx:'number',gy:'number',floor:'number'} }],
   'openDecks?': { columns: [{ x: 'number', y: 'number' }] },
   'floorVoids?': [{ floor:'number', x:'number', y:'number', w:'number', d:'number' }],
-  'cellSize?': 'number', 'generationOrder?': 'number', 'fasciaColor?': 'number',
+  'cellSize?': 'number', 'generationOrder?': 'number', 'fasciaColor?': 'number', 'wallColor?': 'number',
   'traits?': { 'use?': ['string'], 'form?': ['string'], 'construction?': ['string'], 'style?': ['string'], 'era?': ['string'], 'scale?': ['string'] },
   features: { porch: 'boolean', awning: 'boolean', parapet: 'boolean', chimney: 'boolean', garage: 'boolean' },
   'facadeDetails?': [{ id: 'string', kind: 'string', floor: 'number', gx: 'number', gy: 'number', side: 'string', width: 'number', 'text?': 'string', 'faceColor?': 'number', 'trimColor?': 'number', 'textColor?': 'number' }],
   zones: { residential: 'number', commercial: 'number', industrial: 'number' },
   'campaign?': { levels: { '*': 'number' }, 'maxRepeats?': 'number', 'landmarkOnly?': 'boolean', 'zones?': ['string'], 'family?': 'string', 'exception?': 'boolean', 'urbanBands?': ['string'], 'streetRole?': 'string' } };
 
+const MONUMENT_FIGURE_IDS: readonly string[] = ['liberty'];
 const BUILDING_KINDS: readonly string[] = ['house', 'shop', 'industrial'];
 const ROOF_STYLES: readonly string[] = ['gable', 'flat', 'shed', 'sawtooth'];
 const ROOF_AXES: readonly string[] = ['x', 'y'];
@@ -112,6 +117,7 @@ export function validateBuildingDefinition(a: Archetype): string[] {
   coreCollapseIssues(a, issues);
   floorVoidIssues(a, issues);
   elevatedTankIssues(a, issues);
+  monumentIssues(a, issues);
   facadeDetailIssues(a, issues);
   if (!a.elevatedTank) issues.push(...validateLayout(a.layout, a.w, a.d, a.floors, occupiedMask(a), a.openings));
   for (const stair of a.layout.stairs ?? []) stairIssues(a, stair, issues);
@@ -179,6 +185,15 @@ function fixtureVoidIssues(a: Archetype, r: RoomDef, v: FloorVoid, issues: strin
     const x = (r.x + s.x * r.w) * a.w, y = (r.y + s.y * r.d) * a.d, w = s.w * r.w * a.w, d = s.d * r.d * a.d;
     if (x < v.x + v.w && x + w > v.x && y < v.y + v.d && y + d > v.y) issues.push('Fixture overlaps floor void: ' + s.id);
   }
+}
+/** A statue needs a low, flat-roofed plinth simulated cell by cell (at most three floors), and sane timings. */
+function monumentIssues(a: Archetype, issues: string[]): void {
+  const m = a.monument;
+  if (!m) return;
+  const host = a.roof === 'flat' && a.floors <= 3 && !a.coreCollapse && !a.elevatedTank && !a.silos?.length && !a.canopy && !a.openDecks;
+  const valid = MONUMENT_FIGURE_IDS.includes(m.figure) && within(m.height, 2, 24) && m.minimumSupport > 0 && m.minimumSupport < 1 &&
+    within(m.warningDuration, .2, 4) && within(m.fallDuration, 1, 6) && within(m.bonus, 0, 20000) && Number.isInteger(m.color) && within(m.color, 0, 0xffffff);
+  if (!host || !valid) issues.push('Invalid monument configuration');
 }
 function elevatedTankIssues(a: Archetype, issues: string[]): void {
   if (!a.elevatedTank) return;
