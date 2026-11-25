@@ -37,6 +37,7 @@ import {
 import { drawDozer, lookKey } from "./vehicles";
 import { facadeDetailCommand } from './facadeDetails';
 import { elevatedTankCommands } from './elevatedTank';
+import { monumentCommands } from './monument';
 import { siloCommands } from './silos';
 import { clearNhoodOverlay, drawNhoodOverlay } from "./nhoodOverlay";
 import { buildingHidesDozer, objectOcclusionFade, pieceHidesDozer, VisibilityFades, wallSpanFadeRuns } from "./occlusion";
@@ -449,8 +450,9 @@ export class WorldRenderer {
     const bw = b.w * b.cellSize;
     const bd = b.d * b.cellSize;
     // Rooftop plant stands above the parapet: keep it inside the building's cull box.
-    const z1 = b.floors * FLOOR_Z + (b.elevatedTank ? b.elevatedTank.definition.height + .5 : .8 + rooftopClearance(b));
-    const fall = 1.4;
+    const z1 = b.floors * FLOOR_Z + (b.elevatedTank ? b.elevatedTank.definition.height + .5 : b.monument ? b.monument.definition.height * 1.1 : .8 + rooftopClearance(b));
+    // A toppling statue lies its whole height beyond the plinth.
+    const fall = b.monument ? b.monument.definition.height + 2 : 1.4;
     frame.total += b.cells.length;
     if (!this.visibleBox(b.x - fall, b.y - fall, bw + fall * 2, bd + fall * 2, -0.4, z1)) return;
     if (buildingHidesDozer(dozer, b)) frame.occluded = true;
@@ -459,6 +461,7 @@ export class WorldRenderer {
       return;
     }
     if (b.silos) this.pushShown(frame, siloCommands(b, view));
+    if (b.monument) this.pushShown(frame, monumentCommands(b, view));
     // The aggregate mound owns the finished visual; a ground slab must not paint over it.
     if (b.coreCollapse?.phase === 'settled') return;
     if (b.coreCollapse?.phase === 'falling') this.pushCoreCollapse(frame, b, bw, bd);

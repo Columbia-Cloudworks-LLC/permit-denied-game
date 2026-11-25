@@ -132,8 +132,11 @@ export function ensureTerrainAtlas(): Promise<TerrainAtlas | null> {
 async function loadAtlas(): Promise<TerrainAtlas | null> {
   try {
     const sheet = await Assets.load(ATLAS_URL);
-    const source = (sheet?.texture as Texture | undefined) ?? Texture.WHITE;
-    const frames = atlasFrames((sheet?.textures ?? {}) as Record<string, Texture>, source);
+    const textures = (sheet?.textures ?? {}) as Record<string, Texture>;
+    // Pixi's Spritesheet no longer exposes a whole-sheet `texture`; build one over the frames' shared source.
+    const framed = Object.values(textures)[0];
+    const source = (sheet?.texture as Texture | undefined) ?? (framed ? new Texture({ source: framed.source }) : Texture.WHITE);
+    const frames = atlasFrames(textures, source);
     if (!frames.size) return fallbackAtlas();
     return { texture: source, frames, revision: atlasRevision + 1 };
   } catch {

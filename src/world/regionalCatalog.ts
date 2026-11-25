@@ -3,6 +3,7 @@ import type { BiomeId } from './biomes';
 // Regional landmark packages register themselves when this lazy chunk loads.
 import './landmarkPack';
 import { finishRegionalLayout } from './regionalBrands';
+import { cityPlanFor } from './cityPlans';
 import type { RegionCountry, RegionFlavorId } from './regions';
 import type { BrandSpec, RegionalLandmark, RegionalPlacement } from './regionalPlacement';
 
@@ -250,6 +251,7 @@ export function regionalPlacement(region: RegionRef | RegionFlavorId, countyInde
   const placement: RegionalPlacement = {
     flavor, archetype: countyArchetypeAt(countyIndex),
     landmark: regionalLandmark(region, countyIndex),
+    cityPlan: typeof region === 'string' ? undefined : cityPlanFor(region.id, countyIndex),
     brands: brandsForRegion(region),
   };
   placement.finish = (layout, seed) => finishRegionalLayout(placement, layout, seed);

@@ -1,6 +1,7 @@
 import { SIGNATURE_BONUS } from "../world/regionalPlacement";
 import { automaticCore, DETAILED_FLOORS, initializeCore, stepCoreCollapse, type CoreImpact } from './coreCollapse';
 import { initializeElevatedTank, stepElevatedTank } from './elevatedTank';
+import { initializeMonument, stepMonument, type MonumentImpact } from './monument';
 import { siloAt, siloSupports, stepSilos } from './silos';
 import { initializeFacadeDetails } from './facadeDetails';
 import { CELL } from "../game/constants";
@@ -315,6 +316,7 @@ export function createBuilding(spec: BuildingSpec, definition?: Archetype): Buil
     features,
     facadeDetails: structuredClone(spec.facadeDetails ?? archetype?.facadeDetails ?? []),
     fasciaColor: archetype?.fasciaColor,
+    wallColor: archetype?.wallColor,
     decorBoxes: makeDecor(spec, cellSize, features),
     fixtures: [],
     cells,
@@ -437,6 +439,7 @@ function initializeAssemblies(building: Building, archetype: Archetype | undefin
   if (archetype?.coreCollapse) initializeCore(building, archetype.coreCollapse);
   else if (building.floors > DETAILED_FLOORS && !building.elevatedTank) initializeCore(building, automaticCore(building));
   initializeFacadeDetails(building);
+  if (archetype?.monument) initializeMonument(building, archetype.monument);
 }
 
 /** Rooms, roofs and fixtures for every building that is not a bare tank frame. */
@@ -706,6 +709,8 @@ const DEAD_LOAD_DAMAGE: DeadLoadDamage = { cell: (...args) => applyCellDamage(..
 
 export interface StructureStepResult {
   coreImpacts: CoreImpact[];
+  /** Statues that came down this step. */
+  monumentImpacts: MonumentImpact[];
   cash: number;
   rubbleSpawns: {
     x: number;
@@ -722,6 +727,8 @@ export interface StructureStepResult {
     panelW?: number;
     panelD?: number;
     preservePanelPose?: boolean;
+    /** Colour for the bodies this spawn makes (`Rubble.tint`). */
+    tint?: number;
   }[];
   leans: { x: number; y: number; dx: number; dy: number; mag: number }[];
   fixtureFrags: FixtureFrag[];
@@ -739,7 +746,7 @@ export function stepStructures(
   events: WorldEvent[],
   stats?: StructureStepStats,
 ): StructureStepResult {
-  const result: StructureStepResult = { cash: 0, rubbleSpawns: [], leans: [], fixtureFrags: [], coreImpacts: [] };
+  const result: StructureStepResult = { cash: 0, rubbleSpawns: [], leans: [], fixtureFrags: [], coreImpacts: [], monumentImpacts: [] };
   const scratch: boolean[] = [];
   let stepped = 0;
   let skipped = 0;
@@ -771,6 +778,7 @@ function stepBuildingStructure(
   roofSpawns: RoofDebrisSpawn[],
 ): boolean {
   if (building.elevatedTank) stepElevatedTank(building, dt, result, particles, events);
+  if (building.monument) stepMonument(building, dt, result, particles, events);
   if (building.silos) {
     stepSilos(building, dt, result, particles);
     if (building.coreCollapse?.phase === 'settled') building.fullyDown = building.silos.every(s => s.phase === 'gone');
@@ -806,6 +814,7 @@ function buildingAllDown(building: Building): boolean {
   if (!building.rooftop.every((f) => f.state === "gone")) return false;
   if (building.floorTiles.some(t => !t.void && t.floor > 0 && t.state !== "gone")) return false;
   if (building.elevatedTank && building.elevatedTank.phase !== 'gone') return false;
+  if (building.monument && building.monument.phase !== 'gone') return false;
   return !building.silos || building.silos.every(s => s.phase === 'gone');
 }
 
@@ -902,6 +911,7 @@ function failureStagger(cell: Cell): number {
 function buildingStillUnsettled(building: Building): boolean {
   if (building.elevatedTank && ['warning','falling'].includes(building.elevatedTank.phase)) return true;
   if (building.silos?.some(s=>s.phase==='falling')) return true;
+  if (building.monument && ['warning','falling'].includes(building.monument.phase)) return true;
   if (building.fullyDown) return false;
   if (building.floorTiles.some(t => t.state === "falling")) return true;
   return anyCellUnsettled(building);

@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "id": "navy-pier-hall",
+  "label": "NAVY PIER HALL",
+  "w": 24,
+  "d": 3,
+  "floors": 5,
+  "kind": "shop",
+  "construction": "brick-mixed-use",
+  "roof": "flat",
+  "theme": "civic",
+  "windowStride": 2,
+  "wallColor": 11684410,
+  "features": {"porch": false, "awning": false, "parapet": true, "chimney": false, "garage": false},
+  "zones": {"residential": 0, "commercial": 0, "industrial": 0},
+  "traits": {"use": ["exhibition-pier", "landmark"], "form": ["long-shed", "twin-towers"], "style": ["beaux-arts"], "scale": ["pier"]},
+  "campaign": {"levels": {"city-downtown": 1}, "landmarkOnly": true, "urbanBands": ["downtown-core"]},
+  "partitions": false,
+  "connections": [],
+  "sections": [
+    {"id": "headhouse", "role": "headhouse", "x": 0, "y": 0, "w": 4, "d": 3, "floor": 0, "floors": 3, "layout": "lobby.layout.json"},
+    {"id": "tower-n", "role": "tower-n", "x": 1, "y": 0, "w": 1, "d": 1, "floor": 3, "floors": 2, "layout": "shell.layout.json"},
+    {"id": "tower-s", "role": "tower-s", "x": 1, "y": 2, "w": 1, "d": 1, "floor": 3, "floors": 2, "layout": "shell.layout.json"},
+    {"id": "shed", "role": "shed", "x": 4, "y": 0, "w": 16, "d": 3, "floor": 0, "floors": 2, "layout": "shell.layout.json"},
+    {"id": "ballroom", "role": "ballroom", "x": 20, "y": 0, "w": 4, "d": 3, "floor": 0, "floors": 3, "layout": "shell.layout.json"},
+    {"id": "dome", "role": "dome", "x": 21, "y": 1, "w": 2, "d": 1, "floor": 3, "floors": 1, "layout": "shell.layout.json"}
+  ],
+  "openings": [
+    {"floor": 0, "side": "south", "at": 0.5, "kind": "door"}
+  ],
+  "facadeDetails": [
+    {"id": "name", "kind": "signboard", "floor": 1, "gx": 8, "gy": 2, "side": "south", "width": 4, "text": "NAVY PIER"}
+  ]
+}

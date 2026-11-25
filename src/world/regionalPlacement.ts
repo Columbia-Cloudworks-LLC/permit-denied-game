@@ -1,5 +1,6 @@
 import type { Building, Prop } from '../structure/types';
 import type { CountyArchetype, RegionalFlavor } from './regionalCatalog';
+import type { CityPlan } from './cityPlan';
 
 /** A landmark the county plays instead of its level's civic one; same shape as `CampaignLandmarkSpec`. */
 export interface RegionalLandmark {
@@ -47,6 +48,8 @@ export interface RegionalPlacement {
   archetype: Pick<CountyArchetype, 'boosts' | 'signatures'>;
   /** Regional landmark for this county; absent keeps the level's own. */
   landmark?: RegionalLandmark;
+  /** The authored city this county plays as (`cityPlan.ts`); absent builds the level's generic town. */
+  cityPlan?: CityPlan;
   /** Brand skins this county may stamp, best match first. */
   brands?: readonly BrandSpec[];
   /**
@@ -67,8 +70,45 @@ export function regionalWeight(placement: RegionalPlacement | undefined, buildin
 }
 
 /** The level as this county plays it: its regional landmark when the region overrides the civic one. */
-export function regionalLevel<T extends { landmark: RegionalLandmark }>(level: T, placement: Pick<RegionalPlacement, 'landmark'> | undefined): T {
+export function regionalLevel<T extends PlayedLevel>(level: T, placement: Pick<RegionalPlacement, 'landmark' | 'cityPlan'> | undefined): T {
+  const plan = placement?.cityPlan;
+  if (plan) return cityPlanLevel(level, plan);
   return placement?.landmark ? { ...level, landmark: placement.landmark } : level;
+}
+
+interface PlayedLevel {
+  landmark: RegionalLandmark;
+  dollarTarget: number;
+  timeLimit: number;
+  generation: { buildingCount: number; parcel: { blockW: number; blockD: number } };
+}
+
+const planLevels = new WeakMap<CityPlan, Map<object, object>>();
+
+/**
+ * The level as a city plan plays it: the plan's first landmark is the objective, its fill count
+ * (plus that one landmark) is the building count, and it sets its own target and clock.
+ * Cached per plan and base level, so callers comparing levels by identity see one object.
+ */
+function cityPlanLevel<T extends PlayedLevel>(level: T, plan: CityPlan): T {
+  let byLevel = planLevels.get(plan);
+  if (!byLevel) planLevels.set(plan, byLevel = new Map());
+  const cached = byLevel.get(level);
+  if (cached) return cached as T;
+  const first = plan.landmarks[0]!;
+  const played: T = {
+    ...level,
+    landmark: { buildingId: first.buildingId, label: first.label, structureIds: [first.buildingId] },
+    dollarTarget: plan.dollarTarget,
+    timeLimit: plan.timeLimit,
+    generation: {
+      ...level.generation,
+      buildingCount: plan.fillCount + 1,
+      parcel: { ...level.generation.parcel, blockW: plan.block.w, blockD: plan.block.d },
+    },
+  };
+  byLevel.set(level, played);
+  return played;
 }
 
 /**

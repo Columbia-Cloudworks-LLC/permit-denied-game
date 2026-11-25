@@ -175,7 +175,8 @@ export function drawDebris(g: Graphics, r: Rubble): void {
   if (r.material === "glass") return drawGlassDebris(g, r, rng);
   drawOrientedGround(g, r.x, r.y, r.heading, r.w * 1.1, r.d * 1.1, PAL.shadow, 0.26);
   if (r.skin === "roofing") return drawRoofingDebris(g, r, h, rng);
-  const c = toned(cellColors(r.material, true), rng.range(0.84, 1.14));
+  const stock = r.tint === undefined ? cellColors(r.material, true) : { top: r.tint, left: shade(r.tint, 0.62), right: shade(r.tint, 0.8) };
+  const c = toned(stock, rng.range(0.84, 1.14));
   if (r.material === "brick") drawBrickDebris(g, r, h, rng, c);
   else if (r.material === "concrete") drawConcreteDebris(g, r, h, rng, c);
   else if (r.material === "metal") drawSteelDebris(g, r, h, rng, c);
@@ -190,7 +191,9 @@ const ROOFING_DEBRIS = {
 /** A torn roof panel: decking under its covering, and on shingles sometimes a folded flap. */
 function drawRoofingDebris(g: Graphics, r: Rubble, h: number, rng: Rng): void {
   const metal = r.material === "metal";
-  const { top, edge, under, underDark } = metal ? ROOFING_DEBRIS.metal : ROOFING_DEBRIS.shingle;
+  const { top, edge, under, underDark } = r.tint !== undefined
+    ? { top: r.tint, edge: shade(r.tint, 0.62), under: shade(r.tint, 0.5), underDark: shade(r.tint, 0.38) }
+    : metal ? ROOFING_DEBRIS.metal : ROOFING_DEBRIS.shingle;
   part(g, r, 0, 0, 0, r.w, r.d, 0, Math.max(0.04, h * 0.45), { top: under, left: underDark, right: under }, 0.95);
   part(g, r, 0, 0, 0, r.w * 0.9, r.d * 0.86, h * 0.28, Math.max(0.05, h * 0.72), { top, left: edge, right: edge });
   if (metal || rng.next() <= 0.55) return;

@@ -235,6 +235,8 @@ export interface Building {
   openDecks?: boolean;
   canopy?: boolean;
   elevatedTank?: import('./elevatedTank').ElevatedTankState;
+  /** A statue standing on this building (`monument.ts`). */
+  monument?: import('./monument').MonumentState;
   facadeDetails: import('./facadeDetails').FacadeDetailDef[];
   /** Regional dress from the map's climate zone (`stampRegionalExterior`); absent on yards and legacy maps. */
   region?: import("./regionalExterior").RegionalExterior;
@@ -246,6 +248,8 @@ export interface Building {
   streetFace?: import("./facadeTrim").StreetFace;
   /** Brand trim: flat/canopy roof eaves and awnings. Stamping it after creation must bump `visualRevision`. */
   fasciaColor?: number;
+  /** Authored wall colour (`Archetype.wallColor`); wins over the regional paint. */
+  wallColor?: number;
   /** Regional brand skin id, recorded as a Trophy Lot souvenir when the building falls. */
   brandId?: string;
   coreCollapse?: import("./coreCollapse").CoreCollapseState;
@@ -256,6 +260,8 @@ export interface Building {
   layout: import("./construction").LayoutDef;
   lotId: string | null;
   campaignLandmark?: boolean;
+  /** A city plan's pinned landmark other than the objective: never counted as ordinary fill. */
+  cityLandmark?: boolean;
   /** Regional signature label; pays SIGNATURE_BONUS on top of the collapse bonus. */
   regionalSignature?: string;
   /** How far the HUD has called the signature out: first hit, then collapse. */
@@ -349,6 +355,8 @@ export interface Rubble {
   thickness: number;
   mass: number;
   material: Material;
+  /** Colour override for wreckage that is not the stock material colour (a statue's copper). */
+  tint?: number;
   shape: DebrisShape;
   layer: DebrisLayer;
   skin: DebrisSkin;

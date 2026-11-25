@@ -74,6 +74,7 @@ export interface CollapseSpawn {
   panelW?: number;
   panelD?: number;
   preservePanelPose?: boolean;
+  tint?: number;
 }
 
 export function resetDebrisSim(seed = 0xdeb415): void {
@@ -313,6 +314,7 @@ export function spawnCollapseDebris(town: Town, spawn: CollapseSpawn, bodyLimit 
     burst.remaining = 0;
   }
   spawnCollapseMarks(burst);
+  if (spawn.tint !== undefined) for (const body of burst.created) body.tint = spawn.tint;
   return burst.created;
 }
 

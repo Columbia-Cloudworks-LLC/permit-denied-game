@@ -21,7 +21,7 @@ export interface GameSnapshot {
   rubble: number;
   marks: number;
   roadCar: { x: number; y: number } | null;
-  buildings: { name: string; states: Record<string, number> }[];
+  buildings: { name: string; states: Record<string, number>; monument?: string }[];
 }
 
 export interface DozerPose {

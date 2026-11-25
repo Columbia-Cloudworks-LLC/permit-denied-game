@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "id": "hancock-taper-tower",
+  "label": "HANCOCK TAPER TOWER",
+  "w": 8,
+  "d": 6,
+  "floors": 38,
+  "kind": "shop",
+  "construction": "concrete-bearing",
+  "roof": "flat",
+  "theme": "civic",
+  "windowStride": 1,
+  "wallColor": 2369067,
+  "features": {"porch": false, "awning": false, "parapet": true, "chimney": false, "garage": false},
+  "zones": {"residential": 0, "commercial": 0, "industrial": 0},
+  "traits": {"use": ["mixed-skyscraper", "landmark"], "form": ["tapered", "antenna"], "style": ["structural-expressionist"], "scale": ["supertall"]},
+  "campaign": {"levels": {"city-downtown": 1}, "landmarkOnly": true, "urbanBands": ["downtown-core"]},
+  "partitions": false,
+  "connections": [],
+  "coreCollapse": {"supports": [{"x": 2, "y": 2, "weight": 1}, {"x": 2, "y": 3, "weight": 1}, {"x": 4, "y": 2, "weight": 2}, {"x": 4, "y": 3, "weight": 1}, {"x": 5, "y": 2, "weight": 1}, {"x": 5, "y": 3, "weight": 1}], "capacityThreshold": 0.45, "warningDuration": 1.2, "duration": 6},
+  "sections": [
+    {"id": "base", "role": "base", "x": 0, "y": 0, "w": 8, "d": 6, "floor": 0, "floors": 1, "layout": "lobby.layout.json"},
+    {"id": "lower", "role": "lower", "x": 0, "y": 0, "w": 8, "d": 6, "floor": 1, "floors": 11, "layout": "office.layout.json"},
+    {"id": "middle", "role": "middle", "x": 1, "y": 0, "w": 6, "d": 6, "floor": 12, "floors": 12, "layout": "office.layout.json"},
+    {"id": "upper", "role": "upper", "x": 1, "y": 1, "w": 6, "d": 4, "floor": 24, "floors": 8, "layout": "office.layout.json"},
+    {"id": "top", "role": "top", "x": 2, "y": 1, "w": 4, "d": 4, "floor": 32, "floors": 3, "layout": "shell.layout.json"},
+    {"id": "antenna-w", "role": "antenna-w", "x": 2, "y": 2, "w": 1, "d": 1, "floor": 35, "floors": 3, "layout": "shell.layout.json"},
+    {"id": "antenna-e", "role": "antenna-e", "x": 5, "y": 3, "w": 1, "d": 1, "floor": 35, "floors": 3, "layout": "shell.layout.json"}
+  ],
+  "openings": [
+    {"floor": 0, "side": "south", "at": 0.5, "kind": "door"}
+  ],
+  "facadeDetails": [
+    {"id": "name", "kind": "signboard", "floor": 1, "gx": 2, "gy": 5, "side": "south", "width": 4, "text": "HANCOCK"}
+  ]
+}

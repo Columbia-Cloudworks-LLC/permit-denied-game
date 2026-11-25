@@ -301,7 +301,7 @@ class Game {
       buildings: this.town.buildings.map((b) => {
         const states: Record<string, number> = {};
         for (const c of b.cells) states[c.state] = (states[c.state] ?? 0) + 1;
-        return { name: b.name, states };
+        return { name: b.name, states, ...(b.monument ? { monument: b.monument.phase } : {}) };
       }),
     };
   }
@@ -491,6 +491,7 @@ class Game {
 
   private levelOf(campaign: CampaignRun): CampaignLevelDef {
     const base = currentLevel(campaign), landmark = this.placement?.landmark;
+    if (this.placement?.cityPlan) return regionalLevel(base, this.placement);
     if (!landmark) return base;
     if (this.countyLevel?.id !== base.id || this.countyLevel.landmark !== landmark) this.countyLevel = regionalLevel(base, this.placement);
     return this.countyLevel;

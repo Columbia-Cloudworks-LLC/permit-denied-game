@@ -62,6 +62,10 @@ Ordinary = building count minus the landmark. Evaluated in `evaluateUrbanFabric`
 
 Inspect a live map with `?mode=challenge&seed=19&level=city-downtown&nhood=1`. `window.__pd.urbanSnapshot()` prints band and role per lot (local dev, or production with `?debug=1`). `G` frames the whole town and does not draw the diagnostic graph. `?nhood=1` frames the town and turns the neighborhood graph on; lots are colored by band. The graph is also a Debug panel switch.
 
+## Authored cities
+
+A county with a city plan (Chicago, New York City) keeps these bands and the Downtown composition rules for its fill, but its roles come from the plan's cores instead of the lot cluster's centre, and its open spaces are the plan's named parks. See [city-plans](city-plans.md).
+
 ## Adding a building to a band
 
 1. Discover the package in the Asset Test Yard.

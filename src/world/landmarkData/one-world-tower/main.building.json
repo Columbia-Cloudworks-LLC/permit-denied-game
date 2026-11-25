@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "id": "one-world-tower",
+  "label": "ONE WORLD TOWER",
+  "w": 8,
+  "d": 8,
+  "floors": 42,
+  "kind": "shop",
+  "construction": "concrete-bearing",
+  "roof": "flat",
+  "theme": "civic",
+  "windowStride": 1,
+  "wallColor": 8365764,
+  "features": {"porch": false, "awning": false, "parapet": true, "chimney": false, "garage": false},
+  "zones": {"residential": 0, "commercial": 0, "industrial": 0},
+  "traits": {"use": ["office-skyscraper", "landmark"], "form": ["tapered", "mast"], "style": ["glass-curtain"], "scale": ["supertall"]},
+  "campaign": {"levels": {"city-downtown": 1}, "landmarkOnly": true, "urbanBands": ["downtown-core"]},
+  "partitions": false,
+  "connections": [],
+  "coreCollapse": {"supports": [{"x": 2, "y": 2, "weight": 1}, {"x": 2, "y": 5, "weight": 1}, {"x": 5, "y": 2, "weight": 1}, {"x": 5, "y": 5, "weight": 1}, {"x": 3, "y": 3, "weight": 2}, {"x": 4, "y": 4, "weight": 1}], "capacityThreshold": 0.45, "warningDuration": 1.2, "duration": 6},
+  "sections": [
+    {"id": "base", "role": "base", "x": 0, "y": 0, "w": 8, "d": 8, "floor": 0, "floors": 1, "layout": "lobby.layout.json"},
+    {"id": "podium", "role": "podium", "x": 0, "y": 0, "w": 8, "d": 8, "floor": 1, "floors": 3, "layout": "office.layout.json"},
+    {"id": "shaft", "role": "shaft", "x": 1, "y": 1, "w": 6, "d": 6, "floor": 4, "floors": 22, "layout": "office.layout.json"},
+    {"id": "taper", "role": "taper", "x": 1, "y": 1, "w": 5, "d": 5, "floor": 26, "floors": 8, "layout": "office.layout.json"},
+    {"id": "top", "role": "top", "x": 2, "y": 2, "w": 4, "d": 4, "floor": 34, "floors": 4, "layout": "shell.layout.json"},
+    {"id": "mast-base", "role": "mast-base", "x": 3, "y": 3, "w": 2, "d": 2, "floor": 38, "floors": 1, "layout": "shell.layout.json"},
+    {"id": "mast", "role": "mast", "x": 3, "y": 3, "w": 1, "d": 1, "floor": 39, "floors": 3, "layout": "shell.layout.json"}
+  ],
+  "openings": [
+    {"floor": 0, "side": "south", "at": 0.5, "kind": "door"}
+  ],
+  "facadeDetails": [
+    {"id": "name", "kind": "signboard", "floor": 1, "gx": 2, "gy": 7, "side": "south", "width": 4, "text": "ONE WORLD"}
+  ]
+}

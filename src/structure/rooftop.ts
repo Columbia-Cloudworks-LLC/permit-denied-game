@@ -76,7 +76,7 @@ function foodTagged(building: Building): boolean {
 
 /** Which equipment family an occupancy puts on its roof; null leaves the roof bare. */
 export function rooftopKit(building: Building): RooftopKit | null {
-  if (building.canopy || building.openDecks || building.elevatedTank) return null;
+  if (building.canopy || building.openDecks || building.elevatedTank || building.monument) return null;
   const id = building.archetypeId;
   const listed = KIT_BY_ID[id] ?? (id.startsWith("office-") ? "office" : undefined);
   if (listed) return listed;
