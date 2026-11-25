@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "id": "bellagio-crescent-resort",
+  "label": "BELLAGIO CRESCENT RESORT",
+  "w": 8,
+  "d": 20,
+  "floors": 24,
+  "kind": "shop",
+  "construction": "concrete-bearing",
+  "roof": "flat",
+  "theme": "civic",
+  "windowStride": 2,
+  "wallColor": 14930608,
+  "features": {"porch": false, "awning": false, "parapet": true, "chimney": false, "garage": false},
+  "zones": {"residential": 0, "commercial": 0, "industrial": 0},
+  "traits": {"use": ["resort-hotel", "landmark"], "form": ["crescent", "cupola"], "style": ["italianate"], "scale": ["resort"]},
+  "campaign": {"levels": {"city-downtown": 1}, "landmarkOnly": true, "urbanBands": ["downtown-core"]},
+  "partitions": false,
+  "connections": [],
+  "sections": [
+    {"id": "podium", "role": "podium", "x": 0, "y": 0, "w": 8, "d": 20, "floor": 0, "floors": 1, "layout": "lobby.layout.json"},
+    {"id": "casino", "role": "casino", "x": 0, "y": 0, "w": 8, "d": 20, "floor": 1, "floors": 1, "layout": "shell.layout.json"},
+    {"id": "centre", "role": "centre", "x": 0, "y": 6, "w": 4, "d": 8, "floor": 2, "floors": 21, "layout": "rooms.layout.json"},
+    {"id": "wing-north", "role": "wing-north", "x": 1, "y": 3, "w": 4, "d": 3, "floor": 2, "floors": 19, "layout": "rooms.layout.json"},
+    {"id": "tip-north", "role": "tip-north", "x": 3, "y": 0, "w": 4, "d": 3, "floor": 2, "floors": 17, "layout": "rooms.layout.json"},
+    {"id": "wing-south", "role": "wing-south", "x": 1, "y": 14, "w": 4, "d": 3, "floor": 2, "floors": 19, "layout": "rooms.layout.json"},
+    {"id": "tip-south", "role": "tip-south", "x": 3, "y": 17, "w": 4, "d": 3, "floor": 2, "floors": 17, "layout": "rooms.layout.json"},
+    {"id": "cupola", "role": "cupola", "x": 1, "y": 9, "w": 2, "d": 2, "floor": 23, "floors": 1, "layout": "shell.layout.json"}
+  ],
+  "openings": [
+    {"floor": 0, "side": "south", "at": 0.5, "kind": "door"}
+  ],
+  "facadeDetails": [
+    {"id": "name", "kind": "signboard", "floor": 1, "gx": 7, "gy": 8, "side": "east", "width": 4, "text": "BELLAGIO"}
+  ]
+}

@@ -1,7 +1,7 @@
 import { pointInPoly } from '../game/math';
 import type { RoadClass } from '../structure/types';
 import { linePoints, pt, type RoadBuilder, type RoadNode } from './roads';
-import type { TerrainSurface } from './terrain';
+import { groundMixAt, type TerrainSurface } from './terrain';
 
 /**
  * A city plan is the authored geography of one real place, played as a Downtown county:
@@ -33,6 +33,38 @@ export interface CityPlanPark {
   d: number;
   /** Trees scattered over the lawn; ponds come from the plan's `water`. */
   trees?: number;
+  /** Catalog asset planted as the park's tree; absent is `mature-tree`. */
+  tree?: string;
+  /** Ground of a paved or bare plaza in place of lawn. Lots stay out of it all the same. */
+  cover?: PlanGround;
+}
+
+/** Open ground a plan may choose where it is not turf. */
+export type PlanGround = 'grass' | 'scrub' | 'dirt' | 'gravel' | 'sand';
+
+/** Jets playing on a piece of the plan's water: a row from (`x0`, `y0`) to (`x1`, `y1`). Drawn only. */
+export interface CityPlanFountain {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+  jets: number;
+  /** Peak height of the tallest jet, in world units. */
+  height: number;
+}
+
+/** A vaulted canopy over one stretch of a street, on columns at the kerb. Drawn only: nothing collides with it. */
+export interface CityPlanCanopy {
+  name: string;
+  axis: 'x' | 'y';
+  /** The street's own `at`. */
+  at: number;
+  from: number;
+  to: number;
+  /** Half the span across the street, and the height of the crown. */
+  halfWidth: number;
+  height: number;
+  color: number;
 }
 
 export interface CityPlanLandmark {
@@ -41,6 +73,10 @@ export interface CityPlanLandmark {
   /** North-west corner of the building footprint. */
   x: number;
   y: number;
+  /** Keep ordinary lots this far from the footprint: room for a figure wider than its plinth. */
+  clear?: number;
+  /** Keep ordinary lots this much further off on the camera side (south and east), so fill does not stand in front of it. */
+  view?: number;
 }
 
 /** Lots within `r` of a core are downtown-core; the transition ring and edge follow by distance. */
@@ -60,6 +96,13 @@ export interface CityPlan {
   land: readonly PlanPolygon[];
   /** Water cut back out of the land: rivers, ponds, harbour slips. */
   water?: readonly PlanPolygon[];
+  /**
+   * Dry-ground covers for the open land, mixed in drifts with the middle ones commonest. Absent is
+   * turf. With it set, only the parks are lawn, and they stay green under a desert climate.
+   */
+  ground?: readonly PlanGround[];
+  fountains?: readonly CityPlanFountain[];
+  canopies?: readonly CityPlanCanopy[];
   streets: readonly CityPlanStreet[];
   parks: readonly CityPlanPark[];
   /** Pinned landmarks. The first is the county's objective; the rest pay as regional signatures. */
@@ -75,19 +118,50 @@ export interface CityPlan {
 
 const toPoly = (ring: PlanPolygon) => ring.map(([x, y]) => ({ x, y }));
 
-/** Surface classifier for the plan: water, park lawn, or plain ground. */
+/** A plan's drawn-only dressing, carried on the town for the renderer. */
+export interface CityDecor {
+  fountains: readonly CityPlanFountain[];
+  canopies: readonly CityPlanCanopy[];
+}
+
+export function planDecor(plan: CityPlan | undefined): CityDecor | undefined {
+  if (!plan?.fountains?.length && !plan?.canopies?.length) return undefined;
+  return { fountains: plan.fountains ?? [], canopies: plan.canopies ?? [] };
+}
+
+const GROUND_SALT = 0x9d5e7;
+
+/** Surface classifier for the plan: water, park lawn, or the plan's open ground. */
 export function planSurfaceAt(plan: CityPlan): (x: number, y: number) => TerrainSurface {
   const land = plan.land.map(toPoly);
   const water = (plan.water ?? []).map(toPoly);
+  const ground = plan.ground?.length ? plan.ground : undefined;
   return (x, y) => {
     if (!land.some(ring => pointInPoly(x, y, ring))) return 'water';
     if (water.some(ring => pointInPoly(x, y, ring))) return 'water';
-    return 'grass';
+    const park = planParkAt(plan, x, y);
+    if (park) return park.cover ?? 'grass';
+    return ground ? groundMixAt(x, y, GROUND_SALT, ground) : 'grass';
   };
+}
+
+/** Park lawns are watered where the plan's open ground is dry; undefined when the whole plan is turf. */
+export function planIrrigatedAt(plan: CityPlan): ((x: number, y: number) => boolean) | undefined {
+  return plan.ground?.length ? (x, y) => { const park = planParkAt(plan, x, y); return !!park && !park.cover; } : undefined;
 }
 
 export function planParkAt(plan: CityPlan, x: number, y: number, pad = 0): CityPlanPark | undefined {
   return plan.parks.find(park => x >= park.x - pad && x <= park.x + park.w + pad && y >= park.y - pad && y <= park.y + park.d + pad);
+}
+
+/** A box inside the clear ground a pinned landmark asks for around its footprint. */
+export function boxInLandmarkClearance(plan: CityPlan, footprints: ReadonlyMap<string, { x: number; y: number; w: number; d: number }>, box: { x: number; y: number; w: number; d: number }): boolean {
+  return plan.landmarks.some(pin => {
+    const at = pin.clear || pin.view ? footprints.get(pin.buildingId) : undefined;
+    if (!at) return false;
+    const pad = pin.clear ?? 0, near = pad + (pin.view ?? 0);
+    return box.x < at.x + at.w + near && box.x + box.w > at.x - pad && box.y < at.y + at.d + near && box.y + box.d > at.y - pad;
+  });
 }
 
 /** A box touches a park when it overlaps the lawn itself (the bounding streets are outside it). */

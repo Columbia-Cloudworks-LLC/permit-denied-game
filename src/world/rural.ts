@@ -44,7 +44,7 @@ import {
 } from "./urbanGeography";
 import type { UrbanBand } from "./urbanBands";
 import { ARCHETYPES, archetypeById, type Archetype } from "./archetypes";
-import { boxInPlanPark, buildPlanStreets, planRadius, planSurfaceAt, type CityPlan } from "./cityPlan";
+import { boxInLandmarkClearance, boxInPlanPark, buildPlanStreets, planDecor, planIrrigatedAt, planRadius, planSurfaceAt, type CityDecor, type CityPlan } from "./cityPlan";
 import { createBuildingFromArchetype } from "../structure/building";
 import {
   curvePoints,
@@ -117,6 +117,8 @@ export interface RuralLayout {
   diagnostic: { ok: boolean; issues: LayoutIssue[] };
   nhood: NhoodDebug;
   urban?: UrbanGeographyReport;
+  /** Fountains and canopies an authored city draws; absent on every generic town. */
+  cityDecor?: CityDecor;
 }
 
 function pickTopology(rng: Rng, count: number): TopologyFamily {
@@ -209,7 +211,7 @@ function generateRuralLayoutInner(
   const originX = 4;
   const originY = 4;
   const surface = plan
-    ? paintSurfaceGrid({ minX: 0, minY: 0, maxX: plan.width, maxY: plan.depth }, seed, planSurfaceAt(plan))
+    ? paintSurfaceGrid({ minX: 0, minY: 0, maxX: plan.width, maxY: plan.depth }, seed, planSurfaceAt(plan), planIrrigatedAt(plan))
     : ruralSurface(seed, biome, count, campaign, originX, originY, climate);
   const b = plan ? new RoadBuilder() : pickSkeleton(surface, topology, count, originX, originY, seed, campaign).builder;
   if (plan) buildPlanStreets(b, plan);
@@ -297,6 +299,7 @@ function generateRuralLayoutInner(
     diagnostic: { ok: run.issues.length === 0 && kept.length === count, issues: run.issues },
     nhood: { rejected: run.rejected, urban },
     urban,
+    cityDecor: planDecor(plan),
   };
 }
 
@@ -471,7 +474,8 @@ function planLotPool(run: RuralPlacement, plan: CityPlan, campaign: CampaignLeve
   const pinned = new Set(run.kept.map(lot => lot.id));
   const alloc = allocateFrontage(run.publicSegs(), b.nodes, count * 8, new Rng(seed ^ 0x51a11), run.kept, b.segments, run.surface);
   run.rejected.push(...alloc.rejected);
-  const pool = alloc.lots.filter(lot => !pinned.has(lot.id) && !boxInPlanPark(plan, lot) && lotWaterShare(run.surface, { x: lot.x, y: lot.y, w: lot.w, d: lot.d }) <= 0.08);
+  const footprints = new Map(run.buildings.map(building => [building.archetypeId, { x: building.x, y: building.y, w: building.w * building.cellSize, d: building.d * building.cellSize }]));
+  const pool = alloc.lots.filter(lot => !pinned.has(lot.id) && !boxInPlanPark(plan, lot) && !boxInLandmarkClearance(plan, footprints, lot) && lotWaterShare(run.surface, { x: lot.x, y: lot.y, w: lot.w, d: lot.d }) <= 0.08);
   const urban = classifyUrbanGeography(campaign, pool, b.segments, b.nodes, (x, y) => planRadius(plan, x, y));
   urban.openSpaces = plan.parks.map((park, index) => ({
     id: `park${index}`, kind: "park", name: park.name, x: park.x, y: park.y, w: park.w, d: park.d, band: "downtown-core",
@@ -491,7 +495,7 @@ function plantPlanParks(plan: CityPlan, props: Prop[], network: RoadNetwork, sur
       if (surfaceAt(surface, x, y) === "water" || pointOnRoad(network, x, y)) continue;
       if (planted.some(tree => len(tree.x - x, tree.y - y) < 2.4)) continue;
       planted.push({ x, y });
-      props.push(spawnAsset("mature-tree", x - 0.4, y - 0.4, 0, rng.int(0, 2)));
+      props.push(spawnAsset(park.tree ?? "mature-tree", x - 0.4, y - 0.4, 0, rng.int(0, 2)));
     }
   }
 }

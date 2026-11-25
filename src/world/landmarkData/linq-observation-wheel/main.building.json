@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "id": "linq-observation-wheel",
+  "label": "LINQ OBSERVATION WHEEL",
+  "w": 9,
+  "d": 9,
+  "floors": 1,
+  "kind": "shop",
+  "construction": "concrete-bearing",
+  "roof": "flat",
+  "theme": "civic",
+  "windowStride": 2,
+  "wallColor": 12172484,
+  "features": {"porch": false, "awning": false, "parapet": true, "chimney": false, "garage": false},
+  "zones": {"residential": 0, "commercial": 0, "industrial": 0},
+  "traits": {"use": ["observation-wheel", "monument", "landmark"], "form": ["wheel"], "style": ["steel"], "scale": ["monument"]},
+  "campaign": {"levels": {"city-downtown": 1}, "landmarkOnly": true, "urbanBands": ["downtown-core"]},
+  "partitions": false,
+  "connections": [],
+  "monument": {"figure": "wheel", "height": 30, "minimumSupport": 0.5, "warningDuration": 1.4, "fallDuration": 3, "bonus": 2500, "color": 15330546},
+  "sections": [
+    {"id": "hall", "role": "hall", "x": 0, "y": 0, "w": 9, "d": 9, "floor": 0, "floors": 1, "layout": "lobby.layout.json"}
+  ],
+  "openings": [
+    {"floor": 0, "side": "south", "at": 0.5, "kind": "door"}
+  ],
+  "facadeDetails": [
+    {"id": "name", "kind": "signboard", "floor": 0, "gx": 3, "gy": 8, "side": "south", "width": 3, "text": "HIGH ROLLER"}
+  ]
+}

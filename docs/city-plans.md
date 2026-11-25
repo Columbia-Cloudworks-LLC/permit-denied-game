@@ -5,6 +5,7 @@ A city plan makes one region's Downtown county (County 6) a real place in miniat
 | Region | City | Plan | Landmarks |
 | --- | --- | --- | --- |
 | `US-IL` | Chicago | `src/world/cityPlans/chicago.ts` | Willis Tower (objective), Hancock Tower, Navy Pier, Field Museum, Shedd Aquarium, Adler Planetarium |
+| `US-NV` | Las Vegas | `src/world/cityPlans/lasVegas.ts` | The Strat (objective), the Sphere, the Venetian, Caesars Palace, the Bellagio and its fountain lake, the Eiffel Tower, the High Roller, the Luxor pyramid and its sphinx, the Welcome sign |
 | `US-NY` | New York City | `src/world/cityPlans/newYorkCity.ts` | Empire State Tower (objective), Chrysler Spire Tower, One World Tower, Flatiron Wedge, Statue of Liberty |
 
 Play one with `?mode=sandbox&region=US-NY&county=6` (or `mode=challenge`). Add `&nhood=1` to see lots coloured by urban band.
@@ -18,9 +19,12 @@ Play one with `?mode=sandbox&region=US-NY&county=6` (or `mode=challenge`). Add `
 | `width`, `depth` | Map size. Everything outside `land` is open water. |
 | `land` | Rings of dry ground: the mainland or island, piers, causeways. |
 | `water` | Rings cut back out of the land: rivers, ponds. |
+| `ground` | Dry covers for the open land (`scrub`, `dirt`, `gravel`, `sand`), mixed in drifts with the middle of the list commonest. Absent is turf. With it set, only the parks are lawn. |
 | `streets` | Straight streets. `axis: 'x'` runs east-west along `y = at`; `'y'` runs north-south along `x = at`. A node is made wherever two cross or one ends. A street that crosses water is a bridge. A street that reaches the map edge is a traffic exit; plans get no generated edge roads. |
-| `parks` | Named lawns. No lot may overlap one. `trees` scatters trees over it. |
-| `landmarks` | Pinned buildings, by package id and north-west corner. The first is the county's objective; the others are tagged as signatures and pay the signature bonus. |
+| `parks` | Named lawns. No lot may overlap one. `trees` scatters trees over it, of the catalog asset `tree` (default `mature-tree`). `cover` makes it a plaza of that ground instead of lawn. |
+| `landmarks` | Pinned buildings, by package id and north-west corner. The first is the county's objective; the others are tagged as signatures and pay the signature bonus. `clear` keeps ordinary lots that far from the footprint, for a drawn figure wider than its plinth. `view` keeps them that much further off on the camera side only (south and east), so fill does not stand in front of it. |
+| `fountains` | Rows of jets on the plan's water. Drawn only. |
+| `canopies` | A vaulted canopy over one stretch of a street. Drawn only: nothing collides with it, and it thins out over the dozer. |
 | `cores` | Circles that are `downtown-core`. Roles fall off with distance from the nearest core, to `borough-edge` at worst. |
 | `fillCount` | Ordinary buildings between the landmarks. |
 | `dollarTarget`, `timeLimit` | Time Challenge target and clock for this county. |
@@ -32,16 +36,20 @@ The county's level is City Downtown with the plan's objective, building count (`
 
 In `generateRuralLayoutInner` (`src/world/rural.ts`), a plan replaces four steps and leaves the rest alone:
 
-1. **Surface.** `paintSurfaceGrid` paints water and ground from the plan instead of generating ponds, woods and fields. The biome quota pass is skipped, so parks and vacant blocks stay green.
+1. **Surface.** `paintSurfaceGrid` paints water and ground from the plan instead of generating ponds, woods and fields. The biome quota pass is skipped, so parks and vacant blocks stay as authored.
 2. **Streets.** `buildPlanStreets` builds the plan's grid instead of a topology skeleton. Streets are never trimmed.
 3. **Landmarks.** `placePlanLandmarks` stands each pinned building on a lot cut to its footprint, with a driveway from the nearest street, before any other lot exists.
 4. **Lots.** `planLotPool` cuts frontage along every street, then drops lots that overlap a park or sit more than 8% over water. Roles come from the plan's cores.
 
-Ordinary fill, composition checks, driveways, dressing, traffic and spawns are the generic code. If the fill cannot meet the Downtown composition rules the layout throws, as it does for any city level, so a plan must leave enough buildable frontage for its `fillCount`.
+Ordinary fill, composition checks, driveways, dressing, traffic and spawns are the generic code. So are the county's climate dressing and landforms: Nevada's Downtown resolves to the Mojave, so Las Vegas gets Joshua trees, creosote, boulders and the odd butte on its open ground with no help from the plan. If the fill cannot meet the Downtown composition rules the layout throws, as it does for any city level, so a plan must leave enough buildable frontage for its `fillCount`.
+
+## Desert ground
+
+A plan in a desert climate needs `ground`. Without it the plan's land is all `grass`: the renderer already draws turf as bare soil under a snowless desert climate, so the map would look dry, but the simulation would still call it lawn and the parks could never be green. With `ground` set, the open land is the listed covers and each park lawn is marked watered on the surface grid (`SurfaceGrid.irrigated`), which exempts it from the bare-soil rule and the soil wash. Las Vegas uses `['scrub', 'dirt', 'dirt', 'sand']`, a palm-planted golf course as its one lawn, and `gravel` plazas round the fountain lake and beside the Fremont canopy.
 
 ## Landmark packages
 
-City landmarks are ordinary landmark packages in `src/world/landmarkData/`, loaded with the lazy overworld chunk (`landmarkPack.ts`). They are `landmarkOnly`, carry zero zone weights, and list `city-downtown` in `campaign.levels`. A package may set `wallColor` to give the whole building one wall colour in place of the regional paint (the statue's copper green, the Willis Tower's black steel). Tapered and stepped towers are stacked `sections`; a mast or spire is a one-cell section. The Statue of Liberty is a [monument](monument-authoring.md): a drawn copper figure on a destructible stone foundation that topples and shatters when half the fort wall is gone.
+City landmarks are ordinary landmark packages in `src/world/landmarkData/`, loaded with the lazy overworld chunk (`landmarkPack.ts`). They are `landmarkOnly`, carry zero zone weights, and list `city-downtown` in `campaign.levels`. A package may set `wallColor` to give the whole building one wall colour in place of the regional paint (the statue's copper green, the Willis Tower's black steel). Tapered and stepped towers are stacked `sections`; a mast or spire is a one-cell section. A section marked `cantilever` may project past the floor below it (the Strat's pod); see [construction authoring](construction-authoring.md#flat-layouts-and-sections). Shapes that cells cannot make are [monuments](monument-authoring.md): a drawn figure on a destructible foundation that comes down when half the foundation's wall is gone. The Statue of Liberty, the Eiffel Tower, the High Roller and the Welcome sign topple; the sphinx crumbles; the Sphere rolls.
 
 Names are descriptive rather than trademarks where the real one is a brand (`willis-bundle-tower`, `one-world-tower`).
 
@@ -51,6 +59,6 @@ Names are descriptive rather than trademarks where the real one is a brand (`wil
 2. Author its landmark packages in `src/world/landmarkData/<id>/` and pin them in the plan. Leave 0.6 units between a pinned footprint and the pavement.
 3. Add the city's longitude and latitude to `src/world/cityPlanSites.ts`, then rebuild the atlas (`node scripts/build-atlas-data.mjs`) so the state sheet seeds County 6 at the real place.
 4. Run `npx vitest run src/world/cityPlan.test.ts src/world/landmarkPack.test.ts src/world/atlas.test.ts`. The city test builds every planned county and checks that each landmark stands exactly where pinned, the fill is a legal Downtown mix, nothing stands in water, on a street or in a park, and the spawn can reach every street.
-5. Play it. A map that reads half empty needs a higher `fillCount` or less land; a generation error naming the composition needs a lower one or more street frontage.
+5. Play it. A map that reads half empty needs a higher `fillCount` or less land; a generation error naming the composition needs a lower one or more street frontage. Downtown fill runs to twenty floors and more, so a landmark hotel shorter than that disappears among it, and a drawn figure with fill on its south-east side is hidden from the camera: give it `clear`, and `view` if the fill is across a street.
 
 One city per region, and only County 6. Counties 1 to 5 and the capitol are unchanged.

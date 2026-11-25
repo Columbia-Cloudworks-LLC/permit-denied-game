@@ -73,6 +73,8 @@ export interface SurfaceGrid {
   surface: Uint8Array;
   variant: Uint8Array;
   stampRevision: number;
+  /** Watered turf that stays green on a desert floor (a city plan's parks); absent on generated maps. */
+  irrigated?: Uint8Array;
 }
 
 export interface TerrainBounds {
@@ -368,10 +370,14 @@ export function paintSurfaceGrid(
   bounds: TerrainBounds,
   seed: number,
   classify: (x: number, y: number) => TerrainSurface,
+  irrigated?: (x: number, y: number) => boolean,
 ): SurfaceGrid {
   const grid = createSurfaceGrid(bounds.minX, bounds.minY, Math.ceil(bounds.maxX - bounds.minX), Math.ceil(bounds.maxY - bounds.minY));
+  if (irrigated) grid.irrigated = new Uint8Array(grid.surface.length);
   forEachSurfaceCell(grid, (i, ix, iy) => {
-    grid.surface[i] = SURFACE_ID[classify(grid.ox + (ix + 0.5) * grid.cell, grid.oy + (iy + 0.5) * grid.cell)];
+    const x = grid.ox + (ix + 0.5) * grid.cell, y = grid.oy + (iy + 0.5) * grid.cell;
+    grid.surface[i] = SURFACE_ID[classify(x, y)];
+    if (irrigated?.(x, y)) grid.irrigated![i] = 1;
   });
   paintWetEdge(grid);
   fillVariants(grid, (seed ^ TERRAIN_GEN_VERSION) >>> 0);
@@ -611,6 +617,12 @@ function valueNoise(x: number, y: number, seed: number, freq: number): number {
 
 function fbm2(x: number, y: number, seed: number, freq: number): number {
   return valueNoise(x, y, seed, freq) * 0.65 + valueNoise(x, y, seed ^ 0x9e3779b9, freq * 2) * 0.35;
+}
+
+/** One of `covers` by slow terrain noise, so open ground changes in drifts rather than speckle. The middle covers are the commonest. */
+export function groundMixAt<T>(x: number, y: number, seed: number, covers: readonly T[]): T {
+  const n = fbm2(x, y, seed ^ 0x6d1f, 0.06) * 0.7 + fbm2(x, y, seed ^ 0x2b7, 0.19) * 0.3;
+  return covers[Math.min(covers.length - 1, Math.max(0, Math.floor((n - 0.2) / 0.6 * covers.length)))]!;
 }
 
 function lerp(a: number, b: number, t: number): number {

@@ -1,6 +1,6 @@
 import { stepVehicleWorld, migrateVehicles } from '../vehicle/world';
 import { applyCoreImpact } from './coreImpact';
-import { applyMonumentImpact } from './monumentImpact';
+import { applyMonumentImpact, applyMonumentRoll } from './monumentImpact';
 import { resistCorePile } from './corePileResistance';
 import { retireStructures } from './retirement';
 import { DEBRIS, DOZER } from "../game/constants";
@@ -283,7 +283,10 @@ function settleStructures(town: Town, dozer: Dozer, particles: ParticlePool, eve
   const struct = stepStructures(town.buildings, dt, particles, events, structStats);
   cash += struct.cash;
   for (const impact of struct.coreImpacts) applyCoreImpact(town, dozer, particles, impact, events);
-  for (const impact of struct.monumentImpacts) applyMonumentImpact(dozer, impact, events);
+  for (const impact of struct.monumentImpacts) {
+    if (impact.rolling) cash += applyMonumentRoll(town, dozer, impact, particles, events);
+    else applyMonumentImpact(dozer, impact, events);
+  }
   const bodyLimit = struct.rubbleSpawns.length + struct.fixtureFrags.length > 32 ? DEBRIS.activeCap : Infinity;
   for (const spawn of struct.rubbleSpawns) {
     spawnCollapseDebris(town, spawn, spawn.aggregate ? DEBRIS.activeCap : bodyLimit);

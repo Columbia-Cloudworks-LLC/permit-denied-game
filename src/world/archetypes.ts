@@ -67,7 +67,7 @@ const stairShape: Shape = { a:'string', b:'string', x:'number', y:'number', w:'n
 const layoutShape: Shape = { partitions: 'boolean', 'stairs?': [stairShape], 'connections?': [{ a: 'string', b: 'string', at: 'number', width: 'number' }], rooms: [{ id: 'string', kind: 'string', floor: 'number', x: 'number', y: 'number', w: 'number', d: 'number', finish: 'string',
   'floorDesigns?': [{ id: 'string', kind: 'string', x: 'number', y: 'number', w: 'number', d: 'number' }],
   contents: [{ id: 'string', kind: 'string', x: 'number', y: 'number', w: 'number', d: 'number', h: 'number', rotation: 'number' }] }] };
-const sectionShape: Shape = { id: 'string', role: 'string', x: 'number', y: 'number', w: 'number', d: 'number', floor: 'number', floors: 'number', layout: 'string' };
+const sectionShape: Shape = { id: 'string', role: 'string', x: 'number', y: 'number', w: 'number', d: 'number', floor: 'number', floors: 'number', layout: 'string', 'cantilever?': 'boolean' };
 const buildingShape: Shape = { version: 'number', id: 'string', kind: 'string', label: 'string', w: 'number', d: 'number', floors: 'number',
   construction: 'string', 'layout?': 'string', 'footprint?': [['string']], 'sections?': [sectionShape],
   'partitions?': 'boolean', 'connections?': [{ a: 'string', b: 'string', at: 'number', width: 'number' }],
@@ -76,7 +76,7 @@ const buildingShape: Shape = { version: 'number', id: 'string', kind: 'string', 
   roof: 'string', 'roofAxis?': 'string', theme: 'string', windowStride: 'number',
   'coreCollapse?': { supports: [{ x: 'number', y: 'number', weight: 'number' }], capacityThreshold: 'number', warningDuration: 'number', duration: 'number' },
   'elevatedTank?': { radius: 'number', height: 'number', minimumLegs: 'number', warningDuration: 'number', fallDuration: 'number' },
-  'monument?': { figure: 'string', height: 'number', minimumSupport: 'number', warningDuration: 'number', fallDuration: 'number', bonus: 'number', color: 'number' },
+  'monument?': { figure: 'string', 'fall?': 'string', 'reach?': 'number', height: 'number', minimumSupport: 'number', warningDuration: 'number', fallDuration: 'number', bonus: 'number', color: 'number' },
   'canopy?': { columns: [{ x: 'number', y: 'number' }] },
   'silos?': [{ id:'string',gx:'number',gy:'number',diameter:'number',height:'number',minimumSupports:'number',feed:{gx:'number',gy:'number',floor:'number'} }],
   'openDecks?': { columns: [{ x: 'number', y: 'number' }] },
@@ -88,7 +88,8 @@ const buildingShape: Shape = { version: 'number', id: 'string', kind: 'string', 
   zones: { residential: 'number', commercial: 'number', industrial: 'number' },
   'campaign?': { levels: { '*': 'number' }, 'maxRepeats?': 'number', 'landmarkOnly?': 'boolean', 'zones?': ['string'], 'family?': 'string', 'exception?': 'boolean', 'urbanBands?': ['string'], 'streetRole?': 'string' } };
 
-const MONUMENT_FIGURE_IDS: readonly string[] = ['liberty'];
+const MONUMENT_FIGURE_IDS: readonly string[] = ['liberty', 'lattice-tower', 'wheel', 'sign', 'sphere', 'sphinx'];
+const MONUMENT_FALL_IDS: readonly string[] = ['topple', 'crumble', 'roll'];
 const BUILDING_KINDS: readonly string[] = ['house', 'shop', 'industrial'];
 const ROOF_STYLES: readonly string[] = ['gable', 'flat', 'shed', 'sawtooth'];
 const ROOF_AXES: readonly string[] = ['x', 'y'];
@@ -135,7 +136,7 @@ function definitionHeaderIssue(a: Archetype, issues: string[]): string | undefin
   if (a.cellSize !== undefined && !(Number.isFinite(a.cellSize) && within(a.cellSize, .5, 4))) issues.push('cellSize must be 0.5–4 world units');
   if (a.layout.rooms.length > 256 || a.layout.rooms.reduce((n, r) => n + r.contents.length, 0) > 512) return 'Building exceeds 256 rooms or 512 contents';
   if (!knownStyle(a)) issues.push('Unknown building kind, roof, axis or theme');
-  if (!Number.isInteger(a.windowStride) || a.windowStride < 1 || Object.values(a.zones).some(n => !Number.isFinite(n) || n < 0)) issues.push('Invalid window stride or zoning weight');
+  if (!Number.isInteger(a.windowStride) || a.windowStride < 0 || Object.values(a.zones).some(n => !Number.isFinite(n) || n < 0)) issues.push('Invalid window stride or zoning weight');
   if (!footprintMatches(a)) return 'Footprint dimensions must match building dimensions and use # or .';
   return undefined;
 }
@@ -191,7 +192,8 @@ function monumentIssues(a: Archetype, issues: string[]): void {
   const m = a.monument;
   if (!m) return;
   const host = a.roof === 'flat' && a.floors <= 3 && !a.coreCollapse && !a.elevatedTank && !a.silos?.length && !a.canopy && !a.openDecks;
-  const valid = MONUMENT_FIGURE_IDS.includes(m.figure) && within(m.height, 2, 24) && m.minimumSupport > 0 && m.minimumSupport < 1 &&
+  const valid = MONUMENT_FIGURE_IDS.includes(m.figure) && within(m.height, 2, 48) && m.minimumSupport > 0 && m.minimumSupport < 1 &&
+    (m.fall === undefined || MONUMENT_FALL_IDS.includes(m.fall)) && (m.reach === undefined || (m.fall === 'roll' && within(m.reach, 4, 80))) &&
     within(m.warningDuration, .2, 4) && within(m.fallDuration, 1, 6) && within(m.bonus, 0, 20000) && Number.isInteger(m.color) && within(m.color, 0, 0xffffff);
   if (!host || !valid) issues.push('Invalid monument configuration');
 }
@@ -325,6 +327,8 @@ function openingIssue(a: Archetype, opening: OpeningDef): string | undefined {
 export interface SectionDef {
   id: string; role: string; x: number; y: number; w: number; d: number;
   floor: number; floors: number; layout: string;
+  /** May project past the floor below (a tower pod). Only above the cell-simulated floors of a core-collapse building. */
+  cantilever?: boolean;
 }
 interface BuildingPackage extends Omit<Archetype, 'construction' | 'layout' | 'footprint'> {
   version: number; construction: string; layout?: string; footprint?: string[][];
@@ -418,7 +422,7 @@ function compileSections(entry: BuildingPackage, readLayout: (ref: string) => La
     checkSection(entry, s, ids);
     const template = readSectionTemplate(s, readLayout);
     for (let f = s.floor; f < s.floor + s.floors; f++) {
-      stampSectionFloor(sections, s, f, mask);
+      stampSectionFloor(sections, s, f, mask, !!s.cantilever && !!entry.coreCollapse && s.floor >= 3);
       expandSectionFloor(entry, s, f, template, rooms, connections);
     }
   }
@@ -442,10 +446,10 @@ function readSectionTemplate(s: SectionDef, readLayout: (ref: string) => LayoutD
 }
 const sectionHolds = (b: SectionDef, floor: number, x: number, y: number): boolean =>
   b.floor <= floor && b.floor + b.floors > floor && x >= b.x && x < b.x + b.w && y >= b.y && y < b.y + b.d;
-function stampSectionFloor(sections: SectionDef[], s: SectionDef, f: number, mask: string[][][]): void {
+function stampSectionFloor(sections: SectionDef[], s: SectionDef, f: number, mask: string[][][], cantilever = false): void {
   for (let y = s.y; y < s.y + s.d; y++) for (let x = s.x; x < s.x + s.w; x++) {
     if (mask[f]![y]![x] === '#') throw new Error(`Section ${s.id}: overlaps another section at ${f}:${x},${y}`);
-    if (f > 0 && !sections.some(b => sectionHolds(b, f - 1, x, y))) throw new Error(`Section ${s.id}: unsupported overhang at ${f}:${x},${y}`);
+    if (f > 0 && !cantilever && !sections.some(b => sectionHolds(b, f - 1, x, y))) throw new Error(`Section ${s.id}: unsupported overhang at ${f}:${x},${y}`);
     mask[f]![y]![x] = '#';
   }
 }

@@ -38,6 +38,8 @@ import { drawDozer, lookKey } from "./vehicles";
 import { facadeDetailCommand } from './facadeDetails';
 import { elevatedTankCommands } from './elevatedTank';
 import { monumentCommands } from './monument';
+import { canopyBayCommand, canopyBays, fountainCommands } from './cityDecor';
+import { monumentSweep } from '../structure/monument';
 import { siloCommands } from './silos';
 import { clearNhoodOverlay, drawNhoodOverlay } from "./nhoodOverlay";
 import { buildingHidesDozer, objectOcclusionFade, pieceHidesDozer, VisibilityFades, wallSpanFadeRuns } from "./occlusion";
@@ -278,6 +280,7 @@ export class WorldRenderer {
     this.passProps(frame);
     this.passGarnish(frame);
     this.passLandforms(frame);
+    this.passCityDecor(frame);
     this.passDynamics(frame);
     this.passEffects(frame);
     this.submitDraw(frame);
@@ -451,8 +454,8 @@ export class WorldRenderer {
     const bd = b.d * b.cellSize;
     // Rooftop plant stands above the parapet: keep it inside the building's cull box.
     const z1 = b.floors * FLOOR_Z + (b.elevatedTank ? b.elevatedTank.definition.height + .5 : b.monument ? b.monument.definition.height * 1.1 : .8 + rooftopClearance(b));
-    // A toppling statue lies its whole height beyond the plinth.
-    const fall = b.monument ? b.monument.definition.height + 2 : 1.4;
+    // A toppling statue lies its whole height beyond the plinth; a rolling one travels its reach.
+    const fall = b.monument ? monumentSweep(b.monument.definition) : 1.4;
     frame.total += b.cells.length;
     if (!this.visibleBox(b.x - fall, b.y - fall, bw + fall * 2, bd + fall * 2, -0.4, z1)) return;
     if (buildingHidesDozer(dozer, b)) frame.occluded = true;
@@ -906,6 +909,30 @@ export class WorldRenderer {
         version: `${snow}:${detail}:${sliceAlpha}`,
         depth: depthKey(slice.depthX, slice.depthY, slice.top * 0.5),
         run: (g) => drawMesaSlice(g, slice, snow, detail, sliceAlpha),
+      });
+    }
+  }
+
+  private decorClock = 0;
+
+  /** An authored city's fountain jets and street canopies. A frozen lake plays no fountain. */
+  private passCityDecor(frame: RenderFrame): void {
+    const { town, view, dozer } = frame;
+    const decor = town.cityDecor;
+    if (!decor || !view.terrain) return;
+    this.decorClock += frame.dt;
+    if (!town.frozen && !frame.hideDressing) for (const fountain of decor.fountains) {
+      frame.total += fountain.jets;
+      const x = Math.min(fountain.x0, fountain.x1) - 1, y = Math.min(fountain.y0, fountain.y1) - 1;
+      if (!this.visibleBox(x, y, Math.abs(fountain.x1 - fountain.x0) + 2, Math.abs(fountain.y1 - fountain.y0) + 2, 0, fountain.height)) continue;
+      this.pushShown(frame, fountainCommands(fountain, this.decorClock));
+    }
+    for (const canopy of decor.canopies) {
+      canopyBays(canopy).forEach((bay, index) => {
+        frame.total++;
+        if (!this.visibleBox(bay.x, bay.y, bay.w, bay.d, 0, canopy.height)) return;
+        const under = dozer.x > bay.x - 3 && dozer.x < bay.x + bay.w + 3 && dozer.y > bay.y - 3 && dozer.y < bay.y + bay.d + 3;
+        this.pushShown(frame, [canopyBayCommand(canopy, bay, index, under ? 0.22 : 0.6)]);
       });
     }
   }

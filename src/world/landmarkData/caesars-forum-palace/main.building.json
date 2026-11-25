@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "id": "caesars-forum-palace",
+  "label": "CAESARS FORUM PALACE",
+  "w": 16,
+  "d": 12,
+  "floors": 22,
+  "kind": "shop",
+  "construction": "concrete-bearing",
+  "roof": "flat",
+  "theme": "civic",
+  "windowStride": 2,
+  "wallColor": 15525592,
+  "features": {"porch": false, "awning": false, "parapet": true, "chimney": false, "garage": false},
+  "zones": {"residential": 0, "commercial": 0, "industrial": 0},
+  "traits": {"use": ["resort-hotel", "landmark"], "form": ["podium", "towers", "temple-front"], "style": ["roman"], "scale": ["resort"]},
+  "campaign": {"levels": {"city-downtown": 1}, "landmarkOnly": true, "urbanBands": ["downtown-core"]},
+  "partitions": false,
+  "connections": [],
+  "sections": [
+    {"id": "forum", "role": "forum", "x": 0, "y": 0, "w": 16, "d": 12, "floor": 0, "floors": 1, "layout": "lobby.layout.json"},
+    {"id": "casino", "role": "casino", "x": 0, "y": 0, "w": 16, "d": 12, "floor": 1, "floors": 1, "layout": "shell.layout.json"},
+    {"id": "tower-centre", "role": "tower-centre", "x": 5, "y": 1, "w": 6, "d": 5, "floor": 2, "floors": 20, "layout": "rooms.layout.json"},
+    {"id": "tower-west", "role": "tower-west", "x": 0, "y": 2, "w": 4, "d": 8, "floor": 2, "floors": 14, "layout": "rooms.layout.json"},
+    {"id": "tower-east", "role": "tower-east", "x": 12, "y": 2, "w": 4, "d": 8, "floor": 2, "floors": 16, "layout": "rooms.layout.json"},
+    {"id": "temple", "role": "temple", "x": 6, "y": 8, "w": 4, "d": 3, "floor": 2, "floors": 1, "layout": "shell.layout.json"}
+  ],
+  "openings": [
+    {"floor": 0, "side": "south", "at": 0.5, "kind": "door"}
+  ],
+  "facadeDetails": [
+    {"id": "steps", "kind": "entry-steps", "floor": 0, "gx": 6, "gy": 11, "side": "south", "width": 4},
+    {"id": "name", "kind": "signboard", "floor": 1, "gx": 6, "gy": 11, "side": "south", "width": 4, "text": "CAESARS"}
+  ]
+}

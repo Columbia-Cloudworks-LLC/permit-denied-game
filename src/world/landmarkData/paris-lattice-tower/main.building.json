@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "id": "paris-lattice-tower",
+  "label": "PARIS LATTICE TOWER",
+  "w": 10,
+  "d": 10,
+  "floors": 2,
+  "kind": "shop",
+  "construction": "concrete-bearing",
+  "roof": "flat",
+  "theme": "civic",
+  "windowStride": 2,
+  "wallColor": 13483935,
+  "features": {"porch": false, "awning": false, "parapet": true, "chimney": false, "garage": false},
+  "zones": {"residential": 0, "commercial": 0, "industrial": 0},
+  "traits": {"use": ["observation-tower", "monument", "landmark"], "form": ["lattice", "four-legs"], "style": ["belle-epoque"], "scale": ["monument"]},
+  "campaign": {"levels": {"city-downtown": 1}, "landmarkOnly": true, "urbanBands": ["downtown-core"]},
+  "partitions": false,
+  "connections": [],
+  "monument": {"figure": "lattice-tower", "height": 36, "minimumSupport": 0.5, "warningDuration": 1.4, "fallDuration": 3, "bonus": 2500, "color": 9072466},
+  "sections": [
+    {"id": "casino", "role": "casino", "x": 0, "y": 0, "w": 10, "d": 10, "floor": 0, "floors": 1, "layout": "lobby.layout.json"},
+    {"id": "deck", "role": "deck", "x": 2, "y": 2, "w": 6, "d": 6, "floor": 1, "floors": 1, "layout": "shell.layout.json"}
+  ],
+  "openings": [
+    {"floor": 0, "side": "south", "at": 0.5, "kind": "door"}
+  ],
+  "facadeDetails": [
+    {"id": "name", "kind": "signboard", "floor": 0, "gx": 3, "gy": 9, "side": "south", "width": 4, "text": "PARIS"}
+  ]
+}
