@@ -9,14 +9,49 @@ export function createVehicle(id: string, x: number, y: number, heading = 0, var
         alive: true, layer: 0, odo: 0, laneId: null, route: [], routeIndex: 0, waitT: 0, reversing: false,
         status: 'operational', paid: false, pendingCash: 0, pitch: 0, roll: 0, steer: 0, waypoints: [], waypoint: 0, autonomous: false,
         routeStatus: 'parked', reverseRemaining: 0, delay: 0, retries: 0, sleeping: true, rest: 0, revision: 0, debugParts: false,
+        compact: { amount: 0, target: 0, front: 0, rear: 0, sideP: 0, sideN: 0, top: 0, lx: 0, ly: 0 },
         parts: d.parts.map(() => ({ damage: 0, mountDamage: 0, bendX: 0, bendY: 0, crush: 0, detached: false, x: 0, y: 0, z: 0, heading: 0, vx: 0, vy: 0, vz: 0, omega: 0, sleeping: true, rest: 0 })) };
 }
 type VehicleDef = ReturnType<typeof vehicleDefinition>;
 type PartDef = VehicleDef['parts'][number];
 type PartState = VehicleState['parts'][number];
 const scaledPart = (p: PartDef, scale: number): PartDef => ({ ...p, x: p.x * scale, y: p.y * scale, z: p.z * scale, length: p.length * scale, width: p.width * scale, height: p.height * scale });
+/**
+ * Crush tuning. `strength` is the hit amount that fully compacts a mass-2 car; `length`, `width`
+ * and `height` are the most each dimension gives up; `sag` is how far the roof drops from hits
+ * that were not from above. Hits set a target and the body folds toward it at `rate` per second. Past `disabled` the car stops driving and past `wreck` it pays out.
+ * A crushed wreck weighs `1 + heft` times its mass to anything shoving it and drags on the ground.
+ * Knocks from other vehicles and from walls below `bump` leave no mark and harder ones count for `bumpShare`,
+ * so traffic survives a fender-bender.
+ */
+export const CRUSH = {
+    strength: 160, rate: 1.8, length: .45, width: .4, height: .6, sag: .3, disabled: .3, wreck: .65,
+    heft: 2.5, drag: 5, knock: .45, bump: 3.5, bumpShare: .5, shedAt: [.35, .75], shedChance: [.8, .4],
+} as const;
+/** Repeatable 0–1 value for a vehicle and a slot, so crumpling and shed wheels replay identically. */
+function crushNoise(id: number, slot: number): number {
+    let h = Math.imul(id | 0, 73856093) ^ Math.imul(slot | 0, 19349663);
+    h = Math.imul(h ^ (h >>> 13), 1274126177);
+    return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+/** The part in vehicle space, squeezed toward the sides that were hit. Loose parts keep their shape. */
+function localPart(v: VehicleState, d: VehicleDef, index: number): PartDef {
+    const p = scaledPart(d.parts[index]!, v.scale), k = v.compact;
+    if (!k.amount || v.parts[index]!.detached)
+        return p;
+    // The sides hold shares of the target; the body has folded this fraction of the way there.
+    const r = k.amount / k.target, front = k.front * r, rear = k.rear * r, sideP = k.sideP * r, sideN = k.sideN * r, top = k.top * r;
+    const sx = 1 - CRUSH.length * (front + rear), sy = 1 - CRUSH.width * (sideP + sideN);
+    const sz = 1 - CRUSH.height * top - CRUSH.sag * (k.amount - top);
+    const x = (rear - front) * CRUSH.length * d.length * v.scale / 2 + p.x * sx;
+    const y = (sideN - sideP) * CRUSH.width * d.width * v.scale / 2 + p.y * sy;
+    // Tyres flatten a little but stay round; everything else takes the full squeeze.
+    if (p.role === 'wheel')
+        return { ...p, x, y, height: p.height * (1 - .3 * k.amount) };
+    return { ...p, x, y, z: p.z * sz, length: p.length * sx, width: p.width * sy, height: p.height * sz };
+}
 export function partPose(v: VehicleState, index: number): PartPose {
-    const d = vehicleDefinition(v.definitionId), p = scaledPart(d.parts[index]!, v.scale), s = v.parts[index]!;
+    const d = vehicleDefinition(v.definitionId), p = localPart(v, d, index), s = v.parts[index]!;
     const base = { length: p.length * (1 - s.damage * p.deform * .2), width: p.width, height: Math.max(.06, p.height * (1 - s.crush * p.deform)), shearX: s.bendX, shearY: s.bendY, pitch: v.pitch + (p.pitch ?? 0), roll: v.roll };
     if (s.detached)
         return { ...base, x: s.x, y: s.y, z: s.z, heading: s.heading, pitch: 0, roll: 0 };
@@ -26,7 +61,7 @@ export function partPose(v: VehicleState, index: number): PartPose {
         z: v.elev + Math.max(0, p.z + v.pitch * p.x + v.roll * p.y), heading: v.heading,
     };
     if (p.parent) {
-        const pi = d.parts.findIndex(q => q.id === p.parent), pp = scaledPart(d.parts[pi]!, v.scale), pose = partPose(v, pi);
+        const pi = d.parts.findIndex(q => q.id === p.parent), pp = localPart(v, d, pi), pose = partPose(v, pi);
         if (p.surface)
             return surfacePose(base, p, pp, pose);
         followParent(v, at, p, pp, v.parts[pi]!, pose);
@@ -36,7 +71,7 @@ export function partPose(v: VehicleState, index: number): PartPose {
         at.x = v.x + Math.cos(v.heading) * (-d.length * .52) + Math.cos(at.heading) * (p.x + d.length * .52);
         at.y = v.y + Math.sin(v.heading) * (-d.length * .52) + Math.sin(at.heading) * (p.x + d.length * .52);
     }
-    if (steeredWheel(d, p))
+    if (steeredWheel(d, d.parts[index]!))
         at.heading += v.steer;
     at.heading += s.bendY * .5;
     return { ...base, ...at };
@@ -90,14 +125,107 @@ export function detachedRoot(v: VehicleState, index: number): number | undefined
 export function assemblyMass(v: VehicleState, root?: number): number {
     return vehicleDefinition(v.definitionId).parts.reduce((n, p, i) => n + (detachedRoot(v, i) === root ? p.mass : 0), 0);
 }
+/** How heavy an assembly is to shove: its mass, and more for a crushed hull dragging on the ground. */
+export function pushMass(v: VehicleState, root?: number): number {
+    const mass = assemblyMass(v, root);
+    return root === undefined && v.status !== 'operational' ? mass * (1 + CRUSH.heft * v.compact.amount) : mass;
+}
 export function hitVehicle(v: VehicleState, contacts: readonly VehicleContact[]): void {
     const d = vehicleDefinition(v.definitionId);
     for (const c of strongestPerSource(contacts)) {
         const nearest = nearestPart(v, d, c);
-        if (nearest !== undefined)
+        if (nearest === undefined)
+            continue;
+        if (!d.crushable)
             applyContact(v, d, nearest, c);
+        else if (detachedRoot(v, nearest) === undefined)
+            crushContact(v, d, c);
+        else {
+            // A wheel that already rolled off is only knocked along.
+            pushAssembly(v, d, nearest, c);
+            v.revision++;
+        }
     }
     updateVehicleStatus(v, d);
+}
+/** A hit on a crushable hull: compact it from the struck side and pass on only part of the shove. */
+function crushContact(v: VehicleState, d: VehicleDef, c: VehicleContact): void {
+    const soft = c.source === 'solid' || c.source.startsWith('vehicle:');
+    const amount = Math.max(0, c.impulse - (soft ? CRUSH.bump : .45)) * 6 * (soft ? CRUSH.bumpShare : 1) + Math.max(0, c.load ?? 0) * Math.max(0, c.dt ?? 0);
+    const f = Math.cos(v.heading), g = Math.sin(v.heading);
+    // Hit-rated vehicles (police) crush by counted hits instead, while they still run.
+    if (amount > 0 && !(v.wreckAfterHits !== undefined && v.status === 'operational'))
+        compactVehicle(v, amount / (CRUSH.strength * Math.sqrt(d.mass / 2)), f * c.nx + g * c.ny, -g * c.nx + f * c.ny, c.nz);
+    // Crumpling soaks up the blow, so the hull is shoved rather than thrown.
+    const mass = Math.max(.5, pushMass(v)), impulse = c.impulse * CRUSH.knock;
+    v.vx += c.nx * impulse / mass;
+    v.vy += c.ny * impulse / mass;
+    v.omega += ((c.x - v.x) * c.ny - (c.y - v.y) * c.nx) * impulse * .5 / (mass * d.length * d.length);
+    v.sleeping = false;
+    v.rest = 0;
+    v.revision++;
+}
+/**
+ * Raise the compaction target by `delta` of a full crush. `lx`, `ly` and `nz` are the push
+ * direction in vehicle space: a push toward the rear folds the front in, a push down drops the roof.
+ */
+function compactVehicle(v: VehicleState, delta: number, lx: number, ly: number, nz: number): void {
+    const k = v.compact;
+    delta = Math.min(delta, 1 - k.target);
+    if (delta <= 0)
+        return;
+    const n = Math.hypot(lx, ly, nz);
+    const wx = n ? (lx / n) ** 2 : 0, wy = n ? (ly / n) ** 2 : 0, wz = n ? (nz / n) ** 2 : 1;
+    if (lx < 0) k.front += delta * wx; else k.rear += delta * wx;
+    if (ly < 0) k.sideP += delta * wy; else k.sideN += delta * wy;
+    k.top += delta * wz;
+    k.target += delta;
+    k.lx = lx;
+    k.ly = ly;
+}
+/** Fold the body toward its compaction target; true while it is still folding. */
+function advanceCompaction(v: VehicleState, d: VehicleDef, dt: number): boolean {
+    const k = v.compact, before = k.amount;
+    if (before >= k.target)
+        return false;
+    k.amount = Math.min(k.target, before + CRUSH.rate * dt);
+    d.parts.forEach((p, i) => {
+        const s = v.parts[i]!;
+        if (s.detached)
+            return;
+        s.damage = Math.max(s.damage, k.amount);
+        if (p.role === 'frame' || p.role === 'wheel' || p.role === 'track')
+            return;
+        // Panels buckle out of square, each its own way.
+        s.bendX = (crushNoise(v.id, i * 2) - .5) * .3 * k.amount * v.scale;
+        s.bendY = (crushNoise(v.id, i * 2 + 1) - .5) * .2 * k.amount * v.scale;
+    });
+    CRUSH.shedAt.forEach((at, slot) => {
+        if (before < at && k.amount >= at && crushNoise(v.id, 100 + slot) < CRUSH.shedChance[slot]!)
+            shedWheel(v, d, k.lx, k.ly, slot);
+    });
+    updateVehicleStatus(v, d);
+    v.revision++;
+    return true;
+}
+/** The wheel nearest the blow breaks off and rolls away sideways. */
+function shedWheel(v: VehicleState, d: VehicleDef, lx: number, ly: number, slot: number): void {
+    let pick = -1, best = -Infinity;
+    d.parts.forEach((p, i) => {
+        const score = -(p.x * lx + p.y * ly);
+        if (p.role === 'wheel' && !v.parts[i]!.detached && score > best) {
+            best = score;
+            pick = i;
+        }
+    });
+    if (pick < 0)
+        return;
+    const p = d.parts[pick]!, pose = partPose(v, pick), f = Math.cos(v.heading), g = Math.sin(v.heading);
+    // Out to its own side, carried along by the push, with a little scatter.
+    const ax = lx * .7 + (crushNoise(v.id, 110 + slot) - .5), ay = Math.sign(p.y || 1) + ly * .7, al = Math.hypot(ax, ay) || 1;
+    const speed = 3.5 + crushNoise(v.id, 120 + slot) * 2.5;
+    const vx = v.vx + (f * ax - g * ay) / al * speed, vy = v.vy + (g * ax + f * ay) / al * speed;
+    Object.assign(v.parts[pick]!, { detached: true, x: pose.x, y: pose.y, z: pose.z, heading: Math.atan2(vy, vx), vx, vy, vz: 1.2, omega: 0, sleeping: false, rest: 0 });
 }
 const contactStrength = (c: VehicleContact) => c.impulse + (c.load ?? 0) * (c.dt ?? 0);
 /** Finite contacts only, keeping the strongest from each source. */
@@ -185,6 +313,14 @@ function updateVehicleStatus(v: VehicleState, d: VehicleDef): void {
         settleStatus(v, d);
         return;
     }
+    if (d.crushable) {
+        if (v.compact.amount >= CRUSH.wreck)
+            v.status = 'wreck';
+        else if (v.compact.amount >= CRUSH.disabled && v.status === 'operational')
+            v.status = 'disabled';
+        settleStatus(v, d);
+        return;
+    }
     const frame = v.parts[0]!.damage, engine = v.parts[d.parts.findIndex(p => p.role === 'engine')]!.damage;
     const supports = d.parts.map((p, i) => ({ p, s: v.parts[i]! })).filter(({ p }) => (p.role === 'wheel' || p.role === 'track') && !p.id.startsWith('trailer'));
     const lost = supports.filter(({ s }) => s.detached || s.damage > .85).length;
@@ -212,8 +348,11 @@ export function countVehicleHit(v: VehicleState): boolean {
         return false;
     v.hits = (v.hits ?? 0) + 1;
     const d = vehicleDefinition(v.definitionId), share = 1 / v.wreckAfterHits;
-    // Show the count on the body: skin and glass dent and crush a step per hit.
-    d.parts.forEach((p, i) => {
+    // Show the count on the body: a crushable hull folds in from the nose a step per hit.
+    if (d.crushable)
+        compactVehicle(v, share, -1, 0, 0);
+    // Otherwise skin and glass dent and crush a step per hit.
+    else d.parts.forEach((p, i) => {
         if (p.role !== 'panel' && p.role !== 'glass' && p.role !== 'cab')
             return;
         const s = v.parts[i]!;
@@ -246,6 +385,10 @@ export function runVehicle(v: VehicleState, waypoints: {
 export function parkVehicle(v: VehicleState): void { v.autonomous = false; v.routeStatus = 'parked'; v.waypoints = []; }
 export function stepVehicle(v: VehicleState, dt: number, obstacle = false): void {
     const d = vehicleDefinition(v.definitionId), f = Math.cos(v.heading), g = Math.sin(v.heading);
+    if (advanceCompaction(v, d, dt)) {
+        v.sleeping = false;
+        v.rest = 0;
+    }
     if (v.delay > 0) {
         v.delay -= dt;
         v.routeStatus = 'waiting';
@@ -258,7 +401,8 @@ export function stepVehicle(v: VehicleState, dt: number, obstacle = false): void
             return;
     }
     else {
-        const drag = Math.exp(-2.8 * dt);
+        // A crushed hull scrapes along on its belly.
+        const drag = Math.exp(-(2.8 + (v.status === 'operational' ? 0 : CRUSH.drag * v.compact.amount)) * dt);
         v.vx *= drag;
         v.vy *= drag;
         v.steer *= drag;

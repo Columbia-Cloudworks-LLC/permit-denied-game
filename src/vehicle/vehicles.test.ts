@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { VEHICLES, vehicleDefinition, validateVehicle } from './definitions';
-import { assemblyMass, createVehicle, detachedRoot, hitVehicle, parkVehicle, partPose, runVehicle, stepDetached, stepVehicle } from './runtime';
+import { assemblyMass, createVehicle, CRUSH, detachedRoot, hitVehicle, parkVehicle, partPose, pushMass, runVehicle, stepDetached, stepVehicle } from './runtime';
 import { boxContact, stepVehicleWorld, vehicleLoad, vehicleStats } from './world';
 import { createTown } from '../world/town';
-import { createDozer } from './dozer';
+import { createDozer, stepDozer } from './dozer';
 import { ParticlePool } from '../fx/particles';
 import { restoreBay, testVehicleImpact, yardVehicleRoute, runYardFleet } from '../world/testYard';
 import { SIM_DT, DEBRIS } from '../game/constants';
@@ -68,14 +68,17 @@ describe('modular vehicle contract', () => {
         expect(v.vy).toBeGreaterThan(0);
         expect(v.parts.every(p => p.damage === 0)).toBe(true);
         hitVehicle(v, [{ ...c, impulse: 0, load: 24, dt: .5 }]);
+        // The body folds toward the new damage over a moment, then keeps it.
+        for (let i = 0; i < 60; i++) stepVehicle(v, SIM_DT);
         const damage = v.parts.map(p => p.damage);
-        stepVehicle(v, .1);
+        expect(damage.some(n => n > 0)).toBe(true);
+        for (let i = 0; i < 60; i++) stepVehicle(v, SIM_DT);
         expect(v.parts.map(p => p.damage)).toEqual(damage);
     });
     it('detaches a parent with its children without duplicating mass', () => {
-        const v = createVehicle('forklift', 10, 10), d = vehicleDefinition('forklift');
-        hitVehicle(v, [contact(v, 'mast', 50)]);
-        const mast = d.parts.findIndex(p => p.id === 'mast'), fork = d.parts.findIndex(p => p.id === 'fork-1');
+        const v = createVehicle('combine', 10, 10), d = vehicleDefinition('combine');
+        hitVehicle(v, [contact(v, 'header', 50)]);
+        const mast = d.parts.findIndex(p => p.id === 'header'), fork = d.parts.findIndex(p => p.id === 'feeder');
         expect(v.parts[mast]!.detached).toBe(true);
         expect(detachedRoot(v, fork)).toBe(mast);
         const roots = v.parts.flatMap((s, i) => s.detached ? [i] : []);
@@ -84,11 +87,16 @@ describe('modular vehicle contract', () => {
         expect(partPose(v, fork).x).toBeGreaterThan(11);
     });
     it('disables propulsion after engine failure; wreck reward is paid once', () => {
+        const tractor = createVehicle('tractor', 10, 10);
+        hitVehicle(tractor, [contact(tractor, 'engine', 400)]);
+        expect(tractor.status).not.toBe('operational');
         const v = createVehicle('car', 10, 10);
         hitVehicle(v, [contact(v, 'engine', 100)]);
+        for (let i = 0; i < 20; i++) stepVehicle(v, SIM_DT);
         expect(v.status).not.toBe('operational');
         for (let i = 0; i < 8; i++)
             testVehicleImpact(v, 'overhead', 30);
+        for (let i = 0; i < 60; i++) stepVehicle(v, SIM_DT);
         expect(v.status).toBe('wreck');
         const cash = v.pendingCash;
         testVehicleImpact(v, 'overhead', 30);
@@ -182,9 +190,12 @@ describe('modular vehicle contract', () => {
         t.vehicles.push(v);
         for (let i = 0; i < 8; i++)
             vehicleLoad(t, 10, 10, 20, 4, 30, 'slab');
-        expect(v.status).toBe('wreck');
         const pool = new ParticlePool();
-        const cash = stepVehicleWorld(t, createDozer(2, 2, 0), pool, [], SIM_DT);
+        let cash = 0;
+        for (let i = 0; i < 60; i++) cash += stepVehicleWorld(t, createDozer(2, 2, 0), pool, [], SIM_DT);
+        expect(v.status).toBe('wreck');
+        // A load from above flattens the roof rather than folding a side in.
+        expect(v.compact.top).toBeGreaterThan(.9);
         expect(cash).toBe(vehicleDefinition('car').cash);
         expect(t.vehicles).toContain(v);
         expect(stepVehicleWorld(t, createDozer(2, 2, 0), pool, [], SIM_DT)).toBe(0);
@@ -237,6 +248,66 @@ describe('modular vehicle contract', () => {
         expect(t.vehicles.every(v => Number.isFinite(v.x) && Number.isFinite(v.y))).toBe(true);
         times.sort((a, b) => a - b);
         console.log(JSON.stringify({ scenario: '120-wrecks-12-active', p95Ms: times[Math.floor(times.length * .95)], ...vehicleStats }));
+    });
+    it('crushes a car the dozer rams instead of breaking it apart, and leaves a heavy wreck', () => {
+        const ram = (id: string) => {
+            const t = empty(), v = createVehicle(id, 22, 10, Math.PI / 2), dozer = createDozer(8, 10, 0), pool = new ParticlePool();
+            t.vehicles.push(v);
+            const fresh = v.parts.map((_, i) => partPose(v, i));
+            for (let i = 0; i < 240; i++) {
+                stepDozer(dozer, { throttle: 1, steer: 0, blade: true }, SIM_DT);
+                stepVehicleWorld(t, dozer, pool, [], SIM_DT);
+            }
+            return { v, d: vehicleDefinition(id), fresh };
+        };
+        const car = ram('car'), loose = car.v.parts.flatMap((s, i) => s.detached ? [car.d.parts[i]!.role] : []);
+        expect(car.d.crushable).toBe(true);
+        expect(car.v.status).toBe('wreck');
+        expect(car.v.compact.amount).toBeCloseTo(1, 5);
+        // Struck on its side: that side folds in, the roof sags, and nothing but a wheel or two comes away.
+        expect(car.v.compact.sideP + car.v.compact.sideN).toBeGreaterThan(.8);
+        expect(loose.length).toBeLessThanOrEqual(2);
+        expect(loose.every(role => role === 'wheel')).toBe(true);
+        const cab = car.d.parts.findIndex(p => p.id === 'cab'), now = partPose(car.v, cab);
+        expect(now.width).toBeLessThan(car.fresh[cab]!.width * .75);
+        expect(now.height).toBeLessThan(car.fresh[cab]!.height * .85);
+        expect(pushMass(car.v)).toBeCloseTo(assemblyMass(car.v) * (1 + CRUSH.heft), 5);
+        // A vehicle the dozer's own size keeps the break-apart damage.
+        const truck = ram('box-truck');
+        expect(truck.d.crushable).toBe(false);
+        expect(truck.v.compact.amount).toBe(0);
+        expect(truck.v.parts.some(p => p.detached)).toBe(true);
+    });
+    it('sheds at most two wheels however a car is crushed, and takes more shoving once it is', () => {
+        for (let n = 0; n < 12; n++) {
+            const v = createVehicle(n % 2 ? 'car' : 'pickup', 10, 10), d = vehicleDefinition(v.definitionId);
+            testVehicleImpact(v, n % 3 === 0 ? 'front' : n % 3 === 1 ? 'side' : 'rear', 200);
+            for (let i = 0; i < 90; i++) stepVehicle(v, SIM_DT);
+            expect(v.compact.amount).toBeCloseTo(1, 5);
+            const loose = v.parts.flatMap((s, i) => s.detached ? [d.parts[i]!.role] : []);
+            expect(loose.length).toBeLessThanOrEqual(2);
+            expect(loose.every(role => role === 'wheel')).toBe(true);
+        }
+        const fresh = createVehicle('car', 10, 10), crushed = createVehicle('car', 10, 10);
+        testVehicleImpact(crushed, 'front', 200);
+        for (let i = 0; i < 90; i++) stepVehicle(crushed, SIM_DT);
+        crushed.vx = crushed.vy = 0;
+        hitVehicle(fresh, [contact(fresh, 'frame', 2)]);
+        hitVehicle(crushed, [contact(crushed, 'frame', 2)]);
+        expect(crushed.vy).toBeGreaterThan(0);
+        expect(crushed.vy).toBeLessThan(fresh.vy * .4);
+    });
+    it('shrugs off a fender-bender between two cars', () => {
+        const t = empty(), a = createVehicle('car', 10, 10), b = createVehicle('car', 13, 10, Math.PI), pool = new ParticlePool();
+        t.vehicles.push(a, b);
+        a.vx = 2.5;
+        b.vx = -2.5;
+        a.sleeping = b.sleeping = false;
+        for (let i = 0; i < 120; i++)
+            stepVehicleWorld(t, createDozer(2, 2, 0), pool, [], SIM_DT);
+        expect(a.compact.target).toBe(0);
+        expect(b.compact.target).toBe(0);
+        expect(a.status).toBe('operational');
     });
     it('gives the excavator a scoop bucket parented through a stick pivot', () => {
         const d = vehicleDefinition('excavator');

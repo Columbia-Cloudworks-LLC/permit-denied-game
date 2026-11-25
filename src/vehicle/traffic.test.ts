@@ -71,24 +71,78 @@ describe('traffic', () => {
     expect(sightBlocked(t.town, cx - b.w * b.cellSize, cy, cx + b.w * b.cellSize, cy)).toBe(true);
   });
 
-  it('turns around or reroutes when the dozer blocks the road ahead', () => {
+  /** One civilian on an otherwise empty map, a few seconds into its drive. */
+  function loneDriver() {
     const t = trafficTown('county', { civilians: 1 });
     t.town.vehicles = t.town.vehicles.filter(v => !v.traffic);
     run(t, 4);
     const v = agents(t.town.vehicles)[0]!;
     expect(v).toBeTruthy();
-    // Drop the dozer onto the car's path, in plain view.
+    return { t, v };
+  }
+
+  it('brakes for a dozer parked in the road ahead, then goes around it or turns back, without touching it', () => {
+    const { t, v } = loneDriver();
+    // Drop the dozer onto the car's path, facing it.
     const a = v.traffic!;
-    const p = a.path[Math.min(a.path.length - 1, a.pathIndex + 9)]!;
+    const p = a.path[Math.min(a.path.length - 1, a.pathIndex + 12)]!;
     Object.assign(t.dozer, createDozer(p.x, p.y, v.heading + Math.PI) as Dozer);
     const start = v.heading;
-    let reacted = false;
-    run(t, 6, () => { if (v.traffic!.mode !== 'cruise') reacted = true; });
+    let reacted = false, slowest = Infinity;
+    run(t, 9, () => {
+      if (v.traffic!.mode !== 'cruise') reacted = true;
+      slowest = Math.min(slowest, Math.hypot(v.vx, v.vy));
+    });
+    expect(slowest).toBeLessThan(1);
     expect(reacted).toBe(true);
     expect(v.status).toBe('operational');
+    expect(v.compact.target).toBe(0);
     const turned = Math.abs(Math.atan2(Math.sin(v.heading - start), Math.cos(v.heading - start)));
-    const dist = Math.hypot(v.x - t.dozer.x, v.y - t.dozer.y);
-    expect(turned > 1.5 || dist > 6 || !t.town.vehicles.includes(v)).toBe(true);
+    const f = Math.cos(start), g = Math.sin(start);
+    const past = (v.x - t.dozer.x) * f + (v.y - t.dozer.y) * g > 2;
+    expect(turned > 1.5 || past || !t.town.vehicles.includes(v)).toBe(true);
+  });
+
+  it('pays the dozer no mind when it is behind the car or well off to the side', () => {
+    for (const place of ['behind', 'aside'] as const) {
+      const { t, v } = loneDriver();
+      const f = Math.cos(v.heading), g = Math.sin(v.heading);
+      // Twelve units back down the road, or level with the car but out in the lots.
+      const at = place === 'behind' ? { x: v.x - f * 12, y: v.y - g * 12 } : { x: v.x + f * 4 - g * 9, y: v.y + g * 4 + f * 9 };
+      Object.assign(t.dozer, createDozer(at.x, at.y, v.heading) as Dozer);
+      let slowest = Infinity;
+      const modes = new Set<string>();
+      run(t, 1.5, () => {
+        if (!t.town.vehicles.includes(v)) return;
+        modes.add(v.traffic!.mode);
+        slowest = Math.min(slowest, Math.hypot(v.vx, v.vy));
+      });
+      expect([...modes], place).toEqual(['cruise']);
+      expect(slowest, place).toBeGreaterThan(2.5);
+    }
+  });
+
+  it('keeps a busy town moving: cars get through, nobody is wrecked and nobody sits stuck', () => {
+    const t = trafficTown('suburb');
+    const seen = new Set<number>();
+    let samples = 0, stopped = 0, longest = 0;
+    run(t, 90, time => {
+      const live = agents(t.town.vehicles, 'civilian');
+      for (const v of live) {
+        seen.add(v.id);
+        longest = Math.max(longest, v.traffic!.stuckT);
+      }
+      if (Math.round(time / SIM_DT) % 30) return;
+      samples += live.length;
+      stopped += live.filter(v => Math.hypot(v.vx, v.vy) < 0.5).length;
+    });
+    const left = [...seen].filter(id => !t.town.vehicles.some(v => v.id === id)).length;
+    // Twice the old traffic, and it still drains: well over one car a three seconds out through the exits.
+    expect(t.town.traffic!.config.civilians).toBe(14);
+    expect(left).toBeGreaterThan(25);
+    expect(stopped / samples).toBeLessThan(0.4);
+    expect(longest).toBeLessThan(25);
+    expect(t.town.vehicles.filter(v => v.traffic && v.status !== 'operational')).toHaveLength(0);
   });
 
   it('sends police that chase the dozer and wreck after three hits', () => {

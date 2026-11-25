@@ -17,7 +17,11 @@ interface Source {
     steering: 'front' | 'rear' | 'tracks';
     /** Roof beacon pair for emergency vehicles. */
     lightbar?: boolean;
+    /** Overrides the mass rule for whether hits crush this vehicle. */
+    crushable?: boolean;
 }
+/** Vehicles up to this mass are smaller than the dozer and crush under it. */
+const CRUSHABLE_MASS = 5;
 /** Mass share, strength, mount strength and deformation by role, before scaling to the vehicle's mass. */
 function roleStats(role: PartRole): Pick<VehiclePart, 'mass' | 'strength' | 'mount' | 'deform'> {
     const strong = role === 'frame' || role === 'engine';
@@ -67,7 +71,7 @@ function buildVehicle(s: Source): VehicleDefinition {
         p.strength *= Math.sqrt(s.mass / 2);
         p.mount *= Math.sqrt(s.mass / 2);
     }
-    const d: VehicleDefinition = { ...s, parts, drive: { steering: s.steering, speed: s.speed, accel: passenger ? 9.2 : 2,
+    const d: VehicleDefinition = { ...s, crushable: s.crushable ?? s.mass <= CRUSHABLE_MASS, parts, drive: { steering: s.steering, speed: s.speed, accel: passenger ? 9.2 : 2,
             turn: tracked ? 1.4 : .65, wheelbase: l * .64, traction: tracked ? .9 : .65, clearance: tracked || tractor ? .28 : .13, push: s.mass * .65 } };
     validateVehicle(d);
     return d;

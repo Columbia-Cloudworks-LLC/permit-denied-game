@@ -42,10 +42,13 @@ rewards are retained.
   are the main entry points. Contact batches carry position/height, direction,
   impulse or sustained load, duration and source identity. Repeated samples from
   one source are reduced to the strongest contact before damage is applied.
-- Damage acts locally, transfers reduced load to parent assemblies, and persists.
-  Engine/running-gear failure disables propulsion; structural failure pays the
-  reward once and leaves the chassis in the world. Wheel/track damage also reduces
-  speed, steering authority and traction.
+- Vehicles the dozer's size and up (box truck, bus, tractor, combine, excavator,
+  trailer) take part damage: it acts locally, transfers reduced load to parent
+  assemblies, and persists. Engine/running-gear failure disables propulsion;
+  structural failure pays the reward once and leaves the chassis in the world.
+  Wheel/track damage also reduces speed, steering authority and traction.
+- Smaller vehicles are `crushable` (mass 5 or under, or `"crushable"` in the
+  source) and compact instead; see [Crushing](#crushing).
 - Attached parts have no independent physics. Detached parents carry their still
   attached descendants; existing detached children remain separate. Assembly mass
   is partitioned by attachment ancestry without adding duplicate debris mass.
@@ -62,6 +65,35 @@ rewards are retained.
   active-debris budget. Overflow settles into sleeping, persistent collision. Wrecks
   retain their shape and can wake when hit. Detached parts stay owned by their
   source bay after leaving it; restoring that bay removes its entire old instance.
+
+## Crushing
+
+A crushable vehicle keeps one `Compaction` record instead of per-part damage
+(`VehicleState.compact`, tuning in `CRUSH` in `runtime.ts`).
+
+- **Where it folds:** each hit raises a target, split by the direction of the push
+  in vehicle space: front, rear, either side, or the roof for a load from above.
+  The body folds toward the target at `CRUSH.rate` per second rather than
+  snapping. `partPose` squeezes every part toward the struck sides (up to 45% of
+  the length, 40% of the width, 60% of the height), sags the roof, buckles each
+  panel its own repeatable way, and breaks the glass. Collision boxes come from
+  the same poses, so the wreck collides as the block it looks like.
+- **What comes off:** nothing but wheels, two at most. Passing 35% and 75%
+  compaction each give one chance (80%, then 40%) to shed the wheel nearest the
+  blow, which rolls off sideways. The roll uses a hash of the vehicle id, so
+  replays match.
+- **What crushes:** the dozer body while it is driving at the vehicle, the blade
+  while either is driving into the other (a parked blade is only a wall), moving
+  debris, explosions and collapse loads. Knocks from other vehicles and from
+  walls leave no mark below `CRUSH.bump` and count for half above it, so traffic
+  survives a fender-bender.
+- **Status:** past 30% the vehicle is disabled; past 65% it is a wreck and pays
+  its reward once. The police cruiser is crushable but hit-rated: each counted
+  hit folds the nose in by a third and the third wrecks it.
+- **Weight:** a crushable hull passes on 45% of a hit's shove while it crumples.
+  Once out of operation it weighs `1 + CRUSH.heft × compaction` times its mass to
+  the dozer and to other vehicles (3.5× when flat) and drags harder on the ground,
+  so a crushed wreck stalls the dozer far longer than the car it was.
 
 ## Verification
 
@@ -86,7 +118,8 @@ node scripts/verify-mobile.mjs artifacts/vehicle-mobile
 
 Vehicle tests cover locality, rotated contacts, sample deduplication, gentle
 pushing, sustained damage, inherited attachments and conserved mass, disabled
-propulsion, one-time rewards, all twelve route controllers, towing, sleeping and
+propulsion, one-time rewards, crushing (a rammed car against a rammed box truck,
+the two-wheel limit, wreck weight, fender-benders), all twelve route controllers, towing, sleeping and
 active-body limits, height separation, direct collisions, blocked routes, overhead
 loads, bay restoration and a 120-wreck/12-active scene. The full suite also runs
 the existing accelerated twenty-minute simulation benchmark.
