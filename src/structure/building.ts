@@ -104,6 +104,8 @@ function applyFacade(
 ): void {
   const exposed = exposedSides(spec, occupied, gx, gy, floor);
   if (!(exposed.north || exposed.south || exposed.west || exposed.east)) return;
+  // A stride of zero is a blind wall on every floor: a plinth, a planter, a vault.
+  if (spec.windowStride === 0) return;
   if (floor > 0 || spec.floors === 1) upperWindows(cell, spec, exposed, gx, gy);
   if (floor === 0) groundWindows(cell, exposed, gx, gy);
 }

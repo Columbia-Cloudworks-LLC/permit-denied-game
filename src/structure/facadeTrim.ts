@@ -80,7 +80,8 @@ function archetypeUses(id: string): readonly string[] {
 /** A south window as the wall renderer draws it: authored, colonial upper sash, or a masonry ground floor. */
 export function southWindowed(b: Building, cell: Cell): boolean {
   if (cell.doorS || cell.loadingS) return false;
-  return cell.windowS || (b.theme === "colonial" && cell.floor > 0) || (b.construction.walls === "masonry" && cell.floor === 0);
+  // A blind wall (window stride zero) has no implied glazing either.
+  return cell.windowS || (b.windowStride !== 0 && ((b.theme === "colonial" && cell.floor > 0) || (b.construction.walls === "masonry" && cell.floor === 0)));
 }
 
 export const faceWindowed = (b: Building, cell: Cell, side: FaceSide): boolean =>

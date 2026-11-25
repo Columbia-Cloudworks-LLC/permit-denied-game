@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "id": "desert-orb-arena",
+  "label": "DESERT ORB ARENA",
+  "w": 10,
+  "d": 10,
+  "floors": 1,
+  "kind": "shop",
+  "construction": "concrete-bearing",
+  "roof": "flat",
+  "theme": "civic",
+  "windowStride": 2,
+  "wallColor": 2763834,
+  "features": {"porch": false, "awning": false, "parapet": true, "chimney": false, "garage": false},
+  "zones": {"residential": 0, "commercial": 0, "industrial": 0},
+  "traits": {"use": ["arena", "monument", "landmark"], "form": ["sphere", "drum"], "style": ["led"], "scale": ["monument"]},
+  "campaign": {"levels": {"city-downtown": 1}, "landmarkOnly": true, "urbanBands": ["downtown-core"]},
+  "partitions": false,
+  "connections": [],
+  "cellSize": 1.5,
+  "monument": {"figure": "sphere", "fall": "roll", "reach": 34, "height": 24, "minimumSupport": 0.5, "warningDuration": 1.6, "fallDuration": 5, "bonus": 3000, "color": 1381946},
+  "sections": [
+    {"id": "drum", "role": "drum", "x": 0, "y": 0, "w": 10, "d": 10, "floor": 0, "floors": 1, "layout": "lobby.layout.json"}
+  ],
+  "openings": [
+    {"floor": 0, "side": "south", "at": 0.5, "kind": "door"}
+  ],
+  "facadeDetails": [
+
+  ]
+}

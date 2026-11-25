@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "id": "luxor-glass-pyramid",
+  "label": "LUXOR GLASS PYRAMID",
+  "w": 15,
+  "d": 15,
+  "floors": 8,
+  "kind": "shop",
+  "construction": "concrete-bearing",
+  "roof": "flat",
+  "theme": "civic",
+  "windowStride": 1,
+  "wallColor": 1842210,
+  "features": {"porch": false, "awning": false, "parapet": true, "chimney": false, "garage": false},
+  "zones": {"residential": 0, "commercial": 0, "industrial": 0},
+  "traits": {"use": ["resort-hotel", "landmark"], "form": ["pyramid"], "style": ["black-glass"], "scale": ["resort"]},
+  "campaign": {"levels": {"city-downtown": 1}, "landmarkOnly": true, "urbanBands": ["downtown-core"]},
+  "partitions": false,
+  "connections": [],
+  "cellSize": 1.4,
+  "sections": [
+    {"id": "base", "role": "base", "x": 0, "y": 0, "w": 15, "d": 15, "floor": 0, "floors": 1, "layout": "lobby.layout.json"},
+    {"id": "tier-1", "role": "tier-1", "x": 1, "y": 1, "w": 13, "d": 13, "floor": 1, "floors": 1, "layout": "shell.layout.json"},
+    {"id": "tier-2", "role": "tier-2", "x": 2, "y": 2, "w": 11, "d": 11, "floor": 2, "floors": 1, "layout": "shell.layout.json"},
+    {"id": "tier-3", "role": "tier-3", "x": 3, "y": 3, "w": 9, "d": 9, "floor": 3, "floors": 1, "layout": "shell.layout.json"},
+    {"id": "tier-4", "role": "tier-4", "x": 4, "y": 4, "w": 7, "d": 7, "floor": 4, "floors": 1, "layout": "shell.layout.json"},
+    {"id": "tier-5", "role": "tier-5", "x": 5, "y": 5, "w": 5, "d": 5, "floor": 5, "floors": 1, "layout": "shell.layout.json"},
+    {"id": "tier-6", "role": "tier-6", "x": 6, "y": 6, "w": 3, "d": 3, "floor": 6, "floors": 1, "layout": "shell.layout.json"},
+    {"id": "tier-7", "role": "tier-7", "x": 7, "y": 7, "w": 1, "d": 1, "floor": 7, "floors": 1, "layout": "shell.layout.json"}
+  ],
+  "openings": [
+    {"floor": 0, "side": "south", "at": 0.5, "kind": "door"}
+  ],
+  "facadeDetails": [
+    {"id": "name", "kind": "signboard", "floor": 0, "gx": 6, "gy": 14, "side": "south", "width": 3, "text": "LUXOR"}
+  ]
+}

@@ -82,6 +82,7 @@ export function generateDistrictLayout(
     surface: rural.surface,
     features: rural.features,
     featureRevision: 0,
+    cityDecor: rural.cityDecor,
   };
 }
 

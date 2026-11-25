@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "id": "venetian-campanile-resort",
+  "label": "VENETIAN CAMPANILE RESORT",
+  "w": 16,
+  "d": 12,
+  "floors": 24,
+  "kind": "shop",
+  "construction": "concrete-bearing",
+  "roof": "flat",
+  "theme": "civic",
+  "windowStride": 2,
+  "wallColor": 14267530,
+  "features": {"porch": false, "awning": false, "parapet": true, "chimney": false, "garage": false},
+  "zones": {"residential": 0, "commercial": 0, "industrial": 0},
+  "traits": {"use": ["resort-hotel", "landmark"], "form": ["podium", "wings", "campanile"], "style": ["venetian"], "scale": ["resort"]},
+  "campaign": {"levels": {"city-downtown": 1}, "landmarkOnly": true, "urbanBands": ["downtown-core"]},
+  "partitions": false,
+  "connections": [],
+  "sections": [
+    {"id": "podium", "role": "podium", "x": 0, "y": 0, "w": 16, "d": 12, "floor": 0, "floors": 1, "layout": "lobby.layout.json"},
+    {"id": "casino", "role": "casino", "x": 0, "y": 0, "w": 16, "d": 12, "floor": 1, "floors": 1, "layout": "shell.layout.json"},
+    {"id": "bar", "role": "bar", "x": 1, "y": 1, "w": 12, "d": 4, "floor": 2, "floors": 18, "layout": "rooms.layout.json"},
+    {"id": "wing", "role": "wing", "x": 1, "y": 5, "w": 4, "d": 6, "floor": 2, "floors": 16, "layout": "rooms.layout.json"},
+    {"id": "campanile", "role": "campanile", "x": 13, "y": 8, "w": 2, "d": 2, "floor": 2, "floors": 20, "layout": "shell.layout.json"},
+    {"id": "spire", "role": "spire", "x": 13, "y": 8, "w": 1, "d": 1, "floor": 22, "floors": 2, "layout": "shell.layout.json"}
+  ],
+  "openings": [
+    {"floor": 0, "side": "south", "at": 0.5, "kind": "door"}
+  ],
+  "facadeDetails": [
+    {"id": "steps", "kind": "entry-steps", "floor": 0, "gx": 7, "gy": 11, "side": "south", "width": 2},
+    {"id": "name", "kind": "signboard", "floor": 1, "gx": 6, "gy": 11, "side": "south", "width": 4, "text": "VENETIAN"}
+  ]
+}

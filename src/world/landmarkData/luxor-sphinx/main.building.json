@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "id": "luxor-sphinx",
+  "label": "LUXOR SPHINX",
+  "w": 7,
+  "d": 4,
+  "floors": 1,
+  "kind": "shop",
+  "construction": "concrete-bearing",
+  "roof": "flat",
+  "theme": "civic",
+  "windowStride": 0,
+  "wallColor": 13215324,
+  "features": {"porch": false, "awning": false, "parapet": true, "chimney": false, "garage": false},
+  "zones": {"residential": 0, "commercial": 0, "industrial": 0},
+  "traits": {"use": ["monument", "landmark"], "form": ["sphinx", "plinth"], "style": ["egyptian-revival"], "scale": ["monument"]},
+  "campaign": {"levels": {"city-downtown": 1}, "landmarkOnly": true, "urbanBands": ["downtown-core"]},
+  "partitions": false,
+  "connections": [],
+  "monument": {"figure": "sphinx", "fall": "crumble", "height": 8.5, "minimumSupport": 0.5, "warningDuration": 1.2, "fallDuration": 2.2, "bonus": 1200, "color": 14267482},
+  "sections": [
+    {"id": "plinth", "role": "plinth", "x": 0, "y": 0, "w": 7, "d": 4, "floor": 0, "floors": 1, "layout": "shell.layout.json"}
+  ],
+  "openings": [
+    {"floor": 0, "side": "south", "at": 0.5, "kind": "door"}
+  ],
+  "facadeDetails": [
+
+  ]
+}

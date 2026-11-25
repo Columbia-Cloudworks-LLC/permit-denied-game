@@ -1,5 +1,6 @@
 import type { CityPlan } from '../cityPlan';
 import { CHICAGO } from './chicago';
+import { LAS_VEGAS } from './lasVegas';
 import { NEW_YORK_CITY } from './newYorkCity';
 
 /** The Downtown county (County 6) is the one a city plan replaces. */
@@ -12,6 +13,7 @@ export const CITY_PLAN_COUNTY_INDEX = 6;
  */
 export const CITY_PLANS: Readonly<Record<string, CityPlan>> = {
   'US-IL': CHICAGO,
+  'US-NV': LAS_VEGAS,
   'US-NY': NEW_YORK_CITY,
 };
 

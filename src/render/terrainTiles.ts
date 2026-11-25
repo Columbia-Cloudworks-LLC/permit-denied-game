@@ -226,7 +226,7 @@ function paintSoilWash(parent: Container, grid: SurfaceGrid, color: number): voi
   for (let iy = 0; iy < grid.rows; iy++) {
     let run = -1;
     for (let ix = 0; ix <= grid.cols; ix++) {
-      const open = ix < grid.cols && WASH_SURFACES.has(grid.surface[iy * grid.cols + ix]!);
+      const open = ix < grid.cols && WASH_SURFACES.has(grid.surface[iy * grid.cols + ix]!) && !grid.irrigated?.[iy * grid.cols + ix];
       if (open && run < 0) run = ix;
       if (open || run < 0) continue;
       const x0 = grid.ox + run, x1 = grid.ox + ix, y0 = grid.oy + iy;
@@ -386,7 +386,7 @@ export function describeCell(
   const baseKind = baseSurface(surface);
   const turf = baseKind === "grass" || baseKind === "prairie" || baseKind === "leaf-litter";
   // Snowless desert has no turf or leaf fall: open ground is bare dirt under the soil wash.
-  const bare = arid && condition !== "snow" && turf && surface !== "field";
+  const bare = arid && condition !== "snow" && turf && surface !== "field" && !grid.irrigated?.[i];
   const framed = bare ? "dirt" : season === "autumn" && (baseKind === "grass" || baseKind === "prairie") ? "leaf-litter" : baseKind;
   const base = terrainSolidFrame(framed, variant, condition);
   if (condition === "snow" && surface !== "water") {

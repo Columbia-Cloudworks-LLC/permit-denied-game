@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "id": "vegas-welcome-sign",
+  "label": "VEGAS WELCOME SIGN",
+  "w": 6,
+  "d": 3,
+  "floors": 1,
+  "kind": "shop",
+  "construction": "concrete-bearing",
+  "roof": "flat",
+  "theme": "civic",
+  "windowStride": 0,
+  "wallColor": 14209732,
+  "features": {"porch": false, "awning": false, "parapet": true, "chimney": false, "garage": false},
+  "zones": {"residential": 0, "commercial": 0, "industrial": 0},
+  "traits": {"use": ["monument", "landmark"], "form": ["sign", "planter"], "style": ["googie"], "scale": ["monument"]},
+  "campaign": {"levels": {"city-downtown": 1}, "landmarkOnly": true, "urbanBands": ["downtown-core"]},
+  "partitions": false,
+  "connections": [],
+  "monument": {"figure": "sign", "height": 11, "minimumSupport": 0.5, "warningDuration": 1, "fallDuration": 1.8, "bonus": 800, "color": 16249311},
+  "sections": [
+    {"id": "planter", "role": "planter", "x": 0, "y": 0, "w": 6, "d": 3, "floor": 0, "floors": 1, "layout": "shell.layout.json"}
+  ],
+  "openings": [
+    {"floor": 0, "side": "south", "at": 0.5, "kind": "door"}
+  ],
+  "facadeDetails": [
+
+  ]
+}

@@ -64,7 +64,7 @@ Inspect a live map with `?mode=challenge&seed=19&level=city-downtown&nhood=1`. `
 
 ## Authored cities
 
-A county with a city plan (Chicago, New York City) keeps these bands and the Downtown composition rules for its fill, but its roles come from the plan's cores instead of the lot cluster's centre, and its open spaces are the plan's named parks. See [city-plans](city-plans.md).
+A county with a city plan (Chicago, Las Vegas, New York City) keeps these bands and the Downtown composition rules for its fill, but its roles come from the plan's cores instead of the lot cluster's centre, and its open spaces are the plan's named parks. See [city-plans](city-plans.md).
 
 ## Adding a building to a band
 

@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "id": "strat-needle-tower",
+  "label": "STRAT NEEDLE TOWER",
+  "w": 9,
+  "d": 9,
+  "floors": 46,
+  "kind": "shop",
+  "construction": "concrete-bearing",
+  "roof": "flat",
+  "theme": "civic",
+  "windowStride": 1,
+  "wallColor": 13617856,
+  "features": {"porch": false, "awning": false, "parapet": true, "chimney": false, "garage": false},
+  "zones": {"residential": 0, "commercial": 0, "industrial": 0},
+  "traits": {"use": ["observation-tower", "landmark"], "form": ["needle", "pod", "mast"], "style": ["concrete"], "scale": ["supertall"]},
+  "campaign": {"levels": {"city-downtown": 1}, "landmarkOnly": true, "urbanBands": ["downtown-core"]},
+  "partitions": false,
+  "connections": [],
+  "coreCollapse": {"supports": [{"x": 4, "y": 4, "weight": 2}, {"x": 2, "y": 2, "weight": 1}, {"x": 2, "y": 6, "weight": 1}, {"x": 6, "y": 2, "weight": 1}, {"x": 6, "y": 6, "weight": 1}, {"x": 4, "y": 2, "weight": 1}, {"x": 4, "y": 6, "weight": 1}], "capacityThreshold": 0.45, "warningDuration": 1.2, "duration": 6},
+  "sections": [
+    {"id": "base", "role": "base", "x": 0, "y": 0, "w": 9, "d": 9, "floor": 0, "floors": 1, "layout": "lobby.layout.json"},
+    {"id": "legs", "role": "legs", "x": 2, "y": 2, "w": 5, "d": 5, "floor": 1, "floors": 3, "layout": "shell.layout.json"},
+    {"id": "stem", "role": "stem", "x": 3, "y": 3, "w": 3, "d": 3, "floor": 4, "floors": 30, "layout": "shell.layout.json"},
+    {"id": "pod", "role": "pod", "x": 1, "y": 1, "w": 7, "d": 7, "floor": 34, "floors": 4, "layout": "rooms.layout.json", "cantilever": true},
+    {"id": "crown", "role": "crown", "x": 2, "y": 2, "w": 5, "d": 5, "floor": 38, "floors": 2, "layout": "shell.layout.json"},
+    {"id": "mast", "role": "mast", "x": 4, "y": 4, "w": 1, "d": 1, "floor": 40, "floors": 6, "layout": "shell.layout.json"}
+  ],
+  "openings": [
+    {"floor": 0, "side": "south", "at": 0.5, "kind": "door"}
+  ],
+  "facadeDetails": [
+    {"id": "name", "kind": "signboard", "floor": 1, "gx": 3, "gy": 6, "side": "south", "width": 3, "text": "THE STRAT"}
+  ]
+}

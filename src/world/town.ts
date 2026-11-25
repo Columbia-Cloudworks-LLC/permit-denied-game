@@ -117,6 +117,8 @@ export interface Town {
   surface: SurfaceGrid;
   features: TerrainFeature[];
   featureRevision: number;
+  /** Fountain jets and street canopies of an authored city: drawn only, nothing collides with them. */
+  cityDecor?: import('./cityPlan').CityDecor;
 }
 
 export interface TownOptions {
