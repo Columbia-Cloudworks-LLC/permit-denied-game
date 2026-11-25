@@ -29,6 +29,8 @@ export interface VehicleDefinition {
     height: number;
     mass: number;
     cash: number;
+    /** Smaller than the dozer: hits compact the body into a dense block instead of breaking it apart. */
+    crushable: boolean;
     paints: [
         number,
         number
@@ -63,7 +65,24 @@ export interface PartState {
     sleeping: boolean;
     rest: number;
 }
+/**
+ * How far a crushable vehicle has been compacted. Hits raise `target` (0 to 1) and `amount` folds
+ * toward it over a moment. The sides split the target by where the hits landed: the front, rear,
+ * +Y side, -Y side and roof. `lx`, `ly` are the last push direction in vehicle space.
+ */
+export interface Compaction {
+    amount: number;
+    target: number;
+    lx: number;
+    ly: number;
+    front: number;
+    rear: number;
+    sideP: number;
+    sideN: number;
+    top: number;
+}
 export interface VehicleState extends RoadVehicle {
+    compact: Compaction;
     scale: number;
     id: number;
     definitionId: string;
@@ -109,7 +128,7 @@ export interface VehicleControl {
     accel: number;
 }
 export type TrafficRole = 'civilian' | 'police';
-export type TrafficMode = 'cruise' | 'flee' | 'turn-forward' | 'turn-reverse' | 'pursue' | 'ram' | 'recoil';
+export type TrafficMode = 'cruise' | 'pass' | 'turn-forward' | 'turn-reverse' | 'pursue' | 'ram' | 'recoil';
 export interface TrafficAgent {
     role: TrafficRole;
     mode: TrafficMode;
@@ -121,7 +140,9 @@ export interface TrafficAgent {
     cruise: number;
     modeT: number;
     turnStartHeading: number;
-    /** Where and when the driver last saw the dozer, in simulation seconds. */
+    /** When the current three-point turn began, in simulation seconds. */
+    turnAt: number;
+    /** Where and when the driver last met something blocking the road (police: the dozer), in simulation seconds. */
     sawX: number;
     sawY: number;
     sawAt: number;
@@ -138,7 +159,22 @@ export interface TrafficAgent {
     /** Police: no direct charge before this time, after getting stuck on the way in. */
     ramAfter: number;
     ramFails: number;
+    /** Sideways offset from the lane the driver is steering at now; eases toward `pass`. */
     swerve: number;
+    /** Civilians going around something: the offset wanted, what is being passed, where it is and its half length. */
+    pass: number;
+    passKey: string;
+    passX: number;
+    passY: number;
+    passR: number;
+    /** Seconds held up behind something that is not moving off. */
+    waitT: number;
+    /** What blocked the path last step (an obstacle key), so two cars can tell they block each other. */
+    blockedBy: string;
+    /** Seconds left of easing past `pushKey`, the car this one is locked up with, and how often it has backed off instead. */
+    pushT: number;
+    pushKey: string;
+    backoffs: number;
 }
 export interface VehicleContact {
     x: number;

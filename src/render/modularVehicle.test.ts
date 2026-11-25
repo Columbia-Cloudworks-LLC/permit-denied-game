@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { VEHICLES, vehicleDefinition } from '../vehicle/definitions';
-import { createVehicle, hitVehicle, partPose, stepDetached } from '../vehicle/runtime';
+import { createVehicle, hitVehicle, partPose, stepDetached, stepVehicle } from '../vehicle/runtime';
 import { worldToScreen, screenToWorld } from '../world/iso';
 import { ISO_H, ISO_Z } from '../game/constants';
 import { vehicleFaces, vehicleRenderGroups } from './modularVehicle';
@@ -60,6 +60,8 @@ describe('vehicle surface rendering', () => {
             const before = partPose(v, gi), c = partPose(v, ci);
             // Production contact compresses the cab, below the attachment failure threshold.
             hitVehicle(v, [{ x: c.x, y: c.y, z: c.z + c.height * .2, nx: 0, ny: 0, nz: -1, impulse: 2, source: 'roof-test' }]);
+            // A crushable body folds toward the damage over a moment.
+            for (let i = 0; i < 30; i++) stepVehicle(v, 1 / 60);
             const after = partPose(v, gi), parent = partPose(v, ci);
             expect(after.z).toBeLessThan(before.z);
             expect(after.z + after.height).toBeLessThan(parent.z + parent.height);

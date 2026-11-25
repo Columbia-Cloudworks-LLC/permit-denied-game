@@ -8,7 +8,7 @@ import type { WorldEvent } from '../structure/types';
 import type { ParticlePool } from '../fx/particles';
 import { SpatialHash } from '../sim/spatial';
 import { bladePoints, type Dozer } from './dozer';
-import { createVehicle, hitVehicle, partPose, detachedRoot, assemblyMass, stepVehicle, stepDetached } from './runtime';
+import { createVehicle, hitVehicle, partPose, detachedRoot, pushMass, stepVehicle, stepDetached } from './runtime';
 import { vehicleDefinition, VEHICLES } from './definitions';
 import type { VehicleState, VehicleContact } from './types';
 export function migrateVehicles(town: Town): void {
@@ -375,7 +375,7 @@ function vehicleContacts(ctx: SubstepContext, v: VehicleState, a: VehicleBox, bo
 /** Separate two assemblies by mass share and exchange an inelastic impulse along the normal. */
 function collideVehicles(ctx: SubstepContext, v: VehicleState, a: VehicleBox, other: VehicleState, b: VehicleBox, hit: { nx: number; ny: number; depth: number }): void {
     const ar = detachedRoot(v, a.part!), br = detachedRoot(other, b.part!), av = contactBody(v, ar), bv = contactBody(other, br);
-    const massA = assemblyMass(v, ar), massB = assemblyMass(other, br), share = massB / (massA + massB);
+    const massA = pushMass(v, ar), massB = pushMass(other, br), share = massB / (massA + massB);
     const correction = Math.min(.1, hit.depth);
     av.x -= hit.nx * correction * share;
     av.y -= hit.ny * correction * share;
@@ -390,14 +390,14 @@ function collideVehicles(ctx: SubstepContext, v: VehicleState, a: VehicleBox, ot
     queueContact(ctx, v, { x, y, z, nx: -hit.nx, ny: -hit.ny, nz: 0, impulse: j * .5, source: `vehicle:${other.id}` });
     queueContact(ctx, other, { x, y, z, nx: hit.nx, ny: hit.ny, nz: 0, impulse: j * .5, source: `vehicle:${v.id}` });
 }
-/** The dozer body shoves a part above its deck; the lighter side gives way more. */
+/** The dozer body shoves a part above its deck; the lighter side gives way more. A dozer that is not driving at the part is only a wall to it. */
 function dozerContact(ctx: SubstepContext, v: VehicleState, a: VehicleBox): void {
     const { dozer, town } = ctx;
     const dozerBox: VehicleBox = { x: dozer.x, y: dozer.y, w: DOZER.radius * 1.6, d: DOZER.radius * 1.6, z: terrainHeightAt(town.terrain, dozer.x, dozer.y), h: .65, heading: dozer.heading };
     const hit = boxContact(dozerBox, a);
     if (!hit || a.z + a.h <= dozerBox.z + .25)
         return;
-    const root = detachedRoot(v, a.part!), body = contactBody(v, root), mass = assemblyMass(v, root);
+    const root = detachedRoot(v, a.part!), body = contactBody(v, root), mass = pushMass(v, root);
     const speed = Math.max(0, (dozer.vx - body.vx) * hit.nx + (dozer.vy - body.vy) * hit.ny);
     const push = dozerPushMass(dozer, ctx.engineMul, ctx.bladeMul), give = mass / (mass + push);
     dozer.x -= hit.nx * Math.min(.08, hit.depth) * give;
@@ -406,23 +406,28 @@ function dozerContact(ctx: SubstepContext, v: VehicleState, a: VehicleBox): void
     body.y += hit.ny * Math.min(.12, hit.depth) * (1 - give);
     if (root === undefined && v.traffic)
         v.traffic.dozerContact = Math.max(v.traffic.dozerContact, speed);
-    queueContact(ctx, v, { x: a.x - hit.nx * a.w * .4, y: a.y - hit.ny * a.d * .4, z: a.z + .2, nx: hit.nx, ny: hit.ny, nz: 0, impulse: speed * 1.4, source: 'dozer' });
+    queueContact(ctx, v, { x: a.x - hit.nx * a.w * .4, y: a.y - hit.ny * a.d * .4, z: a.z + .2, nx: hit.nx, ny: hit.ny, nz: 0, impulse: speed * 1.4, source: dozer.vx * hit.nx + dozer.vy * hit.ny > .3 ? 'dozer' : 'solid' });
 }
 /** How hard the dozer is to shove: engine, a lowered blade and speed all add heft. */
 export function dozerPushMass(dozer: Dozer, engineMul: number, bladeMul: number): number {
     const speed = Math.min(1, Math.hypot(dozer.vx, dozer.vy) / DOZER.maxSpeed);
     return 8 * engineMul * (dozer.bladeDown ? bladeMul : 1) * (1 + speed * .5);
 }
-/** Each blade point touching the part applies a crushing load for this substep. */
+/** Each blade point touching the part applies a crushing load for this substep, while one of them is driving into the other. */
 function bladeContacts(ctx: SubstepContext, v: VehicleState, a: VehicleBox): void {
     const { dozer } = ctx;
+    const fx = Math.cos(dozer.heading), fy = Math.sin(dozer.heading), body = contactBody(v, detachedRoot(v, a.part!));
+    // A parked blade is only a wall: the load comes from the dozer pushing or the vehicle running onto it.
+    const press = clamp(Math.max(dozer.vx * fx + dozer.vy * fy, -(body.vx * fx + body.vy * fy)) / .8, 0, 1);
+    if (press <= 0)
+        return;
     for (const pt of bladePoints(dozer)) {
         const point: VehicleBox = { x: pt.x, y: pt.y, w: .16, d: .16, z: dozer.bladeDown ? .05 : .4, h: .5, heading: dozer.heading };
         if (!boxContact(point, a))
             continue;
         if (v.traffic && detachedRoot(v, a.part!) === undefined)
             v.traffic.bladeContact += ctx.sub;
-        queueContact(ctx, v, { x: pt.x, y: pt.y, z: point.z + .22, nx: Math.cos(dozer.heading), ny: Math.sin(dozer.heading), nz: 0, impulse: 0, load: 24 * ctx.bladeMul, dt: ctx.sub, source: 'blade' });
+        queueContact(ctx, v, { x: pt.x, y: pt.y, z: point.z + .22, nx: Math.cos(dozer.heading), ny: Math.sin(dozer.heading), nz: 0, impulse: 0, load: 24 * ctx.bladeMul * press, dt: ctx.sub, source: 'blade' });
     }
 }
 /** Moving debris strikes the first part it touches and bounces off it. */
