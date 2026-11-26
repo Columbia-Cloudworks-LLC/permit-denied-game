@@ -89,6 +89,30 @@ export interface CityPlanRail extends RailLine {
   name: string;
 }
 
+/**
+ * An elevated beamway on pylons, running along `x = at` or `y = at` from its first pylon to its
+ * last. The pylons are props the dozer can break (`monorail-pylon`); a beam that loses a pylon
+ * drops, and a car of the parked train that was on it comes down with it (`sim/monorail.ts`).
+ * Keep the pylons clear of the cross streets.
+ */
+export interface CityPlanMonorail {
+  name: string;
+  axis: 'x' | 'y';
+  at: number;
+  /** Where each pylon stands along the line, ascending. */
+  pylons: readonly number[];
+  /** A train parked on the beam: the low end of its first car, and how many cars. */
+  train?: { at: number; cars: number };
+}
+
+/** A ferry moored on the plan's water, lying along `axis` with its middle at (`x`, `y`), one rail against a pier. */
+export interface CityPlanFerry {
+  name: string;
+  axis: 'x' | 'y';
+  x: number;
+  y: number;
+}
+
 export interface CityPlanLandmark {
   buildingId: string;
   label: string;
@@ -127,6 +151,8 @@ export interface CityPlan {
   canopies?: readonly CityPlanCanopy[];
   ballfields?: readonly CityPlanBallfield[];
   rails?: readonly CityPlanRail[];
+  monorails?: readonly CityPlanMonorail[];
+  ferries?: readonly CityPlanFerry[];
   streets: readonly CityPlanStreet[];
   parks: readonly CityPlanPark[];
   /** Pinned landmarks. The first is the county's objective; the rest pay as regional signatures. */
@@ -148,11 +174,32 @@ export interface CityDecor {
   canopies: readonly CityPlanCanopy[];
   /** Rail lines: the renderer draws the track, and the town parks the cars on it. */
   rails: readonly CityPlanRail[];
+  /** Elevated beamways: the town stands their pylons and keeps what is left of the beam. */
+  monorails: readonly CityPlanMonorail[];
+  /** Moored ferries: the town floats one at each berth. */
+  ferries: readonly CityPlanFerry[];
 }
 
 export function planDecor(plan: CityPlan | undefined): CityDecor | undefined {
-  if (!plan?.fountains?.length && !plan?.canopies?.length && !plan?.rails?.length) return undefined;
-  return { fountains: plan.fountains ?? [], canopies: plan.canopies ?? [], rails: plan.rails ?? [] };
+  if (!plan?.fountains?.length && !plan?.canopies?.length && !plan?.rails?.length && !plan?.monorails?.length && !plan?.ferries?.length) return undefined;
+  return { fountains: plan.fountains ?? [], canopies: plan.canopies ?? [], rails: plan.rails ?? [], monorails: plan.monorails ?? [], ferries: plan.ferries ?? [] };
+}
+
+/** A beamway's size: the top of its pylons, the depth of the beam on them, and how far either side of the line lots are kept off it. */
+export const MONORAIL_BEAM = { height: 3.6, depth: 0.6, half: 0.32, clear: 1.3 } as const;
+
+/** The ground under a beamway, out to `pad` either side of its line. */
+export function monorailBox(line: CityPlanMonorail, pad: number): { x: number; y: number; w: number; d: number } {
+  const from = line.pylons[0]!, to = line.pylons[line.pylons.length - 1]!;
+  return line.axis === 'x' ? { x: from, y: line.at - pad, w: to - from, d: pad * 2 } : { x: line.at - pad, y: from, w: pad * 2, d: to - from };
+}
+
+/** A box under one of the plan's beamways or too close beside it to build on. */
+export function boxUnderPlanMonorail(plan: CityPlan, box: { x: number; y: number; w: number; d: number }): boolean {
+  return (plan.monorails ?? []).some(line => {
+    const under = monorailBox(line, MONORAIL_BEAM.clear);
+    return box.x < under.x + under.w && box.x + box.w > under.x && box.y < under.y + under.d && box.y + box.d > under.y;
+  });
 }
 
 /** Half the width of a rail line's ballast, and how far either side of the centre line lots are kept off it. */

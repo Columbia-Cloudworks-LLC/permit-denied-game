@@ -18,7 +18,7 @@ export const MONUMENT_ROLL = { ground: 220, upper: 120 } as const;
  * stress, full under the middle of the figure and fading to nothing at the edge of the strike,
  * and is shoved clear sideways. A figure that came down on one spot shoves straight outward.
  */
-export function applyMonumentImpact(dozer: Dozer, impact: MonumentImpact, events: WorldEvent[]): boolean {
+export function applyMonumentImpact(dozer: Dozer, impact: Pick<MonumentImpact, 'x0' | 'y0' | 'x1' | 'y1' | 'radius'>, events: WorldEvent[]): boolean {
   const distance = distToSegment(dozer.x, dozer.y, impact.x0, impact.y0, impact.x1, impact.y1);
   const reach = impact.radius + 1.2;
   if (distance >= reach) return false;

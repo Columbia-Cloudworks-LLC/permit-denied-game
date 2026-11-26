@@ -530,6 +530,60 @@ function cableStayFigure(add: Add, height: number, concrete: number, scene?: Fig
   stays(layer(add, 5), 0, 0, 0, w, () => true);
 }
 
+const NEEDLE_LEGS = 3;
+
+/**
+ * Saucer-topped observation tower: three pairs of legs that pinch to a waist and flare again
+ * under the tophouse, a core between them, a low ring, the saucer with its halo, and a spire.
+ */
+function spaceNeedleFigure(add: Add, height: number, white: number): void {
+  const at = (share: number) => height * share;
+  const dark = shade(white, 0.72), halo = 0xe2a13a, glass = 0x9fc4d6;
+  const legs = layer(add, 0), house = layer(add, 2), crown = layer(add, 3);
+  tube(legs, { up: 0, r: at(0.016) }, { up: at(0.78), r: at(0.014) }, dark, 6);
+  for (let leg = 0; leg < NEEDLE_LEGS; leg++) {
+    const a = leg / NEEDLE_LEGS * Math.PI * 2 + 0.5;
+    for (const twin of [-0.16, 0.16]) {
+      const foot = (r: number, up: number, girth: number): Ring => ({ up, r: girth, side: Math.cos(a + twin * r / at(0.1)) * r, front: Math.sin(a + twin * r / at(0.1)) * r });
+      const ground = foot(at(0.1), 0, at(0.011)), waist = foot(at(0.026), at(0.5), at(0.008)), top = foot(at(0.07), at(0.78), at(0.009));
+      tube(legs, ground, waist, white, 5);
+      tube(legs, waist, top, white, 5);
+    }
+  }
+  // The low ring, a third of the way up.
+  const ring = layer(add, 1);
+  tube(ring, { up: at(0.19), r: at(0.062) }, { up: at(0.205), r: at(0.066) }, dark);
+  cap(ring, { up: at(0.205), r: at(0.066) }, white);
+  // The tophouse: a flaring underside, a band of glass, the halo, and a shallow roof.
+  tube(house, { up: at(0.775), r: at(0.05) }, { up: at(0.815), r: at(0.135) }, white, 14);
+  tube(house, { up: at(0.815), r: at(0.135) }, { up: at(0.835), r: at(0.135) }, glass, 14);
+  tube(house, { up: at(0.835), r: at(0.16) }, { up: at(0.845), r: at(0.16) }, halo, 14);
+  cap(house, { up: at(0.845), r: at(0.16) }, shade(halo, 0.85), 14);
+  tube(crown, { up: at(0.845), r: at(0.125) }, { up: at(0.885), r: at(0.04) }, white, 14);
+  tube(crown, { up: at(0.885), r: at(0.04) }, { up: at(0.905), r: at(0.022) }, dark, 8);
+  tube(layer(add, 4), { up: at(0.905), r: at(0.008) }, { up: height, r: at(0.002) }, white, 4);
+}
+
+const ARCH_ROW = 5;
+const ARCH_RIB = 7;
+
+/** A row of tall open arches: each a pointed vault of four thin ribs on splayed feet, the middle one tallest. */
+function archesFigure(add: Add, height: number, white: number): void {
+  const pitch = height * 0.115, foot = height * 0.05, rib = height * 0.011;
+  for (let arch = 0; arch < ARCH_ROW; arch++) {
+    const x = (arch - (ARCH_ROW - 1) / 2) * pitch * 2, top = height * (1 - 0.1 * Math.abs(arch - (ARCH_ROW - 1) / 2));
+    // Far ribs first, in shade; the two toward the camera over them.
+    for (const [index, [sx, sy]] of SQUARE.entries()) {
+      const near = index === 1 || index === 2 || index === 3, on = layer(add, arch * 2 + (sx + sy > 0 ? 1 : 0));
+      const point = (step: number): Local => {
+        const t = step / ARCH_RIB, out = Math.pow(1 - t, 0.55);
+        return w(x + sx * foot * out, sy * foot * out, top * Math.sin(t * Math.PI / 2));
+      };
+      for (let step = 0; step < ARCH_RIB; step++) ribbon(on, point(step), point(step + 1), rib, shade(white, near ? 1 - 0.12 * (index % 2) : 0.66));
+    }
+  }
+}
+
 const FIGURES: Readonly<Record<MonumentFigure, (add: Add, height: number, color: number, scene?: FigureScene) => void>> = {
   'sunshade-wings': sunshadeWingsFigure,
   'fan-roof': fanRoofFigure,
@@ -540,4 +594,6 @@ const FIGURES: Readonly<Record<MonumentFigure, (add: Add, height: number, color:
   sphere: sphereFigure,
   sphinx: sphinxFigure,
   'cable-stay': cableStayFigure,
+  'space-needle': spaceNeedleFigure,
+  arches: archesFigure,
 };

@@ -9,7 +9,14 @@ police driving are described in [traffic.md](traffic.md).
 Three more are rolling stock (`freight-locomotive`, `boxcar`, `tank-car`, family `rail`): an
 underframe on two trucks with a body, plate steel at three times a road vehicle's part strength,
 with no driver. A city plan parks them on a rail line, where the dozer can shove them off the
-track; see [city plans](city-plans.md#rail-lines).
+track; see [city plans](city-plans.md#rail-lines). A fourth, `monorail-car`, is the same underframe under a
+low glazed body: it rides a city plan's beamway as a drawn train and becomes a derailed rail car when
+its beam is dropped ([monorails](city-plans.md#monorails)).
+
+`state-ferry` (family `boat`) is a double-ended car ferry, plate steel like the rolling stock: a
+hull, car deck, glazed cabin, two wheelhouses and a funnel. It has no driver either. A city plan
+moors it at a berth, where the dozer can ram it loose to drift into the next pier
+([ferries](city-plans.md#ferries)).
 
 Open `?yard=1`, then **Debug → Assets → Category: vehicle**. Choose a vehicle and
 use **Jump to baseline** or **View whole example**. The proving controls provide

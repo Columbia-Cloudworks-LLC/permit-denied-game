@@ -123,7 +123,7 @@ it('rejects a statue on a plinth too tall to simulate cell by cell', () => {
   expect(validateBuildingDefinition(a).join(' ')).toContain('Invalid monument configuration');
 });
 
-const FIGURE_PACKAGES = ['liberty-statue', 'paris-lattice-tower', 'linq-observation-wheel', 'vegas-welcome-sign', 'desert-orb-arena', 'luxor-sphinx', 'lakefront-wing-museum', 'fan-roof-ballpark', 'kerrey-cable-footbridge'] as const;
+const FIGURE_PACKAGES = ['liberty-statue', 'paris-lattice-tower', 'linq-observation-wheel', 'vegas-welcome-sign', 'desert-orb-arena', 'luxor-sphinx', 'lakefront-wing-museum', 'fan-roof-ballpark', 'kerrey-cable-footbridge', 'saucer-needle-tower', 'science-center-arches'] as const;
 
 /** Knock out ground-floor wall cells from one side of the plinth, one more than half of them. */
 function undermine(b: Building, side: (cell: Building['cells'][number]) => number, particles: ParticlePool): void {

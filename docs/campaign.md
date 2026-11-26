@@ -66,7 +66,7 @@ Track stress and heat are shares of the step's own gain. Haboob, Blowing Dust an
 
 **Region boosts.** `REGION_BOOSTS` in `regionalCatalog.ts` reweights buildings for one region on top of its flavor. Wisconsin triples the two brew pubs (`corner-taproom`, `brick-brewpub`), which are ordinary buildings of the Roadside, Suburban, Main Street and Downtown levels everywhere.
 
-**City plans.** Illinois, Nebraska, Nevada, New York and Wisconsin play County 6 as Chicago, Omaha, Las Vegas, New York City and Milwaukee: authored coastline, streets, parks and pinned landmarks, filled by the Downtown generator. See [city-plans](city-plans.md).
+**City plans.** Illinois, Nebraska, Nevada, New York, Washington and Wisconsin play County 6 as Chicago, Omaha, Las Vegas, New York City, Seattle and Milwaukee: authored coastline, streets, parks and pinned landmarks, filled by the Downtown generator. See [city-plans](city-plans.md).
 
 These packages live in `src/world/landmarkData/`, outside the eager `src/world/data/` glob. `src/world/landmarkPack.ts` parses them with the shared constructions and registers them by ID when the lazy overworld chunk loads, so they cost the startup bundle nothing. They are `landmarkOnly` with zero zone weights and are not in `ARCHETYPES`. To add one: author the package there, list its level in `campaign.levels`, add a `landmarks` entry, and run `npm test` (`landmarkPack.test.ts`, `regionalBrands.test.ts`).
 

@@ -2,8 +2,8 @@ import type { PartRole, VehicleDefinition, VehiclePart } from './types';
 interface Source {
     id: string;
     name: string;
-    family: 'passenger' | 'truck' | 'tractor' | 'machine' | 'rail';
-    body: 'sedan' | 'hatchback' | 'pickup' | 'van' | 'box' | 'bus' | 'tractor' | 'combine' | 'forklift' | 'skid' | 'excavator' | 'trailer' | 'locomotive' | 'boxcar' | 'tanker';
+    family: 'passenger' | 'truck' | 'tractor' | 'machine' | 'rail' | 'boat';
+    body: 'sedan' | 'hatchback' | 'pickup' | 'van' | 'box' | 'bus' | 'tractor' | 'combine' | 'forklift' | 'skid' | 'excavator' | 'trailer' | 'locomotive' | 'boxcar' | 'tanker' | 'monorail' | 'ferry';
     length: number;
     width: number;
     height: number;
@@ -53,6 +53,8 @@ interface Chassis { s: Source; l: number; w: number; h: number; tracked: boolean
 function buildVehicle(s: Source): VehicleDefinition {
     if (s.family === 'rail')
         return buildRailCar(s);
+    if (s.family === 'boat')
+        return buildFerry(s);
     const { length: l, width: w, height: h } = s;
     const list = new PartList();
     const tracked = s.steering === 'tracks', tractor = s.body === 'tractor' || s.body === 'trailer';
@@ -111,6 +113,15 @@ function buildRailCar(s: Source): VehicleDefinition {
         for (const end of [-1, 1])
             list.add(`saddle-${end}`, 'panel', end * l * .3, 0, deck, l * .08, w * .8, .14, 'frame', 'box', 'steel');
     }
+    else if (s.body === 'monorail') {
+        // A low streamlined car: the body hangs over the beam, glazed down both sides, blunt at both ends.
+        list.add('body', 'equipment', 0, 0, deck - .1, l * .84, w * .92, h - deck);
+        for (const end of [-1, 1])
+            list.add(`nose-${end}`, 'equipment', end * l * .455, 0, deck - .1, l * .09, w * .72, (h - deck) * .7, 'body');
+        for (const side of [-1, 1])
+            list.add(`windows-${side}`, 'glass', 0, side * (w * .46 + .02), deck + (h - deck) * .34, l * .74, .02, (h - deck) * .36, 'body', 'box', 'glass').surface = side < 0 ? 'left' : 'right';
+        list.add('roof', 'panel', 0, 0, h - .1, l * .82, w * .84, .08, 'body', 'box', 'steel').surface = 'top';
+    }
     else {
         list.add('body', 'equipment', 0, 0, deck, l * .94, w * .9, h - deck - .08);
         list.add('roof', 'panel', 0, 0, h - .08, l * .96, w * .94, .08, 'body', 'box', 'steel').surface = 'top';
@@ -128,6 +139,38 @@ function buildRailCar(s: Source): VehicleDefinition {
             turn: .3, wheelbase: l * .68, traction: .9, clearance: .3, push: s.mass * .65 } };
     validateVehicle(d);
     return d;
+}
+/**
+ * A double-ended car ferry: a dark hull at the waterline, the car deck, a glazed passenger cabin,
+ * a wheelhouse at either end and a funnel amidships. It has no driver; it lies moored on a city
+ * plan's water until it is rammed loose (`ferry.ts`). Plate steel, like rolling stock.
+ */
+function buildFerry(s: Source): VehicleDefinition {
+    const { length: l, width: w, height: h } = s;
+    const list = new PartList(), deck = .5, cabin = 1.05, top = 1.85;
+    list.add('frame', 'frame', 0, 0, 0, l * .9, w * .86, deck, '', 'box', 'dark');
+    list.add('engine', 'engine', 0, 0, .1, l * .3, w * .3, .3, 'frame', 'box', 'dark');
+    for (const end of [-1, 1])
+        list.add(`prow-${end}`, 'equipment', end * l * .47, 0, 0, l * .06, w * .56, deck, 'frame', 'box', 'dark');
+    list.add('car-deck', 'equipment', 0, 0, deck, l * .94, w * .96, cabin - deck);
+    list.add('cabin', 'cab', 0, 0, cabin, l * .7, w * .84, top - cabin);
+    for (const side of [-1, 1])
+        list.add(`windows-${side}`, 'glass', 0, side * (w * .42 + .02), cabin + .28, l * .64, .02, .32, 'cabin', 'box', 'glass').surface = side < 0 ? 'left' : 'right';
+    list.add('sun-deck', 'panel', 0, 0, top, l * .74, w * .9, .08, 'cabin', 'box', 'steel').surface = 'top';
+    for (const end of [-1, 1])
+        list.add(`wheelhouse-${end}`, 'equipment', end * l * .25, 0, top + .08, l * .09, w * .42, .5, 'cabin');
+    list.add('funnel', 'equipment', 0, 0, top + .08, l * .07, w * .26, h - top - .08, 'cabin', 'box', 'dark');
+    const parts = list.parts;
+    const shares = parts.reduce((n, p) => n + p.mass, 0);
+    for (const p of parts) {
+        p.mass = s.mass * p.mass / shares;
+        p.strength *= Math.sqrt(s.mass / 2) * RAIL_STRENGTH;
+        p.mount *= Math.sqrt(s.mass / 2) * RAIL_STRENGTH;
+    }
+    const def: VehicleDefinition = { ...s, crushable: false, parts, drive: { steering: s.steering, speed: s.speed, accel: 1,
+            turn: .3, wheelbase: l * .68, traction: .9, clearance: .3, push: s.mass * .65 } };
+    validateVehicle(def);
+    return def;
 }
 /** Cab center along the length, as a fraction of it. */
 function cabOffset(s: Source, tractor: boolean): number {

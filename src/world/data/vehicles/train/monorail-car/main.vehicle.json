@@ -1,0 +1,17 @@
+{
+  "id": "monorail-car",
+  "name": "Monorail car",
+  "family": "rail",
+  "body": "monorail",
+  "length": 5.2,
+  "width": 1.5,
+  "height": 1.9,
+  "mass": 9,
+  "cash": 120,
+  "paints": [
+    12203042,
+    3108792
+  ],
+  "speed": 3,
+  "steering": "front"
+}

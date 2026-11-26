@@ -1,6 +1,11 @@
 import type { Graphics } from 'pixi.js';
 import { ISO_W, ISO_Z } from '../game/constants';
-import { RAIL_BED, type CityPlanCanopy, type CityPlanFountain, type CityPlanRail } from '../world/cityPlan';
+import { MONORAIL, monorailPoint, monorailSpanEnds, type MonorailState } from '../sim/monorail';
+import { vehicleDefinition } from '../vehicle/definitions';
+import { ferryLeadingSide } from '../vehicle/ferry';
+import { FERRY } from '../vehicle/runtime';
+import type { VehicleState } from '../vehicle/types';
+import { MONORAIL_BEAM, RAIL_BED, type CityPlanCanopy, type CityPlanFountain, type CityPlanRail } from '../world/cityPlan';
 import { depthKey } from '../world/iso';
 import { drawWorldPoly } from './drawIso';
 import { shade } from './palette';
@@ -97,6 +102,124 @@ export function railChunkCommand(rail: CityPlanRail, chunk: { from: number; to: 
       }
     },
   };
+}
+
+const BEAM_CHUNK = 2.4;
+const BEAM_CONCRETE = 0xcfcdc5;
+const CAR_GLASS = 0x2c3e4c;
+
+/** A drawn piece of a beamway with the ground box it stands over, for culling. */
+export interface DecorPiece { x: number; y: number; w: number; d: number; h: number; cmd: Cmd }
+
+/** A box on the world axes as the camera sees it: top, east face and south face. The top may slope along the line. */
+function slab(g: Graphics, corners: readonly [Point, Point, Point, Point], depth: number, color: number, alpha: number): void {
+  // Corners run north-west, north-east, south-east, south-west, each at its own top height.
+  const [nw, ne, se, sw] = corners, under = (p: Point): Point => ({ ...p, z: Math.max(0.02, p.z - depth) });
+  drawWorldPoly(g, [nw, ne, se, sw], shade(color, 1.08), alpha);
+  drawWorldPoly(g, [under(ne), under(se), se, ne], shade(color, 0.9), alpha);
+  drawWorldPoly(g, [under(sw), under(se), se, sw], shade(color, 0.72), alpha);
+}
+
+/**
+ * A beamway's beams, cut into short lengths so each sorts against the buildings beside it, and
+ * the cars still on it. A beam that has let go hangs from the end that still has a pylon, then
+ * drops; a car on it is pitched off to its side. `near` thins the pieces over the dozer.
+ */
+export function monorailPieces(state: MonorailState, near: (x: number, y: number) => boolean): DecorPiece[] {
+  const { line } = state, pieces: DecorPiece[] = [], half = MONORAIL_BEAM.half;
+  const corners = (a0: number, a1: number, c0: number, c1: number, z0: number, z1: number): [Point, Point, Point, Point] => {
+    const p = (along: number, across: number, z: number): Point => ({ ...monorailPoint(line, along, across), z });
+    // `a0` is the north or west end of the piece and `c0` its north or west side.
+    return line.axis === 'x' ? [p(a0, c0, z0), p(a1, c0, z1), p(a1, c1, z1), p(a0, c1, z0)] : [p(a0, c0, z0), p(a0, c1, z0), p(a1, c1, z1), p(a1, c0, z1)];
+  };
+  const box = (a0: number, a1: number, pad: number) => {
+    const at = monorailPoint(line, a0, -pad);
+    return line.axis === 'x' ? { x: at.x, y: at.y, w: a1 - a0, d: pad * 2 } : { x: at.x, y: at.y, w: pad * 2, d: a1 - a0 };
+  };
+  for (const span of state.spans) {
+    if (span.phase === 'down') continue;
+    const ends = monorailSpanEnds(span), count = Math.max(1, Math.ceil((span.to - span.from) / BEAM_CHUNK)), step = (span.to - span.from) / count;
+    for (let i = 0; i < count; i++) {
+      const a0 = span.from + i * step, a1 = a0 + step;
+      const z0 = ends.low + (ends.high - ends.low) * (i / count), z1 = ends.low + (ends.high - ends.low) * ((i + 1) / count);
+      const quad = corners(a0, a1, -half, half, z0, z1), far = quad[2], mid = monorailPoint(line, (a0 + a1) / 2);
+      const alpha = near(mid.x, mid.y) ? 0.45 : 1;
+      pieces.push({ ...box(a0, a1, half), h: MONORAIL_BEAM.height, cmd: { depth: depthKey(far.x, far.y, Math.max(z0, z1)), run: g => slab(g, quad, MONORAIL_BEAM.depth, BEAM_CONCRETE, alpha) } });
+    }
+  }
+  const car = vehicleDefinition(MONORAIL.car), paint = car.paints[0], wide = car.width / 2, tall = car.height - 0.5;
+  for (const riding of state.cars) {
+    if (riding.phase === 'down') continue;
+    const p = riding.phase === 'falling' ? Math.min(1, riding.t / MONORAIL.fall) : 0;
+    const shift = riding.side * MONORAIL.offset * p, floor = MONORAIL_BEAM.height * (1 - p * p), top = floor + tall;
+    const a0 = riding.along - riding.length / 2, a1 = riding.along + riding.length / 2, mid = monorailPoint(line, riding.along, shift);
+    const body = corners(a0, a1, shift - wide, shift + wide, top, top), far = body[2];
+    const band = corners(a0 + 0.5, a1 - 0.5, shift - wide - 0.01, shift + wide + 0.01, floor + tall * 0.78, floor + tall * 0.78);
+    const alpha = near(mid.x, mid.y) ? 0.5 : 1;
+    pieces.push({ ...box(a0, a1, wide + MONORAIL.offset), h: MONORAIL_BEAM.height + tall, cmd: {
+      depth: depthKey(far.x, far.y, top) + 1,
+      run: g => {
+        // The skirts hang down either side of the beam; the glazing is a dark band along the body.
+        slab(g, body, tall + 0.35, paint, alpha);
+        const [, ne, se, sw] = band, drop = (q: Point): Point => ({ ...q, z: q.z - tall * 0.34 });
+        drawWorldPoly(g, [drop(ne), drop(se), se, ne], CAR_GLASS, alpha);
+        drawWorldPoly(g, [drop(sw), drop(se), se, sw], shade(CAR_GLASS, 0.8), alpha);
+      },
+    } });
+  }
+  return pieces;
+}
+
+const FOAM = 0xf2f8fb;
+const SPRAY_PLUMES = 7;
+
+/** A drifting hull's wash and the spray where it ran ashore, both flat on the water or facing the camera. Nothing for a moored hull at rest. */
+export function ferryWaterCommands(v: VehicleState): Cmd[] {
+  const seat = v.afloat;
+  if (!seat) return [];
+  const cmds: Cmd[] = [], speed = Math.hypot(v.vx, v.vy);
+  if (!seat.moored && speed > 0.35) {
+    const nx = v.vx / speed, ny = v.vy / speed, strength = Math.min(1, speed / 3.5);
+    const lead = ferryLeadingSide(v, nx, ny, 0.15), trail = ferryLeadingSide(v, -nx, -ny, 0.1);
+    const reach = 1.5 + speed * 1.3, flare = 0.3;
+    const wx = (trail.x1 - trail.x0) * flare, wy = (trail.y1 - trail.y0) * flare;
+    cmds.push({
+      depth: depthKey(Math.min(trail.x0, trail.x1) - reach, Math.min(trail.y0, trail.y1) - reach, 0),
+      run: g => {
+        // The wash spreads astern of the side it is leaving; the bow wave piles up along the side it leads with.
+        drawWorldPoly(g, [
+          { x: trail.x0, y: trail.y0, z: 0.03 }, { x: trail.x1, y: trail.y1, z: 0.03 },
+          { x: trail.x1 + wx - nx * reach, y: trail.y1 + wy - ny * reach, z: 0.03 }, { x: trail.x0 - wx - nx * reach, y: trail.y0 - wy - ny * reach, z: 0.03 },
+        ], FOAM, 0.28 * strength);
+        drawWorldPoly(g, [
+          { x: lead.x0, y: lead.y0, z: 0.04 }, { x: lead.x1, y: lead.y1, z: 0.04 },
+          { x: lead.x1 + nx * 0.7 * strength, y: lead.y1 + ny * 0.7 * strength, z: 0.04 }, { x: lead.x0 + nx * 0.7 * strength, y: lead.y0 + ny * 0.7 * strength, z: 0.04 },
+        ], FOAM, 0.75 * strength);
+      },
+    });
+  }
+  const splash = seat.splash;
+  if (splash) {
+    const p = splash.t / FERRY.splash, rise = Math.sin(Math.min(1, p) * Math.PI);
+    for (let i = 0; i < SPRAY_PLUMES; i++) {
+      const t = (i + 0.5) / SPRAY_PLUMES, x = splash.x0 + (splash.x1 - splash.x0) * t, y = splash.y0 + (splash.y1 - splash.y0) * t;
+      // The middle of the line goes highest, and no two plumes match.
+      const top = (1.4 + 2.4 * Math.sin(t * Math.PI)) * (0.7 + 0.3 * Math.sin(i * 2.4)) * rise, girth = 0.5;
+      const at = (side: number, z: number): Point => ({ x: x + side * DIAG, y: y - side * DIAG, z });
+      cmds.push({
+        depth: depthKey(x, y, top) + 4,
+        run: g => {
+          drawWorldPoly(g, ring(x, y, 0.05, 0.6 + p * 1.6, 8), FOAM, 0.4 * (1 - p));
+          drawWorldPoly(g, [at(-girth, 0.05), at(girth, 0.05), at(girth * 0.5, top), at(-girth * 0.5, top)], WATER, 0.6 * (1 - p * 0.7));
+          drawWorldPoly(g, Array.from({ length: 8 }, (_, k) => {
+            const a = k / 8 * Math.PI * 2;
+            return at(Math.cos(a) * girth * 1.3 * FACE * 2, top + Math.sin(a) * girth * 1.2);
+          }), SPRAY, 0.7 * (1 - p));
+        },
+      });
+    }
+  }
+  return cmds;
 }
 
 const BAY = 4;

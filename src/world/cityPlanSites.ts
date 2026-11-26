@@ -9,5 +9,6 @@ export const CITY_SITES: Readonly<Record<string, readonly [lon: number, lat: num
   'US-NE': [-95.9345, 41.2565],
   'US-NV': [-115.14, 36.17],
   'US-NY': [-74.006, 40.7128],
+  'US-WA': [-122.3321, 47.6062],
   'US-WI': [-87.9065, 43.0389],
 };

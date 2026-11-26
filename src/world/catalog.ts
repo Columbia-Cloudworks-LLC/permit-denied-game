@@ -159,6 +159,7 @@ function asset(partial: AssetDef): AssetDef {
 }
 
 const MET = { t: 0x8b908c, l: 0x3e4240, r: 0x6d7270 };
+const CONCRETE = { t: 0xd4d2ca, l: 0x77766f, r: 0xb0aea6 };
 const WOOD = { t: 0xc98a4e, l: 0x7a4a24, r: 0xb8733a };
 const HAY = { t: 0xd4b45a, l: 0x8a6a28, r: 0xc4a24a };
 const GREEN = { t: 0x4a8844, l: 0x244a22, r: 0x3d6a32 };
@@ -1303,6 +1304,37 @@ export const ASSET_CATALOG: readonly AssetDef[] = [
     explodeImpulse: 0,
     explodeDamage: 0,
     yawResist: 0,
+  }),
+  asset({
+    id: "monorail-pylon",
+    family: "roadside",
+    tags: ["roadside", "tall"],
+    footprint: { w: 0.7, d: 0.55, h: 3.6 },
+    collision: { w: 0.7, d: 0.55 },
+    material: "concrete",
+    hp: 70,
+    mass: 9,
+    resistance: 0.95,
+    bladeMul: 1,
+    trackHazard: 0.2,
+    cash: 80,
+    destruction: "topple",
+    debris: debris(2, 4, 12, 0.5, 1.4, "beam"),
+    variants: 1,
+    boxes: [
+      box(0, 0, 0, 0.9, 0.7, 0.3, CONCRETE.t, CONCRETE.l, CONCRETE.r),
+      box(0, 0, 0.3, 0.55, 0.45, 2.75, CONCRETE.t, CONCRETE.l, CONCRETE.r),
+      box(0, 0, 3.05, 0.45, 1.1, 0.55, CONCRETE.t, CONCRETE.l, CONCRETE.r),
+    ],
+    zones: ["roadside"],
+    roadsideOk: true,
+    minClear: 0.6,
+    sparks: false,
+    birdGag: false,
+    explodeRadius: 0,
+    explodeImpulse: 0,
+    explodeDamage: 0,
+    yawResist: 1,
   }),
   asset({
     id: "billboard",

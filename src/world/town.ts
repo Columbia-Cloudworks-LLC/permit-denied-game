@@ -38,6 +38,8 @@ import { stampStreetFaces } from "../structure/facadeTrim";
 import { tagRegionalSignatures, type RegionalPlacement } from "./regionalPlacement";
 import type { TopologyFamily } from "./rural";
 import { placeRailCars } from "../vehicle/rail";
+import { placeFerries } from "../vehicle/ferry";
+import { buildMonorail, type MonorailState } from "../sim/monorail";
 import { deriveTerrainFeatures, type TerrainFeature } from "./terrainFeatures";
 import {
   emptyGrassGrid,
@@ -120,6 +122,8 @@ export interface Town {
   featureRevision: number;
   /** Fountain jets and street canopies of an authored city: drawn only, nothing collides with them. */
   cityDecor?: import('./cityPlan').CityDecor;
+  /** An authored city's beamways: which beams still stand and which cars still ride them. */
+  monorails?: MonorailState[];
 }
 
 export interface TownOptions {
@@ -177,6 +181,8 @@ function createTownLayout(options: TownOptions = {}): Town {
   stampStreetFaces(layout.buildings, layout.lots);
   tagRegionalSignatures(layout.buildings, regional);
   regional?.finish?.(layout, seed);
+  const monorails = (layout.cityDecor?.monorails ?? []).map(buildMonorail);
+  for (const state of monorails) layout.props.push(...state.pylons);
   const pileW = layout.maxX - layout.minX + 4;
   const pileD = layout.maxY - layout.minY + 4;
   return {
@@ -184,7 +190,8 @@ function createTownLayout(options: TownOptions = {}): Town {
     rubble: [],
     marks: [],
     pile: new PileField(layout.minX - 2, layout.minY - 2, pileW, pileD),
-    vehicles: placeRailCars(layout.cityDecor?.rails ?? []),
+    vehicles: [...placeRailCars(layout.cityDecor?.rails ?? []), ...placeFerries(layout.cityDecor?.ferries ?? [])],
+    ...(monorails.length ? { monorails } : {}),
     roadCar: null,
     visualRevision: 1,
     collapsedSites: [],

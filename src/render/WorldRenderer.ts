@@ -38,7 +38,7 @@ import { drawDozer, lookKey } from "./vehicles";
 import { facadeDetailCommand } from './facadeDetails';
 import { elevatedTankCommands } from './elevatedTank';
 import { monumentCommands } from './monument';
-import { canopyBayCommand, canopyBays, fountainCommands, railChunkCommand, railChunks } from './cityDecor';
+import { canopyBayCommand, canopyBays, ferryWaterCommands, fountainCommands, monorailPieces, railChunkCommand, railChunks } from './cityDecor';
 import { monumentSweep } from '../structure/monument';
 import { siloCommands } from './silos';
 import { clearNhoodOverlay, drawNhoodOverlay } from "./nhoodOverlay";
@@ -933,6 +933,19 @@ export class WorldRenderer {
         if (!this.visibleBox(chunk.x, chunk.y, chunk.w, chunk.d, 0, 0.2)) continue;
         this.pushShown(frame, [railChunkCommand(rail, chunk)]);
       }
+    }
+    for (const state of town.monorails ?? []) {
+      for (const piece of monorailPieces(state, (x, y) => Math.abs(dozer.x - x) < 2.4 && Math.abs(dozer.y - y) < 2.4)) {
+        frame.total++;
+        if (!this.visibleBox(piece.x, piece.y, piece.w, piece.d, 0, piece.h)) continue;
+        this.pushShown(frame, [piece.cmd]);
+      }
+    }
+    if (decor.ferries.length && view.vehicles) for (const hull of town.vehicles) {
+      if (!hull.afloat || !this.visibleBox(hull.x - 9, hull.y - 9, 18, 18, 0, 5)) continue;
+      const water = ferryWaterCommands(hull);
+      frame.total += water.length;
+      this.pushShown(frame, water);
     }
     for (const canopy of decor.canopies) {
       canopyBays(canopy).forEach((bay, index) => {

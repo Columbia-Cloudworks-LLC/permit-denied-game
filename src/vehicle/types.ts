@@ -120,8 +120,24 @@ export interface VehicleState extends RoadVehicle {
     hits?: number;
     /** The rail line a car stands on, and whether it has been shoved off it; absent for road vehicles. */
     rail?: RailSeat;
+    /** The berth a ferry lies at, and whether it has been rammed loose; absent for everything on land. */
+    afloat?: FloatSeat;
     /** Traffic driver state; absent for parked and yard vehicles. */
     traffic?: TrafficAgent;
+}
+/**
+ * A hull's hold on its berth. While `moored` it stays at (`x`, `y`) facing `heading`; cast loose it
+ * drifts on the water and never comes ashore.
+ */
+export interface FloatSeat {
+    x: number;
+    y: number;
+    heading: number;
+    moored: boolean;
+    /** The hardest grounding of a drifting hull this step, for the world to turn into damage: its direction and speed. */
+    hit?: { nx: number; ny: number; impulse: number };
+    /** Spray along the shore it last ran onto, and how long ago: drawn only. */
+    splash?: { x0: number; y0: number; x1: number; y1: number; t: number };
 }
 /**
  * A rail car's hold on its track. `axis: 'x'` is a line running east-west along `y = at`, between

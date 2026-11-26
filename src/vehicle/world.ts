@@ -8,7 +8,8 @@ import type { WorldEvent } from '../structure/types';
 import type { ParticlePool } from '../fx/particles';
 import { SpatialHash } from '../sim/spatial';
 import { bladePoints, type Dozer } from './dozer';
-import { createVehicle, hitVehicle, partPose, detachedRoot, pushMass, stepVehicle, stepDetached, RAIL } from './runtime';
+import { createVehicle, hitVehicle, partPose, detachedRoot, pushMass, stepVehicle, stepDetached, FERRY, RAIL } from './runtime';
+import { ferryShore, noteFerryHit, stepFerries } from './ferry';
 import { noteRailHit, stepRailCars } from './rail';
 import { vehicleDefinition, VEHICLES } from './definitions';
 import type { VehicleState, VehicleContact } from './types';
@@ -170,6 +171,7 @@ export function stepVehicleWorld(town: Town, dozer: Dozer, particles: ParticlePo
     for (let step = 0; step < steps; step++)
         runSubstep(ctx, particles);
     stepRailCars(town, dt, particles, events);
+    stepFerries(town, dt, particles, events);
     for (const v of town.vehicles) {
         hitByRubble(town, v);
         cash += collectWreckCash(v, events);
@@ -304,7 +306,11 @@ function stepVehicleSubstep(ctx: SubstepContext, v: VehicleState): void {
     const d = vehicleDefinition(v.definitionId);
     const prevX = v.x, prevY = v.y;
     stepVehicle(v, sub, obstacleAhead(ctx, v, d));
-    if ((town.surface || town.features.length) && terrainTraversalAt(town.features, v.x, v.y, town.surface) !== 'open') {
+    if (v.afloat) {
+      // A hull belongs on the water: adrift it is stopped at the shore, moored it does not move at all.
+      if (!v.afloat.moored && town.surface && !town.frozen) ferryShore(town.surface, v, prevX, prevY);
+    }
+    else if ((town.surface || town.features.length) && terrainTraversalAt(town.features, v.x, v.y, town.surface) !== 'open') {
       const resolved = resolveTraversal(v.x, v.y, prevX, prevY, town.features, town.surface);
       v.x = resolved.x;
       v.y = resolved.y;
@@ -343,6 +349,8 @@ function settleOnGround(town: Town, v: VehicleState, d: ReturnType<typeof vehicl
 const contactBody = (v: VehicleState, root: number | undefined) => root === undefined ? v : v.parts[root]!;
 /** Push a part's assembly out of static boxes and cancel its velocity into them. */
 function solidContacts(ctx: SubstepContext, v: VehicleState, a: VehicleBox, bounds: ReturnType<typeof boxBounds>): void {
+    // A moored hull lies against its pier; nothing ashore shifts it.
+    if (v.afloat?.moored) return;
     ctx.fixed.query(bounds.x, bounds.y, bounds.w, bounds.d, ctx.candidates);
     for (const b of ctx.candidates) {
         const hit = boxContact(a, b);
@@ -357,6 +365,8 @@ function solidContacts(ctx: SubstepContext, v: VehicleState, a: VehicleBox, boun
         const ram = body === v && !!v.rail?.derailed && impulse > RAIL.wallSpeed;
         if (ram)
             noteRailHit(v, b.x, b.y, hit.nx, hit.ny, impulse);
+        if (body === v && v.afloat && impulse > FERRY.wallSpeed)
+            noteFerryHit(v, hit.nx, hit.ny, impulse);
         body.vx -= hit.nx * impulse * (ram ? 1 - RAIL.carry : 1);
         body.vy -= hit.ny * impulse * (ram ? 1 - RAIL.carry : 1);
         queueContact(ctx, v, { x: a.x + hit.nx * a.w * .4, y: a.y + hit.ny * a.d * .4, z: a.z + a.h * .5, nx: -hit.nx, ny: -hit.ny, nz: 0, impulse, source: 'solid' });
