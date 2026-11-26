@@ -9,7 +9,7 @@ import type { StructureStepResult } from './building';
  * walls is whole, then leans toward the missing side and comes down the way its `fall` says:
  * it topples like a felled tree, crumbles where it stands, or breaks loose and rolls.
  */
-export const MONUMENT_FIGURES = ['liberty', 'lattice-tower', 'wheel', 'sign', 'sphere', 'sphinx', 'sunshade-wings', 'fan-roof', 'cable-stay'] as const;
+export const MONUMENT_FIGURES = ['liberty', 'lattice-tower', 'wheel', 'sign', 'sphere', 'sphinx', 'sunshade-wings', 'fan-roof', 'cable-stay', 'space-needle', 'arches'] as const;
 export type MonumentFigure = typeof MONUMENT_FIGURES[number];
 /**
  * How the figure comes down. `topple`: over like a felled tree, striking the line it lands on.
@@ -48,6 +48,12 @@ export interface MonumentDef {
   bonus: number;
   /** Statue metal: its drawn colour and the tint of its wreckage. */
   color: number;
+  /**
+   * How wide a toppling figure is at its foot, as a share of its height; absent is 0.2 (a robed
+   * statue). It sizes the plates the figure breaks into and the width of the line it strikes, so a
+   * tall thin figure (a needle on legs) sets it low and comes down as struts, not as slabs.
+   */
+  girth?: number;
   /** A deck the figure carries; only the `cable-stay` figure draws one. */
   span?: MonumentSpan;
 }
@@ -336,6 +342,10 @@ function warn(b: Building, lost: MonumentState['columns'], events: WorldEvent[])
 }
 
 const PIECES = 14;
+/** A toppled figure's width at its foot, in world units. */
+export const monumentGirth = (def: MonumentDef): number => def.height * (def.girth ?? 0.2);
+/** Plates a toppled figure breaks into: one every couple of units along it, within limits. */
+const topplePieces = (def: MonumentDef): number => Math.min(24, Math.max(PIECES, Math.round(def.height / 2.2)));
 
 /** The statue hits the ground along its length and breaks into copper plate. */
 function land(b: Building, result: StructureStepResult, particles: ParticlePool, events: WorldEvent[]): void {
@@ -343,10 +353,11 @@ function land(b: Building, result: StructureStepResult, particles: ParticlePool,
   s.phase = 'gone';
   if (def.span) releaseSpan(b, result, events);
   const tipX = pose.x + s.dx * def.height, tipY = pose.y + s.dy * def.height;
-  for (let i = 0; i < PIECES; i++) {
-    const t = (i + 0.5) / PIECES;
+  const pieces = topplePieces(def), foot = monumentGirth(def);
+  for (let i = 0; i < pieces; i++) {
+    const t = (i + 0.5) / pieces;
     // Robe plates low on the figure are the widest; the arm and torch break small.
-    const girth = def.height * (0.2 - 0.11 * t);
+    const girth = foot * (1 - 0.55 * t);
     const side = i % 2 ? 1 : -1;
     const x = pose.x + s.dx * def.height * t - s.dy * side * girth * 0.35;
     const y = pose.y + s.dy * def.height * t + s.dx * side * girth * 0.35;
@@ -364,5 +375,5 @@ function land(b: Building, result: StructureStepResult, particles: ParticlePool,
   events.push({ kind: 'snap', x: tipX, y: tipY, z: 0, mag: 2.2, material: 'metal' });
   result.cash += def.bonus;
   events.push({ kind: 'cash', x: (pose.x + tipX) / 2, y: (pose.y + tipY) / 2, z: 2, mag: 2.6, cash: def.bonus });
-  result.monumentImpacts.push({ building: b, x0: pose.x, y0: pose.y, x1: tipX, y1: tipY, radius: def.height * 0.16 + 0.8 });
+  result.monumentImpacts.push({ building: b, x0: pose.x, y0: pose.y, x1: tipX, y1: tipY, radius: foot * 0.8 + 0.8 });
 }

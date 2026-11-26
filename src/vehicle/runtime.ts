@@ -42,6 +42,17 @@ export const RAIL = {
     grip: 5, throw: .42, kick: 6.5, roll: .5, slide: 1.5, tip: .42, bonus: 100,
     coupling: .9, chain: .55, chainMin: 2.4, wallSpeed: 1.5, wall: 1.6, reach: 1.3, carry: .45, gap: .28,
 } as const;
+/**
+ * Ferry tuning. A moored hull is hauled back to its berth at `grip` per second; pushed `cast` units
+ * off it the lines part, it leaves at `kick` units/s or better and pays `bonus` once. Adrift it
+ * loses `drag` of its speed per second. Running onto a shore at over `strike` units/s (or into a
+ * wall at over `wallSpeed`) breaks ground-floor cells within `reach` of the side that struck, by
+ * speed × mass × `wall`; it rebounds at `bounce` of its speed and the spray stands `splash` seconds.
+ */
+export const FERRY = {
+    grip: 5, cast: .4, kick: 5.5, bonus: 500, drag: .22,
+    strike: .8, wallSpeed: .8, wall: 2.2, reach: 3.4, bounce: .15, splash: 1.3,
+} as const;
 /** Repeatable 0–1 value for a vehicle and a slot, so crumpling and shed wheels replay identically. */
 function crushNoise(id: number, slot: number): number {
     let h = Math.imul(id | 0, 73856093) ^ Math.imul(slot | 0, 19349663);
@@ -416,7 +427,7 @@ export function stepVehicle(v: VehicleState, dt: number, obstacle = false): void
     }
     else {
         // A crushed hull scrapes along on its belly.
-        const base = v.rail ? (v.rail.derailed ? RAIL.slide : RAIL.roll) : 2.8;
+        const base = v.afloat && !v.afloat.moored ? FERRY.drag : v.rail ? (v.rail.derailed ? RAIL.slide : RAIL.roll) : 2.8;
         const drag = Math.exp(-(base + (v.status === 'operational' ? 0 : CRUSH.drag * v.compact.amount)) * dt);
         v.vx *= drag;
         v.vy *= drag;

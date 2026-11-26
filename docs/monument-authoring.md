@@ -2,7 +2,7 @@
 
 A `monument` building is a drawn figure standing on a destructible foundation. The foundation is an ordinary building of wall cells, at most three floors so it is simulated cell by cell, with a flat roof. The figure has no cells of its own: the dozer cannot chew it, only bring it down.
 
-`monument` contains `figure`, `height` (world units above the roof, 2–48), `minimumSupport` (0–1), `warningDuration`, `fallDuration`, `bonus` and `color`, and optionally `fall` (`topple`, `crumble` or `roll`; absent topples) and, for a rolling figure, `reach` (4–80 world units; absent is twice the height). The validator rejects a monument on a building taller than three floors or one that is also a core-collapse tower, elevated tank, silo host, canopy or open deck.
+`monument` contains `figure`, `height` (world units above the roof, 2–48), `minimumSupport` (0–1), `warningDuration`, `fallDuration`, `bonus` and `color`, and optionally `girth` (0.02–0.4: how wide a toppling figure is at its foot as a share of its height, absent 0.2; it sizes the plates it breaks into and the width of its strike, so a tall thin figure such as the needle sets it low), `fall` (`topple`, `crumble` or `roll`; absent topples) and, for a rolling figure, `reach` (4–80 world units; absent is twice the height). The validator rejects a monument on a building taller than three floors or one that is also a core-collapse tower, elevated tank, silo host, canopy or open deck.
 
 The Statue of Liberty package (`src/world/landmarkData/liberty-statue/`) is the reference implementation: a star-fort ground floor, a pedestal and a plinth, in stone via `wallColor`, with the copper figure on top.
 
@@ -10,10 +10,12 @@ The Statue of Liberty package (`src/world/landmarkData/liberty-statue/`) is the 
 | --- | --- | --- |
 | `liberty` | `liberty-statue` | topple |
 | `lattice-tower` | `paris-lattice-tower` | topple |
-| `wheel` | `linq-observation-wheel` | topple |
+| `wheel` | `linq-observation-wheel`, `waterfront-great-wheel` | topple |
 | `sign` | `vegas-welcome-sign` | topple |
 | `sunshade-wings` | `lakefront-wing-museum` | topple |
 | `cable-stay` | `kerrey-cable-footbridge` | topple |
+| `space-needle` | `saucer-needle-tower` | topple |
+| `arches` | `science-center-arches` | topple |
 | `sphinx` | `luxor-sphinx` | crumble |
 | `fan-roof` | `fan-roof-ballpark` | crumble |
 | `sphere` | `desert-orb-arena` | roll |

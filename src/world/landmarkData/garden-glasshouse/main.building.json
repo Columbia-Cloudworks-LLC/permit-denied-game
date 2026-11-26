@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "id": "garden-glasshouse",
+  "label": "GARDEN GLASSHOUSE",
+  "kind": "shop",
+  "w": 12,
+  "d": 5,
+  "floors": 1,
+  "construction": "glasshouse",
+  "roof": "gable",
+  "roofAxis": "x",
+  "theme": "warehouse",
+  "windowStride": 1,
+  "features": {"porch":false,"awning":false,"parapet":false,"chimney":false,"garage":false},
+  "zones": {"residential":0,"commercial":0,"industrial":0},
+  "campaign": {"levels":{"city-downtown":1},"landmarkOnly":true,"urbanBands":["downtown-core"]},
+  "partitions": false,
+  "openings": [{"floor":0,"side":"south","at":0.5,"kind":"door"}],
+  "traits": {"use":["glass-museum","landmark"],"form":["glasshouse","conservatory"],"construction":["glass","metal-frame"],"scale":["pavilion"]},
+  "sections": [{"id":"glasshouse","role":"conservatory","x":0,"y":0,"w":12,"d":5,"floor":0,"floors":1,"layout":"garden.layout.json"}]
+}

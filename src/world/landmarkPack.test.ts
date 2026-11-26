@@ -18,7 +18,7 @@ describe('regional landmark pack', () => {
   it('keeps landmark JSON on LF line endings and under a sane size', () => {
     const files = Object.entries(RAW);
     expect(files.filter(([, text]) => text.includes('\r')).map(([file]) => file)).toEqual([]);
-    expect(files.reduce((sum, [, text]) => sum + text.length, 0)).toBeLessThan(120_000);
+    expect(files.reduce((sum, [, text]) => sum + text.length, 0)).toBeLessThan(140_000);
   });
 
   it.each(LANDMARK_ARCHETYPES.map(a => [a.id, a] as const))('%s validates, never enters ordinary lots, and stands on its own', (_id, a) => {

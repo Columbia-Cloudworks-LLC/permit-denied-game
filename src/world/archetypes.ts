@@ -76,7 +76,7 @@ const buildingShape: Shape = { version: 'number', id: 'string', kind: 'string', 
   roof: 'string', 'roofAxis?': 'string', theme: 'string', windowStride: 'number',
   'coreCollapse?': { supports: [{ x: 'number', y: 'number', weight: 'number' }], capacityThreshold: 'number', warningDuration: 'number', duration: 'number' },
   'elevatedTank?': { radius: 'number', height: 'number', minimumLegs: 'number', warningDuration: 'number', fallDuration: 'number' },
-  'monument?': { figure: 'string', 'fall?': 'string', 'reach?': 'number', height: 'number', minimumSupport: 'number', warningDuration: 'number', fallDuration: 'number', bonus: 'number', color: 'number', 'span?': { reach: 'number', piers: ['number'], 'mast?': 'number', interval: 'number' } },
+  'monument?': { figure: 'string', 'fall?': 'string', 'reach?': 'number', 'girth?': 'number', height: 'number', minimumSupport: 'number', warningDuration: 'number', fallDuration: 'number', bonus: 'number', color: 'number', 'span?': { reach: 'number', piers: ['number'], 'mast?': 'number', interval: 'number' } },
   'canopy?': { columns: [{ x: 'number', y: 'number' }] },
   'silos?': [{ id:'string',gx:'number',gy:'number',diameter:'number',height:'number',minimumSupports:'number',feed:{gx:'number',gy:'number',floor:'number'} }],
   'openDecks?': { columns: [{ x: 'number', y: 'number' }] },
@@ -88,7 +88,7 @@ const buildingShape: Shape = { version: 'number', id: 'string', kind: 'string', 
   zones: { residential: 'number', commercial: 'number', industrial: 'number' },
   'campaign?': { levels: { '*': 'number' }, 'maxRepeats?': 'number', 'landmarkOnly?': 'boolean', 'zones?': ['string'], 'family?': 'string', 'exception?': 'boolean', 'urbanBands?': ['string'], 'streetRole?': 'string' } };
 
-const MONUMENT_FIGURE_IDS: readonly string[] = ['liberty', 'lattice-tower', 'wheel', 'sign', 'sphere', 'sphinx', 'sunshade-wings', 'fan-roof', 'cable-stay'];
+const MONUMENT_FIGURE_IDS: readonly string[] = ['liberty', 'lattice-tower', 'wheel', 'sign', 'sphere', 'sphinx', 'sunshade-wings', 'fan-roof', 'cable-stay', 'space-needle', 'arches'];
 const MONUMENT_FALL_IDS: readonly string[] = ['topple', 'crumble', 'roll'];
 const BUILDING_KINDS: readonly string[] = ['house', 'shop', 'industrial'];
 const ROOF_STYLES: readonly string[] = ['gable', 'flat', 'shed', 'sawtooth'];
@@ -193,7 +193,7 @@ function monumentIssues(a: Archetype, issues: string[]): void {
   if (!m) return;
   const host = a.roof === 'flat' && a.floors <= 3 && !a.coreCollapse && !a.elevatedTank && !a.silos?.length && !a.canopy && !a.openDecks;
   const valid = MONUMENT_FIGURE_IDS.includes(m.figure) && within(m.height, 2, 48) && m.minimumSupport > 0 && m.minimumSupport < 1 &&
-    (m.fall === undefined || MONUMENT_FALL_IDS.includes(m.fall)) && (m.reach === undefined || (m.fall === 'roll' && within(m.reach, 4, 80))) &&
+    (m.fall === undefined || MONUMENT_FALL_IDS.includes(m.fall)) && (m.reach === undefined || (m.fall === 'roll' && within(m.reach, 4, 80))) && (m.girth === undefined || within(m.girth, .02, .4)) &&
     within(m.warningDuration, .2, 4) && within(m.fallDuration, 1, 6) && within(m.bonus, 0, 20000) && Number.isInteger(m.color) && within(m.color, 0, 0xffffff);
   if (!host || !valid) issues.push('Invalid monument configuration');
   const span = m.span;

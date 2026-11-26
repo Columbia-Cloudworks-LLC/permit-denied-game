@@ -44,7 +44,7 @@ import {
 } from "./urbanGeography";
 import type { UrbanBand } from "./urbanBands";
 import { ARCHETYPES, archetypeById, type Archetype } from "./archetypes";
-import { boxInLandmarkClearance, boxInPlanPark, boxOnPlanRail, buildPlanStreets, planBallfieldPatches, planDecor, planIrrigatedAt, planRadius, planSurfaceAt, type CityDecor, type CityPlan } from "./cityPlan";
+import { boxInLandmarkClearance, boxInPlanPark, boxOnPlanRail, boxUnderPlanMonorail, buildPlanStreets, planBallfieldPatches, planDecor, planIrrigatedAt, planRadius, planSurfaceAt, type CityDecor, type CityPlan } from "./cityPlan";
 import { createBuildingFromArchetype } from "../structure/building";
 import {
   curvePoints,
@@ -476,7 +476,7 @@ function planLotPool(run: RuralPlacement, plan: CityPlan, campaign: CampaignLeve
   const alloc = allocateFrontage(run.publicSegs(), b.nodes, count * 8, new Rng(seed ^ 0x51a11), run.kept, b.segments, run.surface);
   run.rejected.push(...alloc.rejected);
   const footprints = new Map(run.buildings.map(building => [building.archetypeId, { x: building.x, y: building.y, w: building.w * building.cellSize, d: building.d * building.cellSize }]));
-  const pool = alloc.lots.filter(lot => !pinned.has(lot.id) && !boxInPlanPark(plan, lot) && !boxOnPlanRail(plan, lot) && !boxInLandmarkClearance(plan, footprints, lot) && lotWaterShare(run.surface, { x: lot.x, y: lot.y, w: lot.w, d: lot.d }) <= 0.08);
+  const pool = alloc.lots.filter(lot => !pinned.has(lot.id) && !boxInPlanPark(plan, lot) && !boxOnPlanRail(plan, lot) && !boxUnderPlanMonorail(plan, lot) && !boxInLandmarkClearance(plan, footprints, lot) && lotWaterShare(run.surface, { x: lot.x, y: lot.y, w: lot.w, d: lot.d }) <= 0.08);
   const urban = classifyUrbanGeography(campaign, pool, b.segments, b.nodes, (x, y) => planRadius(plan, x, y));
   urban.openSpaces = plan.parks.map((park, index) => ({
     id: `park${index}`, kind: "park", name: park.name, x: park.x, y: park.y, w: park.w, d: park.d, band: "downtown-core",

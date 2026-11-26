@@ -36,8 +36,8 @@ describe('modular vehicle contract', () => {
         for(let i=0;i<90;i++)stepVehicleWorld(t,createDozer(2,2,0),pool,[],SIM_DT);
         expect(moving.x).toBeLessThan(wreck.x-1);expect(wreck.x).toBeGreaterThan(14);
     });
-    it('discovers sixteen configurations with two paints and validated mass budgets', () => {
-        expect(VEHICLES).toHaveLength(16);
+    it('discovers eighteen configurations with two paints and validated mass budgets', () => {
+        expect(VEHICLES).toHaveLength(18);
         for (const d of VEHICLES) {
             expect(() => validateVehicle(d)).not.toThrow();
             expect(d.paints).toHaveLength(2);
@@ -214,7 +214,8 @@ describe('modular vehicle contract', () => {
         const t = createTown({ yard: true }), fleet = t.yard!.bays.flatMap(b => b.vehicle ? [b.vehicle] : []), starts = fleet.map(v => ({ x: v.x, y: v.y }));
         runYardFleet(t);
         const pool = new ParticlePool();
-        for (let i = 0; i < 600; i++)
+        // Each bay starts half a second after the one before it; the last of the fleet needs its turn too.
+        for (let i = 0; i < 660; i++)
             stepVehicleWorld(t, createDozer(2, 2, 0), pool, [], SIM_DT);
         for (let i = 0; i < fleet.length; i++) {
             expect(fleet[i]!.status, fleet[i]!.definitionId).toBe('operational');

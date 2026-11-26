@@ -2,6 +2,7 @@ import { stepVehicleWorld, migrateVehicles } from '../vehicle/world';
 import { applyCoreImpact } from './coreImpact';
 import { applyMonumentImpact, applyMonumentRoll } from './monumentImpact';
 import { applyRailHits } from './railImpact';
+import { stepMonorails } from './monorail';
 import { resistCorePile } from './corePileResistance';
 import { retireStructures } from './retirement';
 import { DEBRIS, DOZER } from "../game/constants";
@@ -234,6 +235,7 @@ export function stepWorld(
   stepTraffic(town, dozer, dt);
   cash += stepVehicleWorld(town,dozer,particles,events,dt,bladeMul,engineMul);
   cash += applyRailHits(town, particles, events);
+  cash += stepMonorails(town, dozer, dt, particles, events);
   settleTraffic(town, dozer, events);
   shrugOffDrag(dozer, fwd.x, fwd.y, alongBefore, contact.solid);
 
