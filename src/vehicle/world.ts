@@ -8,7 +8,8 @@ import type { WorldEvent } from '../structure/types';
 import type { ParticlePool } from '../fx/particles';
 import { SpatialHash } from '../sim/spatial';
 import { bladePoints, type Dozer } from './dozer';
-import { createVehicle, hitVehicle, partPose, detachedRoot, pushMass, stepVehicle, stepDetached } from './runtime';
+import { createVehicle, hitVehicle, partPose, detachedRoot, pushMass, stepVehicle, stepDetached, RAIL } from './runtime';
+import { noteRailHit, stepRailCars } from './rail';
 import { vehicleDefinition, VEHICLES } from './definitions';
 import type { VehicleState, VehicleContact } from './types';
 export function migrateVehicles(town: Town): void {
@@ -168,6 +169,7 @@ export function stepVehicleWorld(town: Town, dozer: Dozer, particles: ParticlePo
     const ctx: SubstepContext = { town, dozer, fixed, dynamic: new SpatialHash<VehicleBox>(4), candidates: [], pending: new Map(), solvedPairs: new Set(), sub, bladeMul, engineMul };
     for (let step = 0; step < steps; step++)
         runSubstep(ctx, particles);
+    stepRailCars(town, dt, particles, events);
     for (const v of town.vehicles) {
         hitByRubble(town, v);
         cash += collectWreckCash(v, events);
@@ -351,8 +353,12 @@ function solidContacts(ctx: SubstepContext, v: VehicleState, a: VehicleBox, boun
         body.x -= hit.nx * Math.min(.18, hit.depth);
         body.y -= hit.ny * Math.min(.18, hit.depth);
         const impulse = Math.max(0, body.vx * hit.nx + body.vy * hit.ny);
-        body.vx -= hit.nx * impulse;
-        body.vy -= hit.ny * impulse;
+        // A derailed car ploughs into a wall instead of stopping dead against it.
+        const ram = body === v && !!v.rail?.derailed && impulse > RAIL.wallSpeed;
+        if (ram)
+            noteRailHit(v, b.x, b.y, hit.nx, hit.ny, impulse);
+        body.vx -= hit.nx * impulse * (ram ? 1 - RAIL.carry : 1);
+        body.vy -= hit.ny * impulse * (ram ? 1 - RAIL.carry : 1);
         queueContact(ctx, v, { x: a.x + hit.nx * a.w * .4, y: a.y + hit.ny * a.d * .4, z: a.z + a.h * .5, nx: -hit.nx, ny: -hit.ny, nz: 0, impulse, source: 'solid' });
     }
 }

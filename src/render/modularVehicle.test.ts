@@ -51,7 +51,8 @@ describe('vehicle surface rendering', () => {
         }
     });
     it('insets every windshield below its roof and keeps it attached under cab compression', () => {
-        for (const d of VEHICLES) {
+        // Boxcars and tank cars have no cab.
+        for (const d of VEHICLES.filter(d => d.parts.some(p => p.id === 'glass'))) {
             const v = createVehicle(d.id, 10, 10, .7), ci = d.parts.findIndex(p => p.id === 'cab'), gi = d.parts.findIndex(p => p.id === 'glass');
             const cab = d.parts[ci]!, glass = d.parts[gi]!;
             expect(glass.length).toBeLessThan(.03);

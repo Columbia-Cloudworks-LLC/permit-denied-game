@@ -1,0 +1,17 @@
+{
+  "id": "freight-locomotive",
+  "name": "Freight locomotive",
+  "family": "rail",
+  "body": "locomotive",
+  "length": 6.4,
+  "width": 1.7,
+  "height": 2.3,
+  "mass": 18,
+  "cash": 150,
+  "paints": [
+    15907092,
+    2445686
+  ],
+  "speed": 3,
+  "steering": "front"
+}

@@ -2,6 +2,7 @@ import { pointInPoly } from '../game/math';
 import type { CoverKind, GroundPatch, RoadClass } from '../structure/types';
 import { linePoints, pt, type RoadBuilder, type RoadNode } from './roads';
 import { groundMixAt, type TerrainSurface } from './terrain';
+import type { RailLine } from '../vehicle/rail';
 
 /**
  * A city plan is the authored geography of one real place, played as a Downtown county:
@@ -79,6 +80,15 @@ export interface CityPlanBallfield {
   home: 'nw' | 'ne' | 'sw' | 'se';
 }
 
+/**
+ * A freight line across the plan: ballast and rails on the ground, with consists of rail cars
+ * parked on it that the dozer can shove off the track (`vehicle/rail.ts`). Lots stay off it;
+ * a street that crosses it is a level crossing, so keep the consists clear of the streets.
+ */
+export interface CityPlanRail extends RailLine {
+  name: string;
+}
+
 export interface CityPlanLandmark {
   buildingId: string;
   label: string;
@@ -116,6 +126,7 @@ export interface CityPlan {
   fountains?: readonly CityPlanFountain[];
   canopies?: readonly CityPlanCanopy[];
   ballfields?: readonly CityPlanBallfield[];
+  rails?: readonly CityPlanRail[];
   streets: readonly CityPlanStreet[];
   parks: readonly CityPlanPark[];
   /** Pinned landmarks. The first is the county's objective; the rest pay as regional signatures. */
@@ -135,11 +146,39 @@ const toPoly = (ring: PlanPolygon) => ring.map(([x, y]) => ({ x, y }));
 export interface CityDecor {
   fountains: readonly CityPlanFountain[];
   canopies: readonly CityPlanCanopy[];
+  /** Rail lines: the renderer draws the track, and the town parks the cars on it. */
+  rails: readonly CityPlanRail[];
 }
 
 export function planDecor(plan: CityPlan | undefined): CityDecor | undefined {
-  if (!plan?.fountains?.length && !plan?.canopies?.length) return undefined;
-  return { fountains: plan.fountains ?? [], canopies: plan.canopies ?? [] };
+  if (!plan?.fountains?.length && !plan?.canopies?.length && !plan?.rails?.length) return undefined;
+  return { fountains: plan.fountains ?? [], canopies: plan.canopies ?? [], rails: plan.rails ?? [] };
+}
+
+/** Half the width of a rail line's ballast, and how far either side of the centre line lots are kept off it. */
+export const RAIL_BED = { half: 1.25, clear: 1.7 } as const;
+
+/** The ground a rail line takes up, out to `pad` either side of its centre line. */
+export function railBox(rail: CityPlanRail, pad: number): { x: number; y: number; w: number; d: number } {
+  return rail.axis === 'x'
+    ? { x: rail.from, y: rail.at - pad, w: rail.to - rail.from, d: pad * 2 }
+    : { x: rail.at - pad, y: rail.from, w: pad * 2, d: rail.to - rail.from };
+}
+
+/** A box on a rail line or too close beside it to build on. */
+export function boxOnPlanRail(plan: CityPlan, box: { x: number; y: number; w: number; d: number }): boolean {
+  return (plan.rails ?? []).some(rail => {
+    const bed = railBox(rail, RAIL_BED.clear);
+    return box.x < bed.x + bed.w && box.x + box.w > bed.x && box.y < bed.y + bed.d && box.y + box.d > bed.y;
+  });
+}
+
+/** A point on the gravel ballast of one of the plan's rail lines. */
+export function onPlanRailBed(plan: CityPlan, x: number, y: number): boolean {
+  return (plan.rails ?? []).some(rail => {
+    const bed = railBox(rail, RAIL_BED.half);
+    return x >= bed.x && x <= bed.x + bed.w && y >= bed.y && y <= bed.y + bed.d;
+  });
 }
 
 const FIELD_ARC = 10;
@@ -187,7 +226,7 @@ export function planBallfieldPatches(plan: CityPlan): GroundPatch[] {
 
 const GROUND_SALT = 0x9d5e7;
 
-/** Surface classifier for the plan: water, park lawn, or the plan's open ground. */
+/** Surface classifier for the plan: water, park lawn, a rail line's ballast, or the plan's open ground. */
 export function planSurfaceAt(plan: CityPlan): (x: number, y: number) => TerrainSurface {
   const land = plan.land.map(toPoly);
   const water = (plan.water ?? []).map(toPoly);
@@ -197,6 +236,7 @@ export function planSurfaceAt(plan: CityPlan): (x: number, y: number) => Terrain
     if (water.some(ring => pointInPoly(x, y, ring))) return 'water';
     const park = planParkAt(plan, x, y);
     if (park) return park.cover ?? 'grass';
+    if (onPlanRailBed(plan, x, y)) return 'gravel';
     return ground ? groundMixAt(x, y, GROUND_SALT, ground) : 'grass';
   };
 }

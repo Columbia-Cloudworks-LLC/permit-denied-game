@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "id": "first-national-step-tower",
+  "label": "FIRST NATIONAL STEP TOWER",
+  "w": 8,
+  "d": 8,
+  "floors": 36,
+  "kind": "shop",
+  "construction": "concrete-bearing",
+  "roof": "flat",
+  "theme": "civic",
+  "windowStride": 1,
+  "wallColor": 6065830,
+  "features": {"porch": false, "awning": false, "parapet": true, "chimney": false, "garage": false},
+  "zones": {"residential": 0, "commercial": 0, "industrial": 0},
+  "traits": {"use": ["office-skyscraper", "landmark"], "form": ["stepped", "glass-monolith"], "style": ["postmodern"], "scale": ["skyscraper"]},
+  "campaign": {"levels": {"city-downtown": 1}, "landmarkOnly": true, "urbanBands": ["downtown-core"]},
+  "partitions": false,
+  "connections": [],
+  "coreCollapse": {"supports": [{"x": 3, "y": 3, "weight": 2}, {"x": 4, "y": 3, "weight": 1}, {"x": 3, "y": 4, "weight": 1}, {"x": 4, "y": 4, "weight": 2}, {"x": 2, "y": 3, "weight": 1}, {"x": 5, "y": 4, "weight": 1}], "capacityThreshold": 0.45, "warningDuration": 1.2, "duration": 6},
+  "sections": [
+    {"id": "base", "role": "base", "x": 0, "y": 0, "w": 8, "d": 8, "floor": 0, "floors": 1, "layout": "lobby.layout.json"},
+    {"id": "podium", "role": "podium", "x": 0, "y": 0, "w": 8, "d": 8, "floor": 1, "floors": 5, "layout": "office.layout.json"},
+    {"id": "shaft", "role": "shaft", "x": 1, "y": 0, "w": 6, "d": 8, "floor": 6, "floors": 18, "layout": "office.layout.json"},
+    {"id": "upper", "role": "upper", "x": 1, "y": 1, "w": 6, "d": 6, "floor": 24, "floors": 8, "layout": "office.layout.json"},
+    {"id": "crown", "role": "crown", "x": 2, "y": 1, "w": 4, "d": 6, "floor": 32, "floors": 3, "layout": "shell.layout.json"},
+    {"id": "cap", "role": "cap", "x": 2, "y": 2, "w": 4, "d": 4, "floor": 35, "floors": 1, "layout": "shell.layout.json"}
+  ],
+  "openings": [
+    {"floor": 0, "side": "south", "at": 0.5, "kind": "door"}
+  ],
+  "facadeDetails": [
+    {"id": "name", "kind": "signboard", "floor": 1, "gx": 2, "gy": 7, "side": "south", "width": 4, "text": "FIRST NATIONAL"}
+  ]
+}

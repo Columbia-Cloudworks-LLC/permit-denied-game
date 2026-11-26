@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "id": "kerrey-cable-footbridge",
+  "label": "KERREY CABLE FOOTBRIDGE",
+  "w": 5,
+  "d": 4,
+  "floors": 2,
+  "kind": "shop",
+  "construction": "concrete-bearing",
+  "roof": "flat",
+  "theme": "civic",
+  "windowStride": 0,
+  "wallColor": 14210767,
+  "features": {"porch": false, "awning": false, "parapet": true, "chimney": false, "garage": false},
+  "zones": {"residential": 0, "commercial": 0, "industrial": 0},
+  "traits": {"use": ["footbridge", "monument", "landmark"], "form": ["cable-stayed", "single-mast"], "style": ["contemporary"], "scale": ["monument"]},
+  "campaign": {"levels": {"city-downtown": 1}, "landmarkOnly": true, "urbanBands": ["downtown-core"]},
+  "partitions": false,
+  "connections": [],
+  "monument": {"figure": "cable-stay", "height": 22, "minimumSupport": 0.5, "warningDuration": 1.4, "fallDuration": 3, "bonus": 2500, "color": 14210767, "span": {"reach": 39.5, "piers": [0.2,0.4,0.62,0.82], "mast": 2, "interval": 0.7}},
+  "sections": [
+    {"id": "landing", "role": "landing", "x": 0, "y": 0, "w": 5, "d": 4, "floor": 0, "floors": 1, "layout": "lobby.layout.json"},
+    {"id": "pier", "role": "pier", "x": 1, "y": 1, "w": 3, "d": 2, "floor": 1, "floors": 1, "layout": "shell.layout.json"}
+  ],
+  "openings": [
+    {"floor": 0, "side": "south", "at": 0.5, "kind": "door"}
+  ],
+  "facadeDetails": [
+    {"id": "name", "kind": "signboard", "floor": 0, "gx": 1, "gy": 3, "side": "south", "width": 3, "text": "BOB KERREY"}
+  ]
+}

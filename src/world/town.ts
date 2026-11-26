@@ -37,6 +37,7 @@ import { stampRegionalExterior } from "../structure/regionalExterior";
 import { stampStreetFaces } from "../structure/facadeTrim";
 import { tagRegionalSignatures, type RegionalPlacement } from "./regionalPlacement";
 import type { TopologyFamily } from "./rural";
+import { placeRailCars } from "../vehicle/rail";
 import { deriveTerrainFeatures, type TerrainFeature } from "./terrainFeatures";
 import {
   emptyGrassGrid,
@@ -183,7 +184,7 @@ function createTownLayout(options: TownOptions = {}): Town {
     rubble: [],
     marks: [],
     pile: new PileField(layout.minX - 2, layout.minY - 2, pileW, pileD),
-    vehicles: [],
+    vehicles: placeRailCars(layout.cityDecor?.rails ?? []),
     roadCar: null,
     visualRevision: 1,
     collapsedSites: [],

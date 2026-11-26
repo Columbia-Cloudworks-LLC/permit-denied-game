@@ -1,6 +1,6 @@
 # PERMIT DENIED
 
-Browser demolition arcade. Title `PERMIT DENIED`, tagline “The County Said No.” You drive a bulldozer through compact isometric towns from one town generator, grind buildings apart, and cash out before the county clock runs out. A North American overworld (50 US states, 13 Canadian provinces and territories, seven counties each) picks which town: every county is a seeded variant of one of the seven campaign levels, and a region's Downtown county can be an authored city (Chicago, Las Vegas, New York City, Milwaukee). Time Challenge clears counties against the clock; Sandbox plays the same counties without it. Production: https://permitdenied.app.
+Browser demolition arcade. Title `PERMIT DENIED`, tagline “The County Said No.” You drive a bulldozer through compact isometric towns from one town generator, grind buildings apart, and cash out before the county clock runs out. A North American overworld (50 US states, 13 Canadian provinces and territories, seven counties each) picks which town: every county is a seeded variant of one of the seven campaign levels, and a region's Downtown county can be an authored city (Chicago, Las Vegas, New York City, Milwaukee, Omaha). Time Challenge clears counties against the clock; Sandbox plays the same counties without it. Production: https://permitdenied.app.
 
 `README.md` is the source of truth for running, controls, current scope, and hosting.
 
@@ -33,7 +33,7 @@ Copy: `BLADE UP` / `BLADE DOWN`; deaths `ENGINE COOKED` / `TRACK THROWN` / `COUN
 - `src/game/weatherRisk.ts` – Time Challenge weather stakes and Hazard Pay.
 - `src/game/career.ts` – career profile, prices, stat curves, escrow settlement. `src/vehicle/attachments.ts` + `src/sim/attachmentEffects.ts` – Skunkworks state machines and world effects. `src/game/homeBase.ts` – lazy Home Yard chunk (`src/world/homeYard.ts` generator, `src/render/heavyShop.ts` overlay); never import it statically.
 - `src/render/` – Pixi rendering, isometric drawing, building surfaces, lighting, LOD. Roofs: `roofFinish.ts` (flat-roof membranes, parapets), `rooftopDraw.ts` (equipment); `wallPaint.ts` regional walls, `facadeTrimDraw.ts`, `landformDraw.ts`, `weatherBadge.ts`, `cityDecor.ts` (a city plan's fountain jets and street canopy). Never mutates simulation state.
-- `src/vehicle/` – dozer and road vehicles. `src/fx/` – particles, camera shake, season weather. `src/audio/` – synth.
+- `src/vehicle/` – dozer and road vehicles; `rail.ts` (freight cars on a city plan's rail line, and derailing them). `src/fx/` – particles, camera shake, season weather. `src/audio/` – synth.
 - `src/debug/` – debug binder, `window.__pd` bridge, perf overlay, asset capture.
 - Separate Vite entries not imported by the game: `src/designer/` (`/designer/`), `src/privacy/`, `src/site/`. `src/pwa/` – service worker registration and update prompts.
 - `scripts/` – operational Node scripts (deploy, captures, preflight) with `*.test.mjs` tests.

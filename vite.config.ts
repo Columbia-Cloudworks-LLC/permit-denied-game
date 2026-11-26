@@ -37,6 +37,8 @@ const VENDOR_CHUNKS: [string, string[]][] = [
   ["pixi", ["node_modules/pixi.js", "node_modules/@pixi/"]],
   ["analytics", ["node_modules/@vercel/analytics"]],
   ["buildings", ["/src/world/data/"]],
+  // Dozer, road vehicles, traffic and rail cars: split from `town` to keep that chunk under its limit.
+  ["vehicles", ["/src/vehicle/"]],
 ];
 
 const testShared = {

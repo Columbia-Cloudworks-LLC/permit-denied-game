@@ -1,0 +1,6 @@
+{
+  "partitions": false,
+  "rooms": [
+    {"id": "office", "kind": "production", "floor": 0, "x": 0, "y": 0, "w": 1, "d": 1, "finish": "linoleum", "contents": [{"id": "desk-0", "kind": "office-desk", "x": 0.1, "y": 0.12, "w": 0.22, "d": 0.16, "h": 0.8, "rotation": 0}, {"id": "desk-1", "kind": "office-desk", "x": 0.1, "y": 0.62, "w": 0.22, "d": 0.16, "h": 0.8, "rotation": 0}, {"id": "desk-2", "kind": "office-desk", "x": 0.6, "y": 0.12, "w": 0.22, "d": 0.16, "h": 0.8, "rotation": 0}, {"id": "files", "kind": "filing-cabinet", "x": 0.62, "y": 0.62, "w": 0.1, "d": 0.25, "h": 1.3, "rotation": 0}]}
+  ]
+}

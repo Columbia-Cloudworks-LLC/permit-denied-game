@@ -28,6 +28,20 @@ export const CRUSH = {
     strength: 160, rate: 1.8, length: .45, width: .4, height: .6, sag: .3, disabled: .3, wreck: .65,
     heft: 2.5, drag: 5, knock: .45, bump: 3.5, bumpShare: .5, shedAt: [.35, .75], shedChance: [.8, .4],
 } as const;
+/**
+ * Rail car tuning. On the rails a car rolls along its line under `roll` drag and is pulled back
+ * to the centre line at `grip` per second; pushed more than `throw` units off it, it derails.
+ * A derailed car is thrown sideways at `kick` units/s or the speed it was shoved at, slides under
+ * `slide` drag, lies over by `tip` radians and pays `bonus` once. A car coupled to it (within
+ * `coupling` units, end to end) is dragged off at `chain` of that speed, while that is still
+ * `chainMin` or more. A sliding car that meets a wall at over `wallSpeed` breaks into it:
+ * `wall` damage per unit of speed and mass to the ground-floor cells within `reach`, keeping
+ * `carry` of its speed.
+ */
+export const RAIL = {
+    grip: 5, throw: .42, kick: 6.5, roll: .5, slide: 1.5, tip: .42, bonus: 100,
+    coupling: .9, chain: .55, chainMin: 2.4, wallSpeed: 1.5, wall: 1.6, reach: 1.3, carry: .45, gap: .28,
+} as const;
 /** Repeatable 0–1 value for a vehicle and a slot, so crumpling and shed wheels replay identically. */
 function crushNoise(id: number, slot: number): number {
     let h = Math.imul(id | 0, 73856093) ^ Math.imul(slot | 0, 19349663);
@@ -402,7 +416,8 @@ export function stepVehicle(v: VehicleState, dt: number, obstacle = false): void
     }
     else {
         // A crushed hull scrapes along on its belly.
-        const drag = Math.exp(-(2.8 + (v.status === 'operational' ? 0 : CRUSH.drag * v.compact.amount)) * dt);
+        const base = v.rail ? (v.rail.derailed ? RAIL.slide : RAIL.roll) : 2.8;
+        const drag = Math.exp(-(base + (v.status === 'operational' ? 0 : CRUSH.drag * v.compact.amount)) * dt);
         v.vx *= drag;
         v.vy *= drag;
         v.steer *= drag;
@@ -524,7 +539,10 @@ function settleSuspension(v: VehicleState, d: VehicleDef, dt: number, f: number,
         if (p.role === 'trailer' && !s.detached)
             s.heading = clamp(s.heading - v.omega * dt - (v.vx * f + v.vy * g) * Math.sin(s.heading) * dt / d.length, -.8, .8);
     }
-    v.roll = approach(v.roll, clamp(roll, -.22, .22), dt * .6);
+    // A derailed car lies over toward the side it left the track on: that side of the body goes down.
+    const seat = v.rail?.derailed ? v.rail : undefined;
+    const tip = seat ? -Math.sign((seat.axis === 'x' ? f : -g) * seat.side || 1) * RAIL.tip : 0;
+    v.roll = approach(v.roll, clamp(roll, -.22, .22) + tip, dt * (seat ? 1.6 : .6));
     v.pitch = approach(v.pitch, clamp(pitch, -.16, .16), dt * .6);
 }
 export function stepDetached(v: VehicleState, dt: number, budget: {

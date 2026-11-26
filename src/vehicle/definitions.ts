@@ -2,8 +2,8 @@ import type { PartRole, VehicleDefinition, VehiclePart } from './types';
 interface Source {
     id: string;
     name: string;
-    family: 'passenger' | 'truck' | 'tractor' | 'machine';
-    body: 'sedan' | 'hatchback' | 'pickup' | 'van' | 'box' | 'bus' | 'tractor' | 'combine' | 'forklift' | 'skid' | 'excavator' | 'trailer';
+    family: 'passenger' | 'truck' | 'tractor' | 'machine' | 'rail';
+    body: 'sedan' | 'hatchback' | 'pickup' | 'van' | 'box' | 'bus' | 'tractor' | 'combine' | 'forklift' | 'skid' | 'excavator' | 'trailer' | 'locomotive' | 'boxcar' | 'tanker';
     length: number;
     width: number;
     height: number;
@@ -51,6 +51,8 @@ class PartList {
 interface Chassis { s: Source; l: number; w: number; h: number; tracked: boolean; tractor: boolean; cabX: number; cabL: number; cabW: number; cabH: number }
 /** Assemblies use local +X forward. Children are placed in vehicle space, then inherit parent displacement. */
 function buildVehicle(s: Source): VehicleDefinition {
+    if (s.family === 'rail')
+        return buildRailCar(s);
     const { length: l, width: w, height: h } = s;
     const list = new PartList();
     const tracked = s.steering === 'tracks', tractor = s.body === 'tractor' || s.body === 'trailer';
@@ -73,6 +75,57 @@ function buildVehicle(s: Source): VehicleDefinition {
     }
     const d: VehicleDefinition = { ...s, crushable: s.crushable ?? s.mass <= CRUSHABLE_MASS, parts, drive: { steering: s.steering, speed: s.speed, accel: passenger ? 9.2 : 2,
             turn: tracked ? 1.4 : .65, wheelbase: l * .64, traction: tracked ? .9 : .65, clearance: tracked || tractor ? .28 : .13, push: s.mass * .65 } };
+    validateVehicle(d);
+    return d;
+}
+/** Rolling stock is plate steel: its skin and mounts take this many times a road vehicle's load. */
+const RAIL_STRENGTH = 3;
+/**
+ * A rail car: an underframe on two trucks with a body on top. It has no driver; it stands on a
+ * rail line and rolls along it until it is shoved off (`rail.ts`). The second part is the centre
+ * sill, in the engine slot every vehicle has.
+ */
+function buildRailCar(s: Source): VehicleDefinition {
+    const { length: l, width: w, height: h } = s;
+    const list = new PartList(), deck = .62;
+    list.add('frame', 'frame', 0, 0, .4, l * .96, w * .78, .22, '', 'box', 'steel');
+    list.add('engine', 'engine', 0, 0, .2, l * .5, w * .3, .2, 'frame', 'box', 'dark');
+    for (const end of [-1, 1])
+        for (const side of [-1, 1])
+            list.add(`wheel-${end}-${side}`, 'wheel', end * l * .34, side * w * .4, 0, .46, w * .14, .46, 'frame', 'wheel', 'dark');
+    if (s.body === 'locomotive') {
+        list.add('hood', 'equipment', l * .12, 0, deck, l * .62, w * .62, h * .56);
+        list.add('nose', 'equipment', l * .455, 0, deck, l * .07, w * .62, h * .3, 'hood', 'slope');
+        list.add('cab', 'cab', -l * .31, 0, deck, l * .2, w * .92, h - deck - .1);
+        list.add('glass', 'glass', -l * .21 + .01, 0, deck + (h - deck) * .5, .02, w * .8, (h - deck) * .28, 'cab', 'box', 'glass').surface = 'front';
+        list.add('roof', 'panel', -l * .31, 0, h - .1, l * .22, w * .98, .1, 'cab').surface = 'top';
+        list.add('stack', 'equipment', l * .2, 0, deck + h * .56, l * .08, w * .3, h * .1, 'hood', 'box', 'dark');
+        for (const side of [-1, 1])
+            list.add(`walkway-${side}`, 'panel', l * .12, side * w * .4, deck, l * .62, w * .14, .06, 'frame', 'box', 'steel');
+    }
+    else if (s.body === 'tanker') {
+        list.add('tank', 'equipment', 0, 0, deck + .1, l * .86, w * .74, h - deck - .28);
+        for (const end of [-1, 1])
+            list.add(`head-${end}`, 'equipment', end * l * .45, 0, deck + .22, l * .05, w * .56, h - deck - .52, 'tank');
+        list.add('dome', 'equipment', 0, 0, h - .18, l * .1, w * .3, .18, 'tank', 'box', 'steel');
+        for (const end of [-1, 1])
+            list.add(`saddle-${end}`, 'panel', end * l * .3, 0, deck, l * .08, w * .8, .14, 'frame', 'box', 'steel');
+    }
+    else {
+        list.add('body', 'equipment', 0, 0, deck, l * .94, w * .9, h - deck - .08);
+        list.add('roof', 'panel', 0, 0, h - .08, l * .96, w * .94, .08, 'body', 'box', 'steel').surface = 'top';
+        for (const side of [-1, 1])
+            list.add(`door-${side}`, 'panel', 0, side * (w * .45 + .015), deck + .06, l * .22, .04, (h - deck) * .78, 'body', 'box', 'dark').surface = side < 0 ? 'left' : 'right';
+    }
+    const parts = list.parts;
+    const shares = parts.reduce((n, p) => n + p.mass, 0);
+    for (const p of parts) {
+        p.mass = s.mass * p.mass / shares;
+        p.strength *= Math.sqrt(s.mass / 2) * RAIL_STRENGTH;
+        p.mount *= Math.sqrt(s.mass / 2) * RAIL_STRENGTH;
+    }
+    const d: VehicleDefinition = { ...s, crushable: false, parts, drive: { steering: s.steering, speed: s.speed, accel: 1,
+            turn: .3, wheelbase: l * .68, traction: .9, clearance: .3, push: s.mass * .65 } };
     validateVehicle(d);
     return d;
 }

@@ -1,6 +1,6 @@
 import type { Graphics } from 'pixi.js';
 import { ISO_W, ISO_Z } from '../game/constants';
-import type { CityPlanCanopy, CityPlanFountain } from '../world/cityPlan';
+import { RAIL_BED, type CityPlanCanopy, type CityPlanFountain, type CityPlanRail } from '../world/cityPlan';
 import { depthKey } from '../world/iso';
 import { drawWorldPoly } from './drawIso';
 import { shade } from './palette';
@@ -56,6 +56,47 @@ export function fountainCommands(fountain: CityPlanFountain, time: number): Cmd[
 
 function ring(x: number, y: number, z: number, r: number, sides: number): Point[] {
   return Array.from({ length: sides }, (_, k) => ({ x: x + Math.cos(k / sides * Math.PI * 2) * r, y: y + Math.sin(k / sides * Math.PI * 2) * r, z }));
+}
+
+const RAIL_CHUNK = 6;
+const RAIL_GAUGE = 0.52;
+const RAIL_STEEL = 0x8f959c;
+const RAIL_TIE = 0x4a3a2c;
+const RAIL_BALLAST = 0x8d877c;
+
+/** A rail line cut into short lengths along its run, each with the box it covers, so the track culls and sorts piecewise. */
+export function railChunks(rail: CityPlanRail): { from: number; to: number; x: number; y: number; w: number; d: number }[] {
+  const count = Math.max(1, Math.ceil((rail.to - rail.from) / RAIL_CHUNK)), step = (rail.to - rail.from) / count;
+  return Array.from({ length: count }, (_, i) => {
+    const from = rail.from + i * step, to = from + step;
+    return rail.axis === 'x'
+      ? { from, to, x: from, y: rail.at - RAIL_BED.half, w: step, d: RAIL_BED.half * 2 }
+      : { from, to, x: rail.at - RAIL_BED.half, y: from, w: RAIL_BED.half * 2, d: step };
+  });
+}
+
+/** One length of track: a bed of ballast, timber ties across it and the two rails over them. It lies on the ground, so it sorts behind anything standing on it. */
+export function railChunkCommand(rail: CityPlanRail, chunk: { from: number; to: number }): Cmd {
+  const point = (along: number, across: number, z: number): Point => rail.axis === 'x' ? { x: along, y: rail.at + across, z } : { x: rail.at + across, y: along, z };
+  const strip = (g: Graphics, a0: number, a1: number, c0: number, c1: number, z: number, color: number) =>
+    drawWorldPoly(g, [point(a0, c0, z), point(a1, c0, z), point(a1, c1, z), point(a0, c1, z)], color, 1);
+  const far = point(chunk.from, -RAIL_BED.half, 0);
+  return {
+    depth: depthKey(far.x, far.y, 0),
+    run: g => {
+      strip(g, chunk.from, chunk.to, -RAIL_BED.half, RAIL_BED.half, 0.015, RAIL_BALLAST);
+      strip(g, chunk.from, chunk.to, -RAIL_BED.half * 0.72, RAIL_BED.half * 0.72, 0.02, shade(RAIL_BALLAST, 1.12));
+      const ties = Math.max(1, Math.round((chunk.to - chunk.from) / 0.75)), pitch = (chunk.to - chunk.from) / ties;
+      for (let i = 0; i < ties; i++) {
+        const at = chunk.from + (i + 0.5) * pitch;
+        strip(g, at - 0.13, at + 0.13, -RAIL_GAUGE - 0.24, RAIL_GAUGE + 0.24, 0.03, RAIL_TIE);
+      }
+      for (const side of [-1, 1]) {
+        strip(g, chunk.from, chunk.to, side * RAIL_GAUGE - 0.06, side * RAIL_GAUGE + 0.06, 0.07, RAIL_STEEL);
+        strip(g, chunk.from, chunk.to, side * RAIL_GAUGE - 0.06, side * RAIL_GAUGE - 0.01, 0.075, shade(RAIL_STEEL, 1.35));
+      }
+    },
+  };
 }
 
 const BAY = 4;

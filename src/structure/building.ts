@@ -731,6 +731,8 @@ export interface StructureStepResult {
     preservePanelPose?: boolean;
     /** Colour for the bodies this spawn makes (`Rubble.tint`). */
     tint?: number;
+    /** Wreckage that is lost when it comes down on open water (a bridge mast's plates). */
+    sinks?: boolean;
   }[];
   leans: { x: number; y: number; dx: number; dy: number; mag: number }[];
   fixtureFrags: FixtureFrag[];
@@ -913,7 +915,7 @@ function failureStagger(cell: Cell): number {
 function buildingStillUnsettled(building: Building): boolean {
   if (building.elevatedTank && ['warning','falling'].includes(building.elevatedTank.phase)) return true;
   if (building.silos?.some(s=>s.phase==='falling')) return true;
-  if (building.monument && ['warning','falling'].includes(building.monument.phase)) return true;
+  if (building.monument && ['warning','falling','chain'].includes(building.monument.phase)) return true;
   if (building.fullyDown) return false;
   if (building.floorTiles.some(t => t.state === "falling")) return true;
   return anyCellUnsettled(building);
