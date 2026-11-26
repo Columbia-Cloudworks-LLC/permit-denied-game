@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "id": "josaphat-dome-basilica",
+  "label": "JOSAPHAT DOME BASILICA",
+  "w": 10,
+  "d": 12,
+  "floors": 9,
+  "kind": "shop",
+  "construction": "concrete-bearing",
+  "roof": "flat",
+  "theme": "civic",
+  "windowStride": 2,
+  "wallColor": 13218959,
+  "features": {"porch": false, "awning": false, "parapet": true, "chimney": false, "garage": false},
+  "zones": {"residential": 0, "commercial": 0, "industrial": 0},
+  "traits": {"use": ["basilica", "landmark"], "form": ["nave", "twin-towers", "drum", "dome"], "style": ["renaissance-revival"], "scale": ["campus"]},
+  "campaign": {"levels": {"city-downtown": 1}, "landmarkOnly": true, "urbanBands": ["downtown-core"]},
+  "partitions": false,
+  "connections": [],
+  "sections": [
+    {"id": "nave", "role": "nave", "x": 0, "y": 0, "w": 10, "d": 12, "floor": 0, "floors": 3, "layout": "lobby.layout.json"},
+    {"id": "west-tower", "role": "bell-tower", "x": 0, "y": 10, "w": 2, "d": 2, "floor": 3, "floors": 3, "layout": "shell.layout.json"},
+    {"id": "east-tower", "role": "bell-tower", "x": 8, "y": 10, "w": 2, "d": 2, "floor": 3, "floors": 3, "layout": "shell.layout.json"},
+    {"id": "drum", "role": "drum", "x": 2, "y": 2, "w": 6, "d": 6, "floor": 3, "floors": 3, "layout": "shell.layout.json"},
+    {"id": "dome", "role": "dome", "x": 3, "y": 3, "w": 4, "d": 4, "floor": 6, "floors": 2, "layout": "shell.layout.json"},
+    {"id": "lantern", "role": "lantern", "x": 4, "y": 4, "w": 2, "d": 2, "floor": 8, "floors": 1, "layout": "shell.layout.json"}
+  ],
+  "openings": [
+    {"floor": 0, "side": "south", "at": 0.5, "kind": "door"}
+  ],
+  "facadeDetails": [
+    {"id": "portico", "kind": "porch", "floor": 0, "gx": 3, "gy": 11, "side": "south", "width": 4},
+    {"id": "steps", "kind": "entry-steps", "floor": 0, "gx": 3, "gy": 11, "side": "south", "width": 4},
+    {"id": "name", "kind": "signboard", "floor": 2, "gx": 3, "gy": 11, "side": "south", "width": 4, "text": "ST JOSAPHAT"}
+  ]
+}

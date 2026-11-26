@@ -29,7 +29,7 @@ export interface ServiceYardRule {
 export const SERVICE_YARDS: readonly ServiceYardRule[] = [
   {
     id: "food-service",
-    occupancies: ["roadside-diner", "bakery", "small-grocery", "bakery-walkup", "market-apartments"],
+    occupancies: ["roadside-diner", "corner-taproom", "brick-brewpub", "bakery", "small-grocery", "bakery-walkup", "market-apartments"],
     slots: [
       { assetId: "dumpster-corral", place: "rear", offset: 0.45, gap: 0.3, chance: 1, replaces: "dumpster" },
       { assetId: "grease-trap", place: "rear", offset: -0.4, gap: 0.2, chance: 0.9 },

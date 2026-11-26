@@ -46,6 +46,8 @@ export interface RegionalLayout {
 export interface RegionalPlacement {
   flavor: Pick<RegionalFlavor, 'boosts' | 'signatures'>;
   archetype: Pick<CountyArchetype, 'boosts' | 'signatures'>;
+  /** Boosts for this one region, on top of its flavor's (`REGION_BOOSTS`). */
+  regionBoosts?: Readonly<Record<string, number>>;
   /** Regional landmark for this county; absent keeps the level's own. */
   landmark?: RegionalLandmark;
   /** The authored city this county plays as (`cityPlan.ts`); absent builds the level's generic town. */
@@ -63,10 +65,10 @@ export interface RegionalPlacement {
 export const SIGNATURE_BONUS = 600;
 export const MAX_SIGNATURES = 2;
 
-/** Weight multiplier for one building; regional and county boosts compound. */
+/** Weight multiplier for one building; flavor, region and county boosts compound. */
 export function regionalWeight(placement: RegionalPlacement | undefined, buildingId: string): number {
   if (!placement) return 1;
-  return (placement.flavor.boosts[buildingId] ?? 1) * (placement.archetype.boosts[buildingId] ?? 1);
+  return (placement.flavor.boosts[buildingId] ?? 1) * (placement.regionBoosts?.[buildingId] ?? 1) * (placement.archetype.boosts[buildingId] ?? 1);
 }
 
 /** The level as this county plays it: its regional landmark when the region overrides the civic one. */

@@ -1,6 +1,7 @@
 import type { CityPlan } from '../cityPlan';
 import { CHICAGO } from './chicago';
 import { LAS_VEGAS } from './lasVegas';
+import { MILWAUKEE } from './milwaukee';
 import { NEW_YORK_CITY } from './newYorkCity';
 
 /** The Downtown county (County 6) is the one a city plan replaces. */
@@ -15,6 +16,7 @@ export const CITY_PLANS: Readonly<Record<string, CityPlan>> = {
   'US-IL': CHICAGO,
   'US-NV': LAS_VEGAS,
   'US-NY': NEW_YORK_CITY,
+  'US-WI': MILWAUKEE,
 };
 
 export function cityPlanFor(regionId: string | undefined, countyIndex: number): CityPlan | undefined {

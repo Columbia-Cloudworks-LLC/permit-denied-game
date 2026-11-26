@@ -162,6 +162,15 @@ export const REGIONAL_FLAVORS: Readonly<Record<RegionFlavorId, RegionalFlavor>> 
   },
 };
 
+/**
+ * Boosts for one region on top of its flavor's, for a taste the rest of the flavor does not share.
+ * Like flavor boosts, they only reweight buildings the level already lists.
+ */
+export const REGION_BOOSTS: Readonly<Record<string, Readonly<Record<string, number>>>> = {
+  // Wisconsin pours more beer than the rest of the Great Lakes Works.
+  'US-WI': { 'corner-taproom': 3, 'brick-brewpub': 3 },
+};
+
 export type CountyArchetypeId = 'rural' | 'roadside' | 'industrial' | 'suburban' | 'main-street' | 'downtown' | 'capitol';
 
 /** Counties 1–7 in order. Each runs one existing campaign level generator. */
@@ -251,6 +260,7 @@ export function regionalPlacement(region: RegionRef | RegionFlavorId, countyInde
   const placement: RegionalPlacement = {
     flavor, archetype: countyArchetypeAt(countyIndex),
     landmark: regionalLandmark(region, countyIndex),
+    regionBoosts: typeof region === 'string' ? undefined : REGION_BOOSTS[region.id],
     cityPlan: typeof region === 'string' ? undefined : cityPlanFor(region.id, countyIndex),
     brands: brandsForRegion(region),
   };

@@ -1,6 +1,6 @@
 # PERMIT DENIED
 
-Browser demolition arcade. Title `PERMIT DENIED`, tagline “The County Said No.” You drive a bulldozer through compact isometric towns from one town generator, grind buildings apart, and cash out before the county clock runs out. A North American overworld (50 US states, 13 Canadian provinces and territories, seven counties each) picks which town: every county is a seeded variant of one of the seven campaign levels, and a region's Downtown county can be an authored city (Chicago, Las Vegas, New York City). Time Challenge clears counties against the clock; Sandbox plays the same counties without it. Production: https://permitdenied.app.
+Browser demolition arcade. Title `PERMIT DENIED`, tagline “The County Said No.” You drive a bulldozer through compact isometric towns from one town generator, grind buildings apart, and cash out before the county clock runs out. A North American overworld (50 US states, 13 Canadian provinces and territories, seven counties each) picks which town: every county is a seeded variant of one of the seven campaign levels, and a region's Downtown county can be an authored city (Chicago, Las Vegas, New York City, Milwaukee). Time Challenge clears counties against the clock; Sandbox plays the same counties without it. Production: https://permitdenied.app.
 
 `README.md` is the source of truth for running, controls, current scope, and hosting.
 

@@ -1,0 +1,107 @@
+{
+  "partitions": true,
+  "rooms": [
+    {
+      "id": "bar",
+      "kind": "retail",
+      "floor": 0,
+      "x": 0,
+      "y": 0,
+      "w": 0.66,
+      "d": 1,
+      "finish": "plank",
+      "contents": [
+        {
+          "id": "bar-counter",
+          "kind": "counter",
+          "x": 0.08,
+          "y": 0.08,
+          "w": 0.8,
+          "d": 0.14,
+          "h": 0.9,
+          "rotation": 0
+        },
+        {
+          "id": "taps-cooler",
+          "kind": "display-fridge",
+          "x": 0.08,
+          "y": 0.3,
+          "w": 0.14,
+          "d": 0.3,
+          "h": 1.3,
+          "rotation": 0
+        },
+        {
+          "id": "booth-0",
+          "kind": "diner-booth",
+          "x": 0.35,
+          "y": 0.4,
+          "w": 0.26,
+          "d": 0.5,
+          "h": 1,
+          "rotation": 0
+        },
+        {
+          "id": "booth-1",
+          "kind": "diner-booth",
+          "x": 0.68,
+          "y": 0.4,
+          "w": 0.26,
+          "d": 0.5,
+          "h": 1,
+          "rotation": 0
+        }
+      ]
+    },
+    {
+      "id": "brewroom",
+      "kind": "production",
+      "floor": 0,
+      "x": 0.66,
+      "y": 0,
+      "w": 0.34,
+      "d": 1,
+      "finish": "concrete",
+      "contents": [
+        {
+          "id": "mash-tun",
+          "kind": "dairy-vat",
+          "x": 0.12,
+          "y": 0.08,
+          "w": 0.36,
+          "d": 0.3,
+          "h": 1.6,
+          "rotation": 0
+        },
+        {
+          "id": "fermenter",
+          "kind": "dairy-vat",
+          "x": 0.56,
+          "y": 0.08,
+          "w": 0.36,
+          "d": 0.3,
+          "h": 1.6,
+          "rotation": 0
+        },
+        {
+          "id": "kegs",
+          "kind": "pallet",
+          "x": 0.15,
+          "y": 0.62,
+          "w": 0.4,
+          "d": 0.28,
+          "h": 0.8,
+          "rotation": 0
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "a": "bar",
+      "b": "brewroom",
+      "at": 0.6,
+      "width": 0.3
+    }
+  ]
+}

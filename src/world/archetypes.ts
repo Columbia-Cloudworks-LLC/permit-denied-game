@@ -88,7 +88,7 @@ const buildingShape: Shape = { version: 'number', id: 'string', kind: 'string', 
   zones: { residential: 'number', commercial: 'number', industrial: 'number' },
   'campaign?': { levels: { '*': 'number' }, 'maxRepeats?': 'number', 'landmarkOnly?': 'boolean', 'zones?': ['string'], 'family?': 'string', 'exception?': 'boolean', 'urbanBands?': ['string'], 'streetRole?': 'string' } };
 
-const MONUMENT_FIGURE_IDS: readonly string[] = ['liberty', 'lattice-tower', 'wheel', 'sign', 'sphere', 'sphinx'];
+const MONUMENT_FIGURE_IDS: readonly string[] = ['liberty', 'lattice-tower', 'wheel', 'sign', 'sphere', 'sphinx', 'sunshade-wings', 'fan-roof'];
 const MONUMENT_FALL_IDS: readonly string[] = ['topple', 'crumble', 'roll'];
 const BUILDING_KINDS: readonly string[] = ['house', 'shop', 'industrial'];
 const ROOF_STYLES: readonly string[] = ['gable', 'flat', 'shed', 'sawtooth'];

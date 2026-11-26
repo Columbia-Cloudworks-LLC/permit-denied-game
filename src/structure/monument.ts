@@ -9,7 +9,7 @@ import type { StructureStepResult } from './building';
  * walls is whole, then leans toward the missing side and comes down the way its `fall` says:
  * it topples like a felled tree, crumbles where it stands, or breaks loose and rolls.
  */
-export const MONUMENT_FIGURES = ['liberty', 'lattice-tower', 'wheel', 'sign', 'sphere', 'sphinx'] as const;
+export const MONUMENT_FIGURES = ['liberty', 'lattice-tower', 'wheel', 'sign', 'sphere', 'sphinx', 'sunshade-wings', 'fan-roof'] as const;
 export type MonumentFigure = typeof MONUMENT_FIGURES[number];
 /**
  * How the figure comes down. `topple`: over like a felled tree, striking the line it lands on.

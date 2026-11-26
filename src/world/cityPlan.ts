@@ -1,5 +1,5 @@
 import { pointInPoly } from '../game/math';
-import type { RoadClass } from '../structure/types';
+import type { CoverKind, GroundPatch, RoadClass } from '../structure/types';
 import { linePoints, pt, type RoadBuilder, type RoadNode } from './roads';
 import { groundMixAt, type TerrainSurface } from './terrain';
 
@@ -67,6 +67,18 @@ export interface CityPlanCanopy {
   color: number;
 }
 
+/**
+ * A baseball diamond painted on the ground: a square of side `size` with home plate in the `home`
+ * corner and the outfield fanning to the opposite one. Ground covers only; the stands round it are
+ * a landmark package with an open middle.
+ */
+export interface CityPlanBallfield {
+  x: number;
+  y: number;
+  size: number;
+  home: 'nw' | 'ne' | 'sw' | 'se';
+}
+
 export interface CityPlanLandmark {
   buildingId: string;
   label: string;
@@ -103,6 +115,7 @@ export interface CityPlan {
   ground?: readonly PlanGround[];
   fountains?: readonly CityPlanFountain[];
   canopies?: readonly CityPlanCanopy[];
+  ballfields?: readonly CityPlanBallfield[];
   streets: readonly CityPlanStreet[];
   parks: readonly CityPlanPark[];
   /** Pinned landmarks. The first is the county's objective; the rest pay as regional signatures. */
@@ -127,6 +140,49 @@ export interface CityDecor {
 export function planDecor(plan: CityPlan | undefined): CityDecor | undefined {
   if (!plan?.fountains?.length && !plan?.canopies?.length) return undefined;
   return { fountains: plan.fountains ?? [], canopies: plan.canopies ?? [] };
+}
+
+const FIELD_ARC = 10;
+
+/**
+ * Ground patches for the plan's ballfields, in paint order: warning track, outfield turf out to a
+ * bowed fence line, the infield skin, the infield turf, the mound, the foul lines and the bases.
+ */
+export function planBallfieldPatches(plan: CityPlan): GroundPatch[] {
+  const patches: GroundPatch[] = [];
+  for (const [index, field] of (plan.ballfields ?? []).entries()) {
+    const s = field.size, sx = field.home.endsWith('w') ? 1 : -1, sy = field.home.startsWith('n') ? 1 : -1;
+    const ox = sx > 0 ? field.x : field.x + s, oy = sy > 0 ? field.y : field.y + s;
+    // Field coordinates: (0, 0) is the home corner of the square, +u and +v run along its two walls.
+    const at = (u: number, v: number) => ({ x: ox + sx * u, y: oy + sy * v });
+    let z = 0.012;
+    const paint = (cover: CoverKind, points: readonly (readonly [number, number])[]) => {
+      const poly = points.map(([u, v]) => at(u, v));
+      const xs = poly.map(p => p.x), ys = poly.map(p => p.y);
+      const x = Math.min(...xs), y = Math.min(...ys);
+      patches.push({ x, y, w: Math.max(...xs) - x, d: Math.max(...ys) - y, heading: 0, cover, seed: 7001 + index * 97 + patches.length, z, poly });
+      z += 0.002;
+    };
+    const box = (cover: CoverKind, u: number, v: number, half: number) => paint(cover, [[u - half, v - half], [u + half, v - half], [u + half, v + half], [u - half, v + half]]);
+    const track = s * 0.05, plate = s * 0.14, base = s * 0.3, line = Math.max(0.09, s * 0.006);
+    const fence = s - plate - track;
+    const arc = (radius: (share: number) => number): [number, number][] => Array.from({ length: FIELD_ARC + 1 }, (_, i) => {
+      const share = i / FIELD_ARC, a = share * Math.PI / 2;
+      // Never past the warning track: the bow flattens against the wall near the foul poles.
+      return [Math.min(s - track, plate + Math.cos(a) * radius(share)), Math.min(s - track, plate + Math.sin(a) * radius(share))];
+    });
+    paint('dirt', [[0, 0], [s, 0], [s, s], [0, s]]);
+    // The fence bows out toward centre field.
+    paint('grass', [[track, track], [plate + fence, track], ...arc(share => fence * (1 + 0.2 * Math.sin(share * Math.PI))), [track, plate + fence]]);
+    paint('dirt', [[plate - s * 0.06, plate - s * 0.06], [plate + base * 1.5, plate - s * 0.06], ...arc(() => base * 1.5), [plate - s * 0.06, plate + base * 1.5]]);
+    paint('grass', [[plate + base * 0.13, plate + base * 0.13], [plate + base * 0.87, plate + base * 0.13], [plate + base * 0.87, plate + base * 0.87], [plate + base * 0.13, plate + base * 0.87]]);
+    paint('dirt', Array.from({ length: 8 }, (_, i): [number, number] => [plate + base / 2 + Math.cos(i / 8 * Math.PI * 2) * s * 0.045, plate + base / 2 + Math.sin(i / 8 * Math.PI * 2) * s * 0.045]));
+    paint('concrete', [[plate, plate - line], [plate + fence, plate - line], [plate + fence, plate + line], [plate, plate + line]]);
+    paint('concrete', [[plate - line, plate], [plate + line, plate], [plate + line, plate + fence], [plate - line, plate + fence]]);
+    for (const [u, v] of [[0, 0], [base, 0], [base, base], [0, base]] as const) box('concrete', plate + u, plate + v, s * 0.016);
+    box('concrete', plate + base / 2, plate + base / 2, s * 0.01);
+  }
+  return patches;
 }
 
 const GROUND_SALT = 0x9d5e7;

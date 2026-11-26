@@ -12,7 +12,9 @@ The Statue of Liberty package (`src/world/landmarkData/liberty-statue/`) is the 
 | `lattice-tower` | `paris-lattice-tower` | topple |
 | `wheel` | `linq-observation-wheel` | topple |
 | `sign` | `vegas-welcome-sign` | topple |
+| `sunshade-wings` | `lakefront-wing-museum` | topple |
 | `sphinx` | `luxor-sphinx` | crumble |
+| `fan-roof` | `fan-roof-ballpark` | crumble |
 | `sphere` | `desert-orb-arena` | roll |
 
 ## Behaviour
@@ -32,6 +34,8 @@ The building counts as fully down only once the figure is gone.
 Figures are drawn in `src/render/monument.ts` in the figure's own frame (side, front, up), so one set of panels serves standing, leaning, falling, sagging and rolling. The helpers are tapered rings (`tube`, `cap`), world-axis boxes for a figure that must face a street (`box`, `w`), and flat strips and polygons that face the camera (`ribbon`, `disc`). Add the id to `MONUMENT_FIGURES` in `src/structure/monument.ts` and to the validator's list in `src/world/archetypes.ts`, write its draw function, and list it in `FIGURES`.
 
 Heights are drawn taller than widths: one unit of height covers as much screen as about 0.45 units across it. A flat shape that should look as wide as it is tall (the wheel, a disc) multiplies its side offsets by `FACE`. A ball is authored and spun as a true sphere of diameter `height`, then narrowed on the ground by `MONUMENT_BALL_GIRTH` (about 0.52), which is also the radius its roll sweeps.
+
+The `fan-roof` figure spans its host instead of standing on it: it is drawn `1.24 × height` either side of the centre, so its package's footprint and `height` must keep that ratio (28 cells of 1.15 and a height of 13).
 
 A figure wider than its plinth, or one that Downtown fill would hide, needs `clear` (and `view`, toward the camera) on its pin in the [city plan](city-plans.md). A plinth that should read as stone rather than as a small building sets `windowStride: 0`: no window is authored or implied on any floor, and the door stays.
 

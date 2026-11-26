@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "id": "fan-roof-ballpark",
+  "label": "FAN ROOF BALLPARK",
+  "w": 28,
+  "d": 28,
+  "floors": 3,
+  "kind": "shop",
+  "construction": "concrete-bearing",
+  "roof": "flat",
+  "theme": "civic",
+  "windowStride": 2,
+  "wallColor": 9391932,
+  "features": {"porch": false, "awning": false, "parapet": true, "chimney": false, "garage": false},
+  "zones": {"residential": 0, "commercial": 0, "industrial": 0},
+  "traits": {"use": ["ballpark", "monument", "landmark"], "form": ["open-bowl", "tiered-grandstand", "fan-roof"], "style": ["brick-retro"], "scale": ["stadium"]},
+  "campaign": {"levels": {"city-downtown": 1}, "landmarkOnly": true, "urbanBands": ["downtown-core"]},
+  "partitions": false,
+  "connections": [],
+  "monument": {"figure": "fan-roof", "fall": "crumble", "height": 13, "minimumSupport": 0.5, "warningDuration": 1.6, "fallDuration": 3, "bonus": 3500, "color": 3107666},
+  "sections": [
+    {"id": "north-concourse", "role": "concourse", "x": 0, "y": 0, "w": 28, "d": 7, "floor": 0, "floors": 1, "layout": "lobby.layout.json"},
+    {"id": "west-concourse", "role": "concourse", "x": 0, "y": 7, "w": 7, "d": 21, "floor": 0, "floors": 1, "layout": "seats.layout.json"},
+    {"id": "east-bleachers", "role": "bleachers", "x": 25, "y": 7, "w": 3, "d": 21, "floor": 0, "floors": 1, "layout": "seats.layout.json"},
+    {"id": "south-bleachers", "role": "bleachers", "x": 7, "y": 25, "w": 18, "d": 3, "floor": 0, "floors": 1, "layout": "seats.layout.json"},
+    {"id": "north-terrace", "role": "terrace", "x": 0, "y": 0, "w": 28, "d": 5, "floor": 1, "floors": 1, "layout": "seats.layout.json"},
+    {"id": "west-terrace", "role": "terrace", "x": 0, "y": 5, "w": 5, "d": 23, "floor": 1, "floors": 1, "layout": "seats.layout.json"},
+    {"id": "north-upper-deck", "role": "upper-deck", "x": 0, "y": 0, "w": 28, "d": 3, "floor": 2, "floors": 1, "layout": "seats.layout.json"},
+    {"id": "west-upper-deck", "role": "upper-deck", "x": 0, "y": 3, "w": 3, "d": 25, "floor": 2, "floors": 1, "layout": "seats.layout.json"}
+  ],
+  "openings": [
+    {"floor": 0, "side": "south", "at": 0.5, "kind": "door"}
+  ],
+  "facadeDetails": [
+    {"id": "steps", "kind": "entry-steps", "floor": 0, "gx": 13, "gy": 27, "side": "south", "width": 3},
+    {"id": "name", "kind": "signboard", "floor": 0, "gx": 9, "gy": 27, "side": "south", "width": 4, "text": "BREWERS STADIUM"},
+    {"id": "east-name", "kind": "signboard", "floor": 0, "gx": 27, "gy": 14, "side": "east", "width": 4, "text": "PLAY BALL"},
+    {"id": "roof-name", "kind": "rooftop-sign", "floor": 2, "gx": 13, "gy": 2, "side": "south", "width": 3, "text": "BREWERS", "faceColor": 1189963, "trimColor": 16762159, "textColor": 16762159}
+  ]
+}
