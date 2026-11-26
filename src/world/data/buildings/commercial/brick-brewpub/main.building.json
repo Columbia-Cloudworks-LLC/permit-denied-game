@@ -1,0 +1,143 @@
+{
+  "version": 1,
+  "id": "brick-brewpub",
+  "label": "BRICK BREWPUB",
+  "kind": "shop",
+  "w": 8,
+  "d": 7,
+  "floors": 2,
+  "roof": "flat",
+  "theme": "storefront",
+  "windowStride": 2,
+  "features": {
+    "porch": false,
+    "awning": true,
+    "parapet": true,
+    "chimney": false,
+    "garage": false
+  },
+  "construction": "brick-mixed-use",
+  "zones": {
+    "residential": 0,
+    "commercial": 0,
+    "industrial": 0
+  },
+  "traits": {
+    "use": [
+      "brew-pub",
+      "brewery"
+    ],
+    "form": [
+      "brewhall",
+      "side-taproom"
+    ],
+    "scale": [
+      "broad"
+    ]
+  },
+  "partitions": true,
+  "sections": [
+    {
+      "id": "taproom",
+      "role": "taproom",
+      "x": 0,
+      "y": 0,
+      "w": 3,
+      "d": 7,
+      "floor": 0,
+      "floors": 1,
+      "layout": "taproom.layout.json"
+    },
+    {
+      "id": "brewhall",
+      "role": "brewhall",
+      "x": 3,
+      "y": 0,
+      "w": 5,
+      "d": 7,
+      "floor": 0,
+      "floors": 1,
+      "layout": "brewhall.layout.json"
+    },
+    {
+      "id": "upper-brewhall",
+      "role": "brewhall-volume",
+      "x": 3,
+      "y": 0,
+      "w": 5,
+      "d": 7,
+      "floor": 1,
+      "floors": 1,
+      "layout": "upper-brewhall.layout.json"
+    }
+  ],
+  "connections": [
+    {
+      "a": "taproom/0/taproom",
+      "b": "brewhall/0/brewhall",
+      "at": 0.5,
+      "width": 0.3
+    }
+  ],
+  "openings": [
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.18,
+      "kind": "door"
+    }
+  ],
+  "facadeDetails": [
+    {
+      "id": "pub-sign",
+      "kind": "signboard",
+      "floor": 0,
+      "gx": 0,
+      "gy": 6,
+      "side": "south",
+      "width": 3,
+      "text": "BREW PUB",
+      "faceColor": 2824978,
+      "trimColor": 13208094,
+      "textColor": 16766571
+    },
+    {
+      "id": "roof-sign",
+      "kind": "rooftop-sign",
+      "floor": 1,
+      "gx": 4,
+      "gy": 6,
+      "side": "south",
+      "width": 3,
+      "text": "ALE HOUSE",
+      "faceColor": 2824978,
+      "trimColor": 13208094,
+      "textColor": 16766571
+    }
+  ],
+  "floorVoids": [
+    {
+      "floor": 1,
+      "x": 3,
+      "y": 0,
+      "w": 5,
+      "d": 7
+    }
+  ],
+  "campaign": {
+    "levels": {
+      "village": 1,
+      "suburb": 1,
+      "city-borough": 1,
+      "city-downtown": 1
+    },
+    "maxRepeats": 3,
+    "urbanBands": [
+      "village-main-street",
+      "suburban",
+      "borough-mixed",
+      "downtown-transition"
+    ],
+    "streetRole": "run"
+  }
+}

@@ -1,0 +1,100 @@
+{
+  "version": 1,
+  "id": "corner-taproom",
+  "label": "CORNER TAPROOM",
+  "kind": "shop",
+  "w": 6,
+  "d": 4,
+  "floors": 1,
+  "roof": "flat",
+  "theme": "corner",
+  "windowStride": 2,
+  "features": {
+    "porch": false,
+    "awning": true,
+    "parapet": true,
+    "chimney": false,
+    "garage": false
+  },
+  "construction": "brick-mixed-use",
+  "zones": {
+    "residential": 0,
+    "commercial": 0,
+    "industrial": 0
+  },
+  "traits": {
+    "use": [
+      "brew-pub",
+      "taproom"
+    ],
+    "form": [
+      "single-volume"
+    ],
+    "scale": [
+      "compact"
+    ]
+  },
+  "partitions": true,
+  "connections": [],
+  "sections": [
+    {
+      "id": "taproom",
+      "role": "taproom",
+      "x": 0,
+      "y": 0,
+      "w": 6,
+      "d": 4,
+      "floor": 0,
+      "floors": 1,
+      "layout": "taproom.layout.json"
+    }
+  ],
+  "openings": [
+    {
+      "floor": 0,
+      "side": "south",
+      "at": 0.3,
+      "kind": "door"
+    }
+  ],
+  "facadeDetails": [
+    {
+      "id": "tap-sign",
+      "kind": "signboard",
+      "floor": 0,
+      "gx": 2,
+      "gy": 3,
+      "side": "south",
+      "width": 3,
+      "text": "TAP ROOM",
+      "faceColor": 2824978,
+      "trimColor": 13208094,
+      "textColor": 16766571
+    },
+    {
+      "id": "kettle-vent",
+      "kind": "roof-duct",
+      "floor": 0,
+      "gx": 5,
+      "gy": 3,
+      "side": "south",
+      "width": 1
+    }
+  ],
+  "campaign": {
+    "levels": {
+      "village": 1,
+      "suburb": 1,
+      "city-borough": 1,
+      "city-downtown": 1
+    },
+    "maxRepeats": 3,
+    "urbanBands": [
+      "village-main-street",
+      "suburban",
+      "borough-mixed",
+      "downtown-transition"
+    ],
+    "streetRole": "corner"
+  }
+}

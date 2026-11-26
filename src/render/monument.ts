@@ -358,7 +358,76 @@ function sphinxFigure(add: Add, height: number, stone: number): void {
   mark(-0.045, 0.045, 0.62, 0.648, DARK);
 }
 
+const WING_FINS = 13;
+const GLASS = 0xbcdde6;
+
+/**
+ * Lakefront museum sunshade: a glass vault with a ridge running toward the viewer, and from the
+ * ridge two wings of thin white fins raised to either side, longest amidships. A raked mast and
+ * its stays stand at the near end.
+ */
+function sunshadeWingsFigure(add: Add, height: number, white: number): void {
+  const ridge = height * 0.24, half = height * 0.5, base = height * 0.13, reach = height * 1.45 * FACE;
+  const vault = layer(add, 0), fins = layer(add, 1), rig = layer(add, 2);
+  const foot = (side: number, front: number): Local => ({ side: side * base, front, up: 0 });
+  const crest = (front: number): Local => ({ side: 0, front, up: ridge });
+  vault([foot(-1, -half), foot(-1, half), crest(half), crest(-half)], shade(GLASS, 0.74));
+  vault([foot(1, -half), foot(1, half), crest(half), crest(-half)], shade(GLASS, 1.08));
+  vault([foot(-1, half), foot(1, half), crest(half)], shade(GLASS, 0.9));
+  for (const side of [-1, 1]) {
+    const color = shade(white, side < 0 ? 0.84 : 1);
+    let last: Local | undefined;
+    for (let i = 0; i < WING_FINS; i++) {
+      const t = i / (WING_FINS - 1), front = (t * 2 - 1) * half * 0.94;
+      // Short at the ends of the ridge, full length in the middle: the outline of a wing.
+      const length = 0.34 + 0.66 * Math.sin(Math.PI * (0.08 + 0.84 * t));
+      const tip: Local = { side: side * reach * length, front, up: ridge + (height - ridge) * length };
+      ribbon(fins, crest(front), tip, height * 0.022, color);
+      if (last) ribbon(fins, last, tip, height * 0.012, shade(white, 0.7));
+      last = tip;
+    }
+  }
+  const head: Local = { side: 0, front: half * 1.5, up: height * 0.62 };
+  ribbon(rig, { side: 0, front: half, up: 0 }, head, height * 0.03, white);
+  for (const share of [0.25, 0.55, 0.85]) ribbon(rig, head, { side: 0, front: half * (1.5 + share), up: 0 }, height * 0.008, shade(white, 0.8));
+}
+
+const FAN_RIBS = 4;
+const FAN_STEPS = 9;
+/** Half the ballpark's width for each unit of roof height: the figure is sized by its height alone. */
+const FAN_ROOF_HALF_SPAN = 1.24;
+
+/**
+ * Ballpark fan roof, parked open: from a pivot behind home plate (the north-west corner) two
+ * stacks of arched panels sweep out over the grandstands, one along the north side and one along
+ * the west, leaving the field between them open to the sky. White ribs carry green panels.
+ */
+function fanRoofFigure(add: Add, height: number, green: number): void {
+  const half = height * FAN_ROOF_HALF_SPAN, reach = half * 1.96, steel = 0xe8ebe6;
+  const panels = layer(add, 0), ribs = layer(add, 1), hub = layer(add, 2);
+  // `turn` is the rib's angle off its own stand's outer wall; the north wing sweeps from +x, the west from +y.
+  const rib = (wing: number, turn: number, lift: number) => (step: number): Local => {
+    const t = step / FAN_STEPS, along = reach * (0.04 + 0.96 * t) * (1 - 0.14 * turn);
+    const u = Math.cos(turn) * along, v = Math.sin(turn) * along;
+    const up = height * (0.1 + lift * Math.sin(Math.PI * t) ** 0.75);
+    return wing === 0 ? w(-half + u, -half + v, up) : w(-half + v, -half + u, up);
+  };
+  for (const wing of [0, 1]) {
+    const lines = Array.from({ length: FAN_RIBS }, (_, i) => rib(wing, 0.02 + i * 0.15, 0.9 - i * 0.13));
+    for (let i = 0; i < FAN_RIBS - 1; i++) for (let step = 0; step < FAN_STEPS; step++) {
+      const tone = shade(green, (wing ? 0.78 : 1) * (0.82 + 0.3 * step / FAN_STEPS) * (i % 2 ? 0.9 : 1));
+      panels([lines[i]!(step), lines[i]!(step + 1), lines[i + 1]!(step + 1), lines[i + 1]!(step)], tone);
+    }
+    for (const line of lines) for (let step = 0; step < FAN_STEPS; step++) ribbon(ribs, line(step), line(step + 1), height * 0.022, shade(steel, wing ? 0.85 : 1));
+  }
+  const pin = (up: number, r: number): Ring => ({ ...w(-half * 0.96, -half * 0.96, up), r });
+  tube(hub, pin(0, height * 0.07), pin(height * 0.16, height * 0.05), steel, 6);
+  cap(hub, pin(height * 0.16, height * 0.05), shade(steel, 1.1), 6);
+}
+
 const FIGURES: Readonly<Record<MonumentFigure, (add: Add, height: number, color: number) => void>> = {
+  'sunshade-wings': sunshadeWingsFigure,
+  'fan-roof': fanRoofFigure,
   liberty: libertyFigure,
   'lattice-tower': latticeTowerFigure,
   wheel: wheelFigure,

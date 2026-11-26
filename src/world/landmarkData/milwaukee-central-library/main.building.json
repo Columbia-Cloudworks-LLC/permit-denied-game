@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "id": "milwaukee-central-library",
+  "label": "MILWAUKEE CENTRAL LIBRARY",
+  "w": 14,
+  "d": 6,
+  "floors": 5,
+  "kind": "shop",
+  "construction": "concrete-bearing",
+  "roof": "flat",
+  "theme": "civic",
+  "windowStride": 2,
+  "wallColor": 14209728,
+  "features": {"porch": false, "awning": false, "parapet": true, "chimney": false, "garage": false},
+  "zones": {"residential": 0, "commercial": 0, "industrial": 0},
+  "traits": {"use": ["library", "landmark"], "form": ["palazzo", "rotunda-dome"], "style": ["neo-renaissance"], "scale": ["campus"]},
+  "campaign": {"levels": {"city-downtown": 1}, "landmarkOnly": true, "urbanBands": ["downtown-core"]},
+  "partitions": false,
+  "connections": [],
+  "sections": [
+    {"id": "stacks", "role": "stacks", "x": 0, "y": 0, "w": 14, "d": 6, "floor": 0, "floors": 3, "layout": "lobby.layout.json"},
+    {"id": "attic", "role": "attic", "x": 1, "y": 1, "w": 12, "d": 4, "floor": 3, "floors": 1, "layout": "shell.layout.json"},
+    {"id": "rotunda", "role": "rotunda", "x": 5, "y": 1, "w": 4, "d": 4, "floor": 4, "floors": 1, "layout": "shell.layout.json"}
+  ],
+  "openings": [
+    {"floor": 0, "side": "south", "at": 0.5, "kind": "door"}
+  ],
+  "facadeDetails": [
+    {"id": "steps", "kind": "entry-steps", "floor": 0, "gx": 5, "gy": 5, "side": "south", "width": 4},
+    {"id": "name", "kind": "signboard", "floor": 1, "gx": 5, "gy": 5, "side": "south", "width": 4, "text": "PUBLIC LIBRARY"}
+  ]
+}

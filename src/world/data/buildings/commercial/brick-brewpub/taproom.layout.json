@@ -1,0 +1,57 @@
+{
+  "partitions": false,
+  "rooms": [
+    {
+      "id": "taproom",
+      "kind": "retail",
+      "floor": 0,
+      "x": 0,
+      "y": 0,
+      "w": 1,
+      "d": 1,
+      "finish": "plank",
+      "contents": [
+        {
+          "id": "bar-counter",
+          "kind": "counter",
+          "x": 0.1,
+          "y": 0.06,
+          "w": 0.8,
+          "d": 0.1,
+          "h": 0.9,
+          "rotation": 0
+        },
+        {
+          "id": "taps-cooler",
+          "kind": "display-fridge",
+          "x": 0.1,
+          "y": 0.2,
+          "w": 0.3,
+          "d": 0.1,
+          "h": 1.3,
+          "rotation": 0
+        },
+        {
+          "id": "booth-0",
+          "kind": "diner-booth",
+          "x": 0.1,
+          "y": 0.38,
+          "w": 0.8,
+          "d": 0.14,
+          "h": 1,
+          "rotation": 0
+        },
+        {
+          "id": "booth-1",
+          "kind": "diner-booth",
+          "x": 0.1,
+          "y": 0.58,
+          "w": 0.8,
+          "d": 0.14,
+          "h": 1,
+          "rotation": 0
+        }
+      ]
+    }
+  ]
+}

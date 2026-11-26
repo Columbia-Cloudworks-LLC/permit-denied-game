@@ -7,9 +7,9 @@ import { CITY_PLANS } from './cityPlans';
 import { CITY_SITES } from './cityPlanSites';
 import { biomeById } from './biomes';
 import { fountainJetShare, canopyBays } from '../render/cityDecor';
-import { boxInLandmarkClearance, planDecor, planIrrigatedAt, planSurfaceAt, type CityPlan } from './cityPlan';
+import { boxInLandmarkClearance, planBallfieldPatches, planDecor, planIrrigatedAt, planSurfaceAt, type CityPlan } from './cityPlan';
 import { aridLandscape, climateById } from './climate';
-import { regionalPlacement } from './regionalCatalog';
+import { regionalPlacement, regionalWeight } from './regionalCatalog';
 import { regionById } from './regions';
 import { aabbOverlapsRoad, publicStreetsReachable } from './roads';
 import { surfaceAt, traversalAt } from './terrain';
@@ -242,6 +242,96 @@ describe('Las Vegas', () => {
     for (let iy = 0; iy < town.surface.rows; iy++) for (let ix = 0; ix < town.surface.cols; ix++) {
       const x = town.surface.ox + ix + 0.5, y = town.surface.oy + iy + 0.5;
       if (surfaceAt(town.surface, x, y) === 'rock') expect(aabbOverlapsRoad(town.network, x - 0.5, y - 0.5, 1, 1), `rock on a street at ${x},${y}`).toBe(false);
+    }
+  });
+});
+
+describe('Milwaukee', () => {
+  const { town, plan } = buildCity('US-WI');
+  const footprint = (id: string) => {
+    const b = town.buildings.find(entry => entry.archetypeId === id)!;
+    return { x: b.x, y: b.y, w: b.w * b.cellSize, d: b.d * b.cellSize };
+  };
+  const span = (ring: number, axis: 0 | 1) => {
+    const values = plan.water![ring]!.map(point => point[axis]);
+    return [Math.min(...values), Math.max(...values)] as const;
+  };
+
+  it('stands its landmarks on the right banks of its rivers', () => {
+    const [riverWest, riverEast] = span(0, 0), [channelNorth, channelSouth] = span(1, 1);
+    const west = (id: string) => footprint(id).x + footprint(id).w < riverWest;
+    const east = (id: string) => footprint(id).x > riverEast;
+    // Westown holds the library and the ballpark; the theater is in East Town; the basilica is on the south side.
+    expect(['milwaukee-central-library', 'fan-roof-ballpark'].every(west)).toBe(true);
+    expect(['pabst-theater-hall', 'lakefront-wing-museum'].every(east)).toBe(true);
+    expect(footprint('josaphat-dome-basilica').y).toBeGreaterThan(channelSouth);
+    for (const id of ['milwaukee-central-library', 'fan-roof-ballpark', 'pabst-theater-hall', 'lakefront-wing-museum']) {
+      expect(footprint(id).y + footprint(id).d, id).toBeLessThan(channelNorth);
+    }
+    // The museum is the objective, out on the lakefront past the last avenue, with room for its wings.
+    const museum = footprint('lakefront-wing-museum');
+    expect(plan.landmarks[0]).toMatchObject({ buildingId: 'lakefront-wing-museum', clear: 5 });
+    expect(museum.x).toBeGreaterThan(Math.max(...plan.streets.filter(street => street.axis === 'y').map(street => street.at)));
+    expect(town.buildings.find(entry => entry.archetypeId === 'lakefront-wing-museum')!.monument?.definition.figure).toBe('sunshade-wings');
+  });
+
+  it('plays ball inside an open ballpark under a fan roof that caves in', () => {
+    const park = town.buildings.find(entry => entry.archetypeId === 'fan-roof-ballpark')!;
+    expect(park.monument?.definition).toMatchObject({ figure: 'fan-roof', fall: 'crumble' });
+    // The largest footprint in the city, on a block no street crosses.
+    const area = (b: typeof park) => b.w * b.d * b.cellSize * b.cellSize;
+    expect(town.buildings.every(other => other === park || area(other) < area(park) / 2)).toBe(true);
+    const field = plan.ballfields![0]!;
+    // The diamond lies in the stands' open middle: no cell of the ballpark stands on it.
+    for (const cell of park.cells) {
+      const x = park.x + (cell.gx + 0.5) * park.cellSize, y = park.y + (cell.gy + 0.5) * park.cellSize;
+      expect(x > field.x && x < field.x + field.size && y > field.y && y < field.y + field.size, `cell ${cell.gx},${cell.gy}`).toBe(false);
+    }
+    // The grandstands rise behind home plate (north and west); the outfield wall toward the camera is one storey.
+    const top = (gx: number, gy: number) => Math.max(...park.cells.filter(cell => cell.gx === gx && cell.gy === gy).map(cell => cell.floor));
+    expect(top(0, 0)).toBe(2);
+    expect(top(park.w - 1, park.d - 1)).toBe(0);
+    const patches = planBallfieldPatches(plan);
+    expect(patches.length).toBeGreaterThanOrEqual(10);
+    for (const patch of patches) {
+      expect(town.ground).toContainEqual(patch);
+      for (const point of patch.poly!) {
+        expect(point.x).toBeGreaterThanOrEqual(field.x - 1e-6);
+        expect(point.x).toBeLessThanOrEqual(field.x + field.size + 1e-6);
+        expect(point.y).toBeGreaterThanOrEqual(field.y - 1e-6);
+        expect(point.y).toBeLessThanOrEqual(field.y + field.size + 1e-6);
+      }
+    }
+    // Home plate is in the corner under the roof pivot.
+    const plate = patches.filter(patch => patch.cover === 'concrete').at(-5)!;
+    expect(plate.x).toBeLessThan(field.x + field.size * 0.2);
+    expect(plate.y).toBeLessThan(field.y + field.size * 0.2);
+    expect(planBallfieldPatches(CITY_PLANS['US-IL']!)).toEqual([]);
+  });
+
+  it('bridges both rivers on every street that crosses them', () => {
+    expect(publicStreetsReachable(town.network, town.spawnX, town.spawnY)).toBe(true);
+    const [channelNorth, channelSouth] = span(1, 1);
+    expect(plan.streets.filter(street => street.axis === 'y' && street.from < channelNorth && street.to > channelSouth).length).toBeGreaterThanOrEqual(3);
+  });
+});
+
+describe('brew pubs', () => {
+  const pubs = ['corner-taproom', 'brick-brewpub'] as const;
+
+  it('are ordinary buildings of the town and city levels', () => {
+    for (const id of pubs) {
+      const a = ARCHETYPES.find(entry => entry.id === id)!;
+      expect(a, id).toBeDefined();
+      expect(a.campaign?.landmarkOnly).toBeFalsy();
+      expect(Object.keys(a.campaign!.levels).sort()).toEqual(['city-borough', 'city-downtown', 'suburb', 'village']);
+    }
+  });
+
+  it('are poured more often in every Wisconsin county, and nowhere else', () => {
+    for (const id of pubs) {
+      for (let index = 1; index <= 7; index++) expect(regionalWeight(regionalPlacement(regionById('US-WI')!, index), id), `${id} county ${index}`).toBe(3);
+      for (const regionId of ['US-IL', 'US-MI', 'US-NV', 'CA-ON']) expect(regionalWeight(regionalPlacement(regionById(regionId)!, 6), id), regionId).toBe(1);
     }
   });
 });

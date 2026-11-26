@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "id": "pabst-theater-hall",
+  "label": "PABST THEATER HALL",
+  "w": 7,
+  "d": 11,
+  "floors": 6,
+  "kind": "shop",
+  "construction": "concrete-bearing",
+  "roof": "flat",
+  "theme": "civic",
+  "windowStride": 2,
+  "wallColor": 12086085,
+  "features": {"porch": false, "awning": false, "parapet": true, "chimney": false, "garage": false},
+  "zones": {"residential": 0, "commercial": 0, "industrial": 0},
+  "traits": {"use": ["theater", "landmark"], "form": ["auditorium", "fly-tower"], "style": ["german-renaissance-revival"], "scale": ["block"]},
+  "campaign": {"levels": {"city-downtown": 1}, "landmarkOnly": true, "urbanBands": ["downtown-core"]},
+  "partitions": false,
+  "connections": [],
+  "sections": [
+    {"id": "house", "role": "auditorium", "x": 0, "y": 0, "w": 7, "d": 11, "floor": 0, "floors": 4, "layout": "lobby.layout.json"},
+    {"id": "fly-tower", "role": "fly-tower", "x": 0, "y": 0, "w": 7, "d": 4, "floor": 4, "floors": 2, "layout": "shell.layout.json"}
+  ],
+  "openings": [
+    {"floor": 0, "side": "south", "at": 0.5, "kind": "door"}
+  ],
+  "facadeDetails": [
+    {"id": "marquee", "kind": "marquee", "floor": 0, "gx": 2, "gy": 10, "side": "south", "width": 3, "text": "PABST THEATER"},
+    {"id": "name", "kind": "signboard", "floor": 2, "gx": 2, "gy": 10, "side": "south", "width": 3, "text": "PABST"}
+  ]
+}

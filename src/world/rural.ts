@@ -44,7 +44,7 @@ import {
 } from "./urbanGeography";
 import type { UrbanBand } from "./urbanBands";
 import { ARCHETYPES, archetypeById, type Archetype } from "./archetypes";
-import { boxInLandmarkClearance, boxInPlanPark, buildPlanStreets, planDecor, planIrrigatedAt, planRadius, planSurfaceAt, type CityDecor, type CityPlan } from "./cityPlan";
+import { boxInLandmarkClearance, boxInPlanPark, buildPlanStreets, planBallfieldPatches, planDecor, planIrrigatedAt, planRadius, planSurfaceAt, type CityDecor, type CityPlan } from "./cityPlan";
 import { createBuildingFromArchetype } from "../structure/building";
 import {
   curvePoints,
@@ -235,6 +235,7 @@ function generateRuralLayoutInner(
   const kept = run.kept;
   const { props, ground } = dressRuralLots(run, network, aridLandscape(climate));
   if (plan) plantPlanParks(plan, props, network, surface, seed);
+  if (plan) ground.push(...planBallfieldPatches(plan));
   const { minX, minY, maxX, maxY } = bounds;
 
   const terrain = emptyTerrain(minX - 2, minY - 2, maxX - minX + 4, maxY - minY + 4);

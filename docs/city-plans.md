@@ -7,6 +7,7 @@ A city plan makes one region's Downtown county (County 6) a real place in miniat
 | `US-IL` | Chicago | `src/world/cityPlans/chicago.ts` | Willis Tower (objective), Hancock Tower, Navy Pier, Field Museum, Shedd Aquarium, Adler Planetarium |
 | `US-NV` | Las Vegas | `src/world/cityPlans/lasVegas.ts` | The Strat (objective), the Sphere, the Venetian, Caesars Palace, the Bellagio and its fountain lake, the Eiffel Tower, the High Roller, the Luxor pyramid and its sphinx, the Welcome sign |
 | `US-NY` | New York City | `src/world/cityPlans/newYorkCity.ts` | Empire State Tower (objective), Chrysler Spire Tower, One World Tower, Flatiron Wedge, Statue of Liberty |
+| `US-WI` | Milwaukee | `src/world/cityPlans/milwaukee.ts` | Milwaukee Art Museum and its wings (objective), Saint Josaphat Basilica, Milwaukee Public Library, Brewers Stadium (an open ballpark on its own superblock, with a diamond and a fan roof), Pabst Theater |
 
 Play one with `?mode=sandbox&region=US-NY&county=6` (or `mode=challenge`). Add `&nhood=1` to see lots coloured by urban band.
 
@@ -24,6 +25,7 @@ Play one with `?mode=sandbox&region=US-NY&county=6` (or `mode=challenge`). Add `
 | `parks` | Named lawns. No lot may overlap one. `trees` scatters trees over it, of the catalog asset `tree` (default `mature-tree`). `cover` makes it a plaza of that ground instead of lawn. |
 | `landmarks` | Pinned buildings, by package id and north-west corner. The first is the county's objective; the others are tagged as signatures and pay the signature bonus. `clear` keeps ordinary lots that far from the footprint, for a drawn figure wider than its plinth. `view` keeps them that much further off on the camera side only (south and east), so fill does not stand in front of it. |
 | `fountains` | Rows of jets on the plan's water. Drawn only. |
+| `ballfields` | A baseball diamond painted on the ground as cover patches: a square with home plate in the `home` corner. It goes in the open middle of a ballpark package. |
 | `canopies` | A vaulted canopy over one stretch of a street. Drawn only: nothing collides with it, and it thins out over the dozer. |
 | `cores` | Circles that are `downtown-core`. Roles fall off with distance from the nearest core, to `borough-edge` at worst. |
 | `fillCount` | Ordinary buildings between the landmarks. |
@@ -49,7 +51,7 @@ A plan in a desert climate needs `ground`. Without it the plan's land is all `gr
 
 ## Landmark packages
 
-City landmarks are ordinary landmark packages in `src/world/landmarkData/`, loaded with the lazy overworld chunk (`landmarkPack.ts`). They are `landmarkOnly`, carry zero zone weights, and list `city-downtown` in `campaign.levels`. A package may set `wallColor` to give the whole building one wall colour in place of the regional paint (the statue's copper green, the Willis Tower's black steel). Tapered and stepped towers are stacked `sections`; a mast or spire is a one-cell section. A section marked `cantilever` may project past the floor below it (the Strat's pod); see [construction authoring](construction-authoring.md#flat-layouts-and-sections). Shapes that cells cannot make are [monuments](monument-authoring.md): a drawn figure on a destructible foundation that comes down when half the foundation's wall is gone. The Statue of Liberty, the Eiffel Tower, the High Roller and the Welcome sign topple; the sphinx crumbles; the Sphere rolls.
+City landmarks are ordinary landmark packages in `src/world/landmarkData/`, loaded with the lazy overworld chunk (`landmarkPack.ts`). They are `landmarkOnly`, carry zero zone weights, and list `city-downtown` in `campaign.levels`. A package may set `wallColor` to give the whole building one wall colour in place of the regional paint (the statue's copper green, the Willis Tower's black steel). Tapered and stepped towers are stacked `sections`; a mast or spire is a one-cell section. A section marked `cantilever` may project past the floor below it (the Strat's pod); see [construction authoring](construction-authoring.md#flat-layouts-and-sections). Shapes that cells cannot make are [monuments](monument-authoring.md): a drawn figure on a destructible foundation that comes down when half the foundation's wall is gone. The Statue of Liberty, the Eiffel Tower, the High Roller, the Welcome sign and the Milwaukee Art Museum's wings topple; the sphinx crumbles, and so does the fan roof of Brewers Stadium; the Sphere rolls.
 
 Names are descriptive rather than trademarks where the real one is a brand (`willis-bundle-tower`, `one-world-tower`).
 

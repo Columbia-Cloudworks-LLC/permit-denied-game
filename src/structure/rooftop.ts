@@ -56,7 +56,7 @@ export const ROOFTOP_KINDS: Record<RooftopKind, RooftopKindDef> = {
 export type RooftopKit = "food" | "cold" | "retail" | "office" | "walkup" | "service";
 
 const KIT_BY_ID: Readonly<Record<string, RooftopKit>> = {
-  "roadside-diner": "food", bakery: "food", "bakery-walkup": "food", "mega-beaver-travel-plaza": "food",
+  "roadside-diner": "food", "corner-taproom": "food", "brick-brewpub": "food", bakery: "food", "bakery-walkup": "food", "mega-beaver-travel-plaza": "food",
   "small-grocery": "cold", "cold-storage-depot": "cold", "data-hall": "cold", "dairy-building": "cold",
   "department-store": "retail", "hardware-store": "retail", laundromat: "retail",
   "mid-rise-office-slab": "office", "plaza-office-tower": "office", "setback-office-tower": "office",
