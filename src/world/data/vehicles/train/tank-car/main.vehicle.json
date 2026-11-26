@@ -1,0 +1,17 @@
+{
+  "id": "tank-car",
+  "name": "Tank car",
+  "family": "rail",
+  "body": "tanker",
+  "length": 5,
+  "width": 1.6,
+  "height": 1.95,
+  "mass": 12,
+  "cash": 80,
+  "paints": [
+    2500134,
+    13421772
+  ],
+  "speed": 3,
+  "steering": "front"
+}

@@ -118,8 +118,27 @@ export interface VehicleState extends RoadVehicle {
     /** Heavy vehicles that wreck on a hit count instead of accumulated part damage. */
     wreckAfterHits?: number;
     hits?: number;
+    /** The rail line a car stands on, and whether it has been shoved off it; absent for road vehicles. */
+    rail?: RailSeat;
     /** Traffic driver state; absent for parked and yard vehicles. */
     traffic?: TrafficAgent;
+}
+/**
+ * A rail car's hold on its track. `axis: 'x'` is a line running east-west along `y = at`, between
+ * `from` and `to`. On the rails the car rolls along the line and nothing else; once `derailed` it
+ * is an ordinary heavy body lying toward `side` (+1 south or east, -1 north or west).
+ */
+export interface RailSeat {
+    axis: 'x' | 'y';
+    at: number;
+    from: number;
+    to: number;
+    /** The way the car faces along the line. */
+    heading: number;
+    derailed: boolean;
+    side: number;
+    /** The hardest wall strike of a derailed car this step, for the world to turn into damage. */
+    hit?: { x: number; y: number; nx: number; ny: number; impulse: number };
 }
 export interface VehicleControl {
     speed: number;

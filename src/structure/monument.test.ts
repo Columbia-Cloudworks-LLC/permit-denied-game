@@ -10,7 +10,7 @@ import { resetPropIds, spawnAsset } from '../world/catalog';
 import '../world/landmarkPack';
 import { createTown } from '../world/town';
 import { applyCellDamage, createBuildingFromArchetype, stepStructures, type StructureStepResult } from './building';
-import { MONUMENT_FIGURES, monumentBallRadius, monumentFall, monumentPose, monumentReach, type MonumentImpact } from './monument';
+import { MONUMENT_FIGURES, monumentBallRadius, monumentFall, monumentPose, monumentReach, monumentSeat, monumentSweep, SPAN_DROP, SPAN_LANDING, spanDuration, spanFall, spanPoint, type MonumentImpact } from './monument';
 import { southWindowed } from './facadeTrim';
 import type { Building, WorldEvent } from './types';
 
@@ -123,7 +123,7 @@ it('rejects a statue on a plinth too tall to simulate cell by cell', () => {
   expect(validateBuildingDefinition(a).join(' ')).toContain('Invalid monument configuration');
 });
 
-const FIGURE_PACKAGES = ['liberty-statue', 'paris-lattice-tower', 'linq-observation-wheel', 'vegas-welcome-sign', 'desert-orb-arena', 'luxor-sphinx', 'lakefront-wing-museum', 'fan-roof-ballpark'] as const;
+const FIGURE_PACKAGES = ['liberty-statue', 'paris-lattice-tower', 'linq-observation-wheel', 'vegas-welcome-sign', 'desert-orb-arena', 'luxor-sphinx', 'lakefront-wing-museum', 'fan-roof-ballpark', 'kerrey-cable-footbridge'] as const;
 
 /** Knock out ground-floor wall cells from one side of the plinth, one more than half of them. */
 function undermine(b: Building, side: (cell: Building['cells'][number]) => number, particles: ParticlePool): void {
@@ -141,6 +141,84 @@ it.each(FIGURE_PACKAGES)('draws the %s figure as one command on a plinth of thre
 it('has a package for every figure the renderer and the validator know', () => {
   const used = new Set(FIGURE_PACKAGES.map(id => archetypeById(id).monument!.figure));
   expect([...used].sort()).toEqual([...MONUMENT_FIGURES].sort());
+});
+
+it('drops a bridge span pier by pier into the river once its mast is down', () => {
+  const b = createBuildingFromArchetype('kerrey-cable-footbridge', 'BRIDGE', 20, 20), particles = new ParticlePool(), events: WorldEvent[] = [];
+  const s = b.monument!, def = s.definition, span = def.span!, seat = monumentSeat(b);
+  expect(span.piers).toEqual([...span.piers].sort((a, c) => a - c));
+  expect(span.mast).toBeGreaterThanOrEqual(0);
+  // The deck is seen as far as it reaches, well past the mast's own height.
+  expect(monumentSweep(def)).toBeGreaterThan(span.reach);
+  expect(span.reach).toBeGreaterThan(def.height);
+  // Standing: nothing has dropped, and the whole bridge is one command.
+  expect(spanFall(s)).toEqual({ landing: 0, piers: span.piers.map(() => 0), decks: [0, ...span.piers.map(() => 0)] });
+  expect(monumentCommands(b, defaultDebugView())).toHaveLength(1);
+
+  undermine(b, cell => -cell.gx, particles);
+  const results: StructureStepResult[] = [];
+  // While the mast leans and topples the deck holds.
+  for (let i = 0; i < 900 && s.phase !== 'chain'; i++) {
+    results.push(...run(b, particles, 1, events));
+    expect(spanFall(s)!.decks.every(share => share === 0)).toBe(true);
+  }
+  expect(s.phase).toBe('chain');
+  // The mast pays as it lands; the landing strikes the bank beside it.
+  expect(events.filter(event => event.kind === 'cash' && event.cash === def.bonus)).toHaveLength(1);
+  const landed = results.flatMap(result => result.monumentImpacts);
+  expect(landed).toHaveLength(2);
+  const west = spanPoint(def, -SPAN_LANDING);
+  expect(landed[0]).toMatchObject({ x0: seat.x + west.x, x1: seat.x });
+  expect(b.fullyDown).toBeFalsy();
+
+  // Then the piers go in order, bank side first, each after the one before.
+  const order: number[] = [], firstSeen = new Map<number, number>();
+  const jolts = events.filter(event => event.kind === 'collapse').length;
+  let steps = 0;
+  for (; steps < 900 && (s.phase as string) === 'chain'; steps++) {
+    const before = spanFall(s)!;
+    run(b, particles, 1, events);
+    const after = spanFall(s)!;
+    after.piers.forEach((share, k) => {
+      expect(share).toBeGreaterThanOrEqual(before.piers[k]!);
+      if (share > 0 && !firstSeen.has(k)) { firstSeen.set(k, steps); order.push(k); }
+      // A pier never starts before the one nearer the bank, and the deck beyond it goes with it.
+      if (k > 0) expect(share).toBeLessThanOrEqual(after.piers[k - 1]!);
+      expect(after.decks[k + 1]).toBe(share);
+    });
+    // The stretch the mast held went first, with the landing.
+    expect(after.decks[0]).toBeGreaterThanOrEqual(after.decks[1]!);
+    expect(after.landing).toBe(after.decks[0]);
+    if (s.phase === 'chain') expect(monumentCommands(b, defaultDebugView())).toHaveLength(1);
+  }
+  expect(order).toEqual(span.piers.map((_, k) => k));
+  for (let k = 1; k < span.piers.length; k++) expect((firstSeen.get(k)! - firstSeen.get(k - 1)!) / 60).toBeCloseTo(span.interval, 1);
+  expect(steps / 60).toBeCloseTo(spanDuration(span), 1);
+  expect(spanDuration(span)).toBe(span.piers.length * span.interval + SPAN_DROP);
+  // One jolt per pier, each out over the water east of the bank.
+  const splashes = events.filter(event => event.kind === 'collapse').slice(jolts);
+  expect(splashes).toHaveLength(span.piers.length);
+  splashes.forEach((event, k) => {
+    expect(event.x).toBeCloseTo(seat.x + span.piers[k]! * span.reach, 6);
+    if (k) expect(event.x).toBeGreaterThan(splashes[k - 1]!.x);
+  });
+  expect(s.phase).toBe('gone');
+  expect(spanFall(s)!.decks.every(share => share === 1)).toBe(true);
+  expect(monumentCommands(b, defaultDebugView())).toEqual([]);
+  // Nothing more is paid for the span.
+  expect(events.filter(event => event.kind === 'cash' && event.cash === def.bonus)).toHaveLength(1);
+});
+
+it('rejects a span on a figure that cannot carry one, or with piers out of order', () => {
+  const bridge = archetypeById('kerrey-cable-footbridge'), span = bridge.monument!.span!;
+  const withSpan = (change: object) => validateBuildingDefinition({ ...bridge, monument: { ...bridge.monument!, span: { ...span, ...change } } });
+  expect(withSpan({})).toEqual([]);
+  expect(withSpan({ piers: [0.5, 0.3] })).toContain('Invalid monument span');
+  expect(withSpan({ piers: [0.5, 1] })).toContain('Invalid monument span');
+  expect(withSpan({ mast: 9 })).toContain('Invalid monument span');
+  expect(withSpan({ interval: 0 })).toContain('Invalid monument span');
+  const statue = archetypeById('liberty-statue');
+  expect(validateBuildingDefinition({ ...statue, monument: { ...statue.monument!, span } })).toContain('Invalid monument span');
 });
 
 it('crumbles a sphinx where it stands and strikes a circle round its plinth', () => {

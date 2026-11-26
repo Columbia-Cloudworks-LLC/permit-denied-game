@@ -1,7 +1,7 @@
 import type { Graphics } from 'pixi.js';
 import type { DebugView } from '../debug/view';
 import { ISO_W, ISO_Z } from '../game/constants';
-import { MONUMENT_BALL_GIRTH, monumentPose, type MonumentFigure } from '../structure/monument';
+import { MONUMENT_BALL_GIRTH, monumentPose, monumentSeat, SPAN_LANDING, spanFall, spanPoint, type MonumentDef, type MonumentFigure } from '../structure/monument';
 import type { Building } from '../structure/types';
 import { depthKey } from '../world/iso';
 import { drawWorldPoly } from './drawIso';
@@ -25,6 +25,7 @@ const FACE = ISO_Z / (ISO_W * Math.SQRT2);
 export function monumentCommands(b: Building, view: DebugView): Cmd[] {
   const s = b.monument!;
   if (s.phase === 'gone' || !view.walls || view.maxFloor < b.floors - 1) return [];
+  const seat = monumentSeat(b);
   const pose = monumentPose(b), cos = Math.cos(pose.theta), sin = Math.sin(pose.theta);
   // A crumbling figure sags and spreads; a rolling one turns about its own centre in the plane of travel.
   const sag = 1 - 0.88 * pose.squash, spread = 1 + 0.3 * pose.squash;
@@ -57,7 +58,14 @@ export function monumentCommands(b: Building, view: DebugView): Cmd[] {
     const world = points.map(place);
     panels.push({ order, depth: Math.max(...world.map(p => depthKey(p.x, p.y, p.z))), run: g => drawWorldPoly(g, world, color) });
   };
-  FIGURES[s.definition.figure](add, pose.height, s.definition.color);
+  // Parts that do not fall with the figure (a bridge's deck and river piers) keep the upright seat.
+  const still: Add = (points, color, order = 0) => {
+    const world = points.map(local => ({
+      x: seat.x + (local.side + local.front) * DIAG, y: seat.y + (local.front - local.side) * DIAG, z: Math.max(0.05, seat.z + local.up),
+    }));
+    panels.push({ order, depth: Math.max(...world.map(p => depthKey(p.x, p.y, p.z))), run: g => drawWorldPoly(g, world, color) });
+  };
+  FIGURES[s.definition.figure](add, pose.height, s.definition.color, { definition: s.definition, still, fall: spanFall(s), standing: s.phase !== 'chain', drop: seat.z });
   // A figure's own layers first (a deck over the legs under it, features over a face), then back to front.
   panels.sort((a, c) => a.order - c.order || a.depth - c.depth);
   // One command, just past the near corner of the roof deck and its parapet, so the plinth never paints through the figure standing on it.
@@ -71,6 +79,14 @@ export function monumentCommands(b: Building, view: DebugView): Cmd[] {
  * figure may give a panel an `order`: higher orders paint over lower ones, whatever their depth.
  */
 type Add = (points: Local[], color: number, order?: number) => void;
+/** What a figure with parts of its own to animate is told: its definition, an `add` that stays put while the figure falls, how far its span has dropped, whether the figure itself still stands, and the plinth's height. */
+interface FigureScene {
+  definition: MonumentDef;
+  still: Add;
+  fall: ReturnType<typeof spanFall>;
+  standing: boolean;
+  drop: number;
+}
 /** The same `add`, with every panel on one layer. */
 const layer = (add: Add, order: number): Add => (points, color) => add(points, color, order);
 interface Ring { up: number; r: number; side?: number; front?: number }
@@ -425,7 +441,96 @@ function fanRoofFigure(add: Add, height: number, green: number): void {
   cap(hub, pin(height * 0.16, height * 0.05), shade(steel, 1.1), 6);
 }
 
-const FIGURES: Readonly<Record<MonumentFigure, (add: Add, height: number, color: number) => void>> = {
+const STAY_CABLES = 7;
+const STAY_FAN = 0.19;
+const DECK_STEP = 0.04;
+
+/** A world-axis box drawn as its top, east and south faces, each corner passed through `move`. */
+function crate(add: Add, x0: number, y0: number, x1: number, y1: number, z0: number, z1: number, color: number, move: (x: number, y: number, up: number) => Local): void {
+  add([move(x0, y0, z1), move(x1, y0, z1), move(x1, y1, z1), move(x0, y1, z1)], shade(color, 1.08));
+  add([move(x1, y0, z0), move(x1, y1, z0), move(x1, y1, z1), move(x1, y0, z1)], shade(color, 0.9));
+  add([move(x0, y1, z0), move(x1, y1, z0), move(x1, y1, z1), move(x0, y1, z1)], shade(color, 0.72));
+}
+
+/**
+ * Cable-stayed footbridge. A tapering mast stands on the plinth with a fan of stays to a deck that
+ * passes south of it: a short landing to the west and, with a `span`, a long sweep east over the
+ * water on river piers, one of which is a second mast with its own stays. The mast and its stays
+ * fall with the figure. The deck and the piers stay where they are until the chain takes them: each
+ * pier leans and goes under in turn, and the deck beyond it drops into the water.
+ */
+function cableStayFigure(add: Add, height: number, concrete: number, scene?: FigureScene): void {
+  const at = (share: number) => height * share;
+  const def = scene?.definition, span = def?.span;
+  const reach = span?.reach ?? height * 0.95, west = span ? -SPAN_LANDING : -0.4;
+  const centre = (t: number) => def && span ? spanPoint(def, t) : { x: t * reach, y: height * 0.1 + Math.sin(t * Math.PI) * height * 0.07 };
+  const up = at(0.13), half = height * 0.04, sink = up + (scene?.drop ?? 0) + 1.2;
+  const steel = 0xe4e9ee, dark = shade(concrete, 0.68), pale = shade(concrete, 1.08);
+  const still = scene?.still ?? add, fall = scene?.fall;
+  const piers = layer(still, 0), deck = layer(still, 1), far = layer(still, 2);
+  // A part that has fallen share `p` of the way: leaning south about its foot and sinking.
+  const sunk = (p: number, footY: number, lean: number) => (x: number, y: number, z: number): Local => {
+    const a = p * lean, rise = z + (scene?.drop ?? 0);
+    return w(x, footY + (y - footY) * Math.cos(a) + rise * Math.sin(a), rise * Math.cos(a) - (scene?.drop ?? 0) - p * p * sink);
+  };
+  // The deck, in short lengths; each stretch between two supports drops as one, its near end first.
+  const stations = [west, 0, ...(span?.piers ?? []), 1];
+  for (let s = 0; s + 1 < stations.length; s++) {
+    const from = stations[s]!, to = stations[s + 1]!;
+    const p = !fall ? 0 : s === 0 ? fall.landing : fall.decks[s - 1]!;
+    if (p >= 1) continue;
+    const count = Math.max(1, Math.round((to - from) / DECK_STEP));
+    for (let i = 0; i < count; i++) {
+      const t0 = from + (to - from) * i / count, t1 = from + (to - from) * (i + 1) / count, a = centre(t0), c = centre(t1);
+      // The landing hinges on the bank at its west end; every other stretch lets go at the end nearer the bank.
+      const lag = (t: number) => s === 0 ? (t - from) / (to - from) : 1 - 0.45 * (t - from) / (to - from);
+      const z0 = up - p * p * sink * lag(t0), z1 = up - p * p * sink * lag(t1);
+      deck([w(a.x, a.y - half, z0), w(c.x, c.y - half, z1), w(c.x, c.y + half, z1), w(a.x, a.y + half, z0)], pale);
+      deck([w(a.x, a.y + half, z0), w(c.x, c.y + half, z1), w(c.x, c.y + half, z1 - height * 0.022), w(a.x, a.y + half, z0 - height * 0.022)], dark);
+      ribbon(deck, w(a.x, a.y + half, z0 + height * 0.02), w(c.x, c.y + half, z1 + height * 0.02), height * 0.004, steel);
+    }
+  }
+  const mastAt = (on: Add, x: number, y: number, move: (x: number, y: number, up: number) => Local) => {
+    const levels = [[0, 0.052], [0.62, 0.034], [1, 0.015]] as const;
+    for (let i = 0; i + 1 < levels.length; i++) {
+      const [u0, r0] = levels[i]!, [u1, r1] = levels[i + 1]!;
+      const ring = (u: number, r: number) => SQUARE.map(([sx, sy]) => move(x + sx * height * r, y + sy * height * r, at(u)));
+      const low = ring(u0, r0), high = ring(u1, r1);
+      for (let side = 0; side < 4; side++) on([low[side]!, low[(side + 1) % 4]!, high[(side + 1) % 4]!, high[side]!], lit(concrete, side * 2.5, 10));
+    }
+  };
+  const stays = (on: Add, x: number, y: number, t: number, move: (x: number, y: number, up: number) => Local, held: (t: number) => boolean) => {
+    for (const dir of [-1, 1]) for (let i = 1; i <= STAY_CABLES; i++) {
+      const to = t + dir * i / STAY_CABLES * STAY_FAN;
+      if (to < west || to > 1 || !held(to)) continue;
+      const foot = centre(to);
+      // The outermost stay is anchored highest on the mast.
+      ribbon(on, move(x, y, at(0.64 + 0.33 * i / STAY_CABLES)), move(foot.x, foot.y, up + height * 0.01), height * 0.0055, steel);
+    }
+  };
+  // River piers, and the far mast among them.
+  (span?.piers ?? (scene ? [] : [0.5, 1])).forEach((t, k) => {
+    const p = fall?.piers[k] ?? 0;
+    if (p >= 1) return;
+    const foot = centre(t), isMast = span?.mast === k;
+    if (!isMast) {
+      crate(piers, foot.x - half * 0.5, foot.y - half * 0.5, foot.x + half * 0.5, foot.y + half * 0.5, -(scene?.drop ?? height), up, dark, sunk(p, foot.y, 0.5));
+      return;
+    }
+    // It stands in the river north of the deck, on a footing at the waterline, and goes over to the south.
+    const y = foot.y - height * 0.1, move = sunk(p, y, Math.PI / 2 * 0.9), raised = (mx: number, my: number, mz: number) => move(mx, my, mz);
+    crate(piers, foot.x - half, y - half, foot.x + half, y + half, -(scene?.drop ?? height), 0, dark, raised);
+    mastAt(far, foot.x, y, raised);
+    stays(layer(still, 3), foot.x, y, t, raised, () => p === 0);
+  });
+  if (!span && !scene) crate(piers, centre(west).x - half * 0.5, centre(west).y - half * 0.5, centre(west).x + half * 0.5, centre(west).y + half * 0.5, -height, up, dark, w);
+  if (scene && !scene.standing) return;
+  // The mast on the plinth and its stays: these fall with the figure.
+  mastAt(layer(add, 4), 0, 0, w);
+  stays(layer(add, 5), 0, 0, 0, w, () => true);
+}
+
+const FIGURES: Readonly<Record<MonumentFigure, (add: Add, height: number, color: number, scene?: FigureScene) => void>> = {
   'sunshade-wings': sunshadeWingsFigure,
   'fan-roof': fanRoofFigure,
   liberty: libertyFigure,
@@ -434,4 +539,5 @@ const FIGURES: Readonly<Record<MonumentFigure, (add: Add, height: number, color:
   sign: signFigure,
   sphere: sphereFigure,
   sphinx: sphinxFigure,
+  'cable-stay': cableStayFigure,
 };

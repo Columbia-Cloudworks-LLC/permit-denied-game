@@ -9,7 +9,7 @@ import type { StructureStepResult } from './building';
  * walls is whole, then leans toward the missing side and comes down the way its `fall` says:
  * it topples like a felled tree, crumbles where it stands, or breaks loose and rolls.
  */
-export const MONUMENT_FIGURES = ['liberty', 'lattice-tower', 'wheel', 'sign', 'sphere', 'sphinx', 'sunshade-wings', 'fan-roof'] as const;
+export const MONUMENT_FIGURES = ['liberty', 'lattice-tower', 'wheel', 'sign', 'sphere', 'sphinx', 'sunshade-wings', 'fan-roof', 'cable-stay'] as const;
 export type MonumentFigure = typeof MONUMENT_FIGURES[number];
 /**
  * How the figure comes down. `topple`: over like a felled tree, striking the line it lands on.
@@ -18,6 +18,19 @@ export type MonumentFigure = typeof MONUMENT_FIGURES[number];
  */
 export const MONUMENT_FALLS = ['topple', 'crumble', 'roll'] as const;
 export type MonumentFall = typeof MONUMENT_FALLS[number];
+
+/**
+ * A bridge deck carried east from the figure, out over water: `reach` world units long, on river
+ * piers at the given shares of that reach (ascending, each between 0 and 1). `mast` is the index
+ * of a pier that is a second mast. Once the figure has come down, the span it held drops, and
+ * then each pier in turn every `interval` seconds, taking the span beyond it into the water.
+ */
+export interface MonumentSpan {
+  reach: number;
+  piers: number[];
+  mast?: number;
+  interval: number;
+}
 
 export interface MonumentDef {
   figure: MonumentFigure;
@@ -35,11 +48,14 @@ export interface MonumentDef {
   bonus: number;
   /** Statue metal: its drawn colour and the tint of its wreckage. */
   color: number;
+  /** A deck the figure carries; only the `cable-stay` figure draws one. */
+  span?: MonumentSpan;
 }
 
 export interface MonumentState {
   definition: MonumentDef;
-  phase: 'standing' | 'warning' | 'falling' | 'gone';
+  /** `chain`: the figure is down and its span is dropping, pier by pier. */
+  phase: 'standing' | 'warning' | 'falling' | 'chain' | 'gone';
   elapsed: number;
   progress: number;
   /** Unit direction of the fall. */
@@ -97,7 +113,40 @@ export const monumentBallRadius = (def: MonumentDef): number => def.height / 2 *
 export const monumentFall = (def: MonumentDef): MonumentFall => def.fall ?? 'topple';
 export const monumentReach = (def: MonumentDef): number => def.reach ?? def.height * 2;
 /** How far beyond its plinth a falling figure can be seen or come to rest. */
-export const monumentSweep = (def: MonumentDef): number => (monumentFall(def) === 'roll' ? monumentReach(def) + def.height : def.height) + 2;
+export const monumentSweep = (def: MonumentDef): number => Math.max(monumentFall(def) === 'roll' ? monumentReach(def) + def.height : def.height, def.span?.reach ?? 0) + 2;
+
+/** Seconds a pier takes to go under, and a span to drop. */
+export const SPAN_DROP = 0.9;
+/** How far west of the figure the deck's landing runs, as a share of the reach. */
+export const SPAN_LANDING = 0.2;
+/** How long the chain runs after the figure lands. */
+export const spanDuration = (span: MonumentSpan): number => span.piers.length * span.interval + SPAN_DROP;
+
+/**
+ * The deck's centre line at share `t` of the reach (negative on the landing), as an offset from
+ * the figure's foot: it passes south of the mast and sweeps on in a shallow S.
+ */
+export function spanPoint(def: MonumentDef, t: number): { x: number; y: number } {
+  const reach = def.span?.reach ?? 0;
+  return { x: t * reach, y: def.height * 0.1 + Math.sin(t * Math.PI * 2) * reach * 0.055 };
+}
+
+/**
+ * How far each part of the span has fallen, 0 standing to 1 under water: the landing, every pier,
+ * and every stretch of deck. Stretch 0 runs from the figure to the first pier and goes as soon as
+ * the figure lands; stretch `k` hangs beyond pier `k - 1` and goes with it.
+ */
+export function spanFall(s: MonumentState): { landing: number; piers: number[]; decks: number[] } | undefined {
+  const span = s.definition.span;
+  if (!span) return undefined;
+  const at = s.phase === 'chain' ? s.elapsed : s.phase === 'gone' ? Infinity : -1;
+  const share = (start: number) => at < 0 ? 0 : Math.min(1, Math.max(0, (at - start) / SPAN_DROP));
+  return {
+    landing: share(0),
+    piers: span.piers.map((_, k) => share((k + 1) * span.interval)),
+    decks: [share(0), ...span.piers.map((_, k) => share((k + 1) * span.interval))],
+  };
+}
 
 export function initializeMonument(b: Building, definition: MonumentDef): void {
   const columns: MonumentState['columns'] = b.cells.filter(cellPresent).map(cell => ({ gx: cell.gx, gy: cell.gy, floor: cell.floor }));
@@ -137,13 +186,18 @@ function plinthCentre(b: Building): { x: number; y: number; half: number } {
   };
 }
 
+/** The figure standing upright on its plinth, whatever it is doing now: where the parts that do not fall with it stay. */
+export function monumentSeat(b: Building): MonumentPose {
+  const s = b.monument!, centre = plinthCentre(b);
+  return { x: centre.x, y: centre.y, z: b.floors * FLOOR_Z, theta: 0, dx: s.dx, dy: s.dy, height: s.definition.height, spin: 0, squash: 0 };
+}
+
 /**
  * The statue's rigid pose: its feet (`x`, `y`, `z`) and how far it has rotated from upright
  * toward (`dx`, `dy`). While it falls the feet slide off the plinth and drop to the ground.
  */
 export function monumentPose(b: Building): MonumentPose {
-  const s = b.monument!, def = s.definition, centre = plinthCentre(b), top = b.floors * FLOOR_Z;
-  const upright: MonumentPose = { x: centre.x, y: centre.y, z: top, theta: 0, dx: s.dx, dy: s.dy, height: def.height, spin: 0, squash: 0 };
+  const s = b.monument!, def = s.definition, upright = monumentSeat(b), centre = plinthCentre(b), top = upright.z;
   if (s.phase === 'standing') return upright;
   const fall = monumentFall(def);
   if (s.phase === 'warning') {
@@ -185,6 +239,10 @@ export function stepMonument(b: Building, dt: number, result: StructureStepResul
   s.elapsed += dt;
   b.visualRevision++;
   b.structureDirty = true;
+  if (s.phase === 'chain') {
+    stepSpan(b, dt, particles, events);
+    return;
+  }
   if (s.phase === 'warning') {
     if (s.elapsed < def.warningDuration) return;
     s.phase = 'falling';
@@ -198,6 +256,31 @@ export function stepMonument(b: Building, dt: number, result: StructureStepResul
   if (s.progress < 1) return;
   if (monumentFall(def) === 'topple') land(b, result, particles, events);
   else breakUp(b, result, particles, events);
+}
+
+/** Start the span's chain once the figure is down: the landing and the first stretch of deck go at once. */
+function releaseSpan(b: Building, result: StructureStepResult, events: WorldEvent[]): void {
+  const s = b.monument!, def = s.definition, centre = plinthCentre(b);
+  s.phase = 'chain';
+  s.elapsed = 0;
+  const west = spanPoint(def, -SPAN_LANDING), foot = spanPoint(def, 0);
+  // The landing comes down on the bank: anything under it is struck.
+  result.monumentImpacts.push({ building: b, x0: centre.x + west.x, y0: centre.y + west.y, x1: centre.x + foot.x, y1: centre.y + foot.y, radius: 1.4 });
+  events.push({ kind: 'snap', x: centre.x, y: centre.y + foot.y, z: 1, mag: 1.6, material: 'metal' });
+}
+
+/** Each pier goes under in its turn, with a splash and a jolt, and the chain ends when the last has gone. */
+function stepSpan(b: Building, dt: number, particles: ParticlePool, events: WorldEvent[]): void {
+  const s = b.monument!, def = s.definition, span = def.span!, centre = plinthCentre(b);
+  span.piers.forEach((t, k) => {
+    const due = (k + 1) * span.interval;
+    if (s.elapsed < due || s.elapsed - dt >= due) return;
+    const at = spanPoint(def, t), x = centre.x + at.x, y = centre.y + at.y;
+    particles.radialDust(x, y, 1.6, 10);
+    events.push({ kind: 'collapse', x, y, z: 0, mag: k === span.mast ? 1.8 : 1.2 });
+    events.push({ kind: 'snap', x, y, z: 0, mag: 1.4, material: 'metal' });
+  });
+  if (s.elapsed >= spanDuration(span)) s.phase = 'gone';
 }
 
 /** A rolling figure sweeps the ground between where it was and where it is, once it is down off the plinth. */
@@ -258,6 +341,7 @@ const PIECES = 14;
 function land(b: Building, result: StructureStepResult, particles: ParticlePool, events: WorldEvent[]): void {
   const s = b.monument!, def = s.definition, pose = monumentPose(b);
   s.phase = 'gone';
+  if (def.span) releaseSpan(b, result, events);
   const tipX = pose.x + s.dx * def.height, tipY = pose.y + s.dy * def.height;
   for (let i = 0; i < PIECES; i++) {
     const t = (i + 0.5) / PIECES;
@@ -271,6 +355,8 @@ function land(b: Building, result: StructureStepResult, particles: ParticlePool,
       material: 'metal', floor: 0, cellSize: b.cellSize, tint: def.color,
       // Torn sheet: each piece lands as a curved plate of the statue's skin.
       source: 'roof', panelW: Math.max(0.9, girth * 1.5), panelD: Math.max(0.7, girth * 1.05), heading: Math.atan2(s.dy, s.dx) + (i * 2.4) % Math.PI,
+      // A bridge mast that falls across the river goes into it.
+      sinks: !!def.span,
     });
     particles.radialDust(x, y, girth + 0.6, 6);
   }

@@ -5,6 +5,7 @@ A city plan makes one region's Downtown county (County 6) a real place in miniat
 | Region | City | Plan | Landmarks |
 | --- | --- | --- | --- |
 | `US-IL` | Chicago | `src/world/cityPlans/chicago.ts` | Willis Tower (objective), Hancock Tower, Navy Pier, Field Museum, Shedd Aquarium, Adler Planetarium |
+| `US-NE` | Omaha | `src/world/cityPlans/omaha.ts` | First National Tower (objective), WoodmenLife Tower, Union Station, Joslyn Art Museum, Saint Cecilia Cathedral, the Bob Kerrey Pedestrian Bridge, a riverfront grain elevator |
 | `US-NV` | Las Vegas | `src/world/cityPlans/lasVegas.ts` | The Strat (objective), the Sphere, the Venetian, Caesars Palace, the Bellagio and its fountain lake, the Eiffel Tower, the High Roller, the Luxor pyramid and its sphinx, the Welcome sign |
 | `US-NY` | New York City | `src/world/cityPlans/newYorkCity.ts` | Empire State Tower (objective), Chrysler Spire Tower, One World Tower, Flatiron Wedge, Statue of Liberty |
 | `US-WI` | Milwaukee | `src/world/cityPlans/milwaukee.ts` | Milwaukee Art Museum and its wings (objective), Saint Josaphat Basilica, Milwaukee Public Library, Brewers Stadium (an open ballpark on its own superblock, with a diamond and a fan roof), Pabst Theater |
@@ -26,6 +27,7 @@ Play one with `?mode=sandbox&region=US-NY&county=6` (or `mode=challenge`). Add `
 | `landmarks` | Pinned buildings, by package id and north-west corner. The first is the county's objective; the others are tagged as signatures and pay the signature bonus. `clear` keeps ordinary lots that far from the footprint, for a drawn figure wider than its plinth. `view` keeps them that much further off on the camera side only (south and east), so fill does not stand in front of it. |
 | `fountains` | Rows of jets on the plan's water. Drawn only. |
 | `ballfields` | A baseball diamond painted on the ground as cover patches: a square with home plate in the `home` corner. It goes in the open middle of a ballpark package. |
+| `rails` | Freight lines: a straight track along `y = at` or `x = at`, with `consists` of rail cars parked on it. See [Rail lines](#rail-lines). |
 | `canopies` | A vaulted canopy over one stretch of a street. Drawn only: nothing collides with it, and it thins out over the dozer. |
 | `cores` | Circles that are `downtown-core`. Roles fall off with distance from the nearest core, to `borough-edge` at worst. |
 | `fillCount` | Ordinary buildings between the landmarks. |
@@ -49,9 +51,17 @@ Ordinary fill, composition checks, driveways, dressing, traffic and spawns are t
 
 A plan in a desert climate needs `ground`. Without it the plan's land is all `grass`: the renderer already draws turf as bare soil under a snowless desert climate, so the map would look dry, but the simulation would still call it lawn and the parks could never be green. With `ground` set, the open land is the listed covers and each park lawn is marked watered on the surface grid (`SurfaceGrid.irrigated`), which exempts it from the bare-soil rule and the soil wash. Las Vegas uses `['scrub', 'dirt', 'dirt', 'sand']`, a palm-planted golf course as its one lawn, and `gravel` plazas round the fountain lake and beside the Fremont canopy.
 
+## Rail lines
+
+A plan's `rails` lay a freight line on the ground: a gravel bed painted on the surface, ties and rails drawn over it (`render/cityDecor.ts`), and no lot within 1.7 units of the centre line. A street that crosses the line is a level crossing. Each consist lists vehicle ids (`freight-locomotive`, `boxcar`, `tank-car`) from the low end of the line up, starting at its `at`; keep consists clear of the crossings, which the city test checks. The town parks the cars when it is built (`placeRailCars` in `src/vehicle/rail.ts`).
+
+A car on the rails rolls along its line and nothing else. Its flanges pull it back to the centre line, so a slow push from the side only leans on it. Pushed more than 0.42 units off the line (the dozer at about half speed or better) it derails: it is thrown clear at 6.5 units/s, lies over, pays a $100 bonus once, and drags off the cars coupled either side of it. A derailed car that slides into a wall at over 1.5 units/s breaks the ground-floor cells round the strike (`src/sim/railImpact.ts`), so a street of warehouses backing onto the line is worth the frontage. After that it is an ordinary heavy wreck. Tuning is `RAIL` in `src/vehicle/runtime.ts`; `src/vehicle/rail.test.ts` covers it.
+
+The world has no elevation. Omaha's climb from the river to the cathedral is told by its bands of streets and what stands in them, not by height.
+
 ## Landmark packages
 
-City landmarks are ordinary landmark packages in `src/world/landmarkData/`, loaded with the lazy overworld chunk (`landmarkPack.ts`). They are `landmarkOnly`, carry zero zone weights, and list `city-downtown` in `campaign.levels`. A package may set `wallColor` to give the whole building one wall colour in place of the regional paint (the statue's copper green, the Willis Tower's black steel). Tapered and stepped towers are stacked `sections`; a mast or spire is a one-cell section. A section marked `cantilever` may project past the floor below it (the Strat's pod); see [construction authoring](construction-authoring.md#flat-layouts-and-sections). Shapes that cells cannot make are [monuments](monument-authoring.md): a drawn figure on a destructible foundation that comes down when half the foundation's wall is gone. The Statue of Liberty, the Eiffel Tower, the High Roller, the Welcome sign and the Milwaukee Art Museum's wings topple; the sphinx crumbles, and so does the fan roof of Brewers Stadium; the Sphere rolls.
+City landmarks are ordinary landmark packages in `src/world/landmarkData/`, loaded with the lazy overworld chunk (`landmarkPack.ts`). They are `landmarkOnly`, carry zero zone weights, and list `city-downtown` in `campaign.levels`. A package may set `wallColor` to give the whole building one wall colour in place of the regional paint (the statue's copper green, the Willis Tower's black steel). Tapered and stepped towers are stacked `sections`; a mast or spire is a one-cell section. A section marked `cantilever` may project past the floor below it (the Strat's pod); see [construction authoring](construction-authoring.md#flat-layouts-and-sections). Shapes that cells cannot make are [monuments](monument-authoring.md): a drawn figure on a destructible foundation that comes down when half the foundation's wall is gone. The Statue of Liberty, the Eiffel Tower, the High Roller, the Welcome sign and the Milwaukee Art Museum's wings topple; the Bob Kerrey bridge's mast topples and its span then drops into the river pier by pier; the sphinx crumbles, and so does the fan roof of Brewers Stadium; the Sphere rolls.
 
 Names are descriptive rather than trademarks where the real one is a brand (`willis-bundle-tower`, `one-world-tower`).
 

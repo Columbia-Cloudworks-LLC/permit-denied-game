@@ -6,6 +6,11 @@ forklift, tracked skid steer, tracked excavator, tractor with farm trailer, and 
 heavier police cruiser (a sedan body with `"lightbar": true`). Through traffic and
 police driving are described in [traffic.md](traffic.md).
 
+Three more are rolling stock (`freight-locomotive`, `boxcar`, `tank-car`, family `rail`): an
+underframe on two trucks with a body, plate steel at three times a road vehicle's part strength,
+with no driver. A city plan parks them on a rail line, where the dozer can shove them off the
+track; see [city plans](city-plans.md#rail-lines).
+
 Open `?yard=1`, then **Debug → Assets → Category: vehicle**. Choose a vehicle and
 use **Jump to baseline** or **View whole example**. The proving controls provide
 route driving, park/stop, camera following, a staggered fleet demonstration,

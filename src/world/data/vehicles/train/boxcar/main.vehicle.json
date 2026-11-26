@@ -1,0 +1,17 @@
+{
+  "id": "boxcar",
+  "name": "Boxcar",
+  "family": "rail",
+  "body": "boxcar",
+  "length": 5.4,
+  "width": 1.7,
+  "height": 2.2,
+  "mass": 11,
+  "cash": 70,
+  "paints": [
+    9058854,
+    5665350
+  ],
+  "speed": 3,
+  "steering": "front"
+}

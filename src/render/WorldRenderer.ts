@@ -38,7 +38,7 @@ import { drawDozer, lookKey } from "./vehicles";
 import { facadeDetailCommand } from './facadeDetails';
 import { elevatedTankCommands } from './elevatedTank';
 import { monumentCommands } from './monument';
-import { canopyBayCommand, canopyBays, fountainCommands } from './cityDecor';
+import { canopyBayCommand, canopyBays, fountainCommands, railChunkCommand, railChunks } from './cityDecor';
 import { monumentSweep } from '../structure/monument';
 import { siloCommands } from './silos';
 import { clearNhoodOverlay, drawNhoodOverlay } from "./nhoodOverlay";
@@ -926,6 +926,13 @@ export class WorldRenderer {
       const x = Math.min(fountain.x0, fountain.x1) - 1, y = Math.min(fountain.y0, fountain.y1) - 1;
       if (!this.visibleBox(x, y, Math.abs(fountain.x1 - fountain.x0) + 2, Math.abs(fountain.y1 - fountain.y0) + 2, 0, fountain.height)) continue;
       this.pushShown(frame, fountainCommands(fountain, this.decorClock));
+    }
+    for (const rail of decor.rails) {
+      for (const chunk of railChunks(rail)) {
+        frame.total++;
+        if (!this.visibleBox(chunk.x, chunk.y, chunk.w, chunk.d, 0, 0.2)) continue;
+        this.pushShown(frame, [railChunkCommand(rail, chunk)]);
+      }
     }
     for (const canopy of decor.canopies) {
       canopyBays(canopy).forEach((bay, index) => {

@@ -6,8 +6,10 @@ import { countyAt, countyEnvironment } from './counties';
 import { CITY_PLANS } from './cityPlans';
 import { CITY_SITES } from './cityPlanSites';
 import { biomeById } from './biomes';
-import { fountainJetShare, canopyBays } from '../render/cityDecor';
-import { boxInLandmarkClearance, planBallfieldPatches, planDecor, planIrrigatedAt, planSurfaceAt, type CityPlan } from './cityPlan';
+import { fountainJetShare, canopyBays, railChunks } from '../render/cityDecor';
+import { vehicleDefinition } from '../vehicle/definitions';
+import { monumentSeat, SPAN_LANDING, spanPoint } from '../structure/monument';
+import { boxInLandmarkClearance, boxOnPlanRail, planBallfieldPatches, planDecor, planIrrigatedAt, planSurfaceAt, railBox, RAIL_BED, type CityPlan } from './cityPlan';
 import { aridLandscape, climateById } from './climate';
 import { regionalPlacement, regionalWeight } from './regionalCatalog';
 import { regionById } from './regions';
@@ -313,6 +315,119 @@ describe('Milwaukee', () => {
     expect(publicStreetsReachable(town.network, town.spawnX, town.spawnY)).toBe(true);
     const [channelNorth, channelSouth] = span(1, 1);
     expect(plan.streets.filter(street => street.axis === 'y' && street.from < channelNorth && street.to > channelSouth).length).toBeGreaterThanOrEqual(3);
+  });
+});
+
+describe('Omaha', () => {
+  const { town, plan } = buildCity('US-NE');
+  const footprint = (id: string) => {
+    const b = town.buildings.find(entry => entry.archetypeId === id)!;
+    return { x: b.x, y: b.y, w: b.w * b.cellSize, d: b.d * b.cellSize };
+  };
+  const avenue = (at: number) => plan.streets.find(street => street.axis === 'y' && street.at === at)!;
+  const rail = plan.rails![0]!;
+
+  it('climbs from the riverfront to the cathedral in four bands', () => {
+    const eighth = avenue(126).at, tenth = avenue(98).at, midtown = avenue(46).at;
+    const west = (id: string) => footprint(id).x + footprint(id).w, east = (id: string) => footprint(id).x;
+    // Riverfront and rail yards, the Old Market's station, the tower core, then Midtown.
+    for (const id of ['kerrey-cable-footbridge', 'riverfront-grain-elevator']) expect(east(id), id).toBeGreaterThan(eighth);
+    expect(east('union-station-terminal')).toBeGreaterThan(tenth);
+    expect(west('union-station-terminal')).toBeLessThan(eighth);
+    for (const id of ['first-national-step-tower', 'woodmen-grid-tower']) {
+      expect(east(id), id).toBeGreaterThan(midtown);
+      expect(west(id), id).toBeLessThan(tenth);
+    }
+    for (const id of ['joslyn-marble-museum', 'cecilia-twin-spire-cathedral']) expect(west(id), id).toBeLessThan(midtown);
+    // The cathedral is the last of them, out past the westmost avenue.
+    expect(west('cecilia-twin-spire-cathedral')).toBeLessThan(Math.min(...plan.streets.filter(street => street.axis === 'y').map(street => street.at)));
+    // The objective is the tallest thing in town.
+    const tower = town.buildings.find(entry => entry.campaignLandmark)!;
+    expect(tower.archetypeId).toBe('first-national-step-tower');
+    expect(town.buildings.every(other => other === tower || other.floors < tower.floors)).toBe(true);
+  });
+
+  it('stands a cable-stayed footbridge on the bank and a three-bin elevator by the yards', () => {
+    const bridge = town.buildings.find(entry => entry.archetypeId === 'kerrey-cable-footbridge')!;
+    expect(bridge.monument?.definition).toMatchObject({ figure: 'cable-stay' });
+    expect(plan.landmarks.find(pin => pin.buildingId === 'kerrey-cable-footbridge')!.clear).toBeGreaterThan(0);
+    // The bank is the east edge of the land: the span reaches out over the river.
+    const shore = Math.max(...plan.land[0]!.map(point => point[0]));
+    expect(shore - (bridge.x + bridge.w * bridge.cellSize)).toBeLessThan(6);
+    expect(surfaceAt(town.surface, shore + 4, bridge.y)).toBe('water');
+    // Its deck runs the whole width of the river and off the east edge of the map, over water all the way.
+    const seat = monumentSeat(bridge), def = bridge.monument!.definition, span = def.span!;
+    expect(seat.x + span.reach).toBeGreaterThan(plan.width);
+    expect(seat.x + span.reach).toBeLessThan(plan.width + 4);
+    for (const t of span.piers) {
+      const at = spanPoint(def, t);
+      expect(surfaceAt(town.surface, seat.x + at.x, seat.y + at.y), `pier at ${t}`).toBe('water');
+    }
+    // The landing comes down on the bank, clear of every other building.
+    const west = spanPoint(def, -SPAN_LANDING);
+    expect(surfaceAt(town.surface, seat.x + west.x, seat.y + west.y)).not.toBe('water');
+    for (const other of town.buildings) {
+      if (other === bridge) continue;
+      expect(aabbOverlap(seat.x + west.x - 1, seat.y - 1, -west.x + 1, west.y + 4, other.x, other.y, other.w * other.cellSize, other.d * other.cellSize), `${other.archetypeId} under the landing`).toBe(false);
+    }
+    expect(town.buildings.find(entry => entry.archetypeId === 'riverfront-grain-elevator')!.silos).toHaveLength(3);
+  });
+
+  it('wraps the Carter Lake pocket in water that only two bridges cross', () => {
+    const pocket = { x0: 110, x1: 144, y0: 0, y1: 34 };
+    const inside = (x: number, y: number) => x > pocket.x0 && x < pocket.x1 && y > pocket.y0 && y < pocket.y1;
+    // Dry inside, wet all round its west, south and east sides.
+    expect(surfaceAt(town.surface, 118, 12)).not.toBe('water');
+    for (const [x, y] of [[107, 14], [118, 37], [147, 14]] as const) expect(surfaceAt(town.surface, x, y), `${x},${y}`).toBe('water');
+    const entering = plan.streets.filter(street => {
+      const from = street.axis === 'x' ? inside(street.from, street.at) : inside(street.at, street.from);
+      const to = street.axis === 'x' ? inside(street.to, street.at) : inside(street.at, street.to);
+      return from !== to;
+    });
+    expect(entering).toHaveLength(2);
+    expect(town.buildings.some(b => inside(b.x + b.w * b.cellSize / 2, b.y + b.d * b.cellSize / 2))).toBe(true);
+    expect(publicStreetsReachable(town.network, town.spawnX, town.spawnY)).toBe(true);
+  });
+
+  it('parks freight consists on the main line, clear of the level crossings and the buildings', () => {
+    expect(town.cityDecor!.rails).toEqual(plan.rails);
+    // The bed is gravel under every car (a level crossing is pavement), and turf either side of it.
+    for (const car of town.vehicles.filter(vehicle => vehicle.rail)) expect(surfaceAt(town.surface, car.x, rail.at), `bed at ${car.x}`).toBe('gravel');
+    expect(planSurfaceAt(plan)(60, rail.at - RAIL_BED.half - 0.5)).toBe('grass');
+    const cars = town.vehicles.filter(vehicle => vehicle.rail);
+    expect(cars).toHaveLength(rail.consists.reduce((sum, consist) => sum + consist.cars.length, 0));
+    expect(cars.some(car => car.definitionId === 'freight-locomotive')).toBe(true);
+    for (const car of cars) {
+      const length = vehicleDefinition(car.definitionId).length, width = vehicleDefinition(car.definitionId).width;
+      expect(car.y).toBe(rail.at);
+      expect(car.x - length / 2).toBeGreaterThanOrEqual(rail.from);
+      expect(car.x + length / 2).toBeLessThanOrEqual(rail.to);
+      expect(surfaceAt(town.surface, car.x, car.y)).not.toBe('water');
+      expect(aabbOverlapsRoad(town.network, car.x - length / 2, car.y - width / 2, length, width), `${car.definitionId} at ${car.x} on a crossing`).toBe(false);
+    }
+    // Nothing is built on the track bed, and the station stands just north of it.
+    const bed = railBox(rail, RAIL_BED.half);
+    for (const building of town.buildings) {
+      expect(aabbOverlap(bed.x, bed.y, bed.w, bed.d, building.x, building.y, building.w * building.cellSize, building.d * building.cellSize), `${building.archetypeId} on the track`).toBe(false);
+    }
+    expect(boxOnPlanRail(plan, { x: 60, y: rail.at - 0.5, w: 4, d: 1 })).toBe(true);
+    expect(boxOnPlanRail(plan, { x: 60, y: rail.at - 12, w: 4, d: 4 })).toBe(false);
+    const station = footprint('union-station-terminal');
+    expect(rail.at - (station.y + station.d)).toBeGreaterThan(RAIL_BED.clear);
+    expect(rail.at - (station.y + station.d)).toBeLessThan(8);
+    // Warehouses back onto the yards within a derailed car's slide.
+    const trackside = town.buildings.filter(b => !b.campaignLandmark && !b.cityLandmark && rail.at - (b.y + b.d * b.cellSize) < 7 && b.y < rail.at);
+    expect(trackside.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('has rails only where a plan lays them', () => {
+    expect(planDecor(CITY_PLANS['US-NE'])!.rails).toHaveLength(1);
+    expect(planDecor(CITY_PLANS['US-NV'])!.rails).toEqual([]);
+    expect(planSurfaceAt(CITY_PLANS['US-IL']!)(60, 188)).not.toBe('gravel');
+    for (const regionId of ['US-IL', 'US-NV', 'US-NY', 'US-WI']) expect(CITY_PLANS[regionId]!.rails).toBeUndefined();
+    const chunks = railChunks(rail);
+    expect(chunks[0]!.from).toBe(rail.from);
+    expect(chunks[chunks.length - 1]!.to).toBeCloseTo(rail.to, 6);
   });
 });
 

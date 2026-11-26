@@ -1,6 +1,7 @@
 import { stepVehicleWorld, migrateVehicles } from '../vehicle/world';
 import { applyCoreImpact } from './coreImpact';
 import { applyMonumentImpact, applyMonumentRoll } from './monumentImpact';
+import { applyRailHits } from './railImpact';
 import { resistCorePile } from './corePileResistance';
 import { retireStructures } from './retirement';
 import { DEBRIS, DOZER } from "../game/constants";
@@ -232,6 +233,7 @@ export function stepWorld(
   if(roadCar?.roadDemo && roadCar.autonomous && !roadCar.waypoints.length && roadCar.status==='operational') stepRoadVehicle(roadCar,town,0);
   stepTraffic(town, dozer, dt);
   cash += stepVehicleWorld(town,dozer,particles,events,dt,bladeMul,engineMul);
+  cash += applyRailHits(town, particles, events);
   settleTraffic(town, dozer, events);
   shrugOffDrag(dozer, fwd.x, fwd.y, alongBefore, contact.solid);
 
@@ -289,6 +291,7 @@ function settleStructures(town: Town, dozer: Dozer, particles: ParticlePool, eve
   }
   const bodyLimit = struct.rubbleSpawns.length + struct.fixtureFrags.length > 32 ? DEBRIS.activeCap : Infinity;
   for (const spawn of struct.rubbleSpawns) {
+    if (spawn.sinks && !town.frozen && town.surface && terrainTraversalAt(town.features, spawn.x, spawn.y, town.surface) === 'water') continue;
     spawnCollapseDebris(town, spawn, spawn.aggregate ? DEBRIS.activeCap : bodyLimit);
   }
   spawnFixtureFrags(town, struct.fixtureFrags, bodyLimit);
